@@ -13,6 +13,7 @@ import type {
   PanelSpec,
   SectionSpec,
   TimeRangeSpec,
+  WidgetPanelSpec,
 } from '../api/types';
 import type { SectionOverrides } from '../state/boardParams';
 import { isDataPanel } from '../widgets/spec';
@@ -66,6 +67,13 @@ export type BoardAction =
       /** A data panel's edit (plan #198 Part 1 §4.2); on a widget only `title` applies. */
       patch: PanelPatch;
     }
+  | {
+      type: 'addWidget';
+      vis: WidgetPanelSpec['vis'];
+      size: { w: number; h: number };
+      grid?: GridRef;
+    }
+  | { type: 'updateWidget'; id: string; patch: WidgetPatch }
   | { type: 'removePanel'; id: string }
   | { type: 'duplicatePanel'; id: string }
   | { type: 'select'; id: string | null }
@@ -102,6 +110,9 @@ export function isDirty(s: BoardPageState): boolean {
 
 /** The fields the panel editor changes (a data panel's). */
 export type PanelPatch = Partial<Pick<DataPanelSpec, 'title' | 'query' | 'vis'>>;
+
+/** The fields the widget editor changes (plan #198 Part 3a §3.3). */
+export type WidgetPatch = { title?: string; vis?: WidgetPanelSpec['vis'] };
 
 /** `p` with `patch`: a data panel takes all of it, a widget only its title (plan #198 Part 1 §4.2). */
 function patched(p: PanelSpec, patch: PanelPatch): PanelSpec {
@@ -298,6 +309,9 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
       const panels = panelsOf(s.draft, grid).map((p) => (p.id === a.id ? patched(p, a.patch) : p));
       return edited(s, withPanels(s.draft, grid, panels));
     }
+    case 'addWidget':
+    case 'updateWidget':
+      return s;
     case 'removePanel': {
       const grid = gridOf(s.draft, a.id);
       if (grid === null) return s;

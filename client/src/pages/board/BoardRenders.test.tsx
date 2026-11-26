@@ -17,7 +17,28 @@ const counts = vi.hoisted(() => ({
   renders: new Map<string, number>(),
   mounts: new Map<string, number>(),
   unmounts: new Map<string, number>(),
+  /** The diagnostic (plan #198 Part 3a §4.5): each counted render, printed when a count fails. */
+  log: [] as string[],
+  /** The last props each panel's `PanelFullScreen` and `PanelFrame` rendered with. */
+  last: new Map<string, Record<string, unknown>>(),
+  t0: 0,
 }));
+
+/** The names of the props whose values differ from the last render's (`onClose` is per render). */
+function diff(key: string, props: Record<string, unknown>): string {
+  const before = counts.last.get(key);
+  counts.last.set(key, props);
+  if (before === undefined) return '(first)';
+  const changed = Object.keys({ ...before, ...props }).filter(
+    (k) => k !== 'onClose' && !Object.is(before[k], props[k]),
+  );
+  return changed.length === 0 ? '(none)' : changed.join(',');
+}
+
+function note(what: string, title: string, props: Record<string, unknown>): void {
+  const ms = (performance.now() - counts.t0).toFixed(1);
+  counts.log.push(`${ms} ms ${what} ${title}: ${diff(`${what}:${title}`, props)}`);
+}
 
 function bump(m: Map<string, number>, k: string): void {
   m.set(k, (m.get(k) ?? 0) + 1);
@@ -41,15 +62,39 @@ vi.mock('./PanelFullScreen', async (importOriginal) => {
     ...m,
     PanelFullScreen: function CountedFullScreen(p: Parameters<typeof m.PanelFullScreen>[0]) {
       bump(counts.renders, p.title);
+      note('render', p.title, p);
       useMountSpy(p.title);
       return m.PanelFullScreen(p);
     },
   };
 });
 
+// The page's props reach a panel through the memoised `PanelFrame`: the wrapper below renders only
+// when one of them changed, so its log line names the page prop that did (§4.5).
+vi.mock('./PanelFrame', async (importOriginal) => {
+  const m = await importOriginal<typeof import('./PanelFrame')>();
+  const { createElement, forwardRef, memo } = await import('react');
+  return {
+    ...m,
+    PanelFrame: memo(
+      forwardRef<HTMLElement, Parameters<typeof m.PanelFrame>[0]>(function LoggedFrame(p, ref) {
+        note('page-props', p.panel.title, p as unknown as Record<string, unknown>);
+        return createElement(m.PanelFrame, { ...p, ref });
+      }),
+    ),
+  };
+});
+
 beforeEach(() => {
   installResizeObserver();
 });
+
+/** `expect(renders of titles).toEqual(n each)`, printing the render log when it fails. */
+function expectRenders(titles: readonly string[], n: number): void {
+  const got = of(counts.renders, titles);
+  const want = each(titles, n);
+  expect(got, `renders since clear:\n${counts.log.join('\n')}`).toEqual(want);
+}
 
 const OTHERS = ['Error ratio', 'Errors', 'Request latency'];
 const ALL = ['Request rate', ...OTHERS];
@@ -66,6 +111,8 @@ function clear(): void {
   counts.renders.clear();
   counts.mounts.clear();
   counts.unmounts.clear();
+  counts.log.length = 0;
+  counts.t0 = performance.now();
 }
 
 function total(): number {
@@ -122,7 +169,7 @@ describe('board render counts (#111)', () => {
     clear();
     await user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
     await screen.findByRole('dialog', { name: 'Edit panel' });
-    expect(of(counts.renders, OTHERS)).toEqual(each(OTHERS, 0));
+    expectRenders(OTHERS, 0);
   });
 
   it('editing in the editor does not re-render the other panels', async () => {
@@ -135,7 +182,7 @@ describe('board render counts (#111)', () => {
     await user.type(within(d).getByRole('textbox', { name: 'Title' }), 'X');
     // The edited panel shows the new title at once.
     expect(counts.renders.get('Request rateX')).toBeGreaterThan(0);
-    expect(of(counts.renders, OTHERS)).toEqual(each(OTHERS, 0));
+    expectRenders(OTHERS, 0);
   });
 
   it('closing the editor does not re-render the other panels', async () => {
@@ -149,7 +196,7 @@ describe('board render counts (#111)', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Edit panel' })).toBeNull();
     });
-    expect(of(counts.renders, OTHERS)).toEqual(each(OTHERS, 0));
+    expectRenders(OTHERS, 0);
   });
 
   it('entering Edit mode keeps every panel mounted and renders none', async () => {
@@ -162,7 +209,7 @@ describe('board render counts (#111)', () => {
     await settle();
     expect(of(counts.unmounts, ALL)).toEqual(each(ALL, 0));
     expect(of(counts.mounts, ALL)).toEqual(each(ALL, 0));
-    expect(of(counts.renders, ALL)).toEqual(each(ALL, 0));
+    expectRenders(ALL, 0);
   });
 
   it('Edit panel from View mode keeps the panels mounted and renders no other panel', async () => {
@@ -176,7 +223,7 @@ describe('board render counts (#111)', () => {
     await settle();
     expect(of(counts.unmounts, ALL)).toEqual(each(ALL, 0));
     expect(of(counts.mounts, ALL)).toEqual(each(ALL, 0));
-    expect(of(counts.renders, OTHERS)).toEqual(each(OTHERS, 0));
+    expectRenders(OTHERS, 0);
   });
 
   it('leaving Edit mode keeps every panel mounted and renders none', async () => {
@@ -188,6 +235,6 @@ describe('board render counts (#111)', () => {
     await settle();
     expect(of(counts.unmounts, ALL)).toEqual(each(ALL, 0));
     expect(of(counts.mounts, ALL)).toEqual(each(ALL, 0));
-    expect(of(counts.renders, ALL)).toEqual(each(ALL, 0));
+    expectRenders(ALL, 0);
   });
 });

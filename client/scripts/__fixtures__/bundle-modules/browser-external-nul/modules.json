@@ -1,5 +1,18 @@
 {
   "assets/text-c3.js": [
     "\u0000__vite-browser-external:node:stream"
+  ],
+  "assets/index-a1.js": [
+    "/repo/client/index.html",
+    "/repo/client/src/main.tsx"
+  ],
+  "assets/BoardPage-b1.js": [
+    "/repo/client/src/pages/board/BoardPage.tsx"
+  ],
+  "assets/TextMarkdown-m1.js": [
+    "/repo/client/src/widgets/text/TextMarkdown.tsx",
+    "/repo/client/src/security/sanitise/markdown.tsx",
+    "/repo/client/node_modules/commonmark/lib/index.js",
+    "/repo/client/node_modules/parse5/dist/index.js"
   ]
 }

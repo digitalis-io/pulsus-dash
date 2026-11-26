@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { Board, BoardSpec } from '../api/types';
+import type { Board, BoardSpec, PanelSpec } from '../api/types';
+import { messages } from '../i18n/messages.en-GB';
 import {
   boardReducer,
   initialState,
@@ -273,5 +274,107 @@ describe('board tags (T24-029)', () => {
     s = run(s, { type: 'enterEdit' }, { type: 'setTime', time: null });
     expect(s.draft.tags).toEqual(['a']);
     expect(s.draft).not.toHaveProperty('time');
+  });
+});
+
+describe('unit:widget-add (plan #198 Part 3a §3.3)', () => {
+  const TEXT = { kind: 'text' as const, options: { mode: 'markdown' as const, content: '' } };
+  const SIZE = { w: 6, h: 6 };
+  const data = (id: string, g = { x: 0, y: 0, w: 6, h: 8 }): PanelSpec => ({
+    id,
+    title: 'Requests',
+    grid: g,
+    query: { lang: 'promql', text: 'up' },
+    vis: { kind: 'line' },
+  });
+  const text = (id: string, g = { x: 6, y: 0, w: 6, h: 6 }): PanelSpec => ({
+    id,
+    title: 'Notes',
+    grid: g,
+    vis: { kind: 'text', options: { content: 'a' } },
+  });
+  const edit = (spec: BoardSpec) => run(initialState(board('1', spec)), { type: 'enterEdit' });
+
+  it('addWidget adds the given vis at the first free cell of its size and selects it', () => {
+    const s = run(edit({ ...MINIMAL, panels: [data('p-1')] }), {
+      type: 'addWidget',
+      vis: TEXT,
+      size: SIZE,
+    });
+    expect(s.draft.panels[1]).toEqual({
+      id: 'p-2',
+      title: '',
+      grid: { x: 6, y: 0, w: 6, h: 6 },
+      vis: TEXT,
+    });
+    expect(s.selected).toBe('p-2');
+    expect(isDirty(s)).toBe(true);
+    expect('query' in (s.draft.panels[1] ?? {})).toBe(false);
+  });
+
+  it('into a collapsed section, which opens', () => {
+    const s = run(
+      edit({
+        ...MINIMAL,
+        sections: [{ id: 's-1', title: 'S', collapsed: true, panels: [] }],
+      }),
+      { type: 'addWidget', vis: TEXT, size: SIZE, grid: 0 },
+    );
+    expect(s.draft.sections[0]?.panels).toEqual([
+      { id: 'p-1', title: '', grid: { x: 0, y: 0, w: 6, h: 6 }, vis: TEXT },
+    ]);
+    expect(s.draft.sections[0]?.collapsed).toBe(false);
+    expect(s.selected).toBe('p-1');
+  });
+
+  it('a data vis, a full board and a full grid add nothing', () => {
+    const one = edit({ ...MINIMAL, panels: [data('p-1')] });
+    const asData = {
+      type: 'addWidget',
+      vis: { kind: 'line' },
+      size: SIZE,
+    } as unknown as BoardAction;
+    expect(run(one, asData)).toBe(one);
+
+    const many = edit({
+      ...MINIMAL,
+      panels: Array.from({ length: 200 }, (_, i) =>
+        data(`p-${String(i + 1)}`, { x: 0, y: i, w: 1, h: 1 }),
+      ),
+    });
+    const full = run(many, { type: 'addWidget', vis: TEXT, size: SIZE });
+    expect(full.draft).toBe(many.draft);
+    expect(full.announce).toBe(messages['board.fullPanels']);
+
+    const tall = edit({ ...MINIMAL, panels: [data('p-1', { x: 0, y: 0, w: 12, h: 10_000 })] });
+    const noRoom = run(tall, { type: 'addWidget', vis: TEXT, size: SIZE });
+    expect(noRoom.draft).toBe(tall.draft);
+    expect(noRoom.announce).toBe(messages['board.full']);
+  });
+
+  it('updateWidget patches a widget of the same kind, else nothing', () => {
+    const s = edit({ ...MINIMAL, panels: [data('p-1'), text('p-2')] });
+    const next = { kind: 'text' as const, options: { content: 'b' } };
+    const same = run(s, { type: 'updateWidget', id: 'p-2', patch: { title: 'N', vis: next } });
+    expect(same.draft.panels[1]).toEqual({ ...text('p-2'), title: 'N', vis: next });
+
+    const other = run(s, {
+      type: 'updateWidget',
+      id: 'p-2',
+      patch: { vis: { kind: 'clock', options: {} } },
+    });
+    expect(other).toBe(s);
+
+    const titleOnly = run(s, { type: 'updateWidget', id: 'p-2', patch: { title: 'T' } });
+    expect(titleOnly.draft.panels[1]).toEqual({ ...text('p-2'), title: 'T' });
+
+    const onData = run(s, { type: 'updateWidget', id: 'p-1', patch: { title: 'X', vis: next } });
+    expect(onData).toBe(s);
+  });
+
+  it('both are edits: ignored while saving', () => {
+    const s = run(edit({ ...MINIMAL, panels: [text('p-2')] }), { type: 'saveStart' });
+    expect(run(s, { type: 'addWidget', vis: TEXT, size: SIZE })).toBe(s);
+    expect(run(s, { type: 'updateWidget', id: 'p-2', patch: { title: 'T' } })).toBe(s);
   });
 });

@@ -58,3 +58,24 @@ export function parseGraph(v: unknown): Record<string, string[]> | null {
   }
   return out;
 }
+
+/** Stub (tests first): plan #198 Part 3a §3.4. */
+export interface ManifestChunk {
+  readonly file: string;
+  readonly isEntry?: boolean;
+  readonly isDynamicEntry?: boolean;
+  readonly imports?: readonly string[];
+  readonly dynamicImports?: readonly string[];
+}
+export type Manifest = Readonly<Record<string, ManifestChunk>>;
+
+export function parseManifest(v: unknown): Manifest | null {
+  return typeof v === 'object' && v !== null ? (v as Manifest) : null;
+}
+
+export function markdownInRoute(
+  _manifest: Manifest,
+  _chunks: Readonly<Record<string, readonly string[]>>,
+): Finding[] {
+  return [];
+}

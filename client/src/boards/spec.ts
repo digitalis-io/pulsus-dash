@@ -18,6 +18,7 @@ import type {
   PanelSpec,
   PanelVisKind,
   VisOptions,
+  WidgetPanelSpec,
 } from '../api/types';
 import { isWidgetKind } from '../widgets/spec';
 import { FILTER_LABEL } from '../state/boardParams';
@@ -549,6 +550,11 @@ export function checkBoardSpec(value: unknown): FieldError[] {
   checkShape(c, '', value, tBoard);
   if (c.fields.length === 0) checkRules(c, value as BoardSpec);
   return c.fields;
+}
+
+/** Stub (tests first): plan #198 Part 3a §3.1. */
+export function widgetVisErrors(_panel: WidgetPanelSpec): FieldError[] {
+  return [];
 }
 
 /** JSON with object keys sorted (UTF-16 code unit order) and no spaces. */

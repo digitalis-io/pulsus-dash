@@ -1,0 +1,30 @@
+{
+  "index.html": {
+    "file": "assets/index-a1.js",
+    "isEntry": true,
+    "dynamicImports": [
+      "src/pages/board/BoardPage.tsx"
+    ]
+  },
+  "src/pages/board/BoardPage.tsx": {
+    "file": "assets/BoardPage-b1.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ],
+    "dynamicImports": [
+      "src/widgets/text/TextMarkdown.tsx",
+      "_md-shared.js"
+    ]
+  },
+  "src/widgets/text/TextMarkdown.tsx": {
+    "file": "assets/TextMarkdown-m1.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_md-shared.js": {
+    "file": "assets/md-shared-s1.js"
+  }
+}
