@@ -73,6 +73,10 @@ function listBuild(root: string): string[] {
   return out;
 }
 
+function entry(path: string, bytes: Buffer): ManifestEntry {
+  return { path, sha384: createHash('sha384').update(bytes).digest('base64'), size: bytes.length };
+}
+
 function brotli(bytes: Buffer, ext: string): Buffer {
   return brotliCompressSync(bytes, {
     params: {
@@ -130,23 +134,24 @@ export function pack(
   for (const [rel, bytes] of files) write(out, rel, bytes);
 
   // Sorted by UTF-16 code units (the default sort), as the BFF's verifier requires.
-  const entries: ManifestEntry[] = [...files.keys()].sort().map((path) => {
-    const bytes = files.get(path) ?? Buffer.alloc(0);
-    return {
-      path,
-      sha384: createHash('sha384').update(bytes).digest('base64'),
-      size: bytes.length,
-    };
-  });
+  const entries: ManifestEntry[] = [...files.keys()]
+    .sort()
+    .map((path) => entry(path, files.get(path) ?? Buffer.alloc(0)));
   const manifest = Buffer.from(`${JSON.stringify({ version: 1, files: entries }, null, 2)}\n`);
   writeFileSync(join(out, MANIFEST), manifest);
   writeFileSync(join(out, SIGNATURE), sign(null, manifest, key));
   return { files: sources.length, variants };
 }
 
-/** Test-first stub (plan #256 §5). */
-export function manifestEntries(_root: string): ManifestEntry[] {
-  return [];
+/**
+ * The manifest entries of a build (plan #256 §3.5, the computed manifest of `vite preview`): its
+ * files (`listBuild`: `.vite/` excluded, a symlink an error), sorted by UTF-16 code unit, each
+ * with its base64 SHA-384 and size. These are `pack`'s entries without the `.br`/`.gz` variants.
+ */
+export function manifestEntries(root: string): ManifestEntry[] {
+  return listBuild(root)
+    .sort()
+    .map((path) => entry(path, readFileSync(join(root, ...path.split('/')))));
 }
 
 /** Writes a fresh Ed25519 key pair into `dir` (Q3: a new key for every build). */

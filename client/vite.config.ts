@@ -1,11 +1,13 @@
 /// <reference types="vitest/config" />
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import optimizeLocales from '@react-aria/optimize-locales-plugin';
 import react from '@vitejs/plugin-react';
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig } from 'vite';
+import { dashEngine } from './config/dashEngine.ts';
 import { devHeaders, productionHeaders } from './config/headers.ts';
 import { moduleGraphPlugins } from './config/moduleGraph.ts';
+import { previewManifest } from './config/previewManifest.ts';
 
 /**
  * Modules of the editor chunk (plan #63 Part C §3.6): `src/editor/` except `lang/index.ts` and
@@ -18,36 +20,6 @@ const EDITOR_MODULE =
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 
-/**
- * `virtual:dash-engine` (plan #68 C1 §2): the wasm-bindgen glue of `cargo xtask build-wasm` in the
- * git-ignored `src/engine/wasm/gen/` with the URL of its wasm, or `src/engine/wasm/absent.ts` in a
- * build without the engine (every frame stays on Canvas 2D). Types: `wasm/engine-module.d.ts`.
- * With `VITE_ENGINE_PROBE=1` (the probe build of `e2e:shim-fuzz`, plan #68 C2a1 §3.5) it is the
- * `--probe` engine in `src/engine/wasm/gen-probe/` instead.
- */
-function dashEngine(): Plugin {
-  const id = 'virtual:dash-engine';
-  const resolved = `\0${id}`;
-  const probe = process.env['VITE_ENGINE_PROBE'] === '1';
-  const gen = `${root}src/engine/wasm/${probe ? 'gen-probe' : 'gen'}/`;
-  return {
-    name: 'dash-engine',
-    resolveId(source) {
-      return source === id ? resolved : null;
-    },
-    load(source) {
-      if (source !== resolved) return null;
-      if (!existsSync(`${gen}dash_core_mt.js`) || !existsSync(`${gen}dash_core_mt_bg.wasm`)) {
-        return `export * from '${root}src/engine/wasm/absent.ts';
-export { default } from '${root}src/engine/wasm/absent.ts';`;
-      }
-      return `export * from '${gen}dash_core_mt.js';
-export { default } from '${gen}dash_core_mt.js';
-export { default as wasmUrl } from '${gen}dash_core_mt_bg.wasm?url';`;
-    },
-  };
-}
-
 // `dash-module-ids` (plan #198 Part 2a §3.6): each build's module graph, workers included.
 const moduleIds = moduleGraphPlugins(`${root}node_modules/.cache/dash-build`);
 
@@ -59,7 +31,16 @@ const pkg = JSON.parse(readFileSync(`${root}package.json`, 'utf8')) as { version
 const bff = process.env['PULSUS_DASH_DEV_BFF'] ?? 'http://localhost:8080';
 
 export default defineConfig({
-  plugins: [react(), optimizeLocales.vite({ locales: ['en-US'] }), dashEngine(), moduleIds.main],
+  plugins: [
+    react(),
+    optimizeLocales.vite({ locales: ['en-US'] }),
+    // `virtual:dash-engine`: the engine's glue; without it `vite build` and the dev server refuse
+    // to run (plan #256 §3.3, ADR-0031).
+    dashEngine({ root }),
+    moduleIds.main,
+    // `vite preview` only: the computed `/asset-manifest.json`, loopback only (plan #256 §3.5).
+    previewManifest(),
+  ],
   resolve: {
     // `findIframes` (plan #198 Part 2a §3.3): `parse5-sax-parser`'s tokenizer driver without its
     // `SAXParser` entry, which extends `node:stream` (pinned at 8.0.1; applies to vitest too).
@@ -95,7 +76,7 @@ export default defineConfig({
   // The engine's workers (plan #68 C1 §3.5): ES modules named `dash-engine-[name]-[hash].js`.
   worker: {
     format: 'es',
-    plugins: () => [dashEngine(), moduleIds.worker()],
+    plugins: () => [dashEngine({ root }), moduleIds.worker()],
     rolldownOptions: {
       output: {
         entryFileNames: 'assets/dash-engine-[name]-[hash].js',

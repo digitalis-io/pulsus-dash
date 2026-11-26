@@ -58,10 +58,13 @@ build: client-build assets-pack
 	CGO_ENABLED=0 go -C server build -tags embedassets -trimpath -buildvcs=true -ldflags "-X github.com/digitalis-io/pulsus-dash/server/internal/core.Version=$(VERSION) -X github.com/digitalis-io/pulsus-dash/server/internal/gateway/static.releasePublicKeys=$$(cat $(CURDIR)/build/keys/asset-signing.pub)" -o $(OUT) ./cmd/pulsus-dash
 
 # The binaries the end-to-end suite serves (client/playwright.config.ts): the stub and http BFFs
-# and the PulsusDB fake (tools/e2e/fake.sh).
+# and the PulsusDB fake (tools/e2e/fake.sh). The suite runs on host browsers with uncontrolled
+# GPUs, so its builds pin Canvas 2D (E2E_ENGINE=canvas2d, plan #256 §3.4): a renderer override in
+# a build that still holds the engine. The engine suite proves the default (e2e-build-release).
+E2E_ENGINE ?= canvas2d
 e2e-build:
-	$(MAKE) build API_MODE=stub VERSION=0.1.0-e2e OUT=$(CURDIR)/build/e2e-stub/pulsus-dash
-	$(MAKE) build API_MODE=http VERSION=0.1.0-e2e OUT=$(CURDIR)/build/e2e-http/pulsus-dash
+	VITE_ENGINE=$(E2E_ENGINE) $(MAKE) build API_MODE=stub VERSION=0.1.0-e2e OUT=$(CURDIR)/build/e2e-stub/pulsus-dash
+	VITE_ENGINE=$(E2E_ENGINE) $(MAKE) build API_MODE=http VERSION=0.1.0-e2e OUT=$(CURDIR)/build/e2e-http/pulsus-dash
 	CGO_ENABLED=0 go -C server build -trimpath -o $(CURDIR)/build/e2e-fake/pulsus-fake ./cmd/pulsus-fake
 
 # The probe build of e2e:shim-fuzz (plan #68 C2a1 §3.5): the fault build with the probe engine
@@ -77,6 +80,11 @@ e2e-build-probe: engine-wasm-probe
 e2e-build-release:
 	$(MAKE) build API_MODE=stub VERSION=0.1.0-e2e CLIENT_OUT=dist-release OUT=$(CURDIR)/build/e2e-release/pulsus-dash
 	node client/scripts/probe-absent.ts client/dist-release
+
+# The Vite dev server with the engine built first (plan #256 §3.4): `npm run dev` refuses to start
+# without it.
+client-dev: engine-wasm
+	npm --prefix client run dev
 
 # Needs make e2e-build and E2E_PG_APP_URL / E2E_PG_OWNER_URL (docs/development/build-and-ci.md).
 e2e:
@@ -322,7 +330,8 @@ endif
 # compose service, in its own project, taken down with its volume on exit; E2E_PG_APP_URL and
 # E2E_PG_OWNER_URL set by the caller skip it), then in the image: the fault build served by the
 # e2e BFFs (its tree must hold every fault site), the clean stub and http builds (engine row, no
-# test hook), the probe build (e2e-build-probe, for e2e:shim-fuzz only), and the specs with
+# test hook), the probe build (e2e-build-probe, for e2e:shim-fuzz only), the unflagged release
+# build (e2e-build-release, the default legs of e2e:mode-matrix, plan #256), and the specs with
 # dash-golden. The WebGPU leg's report-only reason heads the run.
 engine-e2e:
 ifeq ($(ENGINE_IN_IMAGE),1)
