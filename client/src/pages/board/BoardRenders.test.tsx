@@ -9,6 +9,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { useEffect } from 'react';
+import type { DataRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EngineWrapper } from '../../test/boardTestKit';
 import { installResizeObserver } from '../../test/fakeResizeObserver';
@@ -25,6 +26,11 @@ const counts = vi.hoisted(() => ({
   t0: 0,
   /** When a panel last rendered (never cleared), for `settle`. */
   lastAt: 0,
+  /** When each panel last rendered, and when the router last navigated (never cleared). */
+  renderedAt: new Map<string, number>(),
+  navAt: 0,
+  /** Every navigation of the board under test, with its time (never cleared). */
+  navigations: [] as string[],
 }));
 
 /** The names of the props whose values differ from the last render's (`onClose` is per render). */
@@ -69,6 +75,7 @@ vi.mock('./PanelFullScreen', async (importOriginal) => {
     PanelFullScreen: function CountedFullScreen(p: Parameters<typeof m.PanelFullScreen>[0]) {
       bump(counts.renders, p.title);
       note('render', p.title, p);
+      counts.renderedAt.set(p.title, performance.now());
       useMountSpy(p.title);
       return m.PanelFullScreen(p);
     },
@@ -99,7 +106,9 @@ beforeEach(() => {
 function expectRenders(titles: readonly string[], n: number): void {
   const got = of(counts.renders, titles);
   const want = each(titles, n);
-  expect(got, `renders since clear:\n${counts.log.join('\n')}`).toEqual(want);
+  const nav = `navigations (absolute):\n${counts.navigations.join('\n')}`;
+  const log = `renders since clear (at ${counts.t0.toFixed(1)} ms):\n${counts.log.join('\n')}`;
+  expect(got, `${log}\n${nav}`).toEqual(want);
 }
 
 const OTHERS = ['Error ratio', 'Errors', 'Request latency'];
@@ -121,14 +130,17 @@ function clear(): void {
   counts.t0 = performance.now();
 }
 
-/** The query client of the board under test, for `settle`. */
+/** The query client and router of the board under test, for `settle`. */
 let client: QueryClient | null = null;
+let router: DataRouter | null = null;
 
 /**
  * Lets the panels' own follow-up renders (the grid's width, their data, their viewport state)
- * settle, so a busy runner does not count them (plan #198 Part 3a §4.5: the diagnostic found such
- * late renders with no page prop changed): until no panel has rendered for 200 ms and no query is
- * fetching, at most 5 s.
+ * settle, so a busy runner does not count them (plan #198 Part 3a §4.5). The diagnostic found such
+ * late renders with no page prop changed: on a loaded runner a panel rendered an earlier
+ * navigation's location (React Router applies it in a transition) only after the 50 ms quiet
+ * window, inside the measured step. So: until no panel has rendered for 200 ms, every panel has
+ * rendered since the last navigation, the router is idle and no query is fetching; at most 5 s.
  */
 async function settle(): Promise<void> {
   const start = performance.now();
@@ -137,7 +149,10 @@ async function settle(): Promise<void> {
       await new Promise((res) => setTimeout(res, 25));
     });
     const quiet = performance.now() - counts.lastAt >= 200;
-    if (quiet && (client?.isFetching() ?? 0) === 0) return;
+    // A navigation reaches the panels in a transition: each must have rendered it.
+    const caughtUp = [...counts.renderedAt.values()].every((t) => t > counts.navAt);
+    const idle = router?.state.navigation.state === 'idle';
+    if (quiet && caughtUp && idle && (client?.isFetching() ?? 0) === 0) return;
   }
 }
 
@@ -146,6 +161,26 @@ async function viewBoard() {
   clear();
   const r = renderApp('/t/demo/board/b-1', { wrapper: EngineWrapper });
   client = r.queryClient;
+  router = r.router;
+  counts.renderedAt.clear();
+  counts.navAt = 0;
+  counts.navigations.length = 0;
+  // The diagnostic's sources: each navigation, clock tick and query change, with its time.
+  const at = (what: string): void => {
+    counts.log.push(`${(performance.now() - counts.t0).toFixed(1)} ms ${what}`);
+  };
+  r.router.subscribe((st) => {
+    counts.navAt = performance.now();
+    const what = `navigation ${st.location.pathname}${st.location.search} (${st.navigation.state})`;
+    counts.navigations.push(`${counts.navAt.toFixed(1)} ms ${what}`);
+    at(what);
+  });
+  r.clock.subscribe(() => {
+    at('clock');
+  });
+  r.queryClient.getQueryCache().subscribe((e) => {
+    if (e.type === 'updated') at(`query ${JSON.stringify(e.query.queryKey)} ${e.action.type}`);
+  });
   await waitFor(() => {
     expect(of(counts.mounts, ALL)).toEqual(each(ALL, 1));
   });
