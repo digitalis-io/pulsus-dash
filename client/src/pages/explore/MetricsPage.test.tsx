@@ -1082,7 +1082,9 @@ describe('Explore bar chart (#173 Part 3b §4.4)', () => {
       f?.emit('pick', { keys: [fkey(3)], gesture: 'click', source: 'pointer' });
     });
     const aside = await screen.findByRole('complementary', { name: 'Query result' });
-    expect(within(aside).getByRole('heading', { level: 2 })).toHaveTextContent('2.31');
+    // The heading is the origin's title (T25 §4.2); the bar is its value and labels.
+    expect(aside.querySelector('[data-inspector-value]')).toHaveTextContent('120');
+    expect(aside.querySelector('[data-section="labels"]')).toHaveTextContent('2.31');
     expect(new URLSearchParams(router.state.location.search).getAll('f')).toEqual([]);
   });
 

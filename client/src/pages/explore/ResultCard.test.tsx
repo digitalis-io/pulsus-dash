@@ -3,17 +3,21 @@
  * closes it with focus following, also from the `tooSmall` notice.
  */
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BOTTOM } from '../../engine/canvas2d/layout';
 import { BARS_Q, BY_VERSION_RANGE } from '../../test/exploreBarsKit';
 import { openExplore, ready, spyRange, url } from '../../test/exploreTestKit';
 import { fakeEditorSource } from '../../test/fakeEditor';
+import { installGridLayout } from '../../test/fakeLayout';
 import { F } from '../../test/fakePromSource';
 import { installResizeObserver, resizeOf } from '../../test/fakeResizeObserver';
 
 vi.mock('../../editor/editor', () => import('../../test/fakeEditor'));
 
+let restoreLayout: () => void = () => undefined;
+
 beforeEach(() => {
+  restoreLayout = installGridLayout();
   installResizeObserver();
   fakeEditorSource.data = F;
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
@@ -23,6 +27,11 @@ beforeEach(() => {
         measureText: (s: string) => ({ width: 6 * Array.from(s).length }),
       }) as unknown as CanvasRenderingContext2D,
   );
+});
+
+afterEach(() => {
+  restoreLayout();
+  vi.restoreAllMocks();
 });
 
 function shiftT(el: Element): void {
