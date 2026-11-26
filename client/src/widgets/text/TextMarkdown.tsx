@@ -8,12 +8,17 @@
  *   per distinct result (T24-007). Code mode: the source verbatim (`renderCode`).
  * - `TextRemovals`: the editor's "Not shown in the panel" list, from the same (memoised) render;
  *   each line names a kind and a line only.
+ *
+ * Stub and dev builds only (plan #198 Part 3b §4.3): each render that misses the memo leaves a
+ * `markdown:render:<bucket>` measure (`le4k`, `le16k` or `le64k` by the content's UTF-8 bytes), for
+ * `bench:text-widget-render`. The condition is static, so http builds drop the measure.
  */
 import { useEffect, useId, type ReactElement } from 'react';
 import { t } from '../../i18n/t';
 import { cx } from '../../kit/cx';
 import {
   logRemovals,
+  memoStats,
   removalMessage,
   renderCode,
   renderMarkdown,
@@ -27,13 +32,30 @@ interface Props {
   readonly vars: ReadonlyMap<string, string>;
 }
 
+const KIB = 1024;
+
+/** The bench bucket of a content: its UTF-8 size. */
+function bucket(content: string): string {
+  const bytes = new TextEncoder().encode(content).length;
+  return bytes <= 4 * KIB ? 'le4k' : bytes <= 16 * KIB ? 'le16k' : 'le64k';
+}
+
 /** The board's render of Markdown content (memoised by the renderer, LRU 32). */
 function render(o: TextOptions, vars: ReadonlyMap<string, string>): MarkdownResult {
-  return renderMarkdown(
-    o.content,
-    { vars, entity: null },
-    { policy: 'board', appOrigin: location.origin },
-  );
+  const run = (): MarkdownResult =>
+    renderMarkdown(
+      o.content,
+      { vars, entity: null },
+      { policy: 'board', appOrigin: location.origin },
+    );
+  if (import.meta.env.VITE_API_MODE === 'http') return run();
+  const misses = memoStats().misses;
+  const start = performance.now();
+  const r = run();
+  if (memoStats().misses > misses) {
+    performance.measure(`markdown:render:${bucket(o.content)}`, { start, end: performance.now() });
+  }
+  return r;
 }
 
 export function TextContent({
@@ -45,7 +67,11 @@ export function TextContent({
   useEffect(() => {
     if (md !== null) logRemovals(panelId, md.removals);
   }, [panelId, md]);
-  return <>{md === null ? renderCode(options.content, options.language) : md.node}</>;
+  return (
+    <div data-text-content="">
+      {md === null ? renderCode(options.content, options.language) : md.node}
+    </div>
+  );
 }
 
 export function TextRemovals({ options, vars }: Props): ReactElement | null {
@@ -54,7 +80,7 @@ export function TextRemovals({ options, vars }: Props): ReactElement | null {
   const { removals } = render(options, vars);
   if (removals.length === 0) return null;
   return (
-    <div className={cx(styles['removals'])}>
+    <div className={cx(styles['removals'])} data-text-removals="">
       <p id={id} className={cx(styles['removalsTitle'])}>
         {t('widget.text.removals')}
       </p>

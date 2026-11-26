@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.12-rc · 2026-11-26 |
+| **Version** | 1.13-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -229,14 +229,14 @@ T24-087, step 1b T24-088 to T24-095, and step 2 T24-096 to T24-099; VIZ-129 stay
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
 | [VIZ-031](../product/05-visualisation-catalogue.md#viz-031--3d-only-when-it-encodes-a-dimension), [VIZ-086](../product/05-visualisation-catalogue.md#viz-086--true-3d-only) | §4.1 (T24-001, T24-003) | `unit:board-spec-widgets`; `golden:widget-gallery` |
-| [VIZ-053](../product/05-visualisation-catalogue.md#viz-053--widgets-available) (Text and Clock rows) | §4.1 (T24-002, T24-008 to T24-012), §5.1 | `e2e:widget-text`; `e2e:widget-clock` |
-| [VIZ-054](../product/05-visualisation-catalogue.md#viz-054--markdown-and-html-are-always-sanitised) | §4.1 (T24-004, T24-006, T24-007), §4.2 | `unit:markdown-nodes`; `fuzz:markdown-nodes`; `e2e:widget-text-xss` |
-| [VIZ-056](../product/05-visualisation-catalogue.md#viz-056--no-arbitrary-iframes) | §4.1 (T24-005, T24-006, T24-016), §5.4 | `unit:markdown-iframe`; `unit:find-iframes`; `unit:import-text-iframe`; `fuzz:markdown-nodes`; `e2e:widget-text-xss` |
+| [VIZ-053](../product/05-visualisation-catalogue.md#viz-053--widgets-available) (Text and Clock rows) | §4.1 (T24-002, T24-008 to T24-012, T24-014), §5.1, §5.2a | `e2e:widget-text`; `e2e:widget-clock` |
+| [VIZ-054](../product/05-visualisation-catalogue.md#viz-054--markdown-and-html-are-always-sanitised) | §4.1 (T24-004, T24-006, T24-007, T24-018), §4.2 | `unit:markdown-nodes`; `fuzz:markdown-nodes`; `e2e:widget-text-xss`; `unit:xss-e2e-cases` |
+| [VIZ-056](../product/05-visualisation-catalogue.md#viz-056--no-arbitrary-iframes) | §4.1 (T24-005, T24-006, T24-016), §5.4 | `unit:markdown-iframe`; `unit:find-iframes`; `unit:import-text-iframe`; `fuzz:markdown-nodes`; `e2e:widget-text-xss`; `unit:xss-e2e-cases` |
 | [VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity) | §4.1 (T24-003), §5.1 | `unit:board-spec-widgets` |
 | [VIZ-060](../product/05-visualisation-catalogue.md#viz-060--standard-panel-types-import-11) (Text and Clock rows) | §4.4 (T24-016), §5.4 | `unit:import-text-iframe`; `unit:import-size-error` |
 | [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) | §4.1 (T24-002: never auto-picked) | `e2e:widget-text` (no query) |
 | [VIZ-066](../product/05-visualisation-catalogue.md#viz-066--table-view-and-csv-for-every-vis), [VIZ-068](../product/05-visualisation-catalogue.md#viz-068--screen-reader-summary-per-viewport) | §4.1 (T24-002, T24-009, T24-017) | `e2e:widget-a11y` |
-| [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) | §4.1 (T24-013, T24-015), §10 | `golden:widget-gallery` |
+| [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) | §4.1 (T24-013, T24-015), §10 | `golden:widget-gallery`; `unit:widget-gallery-route` |
 | [VL-012](../product/08-visual-language.md#vl-012--numbers-for-humans) | §4.1 (T24-012) | `unit:clock-countdown`; `unit:countdown-due` |
 | [VL-014](../product/08-visual-language.md#vl-014--purposeful-motion-only), [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) | §4.1 (T24-015) | `e2e:widget-clock` |
 | [T08-009](T08-dom-component-kit.md#t08-009--no-iframes), [T08-011](T08-dom-component-kit.md#t08-011--markdown-cannot-produce-html) (refined) | §4.1 (T24-004, T24-006) | `unit:markdown-nodes`; `unit:markdown-iframe` |
@@ -2068,6 +2068,34 @@ The Markdown and parse5 code loads as lazy chunks within the ADR-0014 §8 budget
 Report-only: `bench:markdown-render` (64 KiB ≤ 16 ms p95) and `bench:clock-tick` (20 Clocks × 12 zones
 ≤ 2 ms per tick).
 
+#198 Part 3b: `bench:text-widget-render` measures the Text widget in Chromium on the production
+stub build. Board P holds 6 Text panels (4 × the gallery's 2 KiB runbook, a 16 KiB and a 64 KiB
+`benchInput`, each with a `$env` line, no data panel). Steps: `open` (a new context), `var` (5
+filter-bar changes of `env`, each a memo miss), `type16` and `type64` (10 and 5 characters typed in
+the editors). Per step it reports the uncached render (`markdown:render:<bucket>` measures, stub and
+dev builds only; `le4k`, `le16k`, `le64k` by UTF-8 bytes) as p50, p95 and max, the main-thread tasks
+over 16 ms and the event-latency p95. Report-only; `LONG_TASK_GATE=enforce` fails a `le4k` or
+`le16k` render p95 or long task over 16 ms, or a `le64k` render p95 over 16 ms.
+
+Measured at landing (ms; Chromium in the pinned e2e container on a shared workstation, not the
+reference lab; the four runbook copies share one memo entry):
+
+| Step | `le4k` p50 / p95 (n) | `le16k` p50 / p95 (n) | `le64k` p50 / p95 (n) | Tasks over 16 ms (worst) | Event latency p95 |
+|---|---|---|---|---|---|
+| `open` | 6.8 / 6.8 (1) | 11.5 / 11.5 (1) | 19.0 / 19.0 (1) | 9 (104.4 ms) | — |
+| `var` | 0.6 / 2.2 (5) | 4.0 / 13.9 (5) | 16.4 / 18.4 (5) | 64 (67.1 ms) | 111.4 ms (click) |
+| `type16` | — | 2.8 / 9.5 (10) | — | 43 (78.5 ms) | 81.0 ms (keydown) |
+| `type64` | — | — | 10.8 / 35.6 (5) | 41 (117.0 ms) | 70.3 ms (keydown) |
+
+M1 is triggered (the `le64k` render p95 is over 16 ms in every step), and so is M2 (`type16` has
+tasks up to 78.5 ms while its `le16k` render p95 is 9.5 ms). Each becomes a follow-up issue.
+
+| Rung | Trigger | Design |
+|---|---|---|
+| M0 (Part 3a) | — | Deferred values, the narrowed variables key, one memoised `TextContent` per panel |
+| M1 | `le64k` or `le16k` render p95 > 16 ms | Content over 8 KiB is parsed and walked in a module worker inside the Markdown chunk. `renderMarkdown` splits into `planMarkdown` (the same walk, producing serialisable records and removals) and `planToReact`. The key is unchanged, and the previous output stays until the result arrives |
+| M2 | A commit long task over 16 ms while the render p95 is ≤ 16 ms | Commit the top-level blocks in slices of ≤ 200 elements per frame, in a transition |
+
 Part B1: list widgets render plain DOM, without virtualisation (1 000 rows fit). Report-only:
 `bench:widget-lists` (a 1 000-row re-render ≤ 16 ms p95).
 
@@ -2198,11 +2226,13 @@ Written first in the implementation issues. Origin `https://dash.test`; all fail
 | `unit:clock-countdown` | same | `to` 14:49:56Z, 12:35:38Z, 12:34:56Z, 12:22:56Z, +2 d 3 h | `in 2 h 15 min`, `in 42 s`, `since 21:34 (0 s)`, `since 21:22 (12 min)`, `in 2 d 3 h`; `hide` + past → no row | T24-012 |
 | `unit:countdown-due` | state/wallClock.test.ts | `to` fixed; r in ms | r → (text, due, next): 125 000 (`2 min`, +5 001, `1 min`); 120 000 (`2 min`, +1, `1 min`, announced); 960 000 (`16 min`, +1, `15 min`, announced); 60 000 (`1 min`, +1, `59 s`); 1 000 (`1 s`, +1, `now`); 1 (+1, `since … (0 s)`, announced); after-`to` e 59 999 (+1 → `1 min`). Property (200 s → −130 s, 137 ms steps): text changes exactly at due | T24-011, 012 |
 | `unit:wall-clock` | same | fake timers; zone + countdown | one timer at earliest due; hidden at r = 90 s → none; visible at 30 s → all notified, `in 30 s` announced once; last unsubscribe clears | T24-011 |
-| `e2e:widget-text` | e2e/widgets.spec.ts | `"# R\n[S](https://s.test)\nEnv $env"`, env=prod | `h4`; `_blank` link; env=dev → "Env dev", no query | VIZ-053 |
-| `e2e:widget-text-xss` | same | `unit:markdown-nodes` input + iframe line; payloads set `window.__xss` | `__xss` unset; no CSP violation or page error; no `iframe`; removals `[html, html, iframe]` | VIZ-054, 056 |
+| `e2e:widget-text` | e2e/widgets.spec.ts | `"# R\n[S](https://s.test)\nEnv $env"` through the boards API, env=prod; then Edit board → Add widget → Text → `# Added` → Done → Save → reload (#198 Part 3b) | `h4`; `_blank` link with the three `rel` values; env=dev → "Env dev", no query; the region named by the title; after reload, `h4` "Added" | VIZ-053, T24-008, T24-009 |
+| `e2e:widget-text-xss` | same | (a) `unit:markdown-nodes` input + iframe line; payloads and a wrapped `alert` set `window.__xss`. (b) the whole corpus from `fixtures/xss-e2e-cases.json` (generated from the corpus: `digest`, `skip`, the `<img>` request paths), one case per fresh context (service workers blocked) on its own one-panel board, against the committed per-browser load baseline recorded from a twin board. (c) canaries c1–c12 (#198 Part 3b §4.2) | (a) `__xss` unset; no finding after the consumed Trusted Types canary; no `iframe`; the editor lists `[html, html, iframe]`. (b) the list equals the generated one; the twin's key → count map equals the baseline; per case `checkInvariants` on the rendered DOM, the `<img>` paths equal the case's, no `iframe`/`script`/`object`/`embed`/`frame`/`base`/`link`/`meta`/`form`, `__xss` unset, the document's CSP equals `CSP` exactly, the Trusted Types canary consumed, no request beyond the baseline, no image outside the case's list or loaded twice, no CSP or Trusted Types violation, console line, page error or service worker. (c) each canary gives exactly its findings | VIZ-054, 056, T18-013, T24-018 |
 | `e2e:widget-clock` | same | `page.clock` 12:34:56Z; Tokyo, NY; countdown to 12:35:56Z; reduced motion too | `in 1 min`, silent; +1 s `in 59 s`; +59 s `since 21:35 (0 s)`, announced; no transition if reduced | T24-012, VL-016 |
-| `e2e:widget-a11y` | same | both, view/edit | axe clean; T24-017 order; "Tokyo, 21:34, Thu 26 Nov, night, UTC+09:00" | T24-017, VIZ-066, 068 |
-| `golden:widget-gallery` | e2e/widget-gallery.spec.ts | 5 pages × dark/light/grey, fixed clock | CI baseline (0.1, ≤ 0.2 %) | VIZ-069, 067 |
+| `e2e:widget-a11y` | same | both, view/edit; Text (#198 Part 3b): an overflowing Text with two links and a short Text in view mode, then the editor | axe clean; T24-017 order (Text: panel menu → region → link 1 → link 2; the short region not tabbable); the preview region "Preview: ‹title›" and an over-limit content's "Preview unavailable" status; "Tokyo, 21:34, Thu 26 Nov, night, UTC+09:00" | T24-017, T24-009, T24-014, VIZ-066, 068 |
+| `golden:widget-gallery` | e2e/widget-gallery.spec.ts | 5 pages × dark/light/grey, fixed clock: `widget-text` and `widget-text-removals` from #198 Part 3b (`dev/widgets?page=`), the three Clock pages in A2; grey is CSSOM `grayscale(1)` on dark | baselines generated in the pinned e2e container (0.1, ≤ 0.2 %); a reload gives the same pixels | VIZ-069, 067, T24-015 |
+| `unit:xss-e2e-cases` | scripts/gen-xss-e2e-cases.test.ts | `--check` against the committed list; a baseline map with one count incremented (c13); one case's source changed under its id (c14); the image extraction rows and one case per skip reason (#198 Part 3b §5) | exit 0, one changed expectation → exit 1; c13 names that key, c14 that id's digest; the extracted paths; the reasons | VIZ-054, T24-018 |
+| `unit:widget-gallery-route` | src/app/router.test.tsx | `/t/demo/dev/widgets?page=widget-text`, then `…removals`; the http build | 3 `[data-text-body]`; 1 `[data-text-removals]` with 7 items; no route in the http build | VIZ-069 |
 
 Markdown inputs for the rows above (one per line, as written in the test):
 
@@ -2214,7 +2244,8 @@ V  vars {env:'prod', q:'a b&c', u:'javascript:x'}; Env $env ${env} $missing $__f
 ```
 
 `ci:dep-audit` and `ci:no-iframe` still pass. Report-only: `bench:markdown-render` (50 distinct 64 KiB
-inputs, every memo lookup a miss: the uncached p95 ≤ 16 ms), `bench:clock-tick` (20 Clocks × 12 zones ≤ 2 ms per tick). No itest until A3. Every gate is in
+inputs, every memo lookup a miss: the uncached p95 ≤ 16 ms), `bench:text-widget-render` (§7, #198
+Part 3b), `bench:clock-tick` (20 Clocks × 12 zones ≤ 2 ms per tick). No itest until A3. Every gate is in
 [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
 
 Fixtures `api/fixtures/import/text-iframe.json` (all pass in a prototype; ⏎ is a newline, a leading
@@ -2890,7 +2921,9 @@ A1 needs #173 (board spec v3) and ships the widgets version, v5. It is split in 
 | 2a, landed | [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) dependencies and the `parse5-sax-parser/feedback` alias; `classifyUrl`, `toWellFormed`, `findIframes`, the import conversion (§5.4); the `security` ESLint rules (`ci:no-iframe`, the import boundary); the module-graph check on every audited build and the sanitiser size probe (≤ 100 000 bytes brotli) | `unit:classify-url`, `unit:well-formed`, `unit:find-iframes`, `unit:import-text-iframe`, `unit:import-size-error`, `unit:security-lint`, `unit:bundle-modules`, `unit:sanitise-bundle`, `ci:dep-audit` |
 | 2b, landed | the renderer (§5.2: `renderMarkdown`, `renderCode`, removals with `depth`, interpolation, the §4.2 walk and flat source lines), the generated XSS corpus and its `--check` gate, an independent URL checker and `checkInvariants`, `fuzz:markdown-nodes` (with the import inverse), `bench:markdown-render` (uncached, report-only); the renderer joins the sanitiser size probe | `unit:markdown-*`, `unit:removal-redaction`, `unit:markdown-xss-corpus`, `unit:xss-corpus-current`, `fuzz:markdown-nodes`, `unit:sanitise-bundle` |
 | 3a, landed | the Text view (§5.2a: `TextBody`, the lazy `TextMarkdown` entry, the states and the region, validation first, the overflow tab stop, M0), `widgetVisErrors`, the widget editor with the Text body and the removal list, `textVis`, the registry as a context, `addWidget` / `updateWidget`, "Add widget" and Edit panel, Text variables on the board, the Markdown module rules and the parse5 and commonmark allowlist strings | `unit:text-*`, `unit:widget-add`, `unit:widget-editor`, `unit:widget-spec-roundtrip`, `unit:text-vis-roundtrip`, `unit:widget-registry-generic`, `unit:board-variables`, `unit:bundle-modules`, `ci:dep-audit`, `ci:bundle-size` |
-| 3b, after 3a | the gallery, the goldens, the e2e (the XSS corpus in the browser, image-load interception), the render bench with M1 and M2 | the §10 Text e2e and golden rows |
+| 3b, landed | the widget gallery (`dev/widgets?page=widget-text`, `widget-text-removals`), the goldens, the e2e (the whole XSS corpus in the browser, one case per context against a committed per-browser load baseline and a generated per-case image list, with canaries), the render measures and `bench:text-widget-render` with the M1 and M2 triggers (§7) | `e2e:widget-text`, `e2e:widget-text-xss`, `e2e:widget-a11y` (Text), `golden:widget-gallery` (Text), `unit:xss-e2e-cases`, `unit:widget-gallery-route`, `bench:text-widget-render` (report-only) |
+
+A1 has landed: Parts 1 to 3b.
 
 The implementation writes
 `docs/client/widgets.md` (behaviour, Markdown, URLs, import, Clock) and updates
@@ -3031,3 +3064,4 @@ None.
 | 1.10-rc | 2026-11-26 | #198 Part 2a (A1): §5.2 `toWellFormed` before classification, `IframeHit` with `offset` (in `findIframes.ts`), and the SAX half through `ParserFeedbackSimulator` via the `parse5-sax-parser/feedback` alias, because `SAXParser` needs `node:stream`. §5.4 step 3: line ends as commonmark splits them, `\r` inserted after a lone `\r`, the ascending `inserted` order. §10: f11 (CRLF and CR) and f12 (a list item and a block quote); `unit:well-formed`, `unit:security-lint`, `unit:bundle-modules`, `unit:sanitise-bundle`. §11: A1 Part 2 split into 2a (landed) and 2b |
 | 1.11-rc | 2026-11-26 | #198 Part 2b (A1): §5.2 the `depth` removal kind, `removalMessage`, `sourceLines`, `MAX_DEPTH` and `toWellFormed` on the source, the values and the entity. §4.2: the tight-list paragraph, `start` only when not 1, the tree walk (post-order, explicit stack) with the pre-scan and the cost table; an over-deep block shows its whole source lines (verbatim, terminators kept) in one span with one `depth`. T24-007: `depth`. T24-018: `/api` and `/auth` images count as external (byte-level decoding, at most three rounds, invalid UTF-8 counted as a route); `ai` external and mailto links are text with host or address until the T18 §4.10 interstitial. §8: no Trusted Types policy. §10: the fuzz sets gain `span`, `class`, `aria-hidden` and depth ≤ `MAX_DEPTH`; the new unit rows, the corpus rows; the uncached bench. §11: Part 2b landed |
 | 1.12-rc | 2026-11-26 | #198 Part 3a (A1): new §5.2a (the Text view `TextBody` and its lazy `TextMarkdown` entry, the states, `widgetVisErrors`, `textVis`, the registry and its context, `addWidget` and `updateWidget`, the module rules). T24-008: a Markdown Text's references join the board's variables. T24-014: the view validates first; the preview shows "Preview unavailable". T24-015: the Text widget uses the Compact metrics until VL-013. §10: the Part 3a unit rows. §11: A1 Part 3 split into 3a (landed) and 3b |
+| 1.13-rc | 2026-11-26 | #198 Part 3b (A1): §7 `bench:text-widget-render` (the `markdown:render:<bucket>` measures in stub and dev builds, board P, the steps, the measured numbers) and the M0, M1 and M2 rungs with their triggers. §10: `e2e:widget-text` adds the Add widget flow and the named region; `e2e:widget-text-xss` runs the whole corpus in the browser (the generated case list with digests, skip reasons and image request paths; one case per fresh context against a committed per-browser load baseline; the exact CSP; a Trusted Types canary) with canaries; `e2e:widget-a11y` gains the Text rows; `golden:widget-gallery` lands the two Text pages; new `unit:xss-e2e-cases` and `unit:widget-gallery-route`. §11: Part 3b landed, A1 landed |

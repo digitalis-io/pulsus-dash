@@ -9,6 +9,7 @@ src/assets
 src/icons
 scripts/__fixtures__
 src/security/sanitise/__fixtures__
+e2e/fixtures
 src/api/gen
 e2e/transcripts
 src/engine/wasm/gen
