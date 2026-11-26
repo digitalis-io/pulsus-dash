@@ -84,6 +84,12 @@ export interface Coverage {
   readonly staleAtMs?: number | null;
   /** Geomap counts before the cap (T24 §4.11, #184); absent = none. */
   readonly geo?: Readonly<Record<GeoCoverageCount, number>>;
+  /** The map area's counts (T24-098, T22-006); absent = none. */
+  readonly area?: {
+    readonly outside: number;
+    readonly unlocated: number;
+    readonly unapplied: number;
+  };
 }
 
 /** The geomap's coverage counts (T22-006, T22 §5.1 `Coverage.geo`). */

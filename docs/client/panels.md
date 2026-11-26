@@ -204,6 +204,7 @@ it reads `100 %`. Counts are en-GB grouped (`1,000`).
 | fixed bounds | `K value(s) outside the fixed range` |
 | the merge | `k duplicate series combined`, then `; c conflicts (max kept)` |
 | list widgets (`staleAtMs`) | `stale (HH:mm:ss)` in `timeZone` (default the browser's) |
+| map area (`area`, T24-098; zeros omitted) | `k outside the map area`, `k without a location`, `map area not applied to k (locations unavailable)` |
 
 A list widget keeps nothing, so its cap part is just `showing X of N`.
 
