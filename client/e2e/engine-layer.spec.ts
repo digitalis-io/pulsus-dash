@@ -3,7 +3,8 @@
  * lines and event lines on engine frames, through `__dashProbe` in the fault build (`?probe=1`).
  * Gated on `lavapipe`; the `swiftshader` leg is report-only while `engine-legs.json` says so. The
  * expected plots and domains are the `engine/fixtures/layer.json` frames of the same inputs (the
- * Canvas 2D layer at 800×240): `probe-thresholds`, `probe-event` and `events-ends-pinned`.
+ * Canvas 2D layer at 800×240): `probe-thresholds`, `probe-event`, `events-ends-pinned` and
+ * `events-ends-auto`.
  *
  * `S()`: C2a2's probe frame (61 samples over 12:00–13:00, value `30·i/60`, 800×240 at DPR 1). The
  * engine draws a spec change or `setEvents` when the worker has the message, so the checks that
@@ -351,6 +352,38 @@ test.describe('e2e:engine-layer', () => {
         }
       }
       expect(inView).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  test('L5 ADR-0023: on an auto axis an event at or rounding to the window end is drawn in the plot', async ({
+    page,
+  }, info) => {
+    test.setTimeout(120_000);
+    await leg(info, async () => {
+      await probePage(page, info);
+      const want = fixture('events-ends-auto');
+      const { n, s: s0 } = await S(page);
+      await call(page, n, 'setEvents', [marker('hi', s0.toMs), marker('near-hi', s0.toMs - 1_000)]);
+      const s = await until(page, n, (x) => x.plot.y !== s0.plot.y, 'the band');
+      expect(s.plot).toEqual(want.plot);
+      // Both round to the right edge: drawn in the plot's last column, no event ink right of it (the
+      // unclipped series' cap may reach one pixel past the plot's top-right corner on an auto axis).
+      const last = Math.ceil((s.plot.x + s.plot.width) * DPR) - 1;
+      await expect
+        .poll(
+          async () => {
+            const img = await shot(page);
+            const outside: string[] = [];
+            for (let x = last + 1; x < img.w; x++) {
+              for (const y of rowsOf(s.plot)) {
+                if (ink(img, x, y, MUTED)) outside.push(`${String(x)},${String(y)}`);
+              }
+            }
+            return { last: column(img, s.plot, last, MUTED), outside: outside.slice(0, 5) };
+          },
+          { message: 'the window-end events, auto axis', timeout: 10_000 },
+        )
+        .toEqual({ last: true, outside: [] });
     });
   });
 

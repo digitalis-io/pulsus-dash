@@ -189,7 +189,7 @@ pub fn build_frame(v: &Viewport) -> Built {
     // The layer marks (plan #68 C2c1 §4.2): thresholds, then events, over the series and under the
     // hover overlay; clipped to the plot by construction.
     let mut shapes = threshold_shapes(&axis, &spec.thresholds, v.theme);
-    shapes.extend(event_shapes(&plot, window, &v.events, v.theme));
+    shapes.extend(event_shapes(&plot, window, &v.events, axis.manual, v.theme));
     if !shapes.is_empty() {
         list.items.push(MarkItem::Overlay { shapes });
     }

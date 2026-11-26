@@ -310,9 +310,9 @@ The WASM engine's line frames draw the threshold lines and event lines by these 
 `withThresholds` auto domain, the dashes as Canvas 2D strokes them (from `plot.x`, 5 on 4 off,
 offset 0, cut at the plot's right edge), the event band once the frame holds an event, and one
 `text-muted` column per event in view. Their labels wait for the engine's text mark (#69), so its
-summary's `thresholdLabels` and `eventLabels` stay empty. One difference: the engine cuts every
-event line at the plot's right edge, where Canvas 2D clips only under a pinned axis (an event
-exactly at the window's end, auto axis).
+summary's `thresholdLabels` and `eventLabels` stay empty. One difference: on an auto axis an event
+at the window's end (or rounding to it) is drawn in the plot's last column, where Canvas 2D strokes
+it one column outside the plot (it clips only under a pinned axis, as the engine does then).
 
 The parity fixture `engine/fixtures/layer.json` (`client/scripts/engine-fixtures-layer.ts`, part of
 `npm run engine-fixtures`) runs `drawLayer` with a recording 2D context on the gallery's

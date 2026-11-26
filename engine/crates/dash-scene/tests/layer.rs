@@ -3,9 +3,10 @@
 //! (`engine/fixtures/layer.json`, recorded from `drawLayer`'s own stroke calls): the plot and the
 //! value domain equal by f64 bits; each threshold is one rect per dash run of its recorded stroke
 //! (`y0` = the stroke's y − 0.5, from its `moveTo` x to its `lineTo` x, pattern 5/4 at offset 0) in
-//! its state colour; each event is one `text-muted` rect at the stroke's x − 0.5, cut at the plot's
-//! right edge (§3.2: always, so an event at the window end under an auto axis, which Canvas 2D
-//! strokes one column right of the plot, is dropped).
+//! its state colour; each event is one `text-muted` rect at the stroke's x − 0.5. At the plot's
+//! right edge: under a pinned axis (the stroke clipped) it is cut there and dropped; on an auto
+//! axis, where Canvas 2D strokes it one column right of the plot, the engine draws it in the plot's
+//! last column (ADR-0023: a line for every event in view).
 #[path = "../../../tests-common/fixture.rs"]
 mod fixture;
 
@@ -104,7 +105,7 @@ fn same(a: f64, b: f64, what: &str) {
 fn layer_parity() {
     let rows = fixture::load("layer.json");
     assert!(rows.len() >= 13, "layer.json has {} cases", rows.len());
-    let (mut dashes, mut events, mut dropped) = (0, 0, 0);
+    let (mut dashes, mut events, mut dropped, mut clamped) = (0, 0, 0, 0);
     for r in &rows {
         let case = r["case"].as_str().unwrap_or_default();
         for f in r["frames"].as_array().into_iter().flatten() {
@@ -188,10 +189,14 @@ fn layer_parity() {
             for e in f["events"].as_array().into_iter().flatten() {
                 let c = colour(Theme::Dark, ColourRole::TextMuted);
                 assert_eq!(hex(c), e["colour"].as_str().unwrap_or_default(), "{what}");
-                let x = fixture::num(&e["x"]) - 0.5;
-                if x >= right {
-                    dropped += 1;
-                    continue;
+                let mut x = fixture::num(&e["x"]) - 0.5;
+                if x + 1.0 > right {
+                    if e["clip"].as_bool() == Some(true) {
+                        dropped += 1;
+                        continue;
+                    }
+                    clamped += 1;
+                    x = right - 1.0;
                 }
                 want.push(OverlayShape::Rect {
                     css: [
@@ -211,7 +216,12 @@ fn layer_parity() {
     assert!(events >= 20, "{events} event lines");
     assert!(
         dropped >= 4,
-        "{dropped} window-end events at the plot's right edge"
+        "{dropped} pinned window-end events cut at the right edge"
+    );
+    // events-ends-auto at 5 sizes: the end, and the event rounding to it, in the last column.
+    assert!(
+        clamped >= 10,
+        "{clamped} auto-axis events drawn in the plot's last column"
     );
 }
 

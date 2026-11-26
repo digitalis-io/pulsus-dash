@@ -12,7 +12,8 @@
  *   offset 0 and butt caps: run k = [x0 + k·(d + g), min(x0 + k·(d + g) + d, x1)] while the start
  *   is < x1;
  * - every event stroke: its x, colour and whether a clip was active (Canvas 2D's `clipped` clips
- *   only under a manual axis);
+ *   only under a manual axis, so on an auto axis it strokes an event at the right edge one column
+ *   outside the plot; the engine draws it in the plot's last column);
  * - the summary's `thresholdLabels` and `eventLabels` boxes (the label boxes `canvas2d parity`
  *   leaves out).
  *
@@ -355,8 +356,9 @@ export function layerRows(
       id: 'events-ends-auto',
       spec: line(),
       series: probe,
-      events: [marker('hi', toMs), marker('lo', fromMs)],
-      sizes,
+      // 1 s before the end rounds to the right edge at every size: drawn in the last column.
+      events: [marker('hi', toMs), marker('lo', fromMs), marker('near-hi', toMs - 1_000)],
+      sizes: withProbe,
     },
     {
       id: 'events-ends-pinned',

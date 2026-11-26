@@ -896,8 +896,10 @@ and the worker stores it (`frame_set_events`, `Frames::set_events`) as a layer i
 reserves the event label band (`EVENT_BAND` = one label line + `space.1` = 18 px above the plot,
 `event_band`) once the frame holds an event, in view or not. Each finite event in view (ends
 included), in ascending time, is a 1 px `text-muted` line at column
-`round(plot.x + (at − lo)/(hi − lo)·plot.width)` over the plot's height, cut at the plot's right
-edge and dropped there. Lines are drawn after the thresholds.
+`round(plot.x + (at − lo)/(hi − lo)·plot.width)` over the plot's height. A column at or past the
+plot's right edge (an event at the window's end, or one rounding to it) is drawn in the plot's last
+column on an auto axis, so every event in view keeps a line (ADR-0023); under a pinned axis it is cut
+at the edge and dropped there, as Canvas 2D clips it. Lines are drawn after the thresholds.
 
 **On the main thread** (`ControlledFrame.setEvents`): the same array does nothing; a band flip (no
 events to some, or back) moves the plot, so it is a layout change as in Canvas 2D (the hover is
@@ -912,8 +914,8 @@ with or without a manual axis. The summary reports `thresholdLabels: []` and `ev
 until #69.
 
 Canvas 2D clips event lines only under a manual axis (`clipped`), so under an auto axis an event
-exactly at the window's end is stroked one column right of the plot; the engine always cuts it
-(`layer_parity` expects that case dropped).
+at the window's end is stroked one column right of the plot; the engine draws it in the plot's
+last column instead (`layer_parity` expects that rect, and the pinned case dropped).
 
 ### Tiers and the frame loop
 
@@ -1057,7 +1059,8 @@ Chromium projects of the engine web image:
   plot, 18 px lower), clears a shown hover and draws a `text-muted` column over ≥ 90 % of the plot's
   rows, and no events restore the plot; L3 the event column follows five wheel zooms (±1 device
   px) and leaves the view; L4 under a pinned axis an event at each window end is drawn at the
-  plot's left column and nothing is drawn right of the plot.
+  plot's left column and nothing is drawn right of the plot; L5 on an auto axis an event at the
+  window's end and one 1 s before it are drawn in the plot's last column, nothing right of it.
 - `bench:shim-input-cost` (project `probe`, report-only): 10⁴ wheels and 10⁴ pointer moves on a
   probe frame, 16 per animation frame, each dispatch timed with the frame's flush; prints p50, p99 and max per dispatch and per frame's group
   next to the catalogue limits (p99 ≤ 0.05 ms, callback ≤ 2 ms) and asserts only that every

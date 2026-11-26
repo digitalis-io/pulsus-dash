@@ -886,7 +886,7 @@ hardware-runner follow-up. `probe` (plan #68 C2a1): the `lavapipe` flags against
 BFF (`tools/e2e/serve.sh probe 4175`), `e2e/engine-shim-fuzz.spec.ts` and `e2e:engine-hover` H1b
 (plan #68 C2b: it freezes a frame at one presentation, a probe-build hook); the other two projects
 skip the fuzz and H1b, and every other spec and golden runs on the fault build (release wasm).
-`e2e:engine-hover` H1–H6 and `e2e:engine-layer` L1–L4 (plan #68 C2c1: threshold lines and event
+`e2e:engine-hover` H1–H6 and `e2e:engine-layer` L1–L5 (plan #68 C2c1: threshold lines and event
 lines on probe frames) run like `e2e:engine-camera`: `lavapipe` gated, `swiftshader` report-only.
 
 **Goldens in the browser.** `golden:engine-line` compares the browser engine's canvas

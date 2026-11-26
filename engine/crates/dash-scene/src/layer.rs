@@ -2,8 +2,8 @@
 //! (ADR-0023) as screen-space rectangles of the overlay pipeline, ports of the Canvas 2D
 //! `thresholdMark.ts` `withThresholds` and `drawThresholds` (its dashed stroke) and `eventMark.ts`
 //! `membersInView` and `drawEventLines`. Both are inside the plot by construction: dashes end at its
-//! right edge and an event rect is cut there, with or without a manual axis. Their labels come
-//! with the engine's text mark (#69).
+//! right edge; an event at the edge is drawn in the plot's last column on an auto axis and cut
+//! there under a pinned one. Their labels come with the engine's text mark (#69).
 
 use dash_axes::{PlotRect, ValueAxis};
 use dash_marks::OverlayShape;
@@ -76,11 +76,15 @@ pub fn threshold_shapes(axis: &ValueAxis, t: &[ThresholdLine], theme: Theme) -> 
 
 /// The event lines (TS `membersInView` and `drawEventLines`): each finite time in `view` (ends
 /// included), in ascending order, at column `round(plot.x + (at − lo)/(hi − lo)·plot.width)`, 1 px
-/// wide and the plot's height, `text-muted`; cut at the plot's right edge, and dropped there.
+/// wide and the plot's height, `text-muted`. A column at or past the plot's right edge: on an auto
+/// axis (`manual` false) it is drawn in the plot's last column, so every event in view keeps its
+/// line inside the plot (ADR-0023; Canvas 2D strokes it one column outside); under a pinned axis
+/// it is clipped as Canvas 2D clips it (cut at the edge, dropped there).
 pub fn event_shapes(
     plot: &PlotRect,
     view: Range64,
     at_ms: &[f64],
+    manual: bool,
     theme: Theme,
 ) -> Vec<OverlayShape> {
     let mut times: Vec<f64> = at_ms
@@ -94,7 +98,10 @@ pub fn event_shapes(
     times
         .into_iter()
         .filter_map(|t| {
-            let x = js_round(plot.x + (t - view.lo) / (view.hi - view.lo) * plot.width);
+            let mut x = js_round(plot.x + (t - view.lo) / (view.hi - view.lo) * plot.width);
+            if !manual && x + 1.0 > right {
+                x = (right - 1.0).max(plot.x);
+            }
             let w = (right - x).min(1.0);
             (w > 0.0).then_some(OverlayShape::Rect {
                 css: [x as f32, plot.y as f32, w as f32, plot.height as f32],
