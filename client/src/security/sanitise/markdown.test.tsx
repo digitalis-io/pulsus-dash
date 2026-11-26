@@ -48,7 +48,9 @@ function md(
   return { html: clean(container.innerHTML), container, removals: r.removals };
 }
 
-/** innerHTML with the anchors' fixed attributes dropped, the new-tab spans as `…` and `class=flat`. */
+/**
+ * innerHTML (React writes an `img`'s `src` after its other attributes) with the anchors' fixed
+ * attributes dropped, the new-tab spans as `…` and `class=flat`. */
 function clean(html: string): string {
   return html
     .split(A_ATTRS)
@@ -271,18 +273,18 @@ describe('unit:markdown-walk', () => {
       ],
       [
         '[![i](/l.svg) t](/b)',
-        '<p><a href="/b"><img src="/l.svg" alt="i" loading="lazy"> t…</a></p>',
+        '<p><a href="/b"><img alt="i" loading="lazy" src="/l.svg"> t…</a></p>',
         [],
       ],
       ['[![e](https://x.test/e.png)](/b)', '<p><a href="/b">e…</a></p>', rm(['image', 1])],
       [
         '![a [l](/b) *e* <b>h</b> `c`](/l.svg)',
-        '<p><img src="/l.svg" alt="a l e h c" loading="lazy"></p>',
+        '<p><img alt="a l e h c" loading="lazy" src="/l.svg"></p>',
         rm(['html', 1]),
       ],
       [
         '![o ![n](/x.svg)](/l.svg)',
-        '<p><img src="/l.svg" alt="o n" loading="lazy"></p>',
+        '<p><img alt="o n" loading="lazy" src="/l.svg"></p>',
         rm(['image', 1]),
       ],
       ['[a <b>h</b> c](/b)', '<p><a href="/b">a h c…</a></p>', rm(['html', 1])],
@@ -411,10 +413,10 @@ describe('unit:markdown-images', () => {
 
   it('board: local images load, external become links, others alt text', () => {
     expect(I.map((s) => md(s).html)).toEqual([
-      '<p><img src="/l.svg" alt="l" loading="lazy"></p>',
+      '<p><img alt="l" loading="lazy" src="/l.svg"></p>',
       '<p><a href="https://x.test/g.png">g…</a></p>',
       '<p>d</p>',
-      '<p><img src="/%09/e.test" alt="s" loading="lazy"></p>',
+      '<p><img alt="s" loading="lazy" src="/%09/e.test"></p>',
     ]);
     expect(I.map((s) => md(s).removals)).toEqual([[], rm(['image', 1]), rm(['image', 1]), []]);
   });
