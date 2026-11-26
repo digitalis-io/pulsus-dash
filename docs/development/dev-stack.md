@@ -101,7 +101,7 @@ All targets run from the repository root.
 | `make dev-migrate` | `make server-build`, then `build/pulsus-dash migrate`: applies the migrations and, on an empty database, seeds the organisation and its tenant binding (the fake unless `dev/local.env` sets `PULSUS_DASH_DATASOURCE_URL`) | yes |
 | `make dev-down` | stops and removes the containers; the `pg16-data` volume and its data stay | no |
 | `make dev-reset` | removes the containers and the volume; the next `dev-up` runs the init scripts and seeds again | no |
-| `make itest-local` | starts `pg16` and `pg15` in their own project `pulsus-dash-itest` on ports 57432 and 57433 (`ITEST_PROJECT`, `ITEST_PG16_PORT`, `ITEST_PG15_PORT`), runs `make itest` against both, and removes the containers and volume on every exit, pass or fail. If `up --wait` fails, it stops with that failure and runs no test. It never touches the dev volume | no |
+| `make itest-local` | starts `pg16` and `pg15` in their own project `pulsus-dash-itest` on ports 57432 and 57433 (`ITEST_PROJECT`, `ITEST_PG16_PORT`, `ITEST_PG15_PORT`), runs `make itest` against both (or `ITEST_GOAL`, e.g. `make itest-local ITEST_GOAL=itest-old-binary`), and removes the containers and volume on every exit, pass or fail. If `up --wait` fails, it stops with that failure and runs no test. It never touches the dev volume | no |
 | `make dev-smoke` | `dev/smoke.sh`, then `dev/smoke-selftest.sh` (`ci:dev-stack`, below) | no |
 | `make itest-local-selftest` | `dev/itest-local-selftest.sh`: checks that a failed `up --wait` fails `itest-local`, runs no test and still cleans up. Needs no containers; part of `make ci` | no |
 
