@@ -5,6 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import { stubPlanBoundary } from './eslint/stub-plan-boundary.ts';
+import security from './eslint/security-plugin.ts';
 import tokens from './eslint/tokens-plugin.ts';
 
 const LAYOUT_PROPS = ['offset', 'crossOffset', 'containerPadding', 'delay', 'closeDelay'];
@@ -127,6 +128,18 @@ export default tseslint.config(
     ignores: ['**/*.test.{ts,tsx}'],
     plugins: { tokens },
     rules: Object.fromEntries(Object.keys(tokens.rules).map((r) => [`tokens/${r}`, 'error'])),
+  },
+  // ci:no-iframe and the ADR-0024 import boundary (plan #198 Part 2a §3.5): own rule names, so no
+  // `no-restricted-*` block below overrides them.
+  {
+    files: ['src/**/*.{ts,tsx}', 'e2e/**/*.{ts,tsx}'],
+    plugins: { security },
+    rules: { 'security/no-iframe': 'error' },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: { security },
+    rules: { 'security/markdown-boundary': 'error' },
   },
   {
     files: ['scripts/**/*.ts', 'eslint/**/*.ts', 'config/**/*.ts', 'e2e/**/*.ts', '*.config.ts'],
