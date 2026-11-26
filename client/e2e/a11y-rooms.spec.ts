@@ -680,6 +680,20 @@ test.describe('e2e:a11y-rooms gallery', () => {
     );
     // #173 Part 2: a bar chart counts its bars; its meter is outside the frame.
     expect(await label('barchart')).toBe('Requests by version: 5 bars');
+    // Review r1: the canvas is described by a hidden list of every bar, full name and value.
+    const listId = await frame(page, 'barchart').locator('canvas').getAttribute('aria-describedby');
+    expect(listId).not.toBeNull();
+    const list = page.locator(`[id="${listId ?? ''}"]`);
+    await expect(list.locator('li')).toHaveText([
+      '2.31: 120',
+      '2.29: 40',
+      '2.33: 15',
+      '2.30: 7',
+      '2.32: 3',
+    ]);
+    await expect(
+      frame(page, 'barchart-thresholds').locator('[data-bar-list] li').first(),
+    ).toHaveText('2.31: 120, Failing');
     await expect(
       page.locator('[data-gallery-id="barchart"] [data-coverage-meter]').getByRole('status'),
     ).toHaveText('100 %');

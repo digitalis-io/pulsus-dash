@@ -2,7 +2,7 @@
  * `<CategoryChart>` (plan #173 Part 2 §4.1, §5): the fit per cell size, the frame or the `tooSmall`
  * notice, the hidden-labels note and the meter. The offscreen measure is 6 px per character.
  */
-import { act, screen } from '@testing-library/react';
+import { act, cleanup, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BOTTOM, LABEL_HEIGHT } from '../engine/canvas2d/layout';
 import { byVersion, fkey, instant } from '../test/categoryFixtures';
@@ -120,5 +120,48 @@ describe('unit:barchart-plan (CategoryChart)', () => {
     size(600, 20 + 8 + BOTTOM);
     expect(frames()).toBe(0);
     expect(screen.getByText('too small: 5 bars (min 2.32 3, max 2.31 120)')).toBeInTheDocument();
+  });
+});
+
+describe('bar list (review r1: the bars for assistive technology)', () => {
+  const items = (): string[] =>
+    [...document.querySelectorAll('[data-bar-list] li')].map((li) => li.textContent);
+
+  it('names every drawn bar in full with its value, then the bars not shown', () => {
+    const { engine, size } = mount(model());
+    size(600, 240);
+    const list = document.querySelector('[data-bar-list]');
+    expect(list?.tagName).toBe('UL');
+    expect(lastFrame(engine).canvas).toHaveAttribute('aria-describedby', list?.id ?? 'none');
+    expect(items()).toEqual(['2.31: 120', '2.29: 40', '2.33: 15', '2.30: 7', '2.32: 3']);
+    expect(list?.querySelectorAll('[tabindex], a, button')).toHaveLength(0);
+    // A cap of 2 (extent 28 px): min and max, then the rest counted.
+    size(600, 28 + 8 + BOTTOM);
+    expect(items()).toEqual(['2.31: 120', '2.32: 3', '3 more not shown']);
+  });
+
+  it('keeps names the canvas hides, and states with thresholds', () => {
+    const r = instant([
+      { key: fkey(1), labels: { svc: 'svc-alpha-checkout-service-eu-west' }, value: 2 },
+      { key: fkey(2), labels: { svc: 'svc-alpha-payments-service-eu-west' }, value: 1 },
+    ]);
+    const { size } = mount(model(r, { orientation: 'vertical' }));
+    size(600, 70);
+    expect(note()).toBe('Names hidden — panel too narrow');
+    expect(items()).toEqual([
+      'svc-alpha-checkout-service-eu-west: 2',
+      'svc-alpha-payments-service-eu-west: 1',
+    ]);
+    const t = barchartModel(byVersion() as Result, {
+      title: 'Versions',
+      rateApplied: false,
+      options: undefined,
+      thresholds: { direction: 'above', steps: [{ value: 100, state: 'failing', label: '' }] },
+    });
+    cleanup();
+    const again = mount(t);
+    again.size(600, 240);
+    expect(items()[0]).toBe('2.31: 120, Failing');
+    expect(items()[1]).toBe('2.29: 40, OK');
   });
 });

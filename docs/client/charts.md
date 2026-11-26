@@ -658,7 +658,10 @@ spans the name band and the plot across the category axis) and `null` once on le
 
 `ChartFrame` shows `MarkTooltip` beside the marked bar (full name, value, `■ Failing` for a state,
 `baseline <v>` with the ghost), passes `pick` to `onPick`, labels the canvas `<title>: <n> bars`
-(then the thresholds) and shows no `Showing X of N series` notice: `CategoryChart`'s meter states
+(then the thresholds), describes it (`aria-describedby`) with `BarList`, a visually hidden,
+non-focusable list of every drawn bar in draw order (`<full name>: <value>`, then `, <state>` with
+thresholds) and a last item `k more not shown` for the rows the cap left out, and shows no
+`Showing X of N series` notice: `CategoryChart`'s meter states
 the coverage. Under `engine=wasm` the bar chart stays on Canvas 2D until the engine implements
 ADR-0028.
 

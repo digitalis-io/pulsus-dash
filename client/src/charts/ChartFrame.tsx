@@ -30,6 +30,7 @@
  */
 import {
   useContext,
+  useId,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -69,6 +70,7 @@ import { size, space } from '../styles/tokens';
 import { useResolvedTheme } from '../theme/useResolvedTheme';
 import styles from './ChartFrame.module.css';
 import { ChartTooltip } from './ChartTooltip';
+import { BarList } from './BarList';
 import { MarkTooltip } from './MarkTooltip';
 import {
   crosshairText,
@@ -314,6 +316,7 @@ export function ChartFrame({
   const [{ hover, selected }, setHoverState] = useState<HoverState>({ hover: null, selected: 0 });
   const [mark, setMark] = useState<MarkEvent | null>(null);
   const markRef = useRef<HTMLDivElement>(null);
+  const barListId = useId();
   const [unsupported, setUnsupported] = useState(false);
   const ownSize = useRef<FrameSize | null>(null);
   const memo = sizeMemo ?? ownSize;
@@ -518,7 +521,10 @@ export function ChartFrame({
       'aria-label',
       summary === null ? spec.title : summaryLabel(spec, summary, tz),
     );
-  }, [spec, summary, tz, engine, isStat]);
+    // A bar chart's bars, by name and value, for assistive technology (T22-013 subset, VIZ-068).
+    if (isBar) canvasRef.current?.setAttribute('aria-describedby', barListId);
+    else canvasRef.current?.removeAttribute('aria-describedby');
+  }, [spec, summary, tz, engine, isStat, isBar, barListId]);
 
   // Tooltip beside the crosshair, flipped left at the host's right edge (CSSOM, T18-004).
   useLayoutEffect(() => {
@@ -622,6 +628,9 @@ export function ChartFrame({
             );
           }}
         />
+      )}
+      {isBar && frameData.kind === 'categories' && (
+        <BarList id={barListId} spec={spec} data={frameData} />
       )}
       {isBar && (
         <MarkTooltip
