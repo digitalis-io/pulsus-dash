@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.12-rc · 2026-11-25 |
+| **Version** | 1.13-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -103,7 +103,7 @@ This document fixes:
 | [INT-040](../product/03-interaction-model.md#int-040--palette-ranking) | §4.4.3 (ranking) | `unit:palette-ranking`: failing `checkout` outranks healthy `cart` on "c"; with Context on `cart`, `cart` ranks first |
 | [VIZ-042](../product/05-visualisation-catalogue.md#viz-042--rows-are-selection-sources) | §4.4.1 (row click → `Action::Select`) | `e2e:table-row-selects`: clicking a pod row highlights its tile and opens the Inspector |
 | [VIZ-054](../product/05-visualisation-catalogue.md#viz-054--markdown-and-html-are-always-sanitised) | §4.4.1 (Markdown), T08-011 | `unit:markdown-no-html`: `<script>` and `onerror=` input produce no element or attribute and a removal log entry; `fuzz:markdown-cell` |
-| [VIZ-056](../product/05-visualisation-catalogue.md#viz-056--no-arbitrary-iframes) | §4.4, T08-009 | `ci:no-iframe`: a lint over `dash-kit` finds no `iframe` element construction; `e2e:link-new-tab` |
+| [VIZ-056](../product/05-visualisation-catalogue.md#viz-056--no-arbitrary-iframes) | §4.4, T08-009 | `ci:no-iframe`: the `security/no-iframe` rule over `client/src` and `client/e2e` finds no `iframe` element construction; `e2e:link-new-tab` |
 | [VIZ-066](../product/05-visualisation-catalogue.md#viz-066--table-view-and-csv-for-every-vis) | §4.5 (`Shift+T`), §4.4.1 (CSV) | `e2e:table-view-csv`: `Shift+T` swaps every vis for a table of the same data; "Export CSV" downloads it |
 | [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel) | §4.4 (state glyph cells and pills), §4.7 | `golden:greyscale-states`: every state distinguishable in greyscale DOM screenshots |
 | [VL-001](../product/08-visual-language.md#vl-001--dark-first-themes-both-designed) | §4.7 (themes) | `golden:theme-tokens`: fresh session renders `canvas` `#0B0D10` and surfaces `#12151A`/`#191D24`; light theme (M-UI5) values come from the light token set |
@@ -885,3 +885,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.10-rc | 2026-11-21 | #93: §7 `bench:rooms-long-tasks` scenarios include chart gestures |
 | 1.11-rc | 2026-11-23 | #66 Part B: §4.4 v1 note: the M-UI1 log stream virtualises with `@tanstack/react-virtual` over a slice of ≤ 200 000 rows (fixed 20 px rows, measured with wrap), not the Fenwick table virtualiser |
 | 1.12-rc | 2026-11-25 | #164: §4.4 Inspector row links [T25](T25-inspector-and-pivots.md) (host, payload, selection, Esc ladder, pivots, look); the dock host (VL-018) is not part of T25 |
+| 1.13-rc | 2026-11-26 | #198 Part 2a: §3 VIZ-056 `ci:no-iframe` is the `security/no-iframe` ESLint rule over `client/src` and `client/e2e` (was a lint over `dash-kit`) |

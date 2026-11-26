@@ -1,0 +1,6 @@
+{
+  "assets/index-a1.js": [
+    "/repo/client/src/main.tsx",
+    "node:stream"
+  ]
+}
