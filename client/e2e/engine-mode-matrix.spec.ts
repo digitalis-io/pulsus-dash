@@ -1,8 +1,10 @@
 /**
- * `e2e:mode-matrix` (plan #68 C1 §5; VIZ-001, T03-025, PRF-009): each engine mode on the gallery,
- * and the WebGPU line-presence check. `lavapipe` runs the Canvas 2D, WebGL2, no-OffscreenCanvas,
- * Static and integrity legs; `swiftshader` the WebGPU leg and the line presence (report-only
- * under `engine-legs.json`).
+ * `e2e:mode-matrix` (plan #68 C1 §5, plan #256 §5; VIZ-001, T03-025, PRF-009, ADR-0031): each engine
+ * mode on the gallery, and the WebGPU line-presence check. The default legs (M1–M3, M5–M12) run on
+ * the unflagged release BFF (`RELEASE_URL`), M4 and the integrity leg on the fault build (pinned to
+ * Canvas 2D by `VITE_ENGINE=canvas2d`), M13–M14 on `vite preview` of `dist-release-stub` with its
+ * computed manifest, M15 on the dev server. `lavapipe` runs every leg; `swiftshader` M1, the WebGPU
+ * leg and the line presence (report-only under `engine-legs.json`).
  */
 import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test';
 import { GALLERY_IDS, GALLERY_URL, open } from './helpers.ts';
@@ -16,6 +18,7 @@ import {
   LINE_IDS,
   plotInk,
   plotRect,
+  RELEASE_URL,
   tierOf,
   TIERS,
 } from './engine.ts';
@@ -44,13 +47,191 @@ const only = (info: TestInfo, project: string): void => {
   test.skip(info.project.name !== project, `${project} project only`);
 };
 
-test.describe('e2e:mode-matrix', () => {
-  test('default: Canvas 2D, no engine request', async ({ page }, info) => {
+/** `vite preview` of `dist-release-stub` (its computed manifest, plan #256 §3.5). */
+const PREVIEW_URL = 'http://localhost:4177';
+/** The dev server with the engine built and no `VITE_ENGINE`. */
+const DEV_URL = 'http://localhost:5175';
+
+/** A leg that must stay on Canvas 2D and never request an engine file. */
+async function canvasLeg(page: Page, url: string): Promise<void> {
+  const req = engineRequests(page);
+  await legOf(page, url);
+  expect(await engines(page)).toEqual(all('canvas2d'));
+  expect(req).toEqual([]);
+}
+
+/** The byte flip of the integrity legs: every engine wasm served with one byte changed. */
+async function flipWasm(page: Page): Promise<string[]> {
+  const wasm: string[] = [];
+  await page.route(/\/assets\/dash-engine-[^/]+\.wasm$/, async (route) => {
+    wasm.push(route.request().url());
+    const res = await route.fetch();
+    const body = Buffer.from(await res.body());
+    body[body.length >> 1] = (body[body.length >> 1] ?? 0) ^ 0xff;
+    await route.fulfill({ response: res, body });
+  });
+  return wasm;
+}
+
+function warningsOf(page: Page): string[] {
+  const warnings: string[] = [];
+  page.on('console', (m) => {
+    if (m.type() === 'warning') warnings.push(m.text());
+  });
+  return warnings;
+}
+
+/** The engine is the default (ADR-0031): the unflagged release BFF, its signed manifest. */
+test.describe('e2e:mode-matrix default (release BFF)', () => {
+  test.use({ baseURL: RELEASE_URL });
+
+  test('M1 default: the engine, no flag', async ({ page }, info) => {
+    const tier = tierOf(info);
+    await leg(info, async () => {
+      await legOf(page, GALLERY_URL);
+      await expect(page.locator('html')).toHaveAttribute('data-dash-status', tier.status);
+      expect(await engines(page)).toEqual(lines(tier.engine));
+    });
+  });
+
+  test('M2 default on a board: the line panel on the engine, the stat on Canvas 2D', async ({
+    page,
+  }, info) => {
     only(info, 'lavapipe');
-    const req = engineRequests(page);
+    await open(page, '/t/demo/board/b-1');
+    const p1 = page.locator('[data-panel-id="p-1"] [data-chart-frame]');
+    await expect(p1).toHaveCount(1);
+    await expect(p1).toHaveAttribute('data-frame-ready', 'true');
+    const c1 = p1.locator('canvas:not([data-retired])');
+    await expect(c1).toHaveCount(1);
+    await expect(c1).toHaveAttribute('data-engine', 'wasm-webgl2');
+    await expect(page.locator('html')).toHaveAttribute('data-dash-status', '2');
+    const c2 = page.locator('[data-panel-id="p-2"] canvas:not([data-retired])');
+    await expect(c2).toHaveAttribute('data-engine', 'canvas2d');
+  });
+
+  test('M3 ?engine=canvas2d: Canvas 2D, no engine request', async ({ page }, info) => {
+    only(info, 'lavapipe');
+    await canvasLeg(page, `${GALLERY_URL}&engine=canvas2d`);
+  });
+
+  test('M5 no-offscreen: Canvas 2D, no engine request', async ({ page }, info) => {
+    only(info, 'lavapipe');
+    await page.addInitScript(() => {
+      Reflect.deleteProperty(HTMLCanvasElement.prototype, 'transferControlToOffscreen');
+    });
+    await canvasLeg(page, `${GALLERY_URL}&mode=t2`);
+  });
+
+  for (const [n, mode] of [
+    ['M6', 'static'],
+    ['M7', 'st'],
+    ['M8', 'mtr'],
+  ] as const) {
+    test(`${n} mode=${mode}: Canvas 2D, no engine request`, async ({ page }, info) => {
+      only(info, 'lavapipe');
+      await canvasLeg(page, `${GALLERY_URL}&mode=${mode}`);
+    });
+  }
+
+  test('M9 not isolated: Canvas 2D, no engine request', async ({ page }, info) => {
+    only(info, 'lavapipe');
+    await page.route(
+      (u) => u.pathname === new URL(GALLERY_URL, RELEASE_URL).pathname,
+      async (route) => {
+        if (route.request().resourceType() !== 'document') {
+          await route.continue();
+          return;
+        }
+        const res = await route.fetch();
+        const headers = { ...res.headers() };
+        delete headers['cross-origin-opener-policy'];
+        delete headers['cross-origin-embedder-policy'];
+        await route.fulfill({ response: res, headers });
+      },
+    );
+    await canvasLeg(page, GALLERY_URL);
+    expect(await page.evaluate(() => crossOriginIsolated)).toBe(false);
+  });
+
+  test('M10 no GPU API: Canvas 2D, no engine request', async ({ page }, info) => {
+    only(info, 'lavapipe');
+    await page.addInitScript(() => {
+      Reflect.deleteProperty(Navigator.prototype, 'gpu');
+      Reflect.deleteProperty(globalThis, 'WebGL2RenderingContext');
+    });
+    await canvasLeg(page, GALLERY_URL);
+  });
+
+  test('M11 no Atomics.waitAsync: Canvas 2D, no engine request', async ({ page }, info) => {
+    only(info, 'lavapipe');
+    await page.addInitScript(() => {
+      Reflect.deleteProperty(Atomics, 'waitAsync');
+    });
+    await canvasLeg(page, GALLERY_URL);
+  });
+
+  test('M12 failed session: Canvas 2D, no engine request', async ({ page }, info) => {
+    only(info, 'lavapipe');
+    await page.addInitScript(() => {
+      sessionStorage.setItem('pulsus-dash.engine-failed', '1');
+    });
+    await canvasLeg(page, GALLERY_URL);
+  });
+});
+
+/** `npm run preview`'s path: `vite preview` with the computed manifest (plan #256 §3.5). */
+test.describe('e2e:mode-matrix preview', () => {
+  test.use({ baseURL: PREVIEW_URL });
+
+  test('M13 preview default: the manifest lists the wasm; the engine draws', async ({
+    page,
+  }, info) => {
+    only(info, 'lavapipe');
+    const r = await page.request.get('/asset-manifest.json');
+    expect(r.status()).toBe(200);
+    const m = (await r.json()) as { files?: { path: string }[] };
+    expect((m.files ?? []).some((f) => /^assets\/dash-engine-[^/]+\.wasm$/.test(f.path))).toBe(
+      true,
+    );
+    await legOf(page, GALLERY_URL);
+    await expect(page.locator('html')).toHaveAttribute('data-dash-status', '2');
+    expect(await engines(page)).toEqual(lines('wasm-webgl2'));
+  });
+
+  test('M14 preview integrity: a flipped wasm byte is refused twice, then Canvas 2D', async ({
+    page,
+  }, info) => {
+    only(info, 'lavapipe');
+    const wasm = await flipWasm(page);
+    const warnings = warningsOf(page);
     await legOf(page, GALLERY_URL);
     expect(await engines(page)).toEqual(all('canvas2d'));
-    expect(req).toEqual([]);
+    expect(wasm).toHaveLength(2);
+    expect(warnings.some((w) => w.includes('engine_integrity_failed'))).toBe(true);
+  });
+});
+
+/** The dev server (`npm run dev`) with the engine built and no `VITE_ENGINE`. */
+test.describe('e2e:mode-matrix dev server', () => {
+  test.use({ baseURL: DEV_URL });
+
+  test('M15 dev server default: the engine draws', async ({ page }, info) => {
+    only(info, 'lavapipe');
+    // The first load transforms the modules on demand.
+    test.setTimeout(120_000);
+    await legOf(page, GALLERY_URL);
+    await expect(page.locator('html')).toHaveAttribute('data-dash-status', '2');
+    expect(await engines(page)).toEqual(lines('wasm-webgl2'));
+  });
+});
+
+test.describe('e2e:mode-matrix', () => {
+  test('M4 build flag: the pinned fault build is Canvas 2D, no engine request', async ({
+    page,
+  }, info) => {
+    only(info, 'lavapipe');
+    await canvasLeg(page, GALLERY_URL);
   });
 
   test('webgl2: mode=t2 is status 2 on lavapipe', async ({ page }, info) => {
@@ -98,43 +279,23 @@ test.describe('e2e:mode-matrix', () => {
     });
   });
 
-  test('no-offscreen: Canvas 2D, no engine request', async ({ page }, info) => {
-    only(info, 'lavapipe');
-    await page.addInitScript(() => {
-      Reflect.deleteProperty(HTMLCanvasElement.prototype, 'transferControlToOffscreen');
-    });
-    const req = engineRequests(page);
-    await legOf(page, `${ENGINE_URL}&mode=t2`);
-    expect(await engines(page)).toEqual(all('canvas2d'));
-    expect(req).toEqual([]);
-  });
-
-  test('static: Canvas 2D', async ({ page }, info) => {
-    only(info, 'lavapipe');
-    await legOf(page, `${ENGINE_URL}&mode=static`);
-    expect(await engines(page)).toEqual(all('canvas2d'));
-  });
-
-  test('integrity: a flipped wasm byte is refused twice, then Canvas 2D', async ({
+  test('integrity: a flipped wasm byte is refused twice, then Canvas 2D for the session', async ({
     page,
   }, info) => {
     only(info, 'lavapipe');
-    const wasm: string[] = [];
-    await page.route(/\/assets\/dash-engine-[^/]+\.wasm$/, async (route) => {
-      wasm.push(route.request().url());
-      const res = await route.fetch();
-      const body = Buffer.from(await res.body());
-      body[body.length >> 1] = (body[body.length >> 1] ?? 0) ^ 0xff;
-      await route.fulfill({ response: res, body });
-    });
-    const warnings: string[] = [];
-    page.on('console', (m) => {
-      if (m.type() === 'warning') warnings.push(m.text());
-    });
+    const wasm = await flipWasm(page);
+    const warnings = warningsOf(page);
     await legOf(page, `${ENGINE_URL}&mode=t2`);
     expect(await engines(page)).toEqual(all('canvas2d'));
     expect(wasm).toHaveLength(2);
     expect(warnings.some((w) => w.includes('engine_integrity_failed'))).toBe(true);
+    // The failed boot marked the session (plan #256 §4.2): the reload makes no engine request.
+    await page.unroute(/\/assets\/dash-engine-[^/]+\.wasm$/);
+    const req = engineRequests(page);
+    await page.reload();
+    await framesReady(page);
+    expect(await engines(page)).toEqual(all('canvas2d'));
+    expect(req).toEqual([]);
   });
 });
 

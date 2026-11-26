@@ -11,6 +11,8 @@ import { frame, GALLERY_IDS, GALLERY_URL, galleryReady } from './helpers.ts';
 import { decodePng } from './png.ts';
 
 export const ENGINE_URL = `${GALLERY_URL}&engine=wasm`;
+/** The unflagged release BFF (`make e2e-build-release`, plan #256 §4.3): the engine by default. */
+export const RELEASE_URL = 'http://localhost:4176';
 
 /** The engine tier a project runs (playwright.engine.config.ts). */
 export interface Tier {

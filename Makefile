@@ -17,7 +17,7 @@ SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11
 
 .PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci engine-image engine-test engine-lint \
 	engine-goldens engine-goldens-update engine-web-image engine-wasm engine-wasm-check engine-e2e \
-	engine-wasm-probe e2e-build-probe \
+	engine-wasm-probe e2e-build-probe e2e-build-release client-dev \
 	engine-gpu-smoke \
 	go-licenses no-pulsusdb-host dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local itest-old-binary dev-smoke \
 	itest-local-selftest bench-bff cpu-instr cpu-instr-update
@@ -71,6 +71,12 @@ e2e-build:
 e2e-build-probe: engine-wasm-probe
 	VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1 $(MAKE) build API_MODE=stub VERSION=0.1.0-e2e CLIENT_OUT=dist-probe OUT=$(CURDIR)/build/e2e-probe/pulsus-dash
 	node client/scripts/probe-absent.ts --expect-faults --expect-probe client/dist-probe
+
+# The unflagged, fault-free release build the engine suite's default legs use (served on 4176,
+# plan #256 §3.4): no VITE_ENGINE, so the engine is the default (ADR-0031).
+e2e-build-release:
+	$(MAKE) build API_MODE=stub VERSION=0.1.0-e2e CLIENT_OUT=dist-release OUT=$(CURDIR)/build/e2e-release/pulsus-dash
+	node client/scripts/probe-absent.ts client/dist-release
 
 # Needs make e2e-build and E2E_PG_APP_URL / E2E_PG_OWNER_URL (docs/development/build-and-ci.md).
 e2e:
@@ -329,6 +335,7 @@ ifeq ($(ENGINE_IN_IMAGE),1)
 	  node scripts/check-bundle-modules.ts dist-release-stub dist-release-http && \
 	  node scripts/probe-absent.ts dist-release-stub && node scripts/probe-absent.ts dist-release-http && \
 	  $(MAKE) -C .. e2e-build-probe && \
+	  $(MAKE) -C .. e2e-build-release && \
 	  (cd ../engine && cargo build -p dash-golden --release --locked) && \
 	  DASH_GOLDEN_BIN=$${CARGO_TARGET_DIR:-../engine/target}/release/dash-golden \
 	    npx playwright test -c playwright.engine.config.ts

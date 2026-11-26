@@ -144,6 +144,11 @@ export function pack(
   return { files: sources.length, variants };
 }
 
+/** Test-first stub (plan #256 §5). */
+export function manifestEntries(_root: string): ManifestEntry[] {
+  return [];
+}
+
 /** Writes a fresh Ed25519 key pair into `dir` (Q3: a new key for every build). */
 export function genKey(dir: string): void {
   mkdirSync(dir, { recursive: true });

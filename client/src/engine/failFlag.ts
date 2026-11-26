@@ -25,3 +25,11 @@ export function markSessionFailed(): void {
     // The memory flag still holds for this page.
   }
 }
+
+/** Test-first stub (plan #256 §5). */
+export function markOnFailure<A extends unknown[], T>(
+  load: (...a: A) => Promise<T>,
+  _mark: () => void = markSessionFailed,
+): (...a: A) => Promise<T> {
+  return load;
+}
