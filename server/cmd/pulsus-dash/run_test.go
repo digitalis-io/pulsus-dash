@@ -88,7 +88,7 @@ func TestVersion(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("version exit %d", r.code)
 	}
-	if !regexp.MustCompile(`^pulsus-dash \S+ \(commit \S+, go\S+, schema 3\)\n$`).MatchString(r.stdout) {
+	if !regexp.MustCompile(`^pulsus-dash \S+ \(commit \S+, go\S+, schema 4\)\n$`).MatchString(r.stdout) {
 		t.Errorf("version output %q", r.stdout)
 	}
 }
