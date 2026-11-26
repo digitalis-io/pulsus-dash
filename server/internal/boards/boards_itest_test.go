@@ -57,7 +57,7 @@ func newEnv(t *testing.T, c storetest.Cluster) *env {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &env{db: db, svc: New(d), org: st.BootstrapOrg}
+	return &env{db: db, svc: New(d, nil), org: st.BootstrapOrg}
 }
 
 func (e *env) rc(org core.OrgID) *core.RequestCtx {
@@ -357,7 +357,7 @@ func TestNewerSchemaVersion(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			storetest.Exec(t, e.db.SuperURL, "UPDATE board_versions SET schema_version = 4")
+			storetest.Exec(t, e.db.SuperURL, "UPDATE board_versions SET schema_version = 5")
 			if _, err := e.svc.GetBoard(ctx, rc, b.UID); !errors.Is(err, spec.ErrSchemaTooNew) {
 				t.Errorf("GetBoard = %v, want ErrSchemaTooNew", err)
 			}
@@ -371,30 +371,30 @@ func TestNewerSchemaVersion(t *testing.T) {
 	}
 }
 
-// The previous release (schema 2) meets a row this release wrote (plan #64 Part B §4.7, R1; #173
-// Part 1: board spec v3).
+// The previous release (schema 3) meets a row this release wrote (plan #64 Part B §4.7, R1; #173
+// Part 1: board spec v3; #215: board spec v4, tags).
 func TestPreviousServerRefusesNewerRow(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {
 			e := newEnv(t, c)
 			ctx, rc := itestCtx(t), e.rc(e.org)
-			b, err := e.svc.CreateBoard(ctx, rc, fixture(t, "v3-full.json"))
+			b, err := e.svc.CreateBoard(ctx, rc, fixture(t, "v4-board-tags.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT max(schema_version) FROM board_versions"); v != 3 {
-				t.Fatalf("schema_version = %d, want 3", v)
+			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT max(schema_version) FROM board_versions"); v != 4 {
+				t.Fatalf("schema_version = %d, want 4", v)
 			}
 			hash := func() string {
 				rows := storetest.QueryRows(t, e.db.SuperURL, "SELECT encode(content_hash, 'hex') FROM board_versions ORDER BY version DESC LIMIT 1")
 				return rows[0][0]
 			}
 			before := hash()
-			old := newServiceWithSchemaMax(e.svc.db, 2)
+			old := newServiceWithSchemaMax(e.svc.db, 3)
 			if _, err := old.GetBoard(ctx, rc, b.UID); !errors.Is(err, spec.ErrSchemaTooNew) {
 				t.Errorf("GetBoard = %v, want ErrSchemaTooNew", err)
 			}
-			if _, err := old.SaveBoard(ctx, rc, b.UID, 1, fixture(t, "v2-full.json"), ""); !errors.Is(err, spec.ErrSchemaTooNew) {
+			if _, err := old.SaveBoard(ctx, rc, b.UID, 1, fixture(t, "v3-full.json"), ""); !errors.Is(err, spec.ErrSchemaTooNew) {
 				t.Errorf("SaveBoard = %v, want ErrSchemaTooNew", err)
 			}
 			if n := e.count(t, "board_versions"); n != 1 {
@@ -407,7 +407,7 @@ func TestPreviousServerRefusesNewerRow(t *testing.T) {
 	}
 }
 
-func TestSaveWritesSchemaV3(t *testing.T) {
+func TestSaveWritesSchemaV4(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {
 			e := newEnv(t, c)
@@ -416,7 +416,7 @@ func TestSaveWritesSchemaV3(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			raw := fixture(t, "v3-full.json")
+			raw := fixture(t, "v4-board-tags.json")
 			res, err := e.svc.SaveBoard(ctx, rc, b.UID, 1, raw, "")
 			if err != nil {
 				t.Fatal(err)
@@ -424,8 +424,8 @@ func TestSaveWritesSchemaV3(t *testing.T) {
 			if !res.Changed {
 				t.Errorf("Changed = false, want true")
 			}
-			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT schema_version FROM board_versions WHERE version = 2"); v != 3 {
-				t.Errorf("stored schema_version = %d, want 3", v)
+			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT schema_version FROM board_versions WHERE version = 2"); v != 4 {
+				t.Errorf("stored schema_version = %d, want 4", v)
 			}
 			got, err := e.svc.GetBoard(ctx, rc, b.UID)
 			if err != nil {
@@ -438,8 +438,8 @@ func TestSaveWritesSchemaV3(t *testing.T) {
 			if string(got.Spec) != string(want) {
 				t.Errorf("GET spec = %s, want %s", got.Spec, want)
 			}
-			if got.SchemaVersion != 3 {
-				t.Errorf("GET schema_version = %d, want 3", got.SchemaVersion)
+			if got.SchemaVersion != 4 {
+				t.Errorf("GET schema_version = %d, want 4", got.SchemaVersion)
 			}
 		})
 	}
@@ -458,8 +458,8 @@ func TestBoardsCrossOrg(t *testing.T) {
 			if _, err := e.svc.GetBoard(ctx, rb, b.UID); !errors.Is(err, core.ErrNotFound) {
 				t.Errorf("GetBoard from B = %v, want ErrNotFound", err)
 			}
-			if items, _, err := e.svc.ListBoards(ctx, rb); err != nil || len(items) != 0 {
-				t.Errorf("ListBoards from B = %v, %v; want empty", items, err)
+			if page, err := e.svc.ListBoards(ctx, rb, core.BoardFilter{}); err != nil || len(page.Items) != 0 {
+				t.Errorf("ListBoards from B = %v, %v; want empty", page.Items, err)
 			}
 			if _, err := e.svc.SaveBoard(ctx, rb, b.UID, 1, titled(t, "X"), ""); !errors.Is(err, core.ErrNotFound) {
 				t.Errorf("SaveBoard from B = %v, want ErrNotFound", err)
@@ -492,7 +492,7 @@ func TestRecentTrim(t *testing.T) {
 			if n := storetest.QueryInt(t, e.db.SuperURL, "SELECT count(*) FROM recent_views r JOIN boards b ON b.id = r.id WHERE b.uid = $1", b.UID); n != 1 {
 				t.Errorf("the viewed board has %d rows, want 1", n)
 			}
-			refs, err := e.svc.ListRecent(ctx, rc, 5)
+			refs, _, err := e.svc.ListRecent(ctx, rc, 5)
 			if err != nil || len(refs) == 0 || refs[0].UID != b.UID {
 				t.Errorf("ListRecent(5) = %v, %v; want %s first", refs, err, b.UID)
 			}
@@ -519,7 +519,7 @@ func recentEnv(t *testing.T, c storetest.Cluster) (*env, context.Context, *core.
 // recentNames lists the user's Recent by board title.
 func recentNames(t *testing.T, e *env, ctx context.Context, rc *core.RequestCtx) string {
 	t.Helper()
-	refs, err := e.svc.ListRecent(ctx, rc, 50)
+	refs, _, err := e.svc.ListRecent(ctx, rc, 50)
 	if err != nil {
 		t.Fatal(err)
 	}

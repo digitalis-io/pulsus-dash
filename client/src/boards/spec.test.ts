@@ -132,6 +132,45 @@ describe('unit:board-spec (TS)', () => {
       expect(names.has(n), n).toBe(true);
   });
 
+  it("v4 fixture is valid, keeps its tag order, and its canonical form is the server's", () => {
+    const x = fixture('v4-board-tags.json');
+    expect(checkBoardSpec(x)).toEqual([]);
+    const c = canonicalJson(x);
+    expect(JSON.parse(c)).toEqual(x);
+    expect(c).toContain('"tags":["team:payments","prod"]');
+    // The Go suite (board_test.go v4CanonicalSHA256) holds the same hash: byte-equal forms.
+    expect(createHash('sha256').update(c, 'utf8').digest('hex')).toBe(
+      '1ee8fecd5dbd9f6d70f5b8552f8a5aeb312f9499c5e969ff7d2a231d753e3a3f',
+    );
+    expect(checkBoardSpec({ title: 'T', panels: [], sections: [], tags: [] })).toEqual([]);
+  });
+
+  it('tag rows match the server, and their keys have en-GB text', () => {
+    const tagRows = [
+      'tags-too-many',
+      'tags-uppercase',
+      'tags-duplicate',
+      'tags-null',
+      'tags-not-array',
+      'tags-item-number',
+      'tags-empty',
+      'tags-too-long',
+      'tags-nul',
+    ];
+    const byName = new Map(cases.map((c) => [c.name, c]));
+    for (const n of tagRows) {
+      const c = byName.get(n);
+      expect(c, n).toBeDefined();
+      expect(checkBoardSpec(c?.spec), n).toEqual(
+        (c?.fields ?? []).map((f) => ({ pointer: f.pointer, messageKey: f.message_key })),
+      );
+    }
+    for (const key of ['board.tags.invalid', 'board.tags.duplicate']) {
+      expect(messages, key).toHaveProperty(`field.${key}`);
+      expect(fieldMessage(key), key).not.toBe(fieldMessage('board.no.such.key'));
+    }
+  });
+
   it('a NaN or out-of-range option bound', () => {
     const spec = fixture('v3-full.json') as BoardSpec;
     const opts = spec.panels[0]?.vis.options;

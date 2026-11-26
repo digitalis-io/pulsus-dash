@@ -77,8 +77,8 @@ func TestVersion(t *testing.T) {
 	if strings.Join(keys, ",") != "commit,go,schema,version" {
 		t.Errorf("keys = %v, want exactly commit, go, schema, version", keys)
 	}
-	if m["schema"] != float64(3) {
-		t.Errorf("schema = %v, want 3", m["schema"])
+	if m["schema"] != float64(4) {
+		t.Errorf("schema = %v, want 4", m["schema"])
 	}
 	if m["go"] != runtime.Version() {
 		t.Errorf("go = %v, want %s", m["go"], runtime.Version())

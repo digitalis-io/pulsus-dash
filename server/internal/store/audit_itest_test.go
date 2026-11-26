@@ -255,8 +255,8 @@ func TestDirectCreateGrant(t *testing.T) {
 			if _, err := Migrate(itestCtx(t), db.OwnerURL, MigrateOptions{Seed: testSeed}); err != nil {
 				t.Fatalf("migrate after the revoke: %v", err)
 			}
-			if v := storetest.QueryInt(t, db.SuperURL, "SELECT max(version_id) FROM goose_db_version WHERE is_applied"); v != 3 {
-				t.Errorf("schema version %d, want 3", v)
+			if v := storetest.QueryInt(t, db.SuperURL, "SELECT max(version_id) FROM goose_db_version WHERE is_applied"); v != 4 {
+				t.Errorf("schema version %d, want 4", v)
 			}
 			for _, r := range []string{"pulsus_app", "pulsus_maint"} {
 				if v := storetest.QueryString(t, db.SuperURL, "SELECT has_schema_privilege($1, 'public', 'CREATE')::text", r); v != "false" {
@@ -330,7 +330,7 @@ func seedBoard(t *testing.T, d *Db, org core.OrgID) {
 			return err
 		}
 		id, _ := core.NewID()
-		if ok, err := tx.InsertBoard(ctx, id, "b1", folder, "B"); err != nil || !ok {
+		if ok, err := tx.InsertBoard(ctx, id, "b1", folder, "B", nil); err != nil || !ok {
 			return errors.Join(err, errors.New("insert board"))
 		}
 		spec := []byte(`{"panels":[],"sections":[],"title":"B"}`)

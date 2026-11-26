@@ -795,8 +795,16 @@ type BoardCreate struct {
 
 // BoardList defines model for BoardList.
 type BoardList struct {
-	Items     []BoardSummary `json:"items"`
-	Truncated bool           `json:"truncated"`
+	Applied   BoardListApplied `json:"applied"`
+	Items     []BoardSummary   `json:"items"`
+	TagsStale int64            `json:"tagsStale"`
+	Truncated bool             `json:"truncated"`
+}
+
+// BoardListApplied defines model for BoardListApplied.
+type BoardListApplied struct {
+	Q   *string        `json:"q,omitempty"`
+	Tag *AnnotationTag `json:"tag,omitempty"`
 }
 
 // BoardRef defines model for BoardRef.
@@ -805,9 +813,14 @@ type BoardRef struct {
 	Uid   string `json:"uid"`
 }
 
+// BoardRefApplied defines model for BoardRefApplied.
+type BoardRefApplied = map[string]interface{}
+
 // BoardRefList defines model for BoardRefList.
 type BoardRefList struct {
-	Items []BoardRef `json:"items"`
+	Applied   BoardRefApplied `json:"applied"`
+	Items     []BoardRef      `json:"items"`
+	Truncated bool            `json:"truncated"`
 }
 
 // BoardSaveResult defines model for BoardSaveResult.
@@ -818,19 +831,22 @@ type BoardSaveResult struct {
 
 // BoardSpec defines model for BoardSpec.
 type BoardSpec struct {
-	Panels   []Panel    `json:"panels"`
-	Sections []Section  `json:"sections"`
-	Time     *TimeRange `json:"time,omitempty"`
-	Title    string     `json:"title"`
+	Panels   []Panel          `json:"panels"`
+	Sections []Section        `json:"sections"`
+	Tags     *[]AnnotationTag `json:"tags,omitempty"`
+	Time     *TimeRange       `json:"time,omitempty"`
+	Title    string           `json:"title"`
 }
 
 // BoardSummary defines model for BoardSummary.
 type BoardSummary struct {
-	Title     string    `json:"title"`
-	Uid       string    `json:"uid"`
-	UpdatedAt time.Time `json:"updated_at"`
-	UpdatedBy Author    `json:"updated_by"`
-	Version   int64     `json:"version"`
+	// Tags null = not yet known
+	Tags      *[]AnnotationTag `json:"tags"`
+	Title     string           `json:"title"`
+	Uid       string           `json:"uid"`
+	UpdatedAt time.Time        `json:"updated_at"`
+	UpdatedBy Author           `json:"updated_by"`
+	Version   int64            `json:"version"`
 }
 
 // BoardUpdate defines model for BoardUpdate.
@@ -1350,6 +1366,13 @@ type To = int64
 // RateLimited defines model for RateLimited.
 type RateLimited = ErrorEnvelope
 
+// ListBoardsParams defines parameters for ListBoards.
+type ListBoardsParams struct {
+	// Q Title substring or exact tag, ASCII case-insensitive; 1–100 characters, no Cc
+	Q   *string        `form:"q,omitempty" json:"q,omitempty"`
+	Tag *AnnotationTag `form:"tag,omitempty" json:"tag,omitempty"`
+}
+
 // DeleteBoardParams defines parameters for DeleteBoard.
 type DeleteBoardParams struct {
 	IfMatch *string `json:"If-Match,omitempty"`
@@ -1634,7 +1657,7 @@ func (t *LogqlRangeResponse) UnmarshalJSON(b []byte) error {
 type ServerInterface interface {
 
 	// (GET /api/dash/v1/boards)
-	ListBoards(w http.ResponseWriter, r *http.Request)
+	ListBoards(w http.ResponseWriter, r *http.Request, params ListBoardsParams)
 
 	// (POST /api/dash/v1/boards)
 	CreateBoard(w http.ResponseWriter, r *http.Request)
@@ -1708,7 +1731,7 @@ type ServerInterface interface {
 type Unimplemented struct{}
 
 // (GET /api/dash/v1/boards)
-func (_ Unimplemented) ListBoards(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) ListBoards(w http.ResponseWriter, r *http.Request, params ListBoardsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1834,8 +1857,40 @@ type MiddlewareFunc func(http.Handler) http.Handler
 // ListBoards operation middleware
 func (siw *ServerInterfaceWrapper) ListBoards(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBoardsParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListBoards(w, r)
+		siw.Handler.ListBoards(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3012,6 +3067,7 @@ type RateLimitedJSONResponse struct {
 }
 
 type ListBoardsRequestObject struct {
+	Params ListBoardsParams
 }
 
 type ListBoardsResponseObject interface {
@@ -3028,6 +3084,20 @@ func (response ListBoards200JSONResponse) VisitListBoardsResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBoards400JSONResponse ErrorEnvelope
+
+func (response ListBoards400JSONResponse) VisitListBoardsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4314,8 +4384,10 @@ type strictHandler struct {
 }
 
 // ListBoards operation middleware
-func (sh *strictHandler) ListBoards(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) ListBoards(w http.ResponseWriter, r *http.Request, params ListBoardsParams) {
 	var request ListBoardsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListBoards(ctx, request.(ListBoardsRequestObject))

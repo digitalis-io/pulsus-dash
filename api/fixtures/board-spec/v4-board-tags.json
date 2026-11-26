@@ -1,0 +1,14 @@
+{
+  "title": "Tagged",
+  "tags": ["team:payments", "prod"],
+  "panels": [
+    {
+      "id": "p-1",
+      "title": "Requests",
+      "grid": { "x": 0, "y": 0, "w": 6, "h": 8 },
+      "query": { "lang": "promql", "text": "sum(rate(http_requests_total[5m]))" },
+      "vis": { "kind": "line" }
+    }
+  ],
+  "sections": []
+}

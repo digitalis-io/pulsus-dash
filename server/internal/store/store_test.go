@@ -87,8 +87,8 @@ func TestMigrationFiles(t *testing.T) {
 			t.Errorf("%s has a -- +goose Down section (T11-012)", e.Name())
 		}
 	}
-	if got := SchemaLatest(); got != 3 {
-		t.Errorf("SchemaLatest() = %d, want 3", got)
+	if got := SchemaLatest(); got != 4 {
+		t.Errorf("SchemaLatest() = %d, want 4", got)
 	}
 }
 

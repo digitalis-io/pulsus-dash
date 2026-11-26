@@ -227,15 +227,15 @@ func (b *boards) ListBoards(ctx context.Context, _ api.ListBoardsRequestObject) 
 	if !b.available() {
 		return errUnavailable, nil
 	}
-	items, truncated, err := b.deps.Boards.ListBoards(ctx, rcFrom(ctx))
+	page, err := b.deps.Boards.ListBoards(ctx, rcFrom(ctx), core.BoardFilter{})
 	if err != nil {
 		return b.fail(ctx, "list", err, nil), nil
 	}
-	out := make([]api.BoardSummary, 0, len(items))
-	for _, s := range items {
+	out := make([]api.BoardSummary, 0, len(page.Items))
+	for _, s := range page.Items {
 		out = append(out, api.BoardSummary{Uid: s.UID, Title: s.Title, Version: s.Version, UpdatedAt: s.UpdatedAt, UpdatedBy: author(s.UpdatedBy)})
 	}
-	return api.ListBoards200JSONResponse{Items: out, Truncated: truncated}, nil
+	return api.ListBoards200JSONResponse{Items: out, Truncated: page.Truncated}, nil
 }
 
 func (b *boards) CreateBoard(ctx context.Context, req api.CreateBoardRequestObject) (api.CreateBoardResponseObject, error) {
@@ -322,7 +322,7 @@ func (b *boards) ListStarredBoards(ctx context.Context, _ api.ListStarredBoardsR
 	if !b.available() {
 		return errUnavailable, nil
 	}
-	refs, err := b.deps.Boards.ListStarred(ctx, rcFrom(ctx))
+	refs, _, err := b.deps.Boards.ListStarred(ctx, rcFrom(ctx))
 	if err != nil {
 		return b.fail(ctx, "list_starred", err, nil), nil
 	}
@@ -364,7 +364,7 @@ func (b *boards) ListRecentBoards(ctx context.Context, req api.ListRecentBoardsR
 	if req.Params.Limit != nil {
 		limit = min(max(*req.Params.Limit, 1), recentMax)
 	}
-	refs, err := b.deps.Boards.ListRecent(ctx, rcFrom(ctx), limit)
+	refs, _, err := b.deps.Boards.ListRecent(ctx, rcFrom(ctx), limit)
 	if err != nil {
 		return b.fail(ctx, "list_recent", err, nil), nil
 	}

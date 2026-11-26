@@ -73,7 +73,7 @@ func (t *OrgTx) EnsureRootFolder(ctx context.Context) (uuid.UUID, error) {
 
 // InsertBoard inserts a board head at version 1 and ETag 1. It returns false, writing nothing,
 // when the uid is taken in the organisation.
-func (t *OrgTx) InsertBoard(ctx context.Context, id uuid.UUID, uid string, folder uuid.UUID, title string) (bool, error) {
+func (t *OrgTx) InsertBoard(ctx context.Context, id uuid.UUID, uid string, folder uuid.UUID, title string, _ []string) (bool, error) {
 	_, err := t.q.InsertBoard(ctx, dbgen.InsertBoardParams{OrgID: pgUUID(t.org), ID: pgUUID(id), Uid: uid, FolderID: pgUUID(folder), Title: title})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
@@ -121,7 +121,7 @@ func (t *OrgTx) BoardHead(ctx context.Context, uid string) (BoardHead, error) {
 }
 
 // MoveBoardHead points the board at version, sets its title and increments its ETag.
-func (t *OrgTx) MoveBoardHead(ctx context.Context, id uuid.UUID, version int64, title string) error {
+func (t *OrgTx) MoveBoardHead(ctx context.Context, id uuid.UUID, version int64, title string, _ []string) error {
 	if err := t.q.MoveBoardHead(ctx, dbgen.MoveBoardHeadParams{OrgID: pgUUID(t.org), ID: pgUUID(id), HeadVersion: version, Title: title}); err != nil {
 		return fmt.Errorf("store: move board head: %w", err)
 	}
@@ -138,10 +138,10 @@ func (t *OrgTx) SoftDeleteBoard(ctx context.Context, id uuid.UUID) error {
 
 // ListBoards returns at most 1000 live boards, most recently updated first, and whether more
 // exist.
-func (t *OrgTx) ListBoards(ctx context.Context) ([]core.BoardSummary, bool, error) {
+func (t *OrgTx) ListBoards(ctx context.Context, _ core.BoardFilter) ([]core.BoardSummary, bool, int64, error) {
 	rows, err := t.q.ListBoards(ctx, pgUUID(t.org))
 	if err != nil {
-		return nil, false, fmt.Errorf("store: list boards: %w", err)
+		return nil, false, 0, fmt.Errorf("store: list boards: %w", err)
 	}
 	truncated := len(rows) > listBoardsMax
 	if truncated {
@@ -152,8 +152,14 @@ func (t *OrgTx) ListBoards(ctx context.Context) ([]core.BoardSummary, bool, erro
 		out = append(out, core.BoardSummary{UID: r.Uid, Title: r.Title, Version: r.HeadVersion,
 			UpdatedAt: r.CreatedAt.Time, UpdatedBy: actorOf(r.AuthorKind, r.AuthorID)})
 	}
-	return out, truncated, nil
+	return out, truncated, 0, nil
 }
+
+// RepairBoardTags is a stub (tests first).
+func (t *OrgTx) RepairBoardTags(context.Context) (int64, error) { return 0, nil }
+
+// SQLState is a stub (tests first).
+func SQLState(error) string { return "" }
 
 // BoardID returns a live board's id and title, or core.ErrNotFound.
 func (t *OrgTx) BoardID(ctx context.Context, uid string) (uuid.UUID, string, error) {
@@ -192,13 +198,14 @@ func refs(op string, uids, titles []string, err error) ([]core.BoardRef, error) 
 }
 
 // ListStarred returns at most 200 live boards the user starred, ordered by title.
-func (t *OrgTx) ListStarred(ctx context.Context, user uuid.UUID) ([]core.BoardRef, error) {
+func (t *OrgTx) ListStarred(ctx context.Context, user uuid.UUID) ([]core.BoardRef, bool, error) {
 	rows, err := t.q.ListStarred(ctx, dbgen.ListStarredParams{OrgID: pgUUID(t.org), UserID: pgUUID(user)})
 	var uids, titles []string
 	for _, r := range rows {
 		uids, titles = append(uids, r.Uid), append(titles, r.Title)
 	}
-	return refs("list starred", uids, titles, err)
+	out, err := refs("list starred", uids, titles, err)
+	return out, false, err
 }
 
 // RecordView records that user viewed the board at `at` (the client's navigation time, clamped to
@@ -225,11 +232,12 @@ func (t *OrgTx) RecordView(ctx context.Context, user, board uuid.UUID, at *time.
 }
 
 // ListRecent returns at most limit live boards the user viewed, most recent first.
-func (t *OrgTx) ListRecent(ctx context.Context, user uuid.UUID, limit int) ([]core.BoardRef, error) {
+func (t *OrgTx) ListRecent(ctx context.Context, user uuid.UUID, limit int) ([]core.BoardRef, bool, error) {
 	rows, err := t.q.ListRecent(ctx, dbgen.ListRecentParams{OrgID: pgUUID(t.org), UserID: pgUUID(user), Limit: int32(min(max(limit, 0), 200))}) //nolint:gosec // clamped to 0…200
 	var uids, titles []string
 	for _, r := range rows {
 		uids, titles = append(uids, r.Uid), append(titles, r.Title)
 	}
-	return refs("list recent", uids, titles, err)
+	out, err := refs("list recent", uids, titles, err)
+	return out, false, err
 }
