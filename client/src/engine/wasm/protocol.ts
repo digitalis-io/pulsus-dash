@@ -1,10 +1,13 @@
 /**
- * Messages between the main thread and the engine workers (plan #68 C1 §3.5), tagged `t`.
+ * Messages between the main thread and the engine workers (plan #68 C1 §3.5, C2a1 §3.4), tagged
+ * `t`.
  *
  * Main → render: `boot`, then per frame `create` (the canvas transferred), `spec`, `data` (series
- * cloned; heatmap and scalar data `null`), `window`, `theme` (0 dark, 1 light), `resize` and
- * `dispose`. Render → main: `status` (after `engine_start`, with the shared memory), `spawn-pool`
+ * cloned; heatmap and scalar data `null`), `theme` (0 dark, 1 light) and `dispose`; `input` wakes
+ * an idle worker after a publish to the input ring (the camera and the size travel there,
+ * `ring.ts`). Render → main: `status` (after `engine_start`, with the shared memory), `spawn-pool`
  * (one per pool thread) and `events` (one JSON array per animation frame). Main → pool: `pool`.
+ * The probe build adds `probe-input` both ways (the worker's decoded records, `e2e:shim-fuzz`).
  */
 import type { DrawnEvent, FrameSummary } from '../api';
 
@@ -28,6 +31,8 @@ export interface BootMessage {
   readonly pool: number;
   /** Fault builds only: the fault's name (`engine/faults.ts`). */
   readonly fault?: string;
+  /** The probe build only: the input ring's counters start here (`engine_probe_ring_start`). */
+  readonly ringStart?: number;
 }
 
 export type MainToRender =
@@ -40,16 +45,12 @@ export type MainToRender =
     }
   | { readonly t: 'spec'; readonly id: number; readonly json: string }
   | { readonly t: 'data'; readonly id: number; readonly series: readonly SeriesMessage[] | null }
-  | { readonly t: 'window'; readonly id: number; readonly from: number; readonly to: number }
   | { readonly t: 'theme'; readonly id: number; readonly theme: 0 | 1 }
-  | {
-      readonly t: 'resize';
-      readonly id: number;
-      readonly w: number;
-      readonly h: number;
-      readonly dpr: number;
-    }
-  | { readonly t: 'dispose'; readonly id: number };
+  | { readonly t: 'dispose'; readonly id: number }
+  /** A record was published while the worker was idle (T03-004 revised). */
+  | { readonly t: 'input' }
+  /** The probe build: post the decoded input records back. */
+  | { readonly t: 'probe-input' };
 
 export type RenderToMain =
   | {
@@ -60,7 +61,9 @@ export type RenderToMain =
       readonly memory: WebAssembly.Memory;
     }
   | { readonly t: 'spawn-pool'; readonly ptr: number }
-  | { readonly t: 'events'; readonly json: string };
+  | { readonly t: 'events'; readonly json: string }
+  /** The probe build: `engine_probe_input()`, a JSON array of `InputRec`. */
+  | { readonly t: 'probe-input'; readonly json: string };
 
 export interface PoolMessage {
   readonly t: 'pool';

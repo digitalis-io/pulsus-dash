@@ -35,6 +35,10 @@ export interface RenderOptions {
   readonly onEvents: (json: string) => void;
   /** An uncaught error in the render worker (a trap). */
   readonly onError: (e: unknown) => void;
+  /** The probe build: the input ring's start (`BootMessage.ringStart`). */
+  readonly ringStart?: number;
+  /** The probe build: the worker's `probe-input` reply. */
+  readonly onProbeInput?: (json: string) => void;
 }
 
 export interface RenderHandle {
@@ -114,6 +118,9 @@ export function startRender(o: RenderOptions): RenderHandle {
       case 'events':
         o.onEvents(m.json);
         return;
+      case 'probe-input':
+        o.onProbeInput?.(m.json);
+        return;
     }
   });
   worker.addEventListener('error', (e) => {
@@ -129,6 +136,7 @@ export function startRender(o: RenderOptions): RenderHandle {
     mainTimeOrigin: typeof performance === 'undefined' ? 0 : performance.timeOrigin,
     pool: poolSize(typeof navigator === 'undefined' ? 4 : navigator.hardwareConcurrency || 4),
     ...(o.fault === undefined ? {} : { fault: o.fault }),
+    ...(o.ringStart === undefined ? {} : { ringStart: o.ringStart }),
   };
   worker.postMessage(boot);
   return {

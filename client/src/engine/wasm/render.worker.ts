@@ -4,6 +4,11 @@
  * the frame loop on the worker's animation frames: each `engine_tick` builds, draws and presents
  * the dirty frames and returns their events, posted as one `events` message. Worker times are
  * reported on the main thread's time origin.
+ *
+ * Part C2a1 (§4.2): the camera and the size arrive in the input ring, which `engine_tick` reads
+ * first; `input` (posted by the adapter after a publish while this worker was idle) only wakes
+ * the loop. The probe build (`VITE_ENGINE_PROBE=1`, `e2e:shim-fuzz` only) answers `probe-input`
+ * with the decoded records and starts the ring's counters at `ringStart`.
  */
 import init, {
   engine_on_wake,
@@ -16,10 +21,8 @@ import init, {
   frame_data_end,
   frame_data_series,
   frame_dispose,
-  frame_resize,
   frame_set_spec,
   frame_set_theme,
-  frame_set_window,
   pool_start,
 } from 'virtual:dash-engine';
 import { frameLoop } from './loop';
@@ -29,6 +32,12 @@ interface Scope {
   postMessage(msg: RenderToMain): void;
   addEventListener(type: 'message', cb: (e: MessageEvent<MainToRender>) => void): void;
   requestAnimationFrame(cb: () => void): number;
+}
+
+/** The probe build's exports (`--features probe`; not in the committed release `.d.ts`). */
+interface ProbeExports {
+  engine_probe_input(): string;
+  engine_probe_ring_start(v: number): void;
 }
 
 interface Faults {
@@ -74,6 +83,11 @@ function apply(m: MainToRender): void {
   switch (m.t) {
     case 'boot':
       return;
+    case 'input':
+      break;
+    case 'probe-input':
+      if (import.meta.env.VITE_ENGINE_PROBE === '1') void probeInput();
+      return;
     case 'create':
       if (faults?.failCreate(m.id) === true) {
         scope.postMessage({
@@ -115,20 +129,20 @@ function apply(m: MainToRender): void {
         frame_data_clear(m.id);
       }
       break;
-    case 'window':
-      frame_set_window(m.id, m.from, m.to);
-      break;
     case 'theme':
       frame_set_theme(m.id, m.theme);
-      break;
-    case 'resize':
-      frame_resize(m.id, m.w, m.h, m.dpr);
       break;
     case 'dispose':
       frame_dispose(m.id);
       return;
   }
   schedule();
+}
+
+/** The probe build: the decoded records, posted back. */
+async function probeInput(): Promise<void> {
+  const p = (await import('virtual:dash-engine')) as unknown as ProbeExports;
+  scope.postMessage({ t: 'probe-input', json: p.engine_probe_input() });
 }
 
 async function boot(m: BootMessage): Promise<void> {
@@ -141,6 +155,10 @@ async function boot(m: BootMessage): Promise<void> {
   // The engine wakes the loop itself after a device loss or a restore while idle.
   engine_on_wake(schedule);
   const st = await engine_start(m.forceT2, m.caps, 1);
+  if (import.meta.env.VITE_ENGINE_PROBE === '1' && m.ringStart !== undefined) {
+    const p = (await import('virtual:dash-engine')) as unknown as ProbeExports;
+    p.engine_probe_ring_start(m.ringStart);
+  }
   scope.postMessage({
     t: 'status',
     status: st.status,
