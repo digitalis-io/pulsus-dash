@@ -118,7 +118,7 @@ function Group({
       <h2 className={cx(styles['heading'])}>{heading}</h2>
       {query.isError && query.data === undefined && <p className={cx(styles['empty'])}>{failed}</p>}
       {query.data !== undefined && (
-        <BoardLinks boards={query.data} tenant={tenant} empty={empty} star={star} />
+        <BoardLinks boards={query.data.items} tenant={tenant} empty={empty} star={star} />
       )}
     </>
   );

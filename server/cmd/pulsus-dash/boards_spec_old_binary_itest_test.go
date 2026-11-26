@@ -53,8 +53,16 @@ func firstField(t *testing.T, b []byte) string {
 	return p + " " + k
 }
 
-// withClock is spec with a clock panel added below its top-level panels.
-func withClock(t *testing.T, raw []byte) []byte {
+// newFixture is this release's fixture of its newest spec version (v6, #216 Part 1), whose first
+// panel is of the newest kind; oldRefusal is the previous release's first field error for it (a v5
+// binary knows no boardList kind, T05 §7.1).
+const (
+	newFixture = "v6-board-list.json"
+	oldRefusal = "/panels/0/vis/kind board.vis.kind.invalid"
+)
+
+// withBoardList is spec with a board list panel added below its top-level panels.
+func withBoardList(t *testing.T, raw []byte) []byte {
 	t.Helper()
 	var s map[string]any
 	if err := json.Unmarshal(raw, &s); err != nil {
@@ -68,8 +76,8 @@ func withClock(t *testing.T, raw []byte) []byte {
 		h, _ := g["h"].(float64)
 		bottom = max(bottom, y+h)
 	}
-	s["panels"] = append(panels, map[string]any{"id": "widget-clock", "title": "Clock",
-		"grid": map[string]any{"x": 0, "y": bottom, "w": 4, "h": 4}, "vis": map[string]any{"kind": "clock"}})
+	s["panels"] = append(panels, map[string]any{"id": "widget-list", "title": "Boards",
+		"grid": map[string]any{"x": 0, "y": bottom, "w": 4, "h": 4}, "vis": map[string]any{"kind": "boardList"}})
 	b, err := json.Marshal(s)
 	if err != nil {
 		t.Fatal(err)
@@ -77,9 +85,10 @@ func withClock(t *testing.T, raw []byte) []byte {
 	return b
 }
 
-// itest:board-spec-old-binary (T11-015, T11-016; plan #198 Part 1 §4.4): the previous release,
-// at an older board spec version, beside this one on one database. It cannot read or overwrite a
-// head this release saved with widgets, refuses a widget spec on its own writes, and keeps working.
+// itest:board-spec-old-binary (T11-015, T11-016; plan #198 Part 1 §4.4, plan #216 Part 1 §4.5): the
+// previous release, at an older board spec version, beside this one on one database. It cannot
+// read or overwrite a head this release saved at the newest version, refuses a spec of the newest
+// kind on its own writes, and keeps working.
 func TestBoardSpecOldBinary(t *testing.T) {
 	bin := oldBinary(t)
 	if oldSpecVersion(t) == spec.BoardSchemaVersion {
@@ -105,8 +114,8 @@ func TestBoardSpecOldBinary(t *testing.T) {
 			}
 			const tooNew = "board saved by a newer server version"
 
-			// 2 this release creates W, a board with widgets.
-			w := specFixture(t, "v5-widgets.json")
+			// 2 this release creates W from the newest fixture.
+			w := specFixture(t, newFixture)
 			canonW, err := spec.Canonical(w)
 			if err != nil {
 				t.Fatal(err)
@@ -145,14 +154,13 @@ func TestBoardSpecOldBinary(t *testing.T) {
 				t.Errorf("old list = %d %s, want W listed", code, b)
 			}
 
-			// 4 the previous release refuses a widget spec on create.
-			const noQuery = "/panels/0/query board.json.required"
-			if code, _, b := doAt(t, old, "POST", boardsURL, []byte(`{"spec":`+string(w)+`}`)); code != 400 || firstField(t, b) != noQuery {
-				t.Errorf("old create of W's spec = %d %s, want 400 %s", code, b, noQuery)
+			// 4 the previous release refuses W's spec on create.
+			if code, _, b := doAt(t, old, "POST", boardsURL, []byte(`{"spec":`+string(w)+`}`)); code != 400 || firstField(t, b) != oldRefusal {
+				t.Errorf("old create of W's spec = %d %s, want 400 %s", code, b, oldRefusal)
 			}
 
-			// 5 the previous release creates V from its own fixture and cannot save a widget spec
-			// over it; this release reads V, saves it with a clock, and the previous release is
+			// 5 the previous release creates V from its own fixture and cannot save W's spec over
+			// it; this release reads V, saves it with a board list, and the previous release is
 			// then refused.
 			code, _, b = doAt(t, old, "POST", boardsURL, []byte(`{"spec":`+string(vSpec)+`}`))
 			if code != 201 {
@@ -160,8 +168,8 @@ func TestBoardSpecOldBinary(t *testing.T) {
 			}
 			vUID, _ := obj(t, b)["uid"].(string)
 			before := headOf(vUID)
-			if code, _, b := doAt(t, old, "PUT", boardsURL+"/"+vUID, []byte(`{"spec":`+string(w)+`}`), "If-Match", `"1"`); code != 400 || firstField(t, b) != noQuery {
-				t.Errorf("old save of W's spec over V = %d %s, want 400 %s", code, b, noQuery)
+			if code, _, b := doAt(t, old, "PUT", boardsURL+"/"+vUID, []byte(`{"spec":`+string(w)+`}`), "If-Match", `"1"`); code != 400 || firstField(t, b) != oldRefusal {
+				t.Errorf("old save of W's spec over V = %d %s, want 400 %s", code, b, oldRefusal)
 			}
 			if after, v := headOf(vUID), versionsOf(vUID); after != before || v != 1 {
 				t.Errorf("V head %s with %d versions, want %s with 1", after, v, before)
@@ -174,8 +182,8 @@ func TestBoardSpecOldBinary(t *testing.T) {
 			if m := obj(t, b); code != 200 || m["schema_version"] != float64(spec.BoardSchemaVersion) || string(raw(m, "spec")) != string(canonV) {
 				t.Errorf("N get V = %d %s, want schema_version %d and V's canonical spec", code, b, spec.BoardSchemaVersion)
 			}
-			if code, _, b := do(t, n, "PUT", boardsURL+"/"+vUID, []byte(`{"spec":`+string(withClock(t, canonV))+`}`), "If-Match", `"1"`); code != 200 {
-				t.Errorf("N save V with a clock = %d %s, want 200", code, b)
+			if code, _, b := do(t, n, "PUT", boardsURL+"/"+vUID, []byte(`{"spec":`+string(withBoardList(t, canonV))+`}`), "If-Match", `"1"`); code != 200 {
+				t.Errorf("N save V with a board list = %d %s, want 200", code, b)
 			}
 			if code, _, b := doAt(t, old, "GET", boardsURL+"/"+vUID, nil); code != 503 || errMsg(t, b) != tooNew {
 				t.Errorf("old get V = %d %s, want 503 %s", code, b, tooNew)

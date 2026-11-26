@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { StubApi } from '../../api/StubApi';
-import { ApiError, BoardConflictError, type BoardList } from '../../api/types';
+import { ApiError, BoardConflictError, type BoardPage } from '../../api/types';
 import { formatDate, formatTime } from '../../i18n/format';
 import { failingApi } from '../../test/failingApi';
 import { seedWith } from '../../test/seeds';
@@ -140,7 +140,7 @@ describe('board list', () => {
     empty.view.unmount();
 
     class Truncated extends StubApi {
-      override async listBoards(tenant: string, signal?: AbortSignal): Promise<BoardList> {
+      override async listBoards(tenant: string, signal?: AbortSignal): Promise<BoardPage> {
         return { ...(await super.listBoards(tenant, signal)), truncated: true };
       }
     }

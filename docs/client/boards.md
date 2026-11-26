@@ -228,7 +228,7 @@ no editor for them yet (the tags editor and the Board list widget come with #216
 
 `canonicalJson` is unchanged: the client never creates `tags`, and heads come canonical from the
 server, where `tags: []` is stored as no key. The list's `tags`, `applied` and `tagsStale` members
-are not read by the client yet (#216).
+are read by the API layer ([board list pages](#board-list-pages-and-filters-216-part-1)).
 
 ### Widgets and the query typing (#198 Part 1)
 
@@ -251,6 +251,45 @@ reader that forgets the widgets:
 `checkBoardSpec` checks the v5 rules as the server does, in the same order and with the same
 pointers and keys ([the widgets page](widgets.md#validation)); the client does not know which zones
 exist, so `w-zone-unknown` is the one `invalid.json` row whose `client_fields` (none) differ.
+
+### Board list pages and filters (#216 Part 1)
+
+The board list calls of `Api` (`api/Api.ts`) return pages, so a list can tell what the server
+applied and whether it stopped early (T24 §5.7):
+
+```ts
+listBoards(tenant, signal?, f?: { q?: string; tag?: string }): Promise<BoardPage>;
+listStarred(tenant, signal?): Promise<RefPage>;
+listRecent(tenant, signal?, limit?: number): Promise<RefPage>;   // limit defaults to RECENT_LIMIT (5)
+```
+
+| Type | Members |
+|---|---|
+| `BoardPage` | `items` (`BoardListItem`: a `BoardSummary` with `tags`, `null` when not known), `truncated`, `applied` (`{q?, tag?}`, or `null` from an old server), `tagsStale` |
+| `RefPage` | `items` (`BoardRef`), `truncated`, `applied` (`{}`, or `null` from an old server) |
+
+`HttpApi` sends `q` only when it is non-empty and `tag` only when it is given (`GET
+/api/dash/v1/boards?q=x&tag=a`), and `limit` on every Recent call. An **old server** (one before
+the board search, #215) answers without `applied`; `HttpApi` checks each member with `Object.hasOwn`
+(the generated types call them required) and decodes a missing `applied` as `null`, `tagsStale` as
+0, an item's `tags` as `null` and a Starred or Recent `truncated` as `false`. The list modules then
+treat the answer as of unknown coverage ([widgets](widgets.md#board-list-in-progress)).
+
+`StubApi` answers as the BFF: `q` matches when the ASCII-lower title contains the ASCII-lower `q`
+or that equals a tag, `tag` when it equals a tag, and both must hold; most recently updated first;
+the item tags are the spec's (`[]` for none); `applied` is the filter sent and `tagsStale` 0. Its
+`truncated` is computed before the cut, as the BFF's: boards over 1 000, starred over 200, recent
+over the limit.
+
+`SidebarBoards` and the board header's star read `.items`; their query keys (`['boards', tenant]`,
+`['starred', tenant]`, `['recent', tenant]`) are unchanged, so the invalidations of
+`invalidateBoardLists` and `BoardPrefs` still reach them.
+
+Board spec v6 ([the boards API](../server/boards-api.md#board-list-boardlist-v6)) adds the widget kind
+`boardList`. `checkBoardSpec` checks its rules as the server does (the `bl-` rows of `invalid.json`
+and `v6-board-list.json`, the canonical SHA-256 included). `mode` and `sort` are shared keys, so
+their readers guard them: `textOptions` takes `mode` only when `isTextMode` (else `markdown`), and
+`barchartOptions` `sort` only when `isChartSort` (else `valueDesc`).
 
 ## Thresholds, legends and stat tiles (#64 Part B)
 

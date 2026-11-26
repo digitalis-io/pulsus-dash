@@ -72,7 +72,8 @@ var (
 	// optional; optionKinds lists the keys each kind allows. Both equal
 	// api/fixtures/board-spec/option-keys.json. Board spec v5 (#198 Part 1, T24 §5.1) adds the text
 	// and clock keys: zones is an array of {tz, label}, countdown an object {to, label, after}, every
-	// member a required string (OPTION_MEMBERS).
+	// member a required string (OPTION_MEMBERS). Board spec v6 (#216 Part 1, T24 §5.5) adds the
+	// board list's query, tag and limit (a number here; the rules pass requires an integer).
 	optionFields = []field{{"reducer", false, tString}, {"baselineOffset", false, tString},
 		{"categoryBy", false, tString}, {"sort", false, tString}, {"orientation", false, tString},
 		{"valueLabels", false, tBool}, {"min", false, tNumber}, {"max", false, tNumber},
@@ -82,20 +83,22 @@ var (
 		{"mode", false, tString}, {"content", false, tString}, {"language", false, tString},
 		{"zones", false, valueType{kind: kArray, elem: &valueType{kind: kObject, shape: zoneShape}}},
 		{"hourCycle", false, tString}, {"seconds", false, tBool}, {"date", false, tBool},
-		{"countdown", false, valueType{kind: kObject, shape: countdownShape}}}
+		{"countdown", false, valueType{kind: kObject, shape: countdownShape}},
+		{"query", false, tString}, {"tag", false, tString}, {"limit", false, tNumber}}
 	zoneShape      = []field{{"tz", true, tString}, {"label", true, tString}}
 	countdownShape = []field{{"to", true, tString}, {"label", true, tString}, {"after", true, tString}}
 	optionKinds    = map[string][]string{
-		"auto":     {"reducer", "parts"},
-		"line":     {},
-		"bars":     {},
-		"heatmap":  {},
-		"stat":     {"reducer", "baselineOffset", "sort", "orientation", "min", "max", "layout", "colourMode", "textMode", "graphMode"},
-		"logs":     {},
-		"barchart": {"reducer", "baselineOffset", "categoryBy", "sort", "orientation", "valueLabels", "min", "max"},
-		"pie":      {"reducer", "categoryBy", "sort", "donut", "labels", "parts"},
-		"text":     {"mode", "content", "language"},
-		"clock":    {"zones", "hourCycle", "seconds", "date", "countdown"},
+		"auto":      {"reducer", "parts"},
+		"line":      {},
+		"bars":      {},
+		"heatmap":   {},
+		"stat":      {"reducer", "baselineOffset", "sort", "orientation", "min", "max", "layout", "colourMode", "textMode", "graphMode"},
+		"logs":      {},
+		"barchart":  {"reducer", "baselineOffset", "categoryBy", "sort", "orientation", "valueLabels", "min", "max"},
+		"pie":       {"reducer", "categoryBy", "sort", "donut", "labels", "parts"},
+		"text":      {"mode", "content", "language"},
+		"clock":     {"zones", "hourCycle", "seconds", "date", "countdown"},
+		"boardList": {"sort", "mode", "query", "tag", "limit"},
 	}
 	panelShape = []field{{"id", true, tString}, {"title", true, tString},
 		{"grid", true, valueType{kind: kObject, shape: gridShape}},

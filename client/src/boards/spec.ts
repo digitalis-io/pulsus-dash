@@ -1,7 +1,8 @@
 /**
- * Board spec v5 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2, v3 by plan #173
+ * Board spec v6 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2, v3 by plan #173
  * Part 1 §3.2–3.4, v4 by plan #215 §3.7: tags, accepted and kept; v5 by plan #198 Part 1 §4.1:
- * widgets, query optional, text and clock): the server's validator
+ * widgets, query optional, text and clock; v6 by plan #216 Part 1 §4.1: the board list): the
+ * server's validator
  * (`server/internal/spec/shape.go`, `validate.go`) ported to parsed JSON, canonical JSON and panel
  * ids. The two are held together by the shared fixtures `api/fixtures/board-spec/`.
  *
@@ -23,6 +24,8 @@ import { FILTER_LABEL } from '../state/boardParams';
 import { MAX_THRESHOLD_STEPS } from '../vis/thresholds';
 import { fits, overlaps } from './layout';
 import {
+  BOARD_LIMIT,
+  MAX_BOARD_QUERY,
   MAX_OPTION_ABS,
   OPTION_KEYS,
   OPTION_MEMBERS,
@@ -95,6 +98,7 @@ const VIS_KINDS: readonly string[] = [
   'pie',
   'text',
   'clock',
+  'boardList',
 ];
 const TIME_PATTERN =
   /^(now|now\/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$/;
@@ -283,6 +287,18 @@ function checkShape(c: Collector, pointer: string, value: unknown, t: ValueType)
   }
 }
 
+/** A C0 or C1 control character (U+0000–001F, U+007F–009F). */
+// eslint-disable-next-line no-control-regex -- the Go validBoardQuery rule names exactly these
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+
+/**
+ * Whether `s` is a board list's search text (the Go `validBoardQuery`): at most `MAX_BOARD_QUERY`
+ * code points with no control character.
+ */
+export function isBoardQuery(s: string): boolean {
+  return !CONTROL.test(s) && runes(s) <= MAX_BOARD_QUERY;
+}
+
 /** Code points, as Go's `utf8.RuneCountInString`. */
 function runes(s: string): number {
   return Array.from(s).length;
@@ -401,7 +417,7 @@ function checkRules(c: Collector, b: BoardSpec): void {
         s !== '' && !FILTER_LABEL.test(s) ? invalid('categoryBy') : null,
       );
     }
-    enumOf('sort', o.sort, OPTION_VALUES.sort);
+    enumOf('sort', o.sort, kind === 'boardList' ? OPTION_VALUES.boardListSort : OPTION_VALUES.sort);
     enumOf(
       'orientation',
       o.orientation,
@@ -424,14 +440,15 @@ function checkRules(c: Collector, b: BoardSpec): void {
       );
     }
     enumOf('graphMode', o.graphMode, OPTION_VALUES.graphMode);
-    widgetOptions(pointer, o);
+    widgetOptions(pointer, kind, o);
+    if (kind === 'boardList') boardListOptions(pointer, o);
   };
   // The text and clock options (`validate.go` `widgetOptions`, board spec v5): zone existence is
-  // the server's only.
-  const widgetOptions = (pointer: string, o: VisOptions): void => {
+  // the server's only; mode takes the kind's values (text, or the board list's by v6).
+  const widgetOptions = (pointer: string, kind: PanelVisKind, o: VisOptions): void => {
     const key = (rule: string): string => `board.options.${rule}`;
-    if (o.mode !== undefined)
-      str(`${pointer}/mode`, o.mode, oneOf(OPTION_VALUES.mode, key('mode.invalid')));
+    const modes = kind === 'boardList' ? OPTION_VALUES.boardListMode : OPTION_VALUES.mode;
+    if (o.mode !== undefined) str(`${pointer}/mode`, o.mode, oneOf(modes, key('mode.invalid')));
     if (o.content !== undefined) {
       str(`${pointer}/content`, o.content, (s) =>
         utf8Bytes(s) > MAX_CONTENT_BYTES ? key('content.tooLong') : null,
@@ -461,6 +478,27 @@ function checkRules(c: Collector, b: BoardSpec): void {
         runes(s) < 1 || runes(s) > MAX_WIDGET_LABEL ? invalid : null,
       );
       str(`${pointer}/countdown/after`, cd.after, oneOf(OPTION_VALUES.after, invalid));
+    }
+  };
+  // A board list's query, tag and limit (`validate.go` `boardListOptions`, board spec v6): the mode
+  // is starred when absent; an invalid mode skips the mode rules.
+  const boardListOptions = (pointer: string, o: VisOptions): void => {
+    const m: string = o.mode ?? 'starred';
+    const modeValid = (OPTION_VALUES.boardListMode as readonly string[]).includes(m);
+    const invalid = (k: string): string => `board.options.${k}.invalid`;
+    if (o.query !== undefined) {
+      str(`${pointer}/query`, o.query, (s) =>
+        !isBoardQuery(s) || (modeValid && m !== 'search') ? invalid('query') : null,
+      );
+    }
+    if (o.tag !== undefined) {
+      str(`${pointer}/tag`, o.tag, (s) =>
+        !TAG_PATTERN.test(s) || (modeValid && m !== 'tag') ? invalid('tag') : null,
+      );
+    } else if (modeValid && m === 'tag') c.add(`${pointer}/tag`, invalid('tag'));
+    const n = o.limit;
+    if (n !== undefined && (!Number.isInteger(n) || n < BOARD_LIMIT.min || n > BOARD_LIMIT.max)) {
+      c.add(`${pointer}/limit`, invalid('limit'));
     }
   };
   // A clock's zones (`validate.go` `zones`): 1 to 12 at the list, then each tz and label.
@@ -566,12 +604,23 @@ export function nextId(spec: BoardSpec, prefix: string): string {
  * True when `v` is a valid value of option `key` on a `kind` panel (plan #173 Part 3a §3.9): the
  * validator's own shape and rules, run on a one-panel board with only that key, report nothing at
  * the key. Rules between keys are not seen: min ≥ max and `textMode` with a grid layout are
- * `keepOptions`'; a `language` is checked as for `mode: code`. A key the kind does not allow is
- * not valid.
+ * `keepOptions`'; a `language` is checked as for `mode: code`, a board list's `query` as for
+ * `mode: search` and its `tag` as for `mode: tag`. A key the kind does not allow is not valid.
  */
 export function optionValueValid(kind: PanelVisKind, key: OptionKey, v: unknown): boolean {
   if (!OPTION_KEYS[kind].includes(key)) return false;
-  const options: Record<string, unknown> = key === 'language' ? { mode: 'code' } : {};
+  // A key whose rule depends on `mode` is checked with the mode it belongs to.
+  const mode =
+    key === 'language'
+      ? 'code'
+      : kind !== 'boardList'
+        ? null
+        : key === 'query'
+          ? 'search'
+          : key === 'tag'
+            ? 'tag'
+            : null;
+  const options: Record<string, unknown> = mode === null ? {} : { mode };
   options[key] = v;
   const panel = {
     id: 'p-1',

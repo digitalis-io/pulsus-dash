@@ -371,30 +371,31 @@ func TestNewerSchemaVersion(t *testing.T) {
 	}
 }
 
-// The previous release (schema 4) meets a row this release wrote (plan #64 Part B §4.7, R1; #173
-// Part 1: board spec v3; #215: board spec v4, tags; #198 Part 1: board spec v5, widgets).
+// The previous release (schema 5) meets a row this release wrote (plan #64 Part B §4.7, R1; #173
+// Part 1: board spec v3; #215: board spec v4, tags; #198 Part 1: board spec v5, widgets; #216
+// Part 1: board spec v6, the board list).
 func TestPreviousServerRefusesNewerRow(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {
 			e := newEnv(t, c)
 			ctx, rc := itestCtx(t), e.rc(e.org)
-			b, err := e.svc.CreateBoard(ctx, rc, fixture(t, "v5-widgets.json"))
+			b, err := e.svc.CreateBoard(ctx, rc, fixture(t, "v6-board-list.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT max(schema_version) FROM board_versions"); v != 5 {
-				t.Fatalf("schema_version = %d, want 5", v)
+			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT max(schema_version) FROM board_versions"); v != spec.BoardSchemaVersion {
+				t.Fatalf("schema_version = %d, want %d", v, spec.BoardSchemaVersion)
 			}
 			hash := func() string {
 				rows := storetest.QueryRows(t, e.db.SuperURL, "SELECT encode(content_hash, 'hex') FROM board_versions ORDER BY version DESC LIMIT 1")
 				return rows[0][0]
 			}
 			before := hash()
-			old := newServiceWithSchemaMax(e.svc.db, 4)
+			old := newServiceWithSchemaMax(e.svc.db, spec.BoardSchemaVersion-1)
 			if _, err := old.GetBoard(ctx, rc, b.UID); !errors.Is(err, spec.ErrSchemaTooNew) {
 				t.Errorf("GetBoard = %v, want ErrSchemaTooNew", err)
 			}
-			if _, err := old.SaveBoard(ctx, rc, b.UID, 1, fixture(t, "v4-board-tags.json"), ""); !errors.Is(err, spec.ErrSchemaTooNew) {
+			if _, err := old.SaveBoard(ctx, rc, b.UID, 1, fixture(t, "v5-widgets.json"), ""); !errors.Is(err, spec.ErrSchemaTooNew) {
 				t.Errorf("SaveBoard = %v, want ErrSchemaTooNew", err)
 			}
 			if n := e.count(t, "board_versions"); n != 1 {
@@ -407,7 +408,7 @@ func TestPreviousServerRefusesNewerRow(t *testing.T) {
 	}
 }
 
-// A save stores the current spec version; a v4 spec upcasts unchanged (the identity, T11-016).
+// A save stores the current spec version; a v5 spec upcasts unchanged (the identity, T11-016).
 func TestSaveWritesCurrentSchema(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {
@@ -417,7 +418,7 @@ func TestSaveWritesCurrentSchema(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			raw := fixture(t, "v4-board-tags.json")
+			raw := fixture(t, "v5-widgets.json")
 			res, err := e.svc.SaveBoard(ctx, rc, b.UID, 1, raw, "")
 			if err != nil {
 				t.Fatal(err)
@@ -425,8 +426,8 @@ func TestSaveWritesCurrentSchema(t *testing.T) {
 			if !res.Changed {
 				t.Errorf("Changed = false, want true")
 			}
-			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT schema_version FROM board_versions WHERE version = 2"); v != 5 {
-				t.Errorf("stored schema_version = %d, want 5", v)
+			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT schema_version FROM board_versions WHERE version = 2"); v != spec.BoardSchemaVersion {
+				t.Errorf("stored schema_version = %d, want %d", v, spec.BoardSchemaVersion)
 			}
 			got, err := e.svc.GetBoard(ctx, rc, b.UID)
 			if err != nil {
@@ -439,15 +440,16 @@ func TestSaveWritesCurrentSchema(t *testing.T) {
 			if string(got.Spec) != string(want) {
 				t.Errorf("GET spec = %s, want %s", got.Spec, want)
 			}
-			if got.SchemaVersion != 5 {
-				t.Errorf("GET schema_version = %d, want 5", got.SchemaVersion)
+			if got.SchemaVersion != spec.BoardSchemaVersion {
+				t.Errorf("GET schema_version = %d, want %d", got.SchemaVersion, spec.BoardSchemaVersion)
 			}
 		})
 	}
 }
 
 // itest:board-crud, the widget case (#198 Part 1, T24-003, T11-016): a board with widgets is
-// created and saved without its one data panel, stored at schema 5 and read back canonical.
+// created and saved without its one data panel, stored at the current schema and read back
+// canonical.
 func TestBoardCRUDWidgets(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {
@@ -482,8 +484,8 @@ func TestBoardCRUDWidgets(t *testing.T) {
 			if err != nil || !res.Changed {
 				t.Fatalf("save = %+v, %v", res, err)
 			}
-			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT max(schema_version) FROM board_versions"); v != 5 {
-				t.Errorf("stored schema_version = %d, want 5", v)
+			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT max(schema_version) FROM board_versions"); v != spec.BoardSchemaVersion {
+				t.Errorf("stored schema_version = %d, want %d", v, spec.BoardSchemaVersion)
 			}
 			got, err := e.svc.GetBoard(ctx, rc, b.UID)
 			if err != nil {
@@ -493,8 +495,8 @@ func TestBoardCRUDWidgets(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(got.Spec) != string(wantSaved) || got.SchemaVersion != 5 {
-				t.Errorf("GET = schema %d %s, want 5 %s", got.SchemaVersion, got.Spec, wantSaved)
+			if string(got.Spec) != string(wantSaved) || got.SchemaVersion != spec.BoardSchemaVersion {
+				t.Errorf("GET = schema %d %s, want %d %s", got.SchemaVersion, got.Spec, spec.BoardSchemaVersion, wantSaved)
 			}
 			evs, _, _ := auditRows(t, e, e.org)
 			if len(evs) != 2 {
@@ -503,6 +505,59 @@ func TestBoardCRUDWidgets(t *testing.T) {
 			var ops []map[string]any
 			if err := json.Unmarshal(evs[1].Diff, &ops); err != nil || len(ops) != 1 || ops[0]["op"] != "remove" || ops[0]["path"] != "/panels/4" {
 				t.Errorf("update diff = %s, want one remove of /panels/4", evs[1].Diff)
+			}
+		})
+	}
+}
+
+// itest:board-crud, the board-list case (#216 Part 1, T24-003, T11-016): a board with board lists
+// is created at schema 6, read back canonical, and saved with p-2's limit changed to 20.
+func TestBoardCRUDBoardList(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e := newEnv(t, c)
+			ctx, rc := itestCtx(t), e.rc(e.org)
+			raw := fixture(t, "v6-board-list.json")
+			b, err := e.svc.CreateBoard(ctx, rc, raw)
+			if err != nil {
+				t.Fatalf("create: %v", err)
+			}
+			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT max(schema_version) FROM board_versions"); v != 6 {
+				t.Errorf("stored schema_version = %d, want 6", v)
+			}
+			want, err := spec.Canonical(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := e.svc.GetBoard(ctx, rc, b.UID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got.Spec) != string(want) || got.SchemaVersion != 6 {
+				t.Errorf("GET = schema %d %s, want 6 %s", got.SchemaVersion, got.Spec, want)
+			}
+			var m map[string]any
+			if err := json.Unmarshal(raw, &m); err != nil {
+				t.Fatal(err)
+			}
+			panels, _ := m["panels"].([]any)
+			p2, _ := panels[1].(map[string]any)
+			vis, _ := p2["vis"].(map[string]any)
+			opts, _ := vis["options"].(map[string]any)
+			opts["limit"] = 20
+			saved, err := json.Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res, err := e.svc.SaveBoard(ctx, rc, b.UID, 1, saved, ""); err != nil || !res.Changed {
+				t.Fatalf("save = %+v, %v", res, err)
+			}
+			v2 := storetest.QueryString(t, e.db.SuperURL, "SELECT spec::text FROM board_versions WHERE version = 2")
+			if !strings.Contains(strings.ReplaceAll(v2, " ", ""), `"limit":20`) {
+				t.Errorf("version 2 spec = %s, want \"limit\":20", v2)
+			}
+			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT schema_version FROM board_versions WHERE version = 2"); v != 6 {
+				t.Errorf("version 2 schema_version = %d, want 6", v)
 			}
 		})
 	}

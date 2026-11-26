@@ -1,8 +1,9 @@
 /**
  * Panel options (board spec v3; T22 §6.1, plan #173 Part 1 §3.3 and §3.6; the widget keys by board
- * spec v5, plan #198 Part 1, T24 §5.1): the keys each kind allows, their types, members and values,
- * the kinds not drawn yet, a kind change (valid values only, #173 Part 3a), and the bar chart's
- * defaults. The Go tables (`server/internal/spec/shape.go`, `validate.go`) are the same; both
+ * spec v5, plan #198 Part 1, T24 §5.1; the board list keys by v6, plan #216 Part 1, T24 §5.5): the
+ * keys each kind allows, their types, members and values, the kinds not drawn yet, a kind change
+ * (valid values only, #173 Part 3a), and the bar chart's defaults. The Go tables
+ * (`server/internal/spec/shape.go`, `validate.go`) are the same; both
  * suites compare them with `api/fixtures/board-spec/option-keys.json`.
  */
 import type { DataPanelSpec, DataVisKind, PanelVisKind, VisOptions } from '../api/types';
@@ -38,6 +39,9 @@ export const OPTION_ORDER: readonly OptionKey[] = Object.freeze([
   'seconds',
   'date',
   'countdown',
+  'query',
+  'tag',
+  'limit',
 ] as const);
 
 /** The JSON type of each key (the shape pass). */
@@ -67,6 +71,9 @@ export const OPTION_TYPES: Readonly<
   seconds: 'bool',
   date: 'bool',
   countdown: 'object',
+  query: 'string',
+  tag: 'string',
+  limit: 'number',
 });
 
 /**
@@ -110,9 +117,14 @@ export const OPTION_KEYS: Readonly<Record<PanelVisKind, readonly OptionKey[]>> =
   pie: ['reducer', 'categoryBy', 'sort', 'donut', 'labels', 'parts'],
   text: ['mode', 'content', 'language'],
   clock: ['zones', 'hourCycle', 'seconds', 'date', 'countdown'],
+  boardList: ['sort', 'mode', 'query', 'tag', 'limit'],
 });
 
-/** The allowed values of the enum keys; `orientation` also allows `auto` on stat. */
+/**
+ * The allowed values of the enum keys; `orientation` also allows `auto` on stat. `sort` and `mode`
+ * are shared: a board list takes `boardListSort` and `boardListMode` instead (the Go
+ * `boardListSorts`, `boardListModes`).
+ */
 export const OPTION_VALUES = Object.freeze({
   reducer: ['last', 'first', 'mean', 'min', 'max', 'sum', 'count'],
   baselineOffset: ['1h', '1d', '7d', '28d'],
@@ -128,10 +140,17 @@ export const OPTION_VALUES = Object.freeze({
   language: ['plaintext', 'json', 'yaml', 'sql', 'promql', 'logql', 'go', 'shell'],
   hourCycle: ['auto', 'h12', 'h23'],
   after: ['countUp', 'hide'],
+  boardListMode: ['starred', 'recent', 'search', 'tag'],
+  boardListSort: ['default', 'incidents'],
 } as const satisfies Record<string, readonly string[]>);
 
 /** `|min|` and `|max|` are at most this. */
 export const MAX_OPTION_ABS = 1e15;
+
+/** A board list's search text is at most this many characters (the Go `maxBoardQueryRunes`). */
+export const MAX_BOARD_QUERY = 100;
+/** A board list shows this many rows at a time, `min` to `max` (the Go `minBoardLimit`, `maxBoardLimit`). */
+export const BOARD_LIMIT = Object.freeze({ min: 1, max: 50 } as const);
 
 /**
  * The kinds a stored spec may name that this version does not draw yet: such a panel sends no
@@ -179,6 +198,14 @@ export function withKind(vis: DataPanelSpec['vis'], kind: DataVisKind): DataPane
 }
 
 /**
+ * Whether `v` is a chart's sort (`OPTION_VALUES.sort`): the stored `sort` may hold a board list's
+ * value, which the validator refuses on a chart; a reader falls back to its default.
+ */
+export function isChartSort(v: unknown): v is Sort {
+  return (OPTION_VALUES.sort as readonly unknown[]).includes(v);
+}
+
+/**
  * A bar chart's options with the T22 §6.1 defaults: `last`, no baseline, `''` (the effective
  * label), `valueDesc`, `horizontal` and value labels on; min and max absent (auto).
  */
@@ -187,7 +214,7 @@ export function barchartOptions(o: VisOptions | undefined): BarchartOptions {
     reducer: o?.reducer ?? 'last',
     baselineOffset: o?.baselineOffset ?? null,
     categoryBy: o?.categoryBy ?? '',
-    sort: o?.sort ?? 'valueDesc',
+    sort: isChartSort(o?.sort) ? o.sort : 'valueDesc',
     orientation: o?.orientation === 'vertical' ? 'vertical' : 'horizontal',
     valueLabels: o?.valueLabels ?? true,
     min: o?.min,

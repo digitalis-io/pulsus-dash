@@ -403,6 +403,7 @@ describe('http boards', () => {
         }),
       ),
     );
+    // An old server's answer (no tags, applied or tagsStale; plan #216 Part 1 §4.2).
     expect(await list.api.listBoards('demo')).toEqual({
       items: [
         {
@@ -411,9 +412,12 @@ describe('http boards', () => {
           version: 3,
           updatedAt: '2026-11-19T12:00:00Z',
           updatedBy: 'Local user',
+          tags: null,
         },
       ],
       truncated: true,
+      applied: null,
+      tagsStale: 0,
     });
     expect(list.requests.map((r) => `${r.method} ${new URL(r.url).pathname}`)).toEqual([
       'GET /api/dash/v1/boards',
@@ -496,9 +500,10 @@ describe('http starred and recent', () => {
     const list = await signedIn(() =>
       Promise.resolve(json(200, { items: [{ uid: 'a', title: 'A' }] })),
     );
-    expect(await list.api.listStarred('demo')).toEqual([{ uid: 'a', title: 'A' }]);
+    const old = { items: [{ uid: 'a', title: 'A' }], truncated: false, applied: null };
+    expect(await list.api.listStarred('demo')).toEqual(old);
     expect(line(list.requests[0])).toBe('GET /api/dash/v1/me/starred-boards');
-    expect(await list.api.listRecent('demo')).toEqual([{ uid: 'a', title: 'A' }]);
+    expect(await list.api.listRecent('demo')).toEqual(old);
     expect(line(list.requests[1])).toBe('GET /api/dash/v1/me/recent-boards?limit=5');
 
     const set = await signedIn(noContent);

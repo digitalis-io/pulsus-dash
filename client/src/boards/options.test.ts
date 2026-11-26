@@ -56,6 +56,9 @@ describe('unit:board-options', () => {
       min: undefined,
       max: undefined,
     });
+    // The board list's sorts are not a chart's (board spec v6): the default.
+    expect(barchartOptions({ sort: 'incidents' }).sort).toBe('valueDesc');
+    expect(barchartOptions({ sort: 'default' }).sort).toBe('valueDesc');
     expect(barchartOptions({ sort: 'label', min: 0, baselineOffset: '7d' })).toMatchObject({
       sort: 'label',
       min: 0,
@@ -100,7 +103,13 @@ describe('unit:board-options (values)', () => {
   });
 
   // Rules that compare two keys: the per-key check cannot see them (keepOptions applies them).
-  const CROSS_KEY = new Set(['options-min-eq-max', 'options-stat-text-grid', 'w-text-language-md']);
+  const CROSS_KEY = new Set([
+    'options-min-eq-max',
+    'options-stat-text-grid',
+    'w-text-language-md',
+    'bl-recent-query',
+    'bl-starred-tag',
+  ]);
 
   it('optionValueValid is false exactly where the validator reports a value', () => {
     type Panel = { vis?: { kind?: unknown; options?: unknown } } | null;

@@ -22,10 +22,14 @@ import { seedWith } from '../../test/seeds';
 
 vi.mock('../../editor/editor', () => import('../../test/fakeEditor'));
 
-const FIXTURE = join(process.cwd(), '..', 'api', 'fixtures', 'board-spec', 'v5-widgets.json');
+const FIXTURES = join(process.cwd(), '..', 'api', 'fixtures', 'board-spec');
+
+function spec(name: string): BoardSpec {
+  return JSON.parse(readFileSync(join(FIXTURES, name), 'utf8')) as BoardSpec;
+}
 
 function widgets(): BoardSpec {
-  return JSON.parse(readFileSync(FIXTURE, 'utf8')) as BoardSpec;
+  return spec('v5-widgets.json');
 }
 
 const WIDGETS = ['Runbook', 'Request rate query', 'Notes', 'Clocks', 'Local time'];
@@ -113,5 +117,27 @@ describe('unit:widget-frame', () => {
     expect(copy !== undefined && 'query' in copy).toBe(false);
     expect(copy?.vis).toEqual(widgets().panels[0]?.vis);
     expect(checkBoardSpec(spec)).toEqual([]);
+  });
+});
+
+describe('unit:board-spec-board-list (pending)', () => {
+  it('stored board lists show not available; only the data panel runs', async () => {
+    const lists = ['Starred', 'Recent', 'Checkout boards', 'Payments team', 'Search'];
+    const t = openBoard([], {
+      seed: seedWith({ boards: [stubBoard('b-1', spec('v6-board-list.json'))] }),
+    });
+    await ready(...lists, 'Requests');
+    show(...lists, 'Requests');
+    await calls(t, 1);
+    await flush();
+    expect(t.range).toHaveBeenCalledTimes(1);
+    expect(reqs(t)[0]?.query).toBe('sum(rate(http_requests_total[5m]))');
+    for (const title of lists) {
+      const p = panelOf(title);
+      expect(p, title).toHaveAttribute('data-widget');
+      expect(within(p).getByText(messages['widget.kindUnavailable'])).toBeInTheDocument();
+      expect(p.querySelector('[data-chart-frame]'), title).toBeNull();
+    }
+    expect(panelOf('Requests')).not.toHaveAttribute('data-widget');
   });
 });
