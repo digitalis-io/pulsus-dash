@@ -87,6 +87,14 @@ import {
 } from './chartText';
 import { hoverItemOf, statTarget, targetOf } from './inspectTarget';
 
+/** `min,max,manual|auto` of the drawn value axis (#173 Part 3b §3.1); none without one. */
+function valueAxisAttr(s: FrameSummary | null): string | undefined {
+  const a = s?.valueAxis ?? null;
+  return a === null
+    ? undefined
+    : `${String(a.min)},${String(a.max)},${a.manual ? 'manual' : 'auto'}`;
+}
+
 export interface FrameSize {
   readonly width: number;
   readonly height: number;
@@ -614,6 +622,7 @@ export function ChartFrame({
       data-frame-ready={summary === null ? 'false' : 'true'}
       data-selection-keys={selection === null ? '' : selection.keys.join(',')}
       data-plot={plot === null ? undefined : [plot.x, plot.y, plot.width, plot.height].join(',')}
+      data-value-axis={valueAxisAttr(summary)}
     >
       {!noCrosshair && (
         <div

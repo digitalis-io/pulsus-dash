@@ -17,8 +17,9 @@ export function exploreHref(
 ): string | null {
   if (expanded === null) return null;
   const k = panel.vis.kind;
-  // Logs and the kinds Explore does not draw (barchart and pie, #173 Part 1) open on Auto.
-  const vis = k === 'logs' || k === 'barchart' || k === 'pie' ? 'auto' : k;
+  // Logs and the kind Explore does not draw (pie, #173 Part 1) open on Auto; a bar chart opens
+  // Explore's bar chart (#173 Part 3b).
+  const vis = k === 'logs' || k === 'pie' ? 'auto' : k;
   return exploreHrefFor(tenant, panel.query.lang, vis, search, expanded);
 }
 

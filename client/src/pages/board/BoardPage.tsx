@@ -30,6 +30,7 @@ import {
   type FieldError,
   type PanelSpec,
 } from '../../api/types';
+import { BoardFiltersContext } from '../../boards/boardFilters';
 import { BoardEventsContext, useBoardEvents } from '../../boards/boardEvents';
 import { boardKeyAction } from '../../boards/boardKeys';
 import { BoardRunProvider } from '../../boards/boardRun';
@@ -197,6 +198,10 @@ function BoardEditor({
   const busy = saving || discarding;
   const edit = s.mode === 'edit';
   const boardParams = useBoardParams(s.draft.sections.map((x) => x.id));
+  // The filters a bar chart's click toggles (T22-007, #173 Part 3b): one object while they hold.
+  const filters = boardParams.params.filters;
+  const { setFilter } = boardParams;
+  const boardFilters = useMemo(() => ({ filters, setFilter }), [filters, setFilter]);
   // A View-mode section toggle the URL budget refused; shown until the next press.
   const [overrideError, setOverrideError] = useState<ParamError | null>(null);
 
@@ -768,14 +773,16 @@ function BoardEditor({
     >
       <BoardEventsContext.Provider value={events}>
         <BoardModeContext.Provider value={s.mode}>
-          <InspectorHost
-            surface="board"
-            filters={boardParams.params.filters}
-            originKey={originKey}
-            onEditQuery={onEditQuery}
-          >
-            {page}
-          </InspectorHost>
+          <BoardFiltersContext.Provider value={boardFilters}>
+            <InspectorHost
+              surface="board"
+              filters={boardParams.params.filters}
+              originKey={originKey}
+              onEditQuery={onEditQuery}
+            >
+              {page}
+            </InspectorHost>
+          </BoardFiltersContext.Provider>
         </BoardModeContext.Provider>
       </BoardEventsContext.Provider>
     </BoardRunProvider>
