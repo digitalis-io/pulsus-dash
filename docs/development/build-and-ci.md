@@ -869,7 +869,7 @@ repository at `/w`, git's common directory mounted where a worktree's `.git` fil
 | `make engine-wasm-probe` | `cargo xtask build-wasm --probe`: the engine with the `probe` feature (`engine_probe_input`, `engine_probe_ring_start`; `engine_probe_freeze` and `engine_probe_unfreeze`, plan #68 C2b) into the git-ignored `client/src/engine/wasm/gen-probe/` (plan #68 C2a1) | — |
 | `make e2e-build-probe` | after `make engine-wasm-probe`: `VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1 make build API_MODE=stub CLIENT_OUT=dist-probe` (Vite resolves `virtual:dash-engine` to `gen-probe/`) into `client/dist-probe` and `build/e2e-probe/pulsus-dash`, then `probe-absent.ts --expect-faults --expect-probe client/dist-probe` | `ci:probe-absent` (probe tree) |
 | `make engine-gpu-smoke` | per engine e2e project, the adapter headless Chromium sees and whether it renders | — |
-| `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` on each, `check-bundle-modules.ts` on both, and `probe-absent.ts` on each; `make e2e-build-probe`; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine), `e2e:shim-fuzz`, `e2e:engine-camera`, `e2e:engine-hover`, `bench:shim-input-cost` (report-only) |
+| `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` on each, `check-bundle-modules.ts` on both, and `probe-absent.ts` on each; `make e2e-build-probe`; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine), `e2e:shim-fuzz`, `e2e:engine-camera`, `e2e:engine-hover`, `e2e:engine-layer`, `bench:shim-input-cost` (report-only) |
 
 **Projects.** `lavapipe` (gated): `--use-angle=vulkan --enable-features=Vulkan --use-vulkan=native
 --ignore-gpu-blocklist --disable-vulkan-surface`, WebGL2 through ANGLE on lavapipe.
@@ -883,8 +883,8 @@ hardware-runner follow-up. `probe` (plan #68 C2a1): the `lavapipe` flags against
 BFF (`tools/e2e/serve.sh probe 4175`), `e2e/engine-shim-fuzz.spec.ts` and `e2e:engine-hover` H1b
 (plan #68 C2b: it freezes a frame at one presentation, a probe-build hook); the other two projects
 skip the fuzz and H1b, and every other spec and golden runs on the fault build (release wasm).
-`e2e:engine-hover` H1–H6 run like `e2e:engine-camera`: `lavapipe` gated, `swiftshader`
-report-only.
+`e2e:engine-hover` H1–H6 and `e2e:engine-layer` L1–L4 (plan #68 C2c1: threshold lines and event
+lines on probe frames) run like `e2e:engine-camera`: `lavapipe` gated, `swiftshader` report-only.
 
 **Goldens in the browser.** `golden:engine-line` compares the browser engine's canvas
 (`&engine=wasm&mode=t2`, status 2, llvmpipe) with `dash-golden render` of the same page, theme, CSS
@@ -894,7 +894,10 @@ drag over 20–40 % of the plot) against `dash-golden render … --hover X,Y` an
 CSS px: the native render draws the engine's overlay for that pointer and band). The native
 `golden:engine-overlay` (in `make engine-goldens`) checks the same overlay on `line-50` dark and
 light at 1118 × 240 against `goldens/line-50-{dark,light}-overlay.png`, T1 vs T2 within mean ꟻLIP
-0.001. `canvas2d
+0.001. Since plan #68 C2c1 both add the layer pages `line-thresholds` and `line-events` (dark and
+light; `goldens/line-{thresholds,events}-{dark,light}.png`): `dash-golden render --page
+line-thresholds` draws the `engine/fixtures/layer.json` case of that id (its spec JSON, series and
+event times), without `--value-range`, `--hover` or `--box`. `canvas2d
 parity` is sampled geometric parity with Canvas 2D (equal plot rects, a sampled line mask); the two
 renderers anti-alias differently by design.
 
