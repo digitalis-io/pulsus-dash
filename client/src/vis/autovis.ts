@@ -1,6 +1,7 @@
 /**
- * Auto-vis (plan #63 §4.2; VIZ-065 Table 5-13 rows 5, 6, 7, 14; SRF-030): the vis the Explore page
- * draws a result with, unless the URL's `vis` overrides it. The first matching row wins.
+ * Auto-vis (plan #63 §4.2; VIZ-065 Table 5-13 rows 5, 6, 7, 11, 14; SRF-030): the vis the Explore
+ * page and a board panel draw a result with, unless the URL's or the panel's `vis` overrides it.
+ * The first matching row wins; a row picks only a kind in `available` (#173 Part 2).
  */
 import type { Completeness, InstantResult, RangeFrame } from '../data/decode';
 import type { ScalarFrame, SeriesFrame } from '../data/frames';
@@ -64,7 +65,8 @@ export const SHIPPED_VIS: ReadonlySet<VisKind> = new Set<VisKind>([
 
 /**
  * The auto vis of a result. A range result is never a stat (row 7 is "1 series, 1 value"): the
- * BFF grids it, so a series with one sample is a series with gaps.
+ * BFF grids it, so a series with one sample is a series with gaps. Row 11 (bar chart) needs the
+ * kind in `available` (default `SHIPPED_VIS`, without it until #173 Part 3).
  */
 export function autoVis(i: {
   readonly histogram: boolean;
@@ -87,7 +89,25 @@ export function autoVis(i: {
   ) {
     return { vis: 'stat', rule: 7 };
   }
+  if (barchartRow(r, i.reducer === true) && (i.available ?? SHIPPED_VIS).has('barchart')) {
+    return { vis: 'barchart', rule: 11 };
+  }
   return { vis: 'line', rule: 14 };
+}
+
+/** The most series row 11 reduces to bars (T22 §4.5). */
+const ROW_11_MAX = 50;
+
+/**
+ * Row 11 (T22 §4.5): reduced categories, 2 to 50 distinct series keys, from an instant result with
+ * at most one sample per series, or a range result on a panel with an explicit reducer.
+ */
+function barchartRow(r: Exclude<ExploreResult, { kind: 'string' }>, reducer: boolean): boolean {
+  if (r.kind !== 'series') return false;
+  const keys = new Set(r.series.map((s) => s.key)).size;
+  if (keys < 2 || keys > ROW_11_MAX) return false;
+  if (r.source === 'instant') return r.series.every((s) => s.timestamps.length <= 1);
+  return reducer;
 }
 
 /** The URL's `vis` key: a vis kind, or `auto`. */
