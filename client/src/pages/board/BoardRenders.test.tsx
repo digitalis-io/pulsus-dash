@@ -130,6 +130,13 @@ function clear(): void {
   counts.t0 = performance.now();
 }
 
+/**
+ * How long the setup steps (the board mounting, the Edit chrome) may take on a loaded runner, and
+ * so each test: they are not what the tests measure.
+ */
+const SETUP_MS = 15_000;
+const TEST_MS = 60_000;
+
 /** The query client and router of the board under test, for `settle`. */
 let client: QueryClient | null = null;
 let router: DataRouter | null = null;
@@ -181,18 +188,24 @@ async function viewBoard() {
   r.queryClient.getQueryCache().subscribe((e) => {
     if (e.type === 'updated') at(`query ${JSON.stringify(e.query.queryKey)} ${e.action.type}`);
   });
-  await waitFor(() => {
-    expect(of(counts.mounts, ALL)).toEqual(each(ALL, 1));
-  });
+  await waitFor(
+    () => {
+      expect(of(counts.mounts, ALL)).toEqual(each(ALL, 1));
+    },
+    { timeout: SETUP_MS },
+  );
   await settle();
   return r;
 }
 
 /** The four panels show their Edit-mode chrome (a modal editor hides it from the a11y tree). */
 async function editChrome(): Promise<void> {
-  await waitFor(() => {
-    expect(document.querySelectorAll('[data-drag-handle]')).toHaveLength(4);
-  });
+  await waitFor(
+    () => {
+      expect(document.querySelectorAll('[data-drag-handle]')).toHaveLength(4);
+    },
+    { timeout: SETUP_MS },
+  );
 }
 
 async function editGrid() {
@@ -203,7 +216,7 @@ async function editGrid() {
   return r;
 }
 
-describe('board render counts (#111)', () => {
+describe('board render counts (#111)', { timeout: TEST_MS }, () => {
   it('opening the editor does not re-render the other panels', async () => {
     const { user } = await editGrid();
     await user.click(await screen.findByRole('button', { name: 'Panel menu: Request rate' }));
