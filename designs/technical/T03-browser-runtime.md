@@ -586,7 +586,8 @@ records only; the decoder is `dash-core::input`.
   only when `rseq` is that call's seq), with the caller's values.
 - **Rejected records.** A size below 16 or not a multiple of 8, a record past the head or the end,
   the wrong size for its kind or an unknown kind skips the rest of the batch (tail = head) and
-  counts in `input_bad`; so does a Camera with an empty or non-finite view, value range or band. A
+  counts in `input_bad`; so does a Camera with an empty or non-finite view, value range or band,
+  which leaves the camera unchanged but still redraws the frame, so a `drawn` carries its seq. A
   record of a disposed frame is ignored.
 
 Capture rules (`input.js`):

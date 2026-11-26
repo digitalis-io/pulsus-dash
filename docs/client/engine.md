@@ -712,7 +712,8 @@ with min < max, else auto; band measured) and sends it again when the spec chang
 end of the ring, the wrong size for its kind or of an unknown kind ends the batch: the rest is
 skipped (tail = head), `INPUT_BAD` (0x4D10) counts it and the first is logged
 (`pulsus engine: input record at <counter>`). A Camera with a non-finite or empty view, a
-non-finite or empty value range or a negative band is counted the same way and ignored. A record
+non-finite or empty value range or a negative band is counted the same way and leaves the camera
+unchanged; the frame still redraws, so its `drawn` carries the record's seq. A record
 of a disposed frame is ignored and not counted.
 
 ### Tiers and the frame loop

@@ -198,4 +198,34 @@ describe('__dashProbe settle (plan #68 C2a1 §3.4)', () => {
     applied(Z, 2);
     expect(await settles(probe, n)).toBe(true);
   });
+
+  it('a camera the worker rejects settles on the redraw that carries its seq (review r1)', async () => {
+    const { ring, view, frames, probe } = setup();
+    const p = probe.frame({
+      spec: SPEC,
+      series: [{ key: '00000000000000aa', t: [0, 10], v: [1, 1] }],
+      w: { fromMs: 0, toMs: 10 },
+      size: [300, 150],
+    });
+    await flush();
+    expect(frames).toHaveLength(1);
+    const [A] = frames;
+    if (A === undefined) throw new Error('no frame');
+    A.created(ring);
+    A.handle({ t: 'a11y', id: A.id, ev: SUMMARY });
+    const n = await p;
+    expect(view.decode().map((r) => r.seq)).toEqual([1, 2]);
+    applied(A, 2);
+    drawn(A, 2, 2);
+    expect(await settles(probe, n)).toBe(true);
+    // An empty window: the worker rejects it but presents the unchanged state with its seq.
+    probe.call(n, 'setTimeWindow', { fromMs: 5, toMs: 5 });
+    expect(view.decode().map((r) => r.seq)).toEqual([3]);
+    expect(await settles(probe, n)).toBe(false);
+    applied(A, 3);
+    drawn(A, 3, 2);
+    expect(await settles(probe, n)).toBe(true);
+    expect(probe.drawn(n).at(-1)).toEqual({ cssWidth: 300, cssHeight: 150, dpr: 1 });
+    expect(probe.last(n)).toEqual(SUMMARY);
+  });
 });

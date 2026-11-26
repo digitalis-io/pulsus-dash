@@ -210,8 +210,9 @@ impl Frames {
     }
 
     /// Applies one input record: the frame it dirtied, or None. A record of an unknown frame (one
-    /// disposed after the publish) is ignored; a Camera that `CameraIn::from_record` rejects is
-    /// counted in [`Frames::bad`]. Either way a known frame's ack seq moves to the record's.
+    /// disposed after the publish) is ignored. A Camera that `CameraIn::from_record` rejects is
+    /// counted in [`Frames::bad`] and leaves the camera unchanged, but still dirties the frame: the
+    /// ack seq moves to the record's and the next presentation carries it.
     pub fn apply(&mut self, d: &Decoded) -> Option<u32> {
         match d.rec {
             Record::Resize {
@@ -243,9 +244,11 @@ impl Frames {
                         f.camera = Some(c);
                         Some(frame)
                     }
+                    // Rejected: counted, the camera unchanged, but the frame still presents, so
+                    // the next `drawn` carries the consumed seq and the adapter's settle resolves.
                     None => {
                         self.bad = self.bad.saturating_add(1);
-                        None
+                        Some(frame)
                     }
                 }
             }

@@ -326,11 +326,11 @@ fn frames_apply() {
     let a = a11y_of(&mut f, 1);
     assert_eq!(a["plot"]["x"].as_f64(), measured_x);
     assert!(measured_x.is_some());
-    // hi = lo: rejected and counted; the camera stays.
+    // hi = lo: rejected and counted; the camera stays, the frame presents again.
     assert_eq!(f.bad(), 0);
     assert_eq!(
         f.apply(&camera_rec(1, 6, (view.0, view.0), NAN2, f64::NAN)),
-        None
+        Some(1)
     );
     assert_eq!(f.bad(), 1);
     // An unknown (disposed) frame: ignored, not bad.
@@ -468,4 +468,57 @@ fn dispose_and_frame_ids() {
     assert_eq!(f.apply(&camera_rec(3, 7, (1.0, 2.0), NAN2, f64::NAN)), None);
     assert_eq!(f.bad(), 0);
     assert!(f.take_applied().is_empty());
+}
+
+/// Review r1 MINOR: a rejected Camera after a completed presentation still presents, so its seq
+/// reaches a `drawn` (the adapter's settle) while the camera stays as it was.
+#[test]
+fn a_rejected_camera_still_presents() {
+    let (chunk, json) = line50();
+    let mut f = Frames::new();
+    assert!(f.create(1, None));
+    assert!(f.set_spec(1, &json).is_ok());
+    f.set_chunk(1, Some(Arc::new(chunk)));
+    assert_eq!(f.apply(&resize_rec(1, 1, 300.0, 150.0, 1.0)), Some(1));
+    assert_eq!(
+        f.apply(&camera_rec(1, 2, GALLERY_WINDOW, NAN2, f64::NAN)),
+        Some(1)
+    );
+    let before = a11y_of(&mut f, 1);
+    assert_eq!(
+        (before["fromMs"].as_f64(), before["toMs"].as_f64()),
+        (Some(GALLERY_WINDOW.0), Some(GALLERY_WINDOW.1))
+    );
+    let Some(p) = f.submit(1) else {
+        panic!("no presentation")
+    };
+    let d = drawn_of(&f.complete(1, &p, 1.0, 2.0));
+    assert_eq!(d[0]["seq"].as_u64(), Some(2));
+    assert_eq!(f.take_applied().len(), 1);
+    // The previous presentation completed; now a rejected Camera (hi < lo).
+    let reversed = (GALLERY_WINDOW.1, GALLERY_WINDOW.0);
+    assert_eq!(
+        f.apply(&camera_rec(1, 3, reversed, NAN2, f64::NAN)),
+        Some(1),
+        "the frame presents again"
+    );
+    assert_eq!(f.bad(), 1);
+    let Some((_, a11y)) = f.build(1) else {
+        panic!("no build")
+    };
+    assert_eq!(a11y, None, "the camera is unchanged");
+    let Some(p) = f.submit(1) else {
+        panic!("no presentation")
+    };
+    let d = drawn_of(&f.complete(1, &p, 3.0, 4.0));
+    assert_eq!(d.len(), 1);
+    assert_eq!(
+        (d[0]["seq"].as_u64(), d[0]["rseq"].as_u64()),
+        (Some(3), Some(1))
+    );
+    let acks: Vec<Value> = f.take_applied().iter().map(|e| parse(e)).collect();
+    assert_eq!(
+        acks,
+        [serde_json::json!({"t": "applied", "id": 1, "seq": 3})]
+    );
 }
