@@ -104,6 +104,9 @@ export function hoverRows(
       if (b >= 0) row(b);
       break;
     }
+    case 'barchart':
+      // No time axis: a bar chart reports `mark`, never `hover` (ADR-0028).
+      break;
   }
   return { tMs, rows };
 }

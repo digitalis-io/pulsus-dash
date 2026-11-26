@@ -212,3 +212,13 @@
   display: grid;
   place-items: center;
 }
+
+/* A bar chart's bars for assistive technology (`BarList`): visually hidden, not focusable. */
+.srOnly {
+  position: absolute;
+  width: var(--border-hairline);
+  height: var(--border-hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

@@ -20,6 +20,8 @@ import { cx } from './cx';
 export interface SelectOption<K extends string> {
   id: K;
   label: string;
+  /** Shown but not selectable (e.g. a stored kind this version does not draw). */
+  disabled?: boolean;
 }
 
 export interface SelectProps<K extends string> {
@@ -49,6 +51,7 @@ export function Select<K extends string>({
     <AriaSelect
       value={value}
       onChange={onSelect}
+      disabledKeys={options.filter((o) => o.disabled === true).map((o) => o.id)}
       isDisabled={isDisabled}
       isInvalid={invalid}
       validationBehavior="aria"

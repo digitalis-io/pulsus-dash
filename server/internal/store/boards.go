@@ -17,6 +17,19 @@ import (
 // listBoardsMax is the most boards ListBoards returns; one more row is read to report truncation.
 const listBoardsMax = 1000
 
+// listStarredMax is the most boards ListStarred returns; the query reads one more.
+const listStarredMax = 200
+
+// recentMax bounds ListRecent's limit (the Recent list keeps 200 rows per user).
+const recentMax = 200
+
+// The repair's own limits (T24-029): a statement or lock wait past them fails the repair, never
+// the list.
+const (
+	repairStatementTimeout = "2s"
+	repairLockTimeout      = "500ms"
+)
+
 // BoardHead is a board's head row joined with its head version.
 type BoardHead struct {
 	ID                           uuid.UUID
@@ -71,10 +84,18 @@ func (t *OrgTx) EnsureRootFolder(ctx context.Context) (uuid.UUID, error) {
 	return uuid.UUID(got.Bytes), nil
 }
 
-// InsertBoard inserts a board head at version 1 and ETag 1. It returns false, writing nothing,
-// when the uid is taken in the organisation.
-func (t *OrgTx) InsertBoard(ctx context.Context, id uuid.UUID, uid string, folder uuid.UUID, title string) (bool, error) {
-	_, err := t.q.InsertBoard(ctx, dbgen.InsertBoardParams{OrgID: pgUUID(t.org), ID: pgUUID(id), Uid: uid, FolderID: pgUUID(folder), Title: title})
+// tagsParam is tags as the NOT NULL text[] parameter: pgx sends a nil slice as NULL.
+func tagsParam(tags []string) []string {
+	if tags == nil {
+		return []string{}
+	}
+	return tags
+}
+
+// InsertBoard inserts a board head at version 1 and ETag 1 with its tags cache fresh. It returns
+// false, writing nothing, when the uid is taken in the organisation.
+func (t *OrgTx) InsertBoard(ctx context.Context, id uuid.UUID, uid string, folder uuid.UUID, title string, tags []string) (bool, error) {
+	_, err := t.q.InsertBoard(ctx, dbgen.InsertBoardParams{OrgID: pgUUID(t.org), ID: pgUUID(id), Uid: uid, FolderID: pgUUID(folder), Title: title, Tags: tagsParam(tags)})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -120,9 +141,10 @@ func (t *OrgTx) BoardHead(ctx context.Context, uid string) (BoardHead, error) {
 	}, nil
 }
 
-// MoveBoardHead points the board at version, sets its title and increments its ETag.
-func (t *OrgTx) MoveBoardHead(ctx context.Context, id uuid.UUID, version int64, title string) error {
-	if err := t.q.MoveBoardHead(ctx, dbgen.MoveBoardHeadParams{OrgID: pgUUID(t.org), ID: pgUUID(id), HeadVersion: version, Title: title}); err != nil {
+// MoveBoardHead points the board at version, sets its title and its tags cache (fresh at version)
+// and increments its ETag.
+func (t *OrgTx) MoveBoardHead(ctx context.Context, id uuid.UUID, version int64, title string, tags []string) error {
+	if err := t.q.MoveBoardHead(ctx, dbgen.MoveBoardHeadParams{OrgID: pgUUID(t.org), ID: pgUUID(id), HeadVersion: version, Title: title, Tags: tagsParam(tags)}); err != nil {
 		return fmt.Errorf("store: move board head: %w", err)
 	}
 	return nil
@@ -136,23 +158,53 @@ func (t *OrgTx) SoftDeleteBoard(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// ListBoards returns at most 1000 live boards, most recently updated first, and whether more
-// exist.
-func (t *OrgTx) ListBoards(ctx context.Context) ([]core.BoardSummary, bool, error) {
-	rows, err := t.q.ListBoards(ctx, pgUUID(t.org))
+// RepairBoardTags refreshes at most 200 stale tags cache rows of the organisation from their head
+// specs (T24-029) and returns how many it refreshed. It first sets this transaction's statement
+// timeout to 2 s and lock timeout to 500 ms. Rows a save holds are skipped (SKIP LOCKED). It writes
+// no audit event and leaves ETags unchanged.
+func (t *OrgTx) RepairBoardTags(ctx context.Context) (int64, error) {
+	if _, err := t.tx.Exec(ctx, "SELECT set_config('statement_timeout', $1, true), set_config('lock_timeout', $2, true)",
+		repairStatementTimeout, repairLockTimeout); err != nil {
+		return 0, fmt.Errorf("store: repair board tags: timeouts: %w", err)
+	}
+	n, err := t.q.RepairBoardTags(ctx, pgUUID(t.org))
 	if err != nil {
-		return nil, false, fmt.Errorf("store: list boards: %w", err)
+		return 0, fmt.Errorf("store: repair board tags: %w", err)
+	}
+	return n, nil
+}
+
+// ListBoards returns at most 1000 live boards matching f, most recently updated first, whether
+// more matched, and the organisation's live boards whose tags cache is stale, all from one
+// statement (T24-029). A stale row has TagsFresh false and no tags. Items is never nil.
+func (t *OrgTx) ListBoards(ctx context.Context, f core.BoardFilter) ([]core.BoardSummary, bool, int64, error) {
+	rows, err := t.q.ListBoards(ctx, dbgen.ListBoardsParams{OrgID: pgUUID(t.org), Q: f.Q, Tag: f.Tag})
+	if err != nil {
+		return nil, false, 0, fmt.Errorf("store: list boards: %w", err)
+	}
+	out := []core.BoardSummary{}
+	if len(rows) == 0 {
+		// The statement always returns at least the sentinel row; treat none as an empty list.
+		return out, false, 0, nil
+	}
+	stale := rows[0].TagsStale
+	if !rows[0].Found {
+		return out, false, stale, nil
 	}
 	truncated := len(rows) > listBoardsMax
 	if truncated {
 		rows = rows[:listBoardsMax]
 	}
-	out := make([]core.BoardSummary, 0, len(rows))
+	out = make([]core.BoardSummary, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, core.BoardSummary{UID: r.Uid, Title: r.Title, Version: r.HeadVersion,
-			UpdatedAt: r.CreatedAt.Time, UpdatedBy: actorOf(r.AuthorKind, r.AuthorID)})
+		s := core.BoardSummary{UID: r.Uid, Title: r.Title, Version: r.HeadVersion,
+			UpdatedAt: r.CreatedAt.Time, UpdatedBy: actorOf(r.AuthorKind, r.AuthorID), TagsFresh: r.Fresh}
+		if r.Fresh {
+			s.Tags = tagsParam(r.Tags)
+		}
+		out = append(out, s)
 	}
-	return out, truncated, nil
+	return out, truncated, stale, nil
 }
 
 // BoardID returns a live board's id and title, or core.ErrNotFound.
@@ -191,14 +243,20 @@ func refs(op string, uids, titles []string, err error) ([]core.BoardRef, error) 
 	return out, nil
 }
 
-// ListStarred returns at most 200 live boards the user starred, ordered by title.
-func (t *OrgTx) ListStarred(ctx context.Context, user uuid.UUID) ([]core.BoardRef, error) {
+// ListStarred returns at most 200 live boards the user starred, ordered by title, and whether
+// more exist.
+func (t *OrgTx) ListStarred(ctx context.Context, user uuid.UUID) ([]core.BoardRef, bool, error) {
 	rows, err := t.q.ListStarred(ctx, dbgen.ListStarredParams{OrgID: pgUUID(t.org), UserID: pgUUID(user)})
+	more := len(rows) > listStarredMax
+	if more {
+		rows = rows[:listStarredMax]
+	}
 	var uids, titles []string
 	for _, r := range rows {
 		uids, titles = append(uids, r.Uid), append(titles, r.Title)
 	}
-	return refs("list starred", uids, titles, err)
+	out, err := refs("list starred", uids, titles, err)
+	return out, more && err == nil, err
 }
 
 // RecordView records that user viewed the board at `at` (the client's navigation time, clamped to
@@ -224,12 +282,19 @@ func (t *OrgTx) RecordView(ctx context.Context, user, board uuid.UUID, at *time.
 	return nil
 }
 
-// ListRecent returns at most limit live boards the user viewed, most recent first.
-func (t *OrgTx) ListRecent(ctx context.Context, user uuid.UUID, limit int) ([]core.BoardRef, error) {
-	rows, err := t.q.ListRecent(ctx, dbgen.ListRecentParams{OrgID: pgUUID(t.org), UserID: pgUUID(user), Limit: int32(min(max(limit, 0), 200))}) //nolint:gosec // clamped to 0…200
+// ListRecent returns at most limit live boards the user viewed, most recent first, and whether
+// more exist (one more row is read).
+func (t *OrgTx) ListRecent(ctx context.Context, user uuid.UUID, limit int) ([]core.BoardRef, bool, error) {
+	limit = min(max(limit, 0), recentMax)
+	rows, err := t.q.ListRecent(ctx, dbgen.ListRecentParams{OrgID: pgUUID(t.org), UserID: pgUUID(user), Limit: int32(limit + 1)}) //nolint:gosec // clamped to 1…201
+	more := len(rows) > limit
+	if more {
+		rows = rows[:limit]
+	}
 	var uids, titles []string
 	for _, r := range rows {
 		uids, titles = append(uids, r.Uid), append(titles, r.Title)
 	}
-	return refs("list recent", uids, titles, err)
+	out, err := refs("list recent", uids, titles, err)
+	return out, more && err == nil, err
 }

@@ -18,6 +18,8 @@ export type Ctx2D = Pick<
   | 'clip'
   | 'save'
   | 'restore'
+  | 'rotate'
+  | 'translate'
   | 'setLineDash'
   | 'fillStyle'
   | 'globalAlpha'

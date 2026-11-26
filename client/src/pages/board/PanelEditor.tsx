@@ -10,14 +10,17 @@
  * the Run keys or leaving the field; the dialog owns the preview's run, which shares the board
  * panel's key (the run text and the panel's width). After Visualisation come Thresholds and Legend
  * (plan #64 Part B §3.10); every vis edit merges into the panel's `vis`, so a kind change keeps
- * them. They change the spec, not the query key: the preview reruns nothing. For LogQL the Query
+ * them, and keeps only the options the new kind allows (`withKind`, board spec v3). A stored kind
+ * this version does not draw (`PENDING_KINDS`) shows as a disabled option. They change the spec, not the query key: the preview reruns nothing. For LogQL the Query
  * field is the LogQL editor (plan #67 §3.5) with the same run rules; a language change keeps the
  * text, and the Auto option names what the preview's answer draws (Logs for log lines).
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { FieldError, PanelSpec, PanelVisKind, QueryLang } from '../../api/types';
+import type { DataPanelSpec, DataVisKind, FieldError, QueryLang } from '../../api/types';
+import type { PanelPatch } from '../../boards/editorState';
 import { panelView } from '../../boards/panelRun';
 import { fieldMessage } from '../../boards/fieldMessages';
+import { PENDING_KINDS, withKind } from '../../boards/options';
 import { usePanelWidth } from '../../boards/panelWidths';
 import { usePanelRun } from '../../boards/usePanelRun';
 import type { Unit, VisKind } from '../../engine/api';
@@ -45,6 +48,7 @@ const VIS_LABELS: Readonly<Record<VisKind, MessageId>> = {
   bars: 'editor.vis.bars',
   heatmap: 'editor.vis.heatmap',
   stat: 'editor.vis.stat',
+  barchart: 'editor.vis.barchart',
 };
 
 const LEGENDS: readonly { id: 'table' | 'hidden'; label: MessageId }[] = [
@@ -79,11 +83,17 @@ function useStable<T>(value: T): T {
 }
 
 /** `vis` without the member `key` (absent, not undefined: the saved spec has no such key). */
-function without(vis: PanelSpec['vis'], key: 'thresholds' | 'legend'): PanelSpec['vis'] {
-  return Object.fromEntries(Object.entries(vis).filter(([k]) => k !== key)) as PanelSpec['vis'];
+function without(vis: DataPanelSpec['vis'], key: 'thresholds' | 'legend'): DataPanelSpec['vis'] {
+  return Object.fromEntries(Object.entries(vis).filter(([k]) => k !== key)) as DataPanelSpec['vis'];
 }
 
-const KINDS: readonly { id: PanelVisKind; label: MessageId }[] = [
+/** A stored pending kind as a disabled option, so the Select shows it (#173 Part 1). */
+function pendingKind(kind: DataVisKind): { id: DataVisKind; label: string; disabled: true }[] {
+  const label = PENDING_KINDS.has(kind) ? PENDING_LABELS[kind] : undefined;
+  return label === undefined ? [] : [{ id: kind, label: t(label), disabled: true }];
+}
+
+const KINDS: readonly { id: DataVisKind; label: MessageId }[] = [
   { id: 'auto', label: 'editor.vis.auto' },
   { id: 'line', label: 'editor.vis.line' },
   { id: 'bars', label: 'editor.vis.bars' },
@@ -91,6 +101,12 @@ const KINDS: readonly { id: PanelVisKind; label: MessageId }[] = [
   { id: 'stat', label: 'editor.vis.stat' },
   { id: 'logs', label: 'editor.vis.logs' },
 ];
+
+/** The labels of the kinds not drawn yet (`PENDING_KINDS`): shown, disabled, only when stored. */
+const PENDING_LABELS: Readonly<Partial<Record<DataVisKind, MessageId>>> = {
+  barchart: 'editor.vis.barchart',
+  pie: 'editor.vis.pie',
+};
 
 /**
  * Thresholds and Legend (§3.10). Memoised, with stable props from the editor, so an edit elsewhere
@@ -104,13 +120,13 @@ const VisExtras = memo(function VisExtras({
   readOnly,
   onVis,
 }: {
-  vis: PanelSpec['vis'];
+  vis: DataPanelSpec['vis'];
   unit: Unit;
   /** The field errors under the panel's `/vis`. */
   fields: readonly FieldError[];
   pointer: string;
   readOnly: boolean;
-  onVis: (next: PanelSpec['vis']) => void;
+  onVis: (next: DataPanelSpec['vis']) => void;
 }) {
   const errorAt = (suffix: string): string | null => {
     const f = fields.find((x) => x.pointer === `${pointer}${suffix}`);
@@ -146,7 +162,8 @@ const VisExtras = memo(function VisExtras({
 });
 
 export interface PanelEditorProps {
-  panel: PanelSpec;
+  /** A data panel: a widget opens no editor here (plan #198 Part 1 §4.2). */
+  panel: DataPanelSpec;
   /** The preview's data query. */
   tenant: string;
   /** The panel's JSON pointer (`/panels/0`, `/sections/1/panels/2`). */
@@ -165,7 +182,7 @@ export interface PanelEditorProps {
   onDegraded: (degraded: boolean) => void;
   /** Run `text`: BoardPage sets the run text, or reruns it when it is already the run text. */
   onRun: (text: string) => void;
-  onChange: (patch: Partial<Pick<PanelSpec, 'title' | 'query' | 'vis'>>) => void;
+  onChange: (patch: PanelPatch) => void;
   onRemove: () => void;
   onClose: () => void;
 }
@@ -211,7 +228,7 @@ export function PanelEditor({
     return v.kind === 'frame' ? v.spec.unit : NO_UNIT;
   }, [run, panel.vis]);
   // Every vis edit: the next vis, built from `panel.vis` by spread.
-  const patchVis = (next: PanelSpec['vis']): void => {
+  const patchVis = (next: DataPanelSpec['vis']): void => {
     onChange({ vis: next });
   };
   // Stable props for `VisExtras`: the latest `onChange`, the unit and the `/vis` errors by value.
@@ -219,7 +236,7 @@ export function PanelEditor({
   useLayoutEffect(() => {
     latestOnChange.current = onChange;
   });
-  const onVis = useCallback((next: PanelSpec['vis']) => {
+  const onVis = useCallback((next: DataPanelSpec['vis']) => {
     latestOnChange.current({ vis: next });
   }, []);
   const stableUnit = useStable(unit);
@@ -304,12 +321,15 @@ export function PanelEditor({
           <Select
             label={t('editor.vis')}
             value={panel.vis.kind}
-            options={KINDS.map((k) => ({
-              id: k.id,
-              label: k.id === 'auto' ? autoLabel : t(k.label),
-            }))}
+            options={[
+              ...KINDS.map((k) => ({
+                id: k.id,
+                label: k.id === 'auto' ? autoLabel : t(k.label),
+              })),
+              ...pendingKind(panel.vis.kind),
+            ]}
             onChange={(kind) => {
-              patchVis({ ...panel.vis, kind });
+              patchVis(withKind(panel.vis, kind));
             }}
             error={errorAt('/vis/kind')}
             isDisabled={readOnly}

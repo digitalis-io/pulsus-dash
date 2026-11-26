@@ -18,7 +18,7 @@ SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11
 .PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci engine-image engine-test engine-lint \
 	engine-goldens engine-goldens-update engine-web-image engine-wasm engine-wasm-check engine-e2e \
 	engine-gpu-smoke \
-	go-licenses no-pulsusdb-host dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local dev-smoke \
+	go-licenses no-pulsusdb-host dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local itest-old-binary dev-smoke \
 	itest-local-selftest bench-bff cpu-instr cpu-instr-update
 
 # Dev stack (dev/compose.yaml, docs/development/dev-stack.md). COMPOSE may be any Docker Compose v2
@@ -37,6 +37,8 @@ export DEV_PULSUS_FAKE_PORT
 ITEST_PROJECT ?= pulsus-dash-itest
 ITEST_PG16_PORT ?= 57432
 ITEST_PG15_PORT ?= 57433
+# The goal itest-local runs against its stack: itest, or itest-old-binary.
+ITEST_GOAL ?= itest
 
 # The client build the BFF embeds (VITE_API_MODE=$(API_MODE)), with the engine (plan #68 C1).
 client-build: engine-wasm
@@ -111,6 +113,16 @@ itest:
 	@test -n "$${DASH_ITEST_PG_URLS:-}" || { echo "DASH_ITEST_PG_URLS is not set"; exit 1; }
 	CGO_ENABLED=1 go -C server test -race -tags itest -count=1 ./...
 
+# The old-binary gate: itest:board-spec-old-binary and itest:board-tags-old-binary, the previous
+# release (the merge-base of HEAD with OLD_BINARY_REF) beside this one on one database (plans #215,
+# #198). Needs DASH_ITEST_PG_URLS; a required local gate for every change to the board schema or
+# spec. Plain make itest skips the tests.
+OLD_BINARY_REF ?= origin/main
+itest-old-binary:
+	@test -n "$${DASH_ITEST_PG_URLS:-}" || { echo "DASH_ITEST_PG_URLS is not set"; exit 1; }
+	server/scripts/itest-old-binary.sh --self-test
+	OLD_BINARY_REF=$(OLD_BINARY_REF) server/scripts/itest-old-binary.sh
+
 # The pinned linters, verified by sha256, into build/bin.
 tools-ci:
 	mkdir -p $(BIN)
@@ -166,14 +178,15 @@ dev-down:
 dev-reset:
 	$(DC) --profile itest down -v
 
-# itest against the compose stack, in its own project and ports; removed on every exit. A failed
-# up --wait stops the recipe: the tests never run against whatever else answers on those ports.
+# itest (or ITEST_GOAL, e.g. itest-old-binary) against the compose stack, in its own project and
+# ports; removed on every exit. A failed up --wait stops the recipe: the tests never run against
+# whatever else answers on those ports.
 itest-local:
 	trap '$(COMPOSE) -f dev/compose.yaml -p $(ITEST_PROJECT) --profile itest down -v' EXIT; \
 	  DEV_PG16_PORT=$(ITEST_PG16_PORT) DEV_PG15_PORT=$(ITEST_PG15_PORT) \
 	  $(COMPOSE) -f dev/compose.yaml -p $(ITEST_PROJECT) --profile itest up -d --wait pg16 pg15 && \
 	  DASH_ITEST_PG_URLS='pg16=postgres://postgres@localhost:$(ITEST_PG16_PORT)/postgres?sslmode=disable,pg15=postgres://postgres@localhost:$(ITEST_PG15_PORT)/postgres?sslmode=disable' \
-	  $(MAKE) itest
+	  $(MAKE) $(ITEST_GOAL)
 
 # ci:dev-stack, no containers needed: a failed up --wait fails itest-local, runs no test and still
 # cleans up (stand-ins for compose and make).

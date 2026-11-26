@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { InstantResult, PlannedQuery, RangeResult, VolumeResult } from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
 import { EMPTY_COMPLETENESS, fixture, H1, N } from '../test/histogramFixtures';
-import { autoVis, chooseVis, fromInstant, fromRange, type ExploreResult } from './autovis';
+import { byVersion, threeKeys } from '../test/categoryFixtures';
+import {
+  autoVis,
+  chooseVis,
+  fromInstant,
+  fromRange,
+  SHIPPED_VIS,
+  type ExploreResult,
+} from './autovis';
 
 const PLANNED: PlannedQuery = {
   query: 'q',
@@ -184,5 +192,60 @@ describe('unit:from-range-frame (plan #67)', () => {
       stepMs: 1000,
       completeness: EMPTY_COMPLETENESS,
     });
+  });
+});
+
+describe('unit:autovis-table row 11 (#173 Part 2)', () => {
+  const WITH_BAR = new Set([...SHIPPED_VIS, 'barchart' as const]);
+  const keyed = (n: number, values: readonly number[]) =>
+    Array.from({ length: n }, (_, i) => ({
+      key: (i + 1).toString(16).padStart(16, '0'),
+      labels: { version: `2.${String(i)}` },
+      timestamps: new Float64Array(values.map((_, k) => k * 5000)),
+      values: new Float64Array(values),
+    }));
+  const auto = (
+    result: ExploreResult,
+    o: { reducer?: boolean; histogram?: boolean; rate?: boolean } = {},
+  ) =>
+    autoVis({
+      histogram: o.histogram ?? false,
+      rateApplied: o.rate ?? false,
+      result,
+      ...(o.reducer === undefined ? {} : { reducer: o.reducer }),
+      available: WITH_BAR,
+    });
+
+  it('instant categories are a bar chart', () => {
+    expect(auto(byVersion())).toEqual({ vis: 'barchart', rule: 11 });
+    expect(auto(threeKeys())).toEqual({ vis: 'barchart', rule: 11 });
+  });
+
+  it('a range result needs an explicit reducer', () => {
+    const r = fromRange(range(keyed(5, [1, 2, 3])));
+    expect(auto(r, { reducer: true })).toEqual({ vis: 'barchart', rule: 11 });
+    expect(auto(r)).toEqual({ vis: 'line', rule: 14 });
+    const oneSample = fromRange(range(keyed(5, [1])));
+    expect(auto(oneSample)).toEqual({ vis: 'line', rule: 14 });
+  });
+
+  it('rows 5 and 6 come first; more than 50 series is a line', () => {
+    expect(auto(fromRange(range(H1())), { reducer: true, histogram: true })).toEqual({
+      vis: 'heatmap',
+      rule: 5,
+    });
+    expect(auto(fromRange(range(keyed(5, [1, 2, 3]))), { reducer: true, rate: true })).toEqual({
+      vis: 'line',
+      rule: 6,
+    });
+    expect(auto(fromInstant(instant(keyed(51, [1]))))).toEqual({ vis: 'line', rule: 14 });
+  });
+
+  it('the default set has no bar chart', () => {
+    expect(autoVis({ ...NO, result: fromInstant(instant(keyed(2, [1]))) })).toEqual({
+      vis: 'line',
+      rule: 14,
+    });
+    expect(SHIPPED_VIS.has('barchart')).toBe(false);
   });
 });

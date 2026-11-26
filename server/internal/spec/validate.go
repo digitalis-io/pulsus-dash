@@ -26,17 +26,56 @@ const (
 	gridColumns    = 12
 	maxGridRow     = 9999
 	maxGridRowSpan = 100
+	// maxBoardTags bounds a board's tags (T24-029), as AnnotationTag lists.
+	maxBoardTags = 16
+
+	// The widget bounds of board spec v5 (T24 §5.1; the client's MAX_CONTENT_BYTES, MAX_ZONES).
+	maxContentBytes   = 65536 // a text's content, UTF-8 bytes
+	maxZones          = 12    // a clock's zones
+	maxZoneNameBytes  = 64    // a zone's tz
+	maxWidgetLabelLen = 64    // a zone's label and a countdown's label, runes
 )
 
 var (
 	timePattern = regexp.MustCompile(`^(now|now/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$`)
 	idPattern   = regexp.MustCompile(`^[a-z0-9-]{1,40}$`)
-	queryLangs  = []string{"promql", "logql"}
-	visKinds    = []string{"auto", "line", "bars", "heatmap", "stat", "logs"}
+	// tagPattern is the OpenAPI AnnotationTag (the gateway's tagPattern, the client's TAG_PATTERN).
+	tagPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_.:/-]{0,63}$`)
+	queryLangs = []string{"promql", "logql"}
+	visKinds   = []string{"auto", "line", "bars", "heatmap", "stat", "logs", "barchart", "pie", "text", "clock"}
+	// widgetKinds are the kinds without a query (board spec v5, T24-003); the others in visKinds
+	// are data panels.
+	widgetKinds = []string{"text", "clock"}
 	directions  = []string{"above", "below"}
 	stepStates  = []string{"watch", "degraded", "failing"}
 	legendModes = []string{"table", "hidden"}
+
+	// The option values of board spec v3 (T22 §6.1; client boards/options.ts OPTION_VALUES).
+	// labelPattern is the client's FILTER_LABEL.
+	labelPattern    = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_.]{0,99}$`)
+	reducers        = []string{"last", "first", "mean", "min", "max", "sum", "count"}
+	baselineOffsets = []string{"1h", "1d", "7d", "28d"}
+	sorts           = []string{"valueDesc", "valueAsc", "label", "none"}
+	orientations    = []string{"horizontal", "vertical"}
+	statOrients     = []string{"auto", "horizontal", "vertical"}
+	pieLabels       = []string{"percent", "value", "name", "none"}
+	layouts         = []string{"single", "grid"}
+	colourModes     = []string{"value", "background", "none"}
+	textModes       = []string{"auto", "value", "valueAndName", "name"}
+	graphModes      = []string{"sparkline", "none"}
+
+	// The widget option values of board spec v5 (T24 §5.1; client OPTION_VALUES). tzName is the
+	// client's TZ_NAME; rfc3339Offset is countdown.to's grammar, before validRFC3339Offset's ranges.
+	markupModes   = []string{"markdown", "code"}
+	codeLanguages = []string{"plaintext", "json", "yaml", "sql", "promql", "logql", "go", "shell"}
+	hourCycles    = []string{"auto", "h12", "h23"}
+	afterModes    = []string{"countUp", "hide"}
+	tzName        = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$`)
+	rfc3339Offset = regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d{1,9})?(Z|[+-](\d{2}):(\d{2}))$`)
 )
+
+// maxOptionAbs bounds options.min and options.max (|v| <= 1e15, as the threshold values).
+const maxOptionAbs = 1e15
 
 // validator collects field errors in document order, at most maxFieldErrors.
 type validator struct {
@@ -94,7 +133,7 @@ func (v *validator) id(pointer, id string) {
 }
 
 // Validate checks the semantic rules of plan #61 §3.4.3 and returns a *ValidationError, or nil.
-// Errors are in document order: title, time, panels, sections, each panel in field order.
+// Errors are in document order: title, time, tags, panels, sections, each panel in field order.
 func (b Board) Validate() error {
 	v := &validator{ids: map[string]bool{}}
 	v.str("/title", b.Title, func(s string) string {
@@ -113,6 +152,7 @@ func (b Board) Validate() error {
 		v.str("/time/from", b.Time.From, valid)
 		v.str("/time/to", b.Time.To, valid)
 	}
+	v.tags(b.Tags)
 	total := len(b.Panels)
 	for _, s := range b.Sections {
 		total += len(s.Panels)
@@ -134,6 +174,25 @@ func (b Board) Validate() error {
 		return &ValidationError{Fields: v.fields}
 	}
 	return nil
+}
+
+// tags checks a board's tags (T24-029): at most 16 (reported at /tags), then each item, which
+// must match tagPattern and differ from every earlier item.
+func (v *validator) tags(tags []string) {
+	if len(tags) > maxBoardTags {
+		v.add("/tags", "board.tags.invalid")
+	}
+	for i, tag := range tags {
+		v.str("/tags/"+strconv.Itoa(i), tag, func(s string) string {
+			switch {
+			case !tagPattern.MatchString(s):
+				return "board.tags.invalid"
+			case slices.Contains(tags[:i], s):
+				return "board.tags.duplicate"
+			}
+			return ""
+		})
+	}
 }
 
 func inBounds(g Grid) bool {
@@ -160,13 +219,23 @@ func (v *validator) panels(pointer string, panels []Panel) {
 		default:
 			placed = append(placed, p.Grid)
 		}
-		v.str(pp+"/query/lang", p.Query.Lang, oneOf(queryLangs, "board.query.lang.invalid"))
-		v.str(pp+"/query/text", p.Query.Text, func(s string) string {
-			if len(s) > maxQueryBytes {
-				return "board.query.text.tooLong"
-			}
-			return ""
-		})
+		// Board spec v5 (T24-003): a widget has no query and a data panel needs one; a panel of an
+		// invalid kind reports only its kind.
+		widget := slices.Contains(widgetKinds, p.Vis.Kind)
+		switch {
+		case p.Query != nil && widget:
+			v.add(pp+"/query", "board.panel.query.forbidden")
+		case p.Query == nil && slices.Contains(visKinds, p.Vis.Kind) && !widget:
+			v.add(pp+"/query", "board.panel.query.required")
+		case p.Query != nil:
+			v.str(pp+"/query/lang", p.Query.Lang, oneOf(queryLangs, "board.query.lang.invalid"))
+			v.str(pp+"/query/text", p.Query.Text, func(s string) string {
+				if len(s) > maxQueryBytes {
+					return "board.query.text.tooLong"
+				}
+				return ""
+			})
+		}
 		v.str(pp+"/vis/kind", p.Vis.Kind, oneOf(visKinds, "board.vis.kind.invalid"))
 		v.vis(pp+"/vis", p.Vis)
 	}
@@ -179,10 +248,19 @@ func inThresholdRange(x float64) bool {
 	return x == 0 || (a >= minThresholdAbs && a <= maxThresholdAbs)
 }
 
-// vis checks a panel's thresholds and legend (plan #64 Part B §3.1), after vis.kind. Thresholds
-// are valid on every kind; every step is checked, even past 8.
+// vis checks a panel's thresholds and legend (plan #64 Part B §3.1), after vis.kind, then its
+// options (board spec v3) when the kind is valid. Thresholds are valid on every data kind; every step
+// is checked, even past 8. A widget has neither thresholds nor legend (board spec v5): each is an
+// unknown key, reported here because the shape pass cannot know a kind that comes later.
 func (v *validator) vis(pointer string, vis Vis) {
-	if t := vis.Thresholds; t != nil {
+	widget := slices.Contains(widgetKinds, vis.Kind)
+	if vis.Thresholds != nil && widget {
+		v.add(pointer+"/thresholds", keyUnknownKey)
+	}
+	if vis.Legend != nil && widget {
+		v.add(pointer+"/legend", keyUnknownKey)
+	}
+	if t := vis.Thresholds; t != nil && !widget {
 		tp := pointer + "/thresholds"
 		v.str(tp+"/direction", t.Direction, oneOf(directions, "board.thresholds.direction.invalid"))
 		if len(t.Steps) == 0 || len(t.Steps) > maxThresholdSteps {
@@ -200,7 +278,172 @@ func (v *validator) vis(pointer string, vis Vis) {
 			v.str(sp+"/label", s.Label, maxRunes("board.thresholds.label.tooLong"))
 		}
 	}
-	if l := vis.Legend; l != nil {
+	if l := vis.Legend; l != nil && !widget {
 		v.str(pointer+"/legend/mode", l.Mode, oneOf(legendModes, "board.legend.mode.invalid"))
 	}
+	if vis.Options != nil && slices.Contains(visKinds, vis.Kind) {
+		v.options(pointer+"/options", vis.Kind, *vis.Options)
+	}
+}
+
+func optionKey(key string) string { return "board.options." + key + ".invalid" }
+
+// options checks the values of a kind's options (plan #173 Part 1 §3.4), each present key in
+// OPTION_ORDER: strings through str, then the key's rule. The shape pass has allowed only the
+// kind's keys and made min and max finite. min >= max is reported at max, only when min is valid.
+func (v *validator) options(pointer, kind string, o Options) {
+	enum := func(name string, s *string, set []string) {
+		if s != nil {
+			v.str(pointer+"/"+name, *s, oneOf(set, optionKey(name)))
+		}
+	}
+	bound := func(x float64) bool { return math.Abs(x) <= maxOptionAbs }
+	enum("reducer", o.Reducer, reducers)
+	enum("baselineOffset", o.BaselineOffset, baselineOffsets)
+	if o.CategoryBy != nil {
+		v.str(pointer+"/categoryBy", *o.CategoryBy, func(s string) string {
+			if s != "" && !labelPattern.MatchString(s) {
+				return optionKey("categoryBy")
+			}
+			return ""
+		})
+	}
+	enum("sort", o.Sort, sorts)
+	if kind == "stat" {
+		enum("orientation", o.Orientation, statOrients)
+	} else {
+		enum("orientation", o.Orientation, orientations)
+	}
+	minValid := o.Min != nil && bound(*o.Min)
+	if o.Min != nil && !minValid {
+		v.add(pointer+"/min", optionKey("min"))
+	}
+	if o.Max != nil && (!bound(*o.Max) || (minValid && *o.Min >= *o.Max)) {
+		v.add(pointer+"/max", optionKey("max"))
+	}
+	enum("labels", o.Labels, pieLabels)
+	enum("layout", o.Layout, layouts)
+	enum("colourMode", o.ColourMode, colourModes)
+	if o.TextMode != nil {
+		grid := o.Layout != nil && *o.Layout == "grid"
+		v.str(pointer+"/textMode", *o.TextMode, func(s string) string {
+			if !slices.Contains(textModes, s) || (grid && s == "value") {
+				return optionKey("textMode")
+			}
+			return ""
+		})
+	}
+	enum("graphMode", o.GraphMode, graphModes)
+	v.widgetOptions(pointer, o)
+}
+
+// widgetOptions checks the text and clock options (board spec v5, T24 §5.1), each present key in
+// OPTION_ORDER after the data keys. Zone existence is not checked here (CheckZones, on writes only).
+func (v *validator) widgetOptions(pointer string, o Options) {
+	key := func(rule string) string { return "board.options." + rule }
+	if o.Mode != nil {
+		v.str(pointer+"/mode", *o.Mode, oneOf(markupModes, key("mode.invalid")))
+	}
+	if o.Content != nil {
+		v.str(pointer+"/content", *o.Content, func(s string) string {
+			if len(s) > maxContentBytes {
+				return key("content.tooLong")
+			}
+			return ""
+		})
+	}
+	if o.Language != nil {
+		code := o.Mode != nil && *o.Mode == "code"
+		v.str(pointer+"/language", *o.Language, func(s string) string {
+			if !code || !slices.Contains(codeLanguages, s) {
+				return key("language.invalid")
+			}
+			return ""
+		})
+	}
+	if o.Zones != nil {
+		v.zones(pointer+"/zones", o.Zones)
+	}
+	if o.HourCycle != nil {
+		v.str(pointer+"/hourCycle", *o.HourCycle, oneOf(hourCycles, key("hourCycle.invalid")))
+	}
+	if c := o.Countdown; c != nil {
+		invalid := key("countdown.invalid")
+		v.str(pointer+"/countdown/to", c.To, func(s string) string {
+			if !validRFC3339Offset(s) {
+				return invalid
+			}
+			return ""
+		})
+		v.str(pointer+"/countdown/label", c.Label, func(s string) string {
+			if n := utf8.RuneCountInString(s); n < 1 || n > maxWidgetLabelLen {
+				return invalid
+			}
+			return ""
+		})
+		v.str(pointer+"/countdown/after", c.After, oneOf(afterModes, invalid))
+	}
+}
+
+// zones checks a clock's zones: 1 to 12 (reported at the list), then each item's tz (” or a
+// well-formed name other than Local, unique) and label (at most 64 runes).
+func (v *validator) zones(pointer string, zones []Zone) {
+	const invalid, duplicate = "board.options.zones.invalid", "board.options.zones.duplicate"
+	if len(zones) < 1 || len(zones) > maxZones {
+		v.add(pointer, invalid)
+	}
+	for i, z := range zones {
+		zp := pointer + "/" + strconv.Itoa(i)
+		v.str(zp+"/tz", z.TZ, func(s string) string {
+			switch {
+			case s != "" && (len(s) > maxZoneNameBytes || !tzName.MatchString(s) || s == "Local"):
+				return invalid
+			case slices.ContainsFunc(zones[:i], func(e Zone) bool { return e.TZ == s }):
+				return duplicate
+			}
+			return ""
+		})
+		v.str(zp+"/label", z.Label, func(s string) string {
+			if utf8.RuneCountInString(s) > maxWidgetLabelLen {
+				return invalid
+			}
+			return ""
+		})
+	}
+}
+
+// validRFC3339Offset reports whether s is an RFC 3339 date-time with an offset (Z or ±hh:mm) that
+// names a real time: month 1–12, day 1 to the month's length (29 February in leap years only), hour
+// 0–23, minute and second 0–59, offset at most 23:59. The client's isRfc3339Offset is the same.
+func validRFC3339Offset(s string) bool {
+	m := rfc3339Offset.FindStringSubmatch(s)
+	if m == nil {
+		return false
+	}
+	n := func(i int) int {
+		if m[i] == "" {
+			return 0
+		}
+		x, _ := strconv.Atoi(m[i]) // two or four digits: the pattern matched
+		return x
+	}
+	year, month, day := n(1), n(2), n(3)
+	if month < 1 || month > 12 || day < 1 || day > daysIn(year, month) {
+		return false
+	}
+	return n(4) <= 23 && n(5) <= 59 && n(6) <= 59 && n(9) <= 23 && n(10) <= 59
+}
+
+// daysIn is the number of days of month (1–12) in year, Gregorian.
+func daysIn(year, month int) int {
+	switch month {
+	case 2:
+		if year%4 == 0 && (year%100 != 0 || year%400 == 0) {
+			return 29
+		}
+		return 28
+	case 4, 6, 9, 11:
+		return 30
+	}
+	return 31
 }

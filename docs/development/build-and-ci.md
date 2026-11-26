@@ -28,7 +28,7 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
 | `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
-| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)); a full run also checks the keyboard coverage over its parts | `e2e:*`, `golden:interim-gallery`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke`, `bench:logql-completion-latency`, `bench:log-scroll`, `bench:promql-completion-latency`, `bench:log-page-load` |
+| `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)); a full run also checks the keyboard coverage over its parts | `e2e:*`, `golden:interim-gallery`, `golden:greyscale`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-categories`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke`, `bench:logql-completion-latency`, `bench:log-scroll`, `bench:promql-completion-latency`, `bench:log-page-load` |
 | `npm run e2e:keyboard-coverage -- <dir> <project>` | The keyboard coverage check over the part files under `<dir>` ([below](#keyboard-coverage-and-e2e-completeness)) | `e2e:a11y-rooms` (CI, merged shards) |
 | `npm run e2e:complete -- <listed.json> <project> <shard.json>...` | Every listed test is in exactly one shard (retries allowed) and was not skipped ([below](#keyboard-coverage-and-e2e-completeness)) | `ci:e2e-complete` |
 | `npm run tokens` | Regenerates `src/styles/tokens.css`, `tokens.ts` and the engine's `../engine/crates/dash-tokens/src/tokens.rs` from `../design/tokens.toml`; `-- --check` compares instead of writing | `ci:token-lint` (regenerate) |
@@ -295,17 +295,23 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     markers sorted by `(atMs, id)`; none while disabled; the failed and truncated notices; one
     markers array for line, bars, heatmap and stat panels; a board with sections only (collapsed
     too) still asks; the hit targets' labels, size and tooltip.
-  - **`golden:interim-gallery`** (`e2e/golden-gallery.spec.ts`, Chromium only): each of the eleven
+  - **`golden:interim-gallery`** (`e2e/golden-gallery.spec.ts`, Chromium only): each of the sixteen
     gallery frames (with `line-thresholds` and `stat-sparkline`, #64 Part B, `line-extreme`, #97,
-    and `line-events`, #64 Part C) in dark and light, compared with `toHaveScreenshot` against
+    `line-events`, #64 Part C, and the five bar charts `barchart`, `barchart-thresholds`,
+    `barchart-dupes`, `barchart-subset` and `barchart-cap`, #173 Part 2) in dark and light, compared
+    with `toHaveScreenshot` against
     `e2e/__screenshots__/golden-gallery.spec.ts/gallery-<id>-<theme>.png` (per-pixel threshold 0.1,
     at most 0.2 % of pixels different, animations off, caret hidden, CSS scale), after the fonts are
-    loaded and two animation frames; a reload must give the same pixels. Baselines are never written
-    locally or on a normal run (`updateSnapshots: 'none'`): they come only from CI's Chromium on
-    `ubuntu-24.04`. To change them, add the `golden-update` label to the pull request; the e2e jobs
-    rerun with `PW_UPDATE_GOLDENS=1`, the Chromium job writes new baselines and uploads them as the
-    `e2e-screenshots` artefact; download it, review the images and commit them to
-    `client/e2e/__screenshots__/`, then remove the label.
+    loaded and two animation frames; a reload must give the same pixels. **`golden:greyscale`**
+    (same file, VIZ-067): the five bar charts in dark with every canvas set to `filter:
+    grayscale(1)` through CSSOM (the page's CSP refuses an injected style tag), against
+    `gallery-<id>-greyscale.png`; the bars must be told apart by their names alone. Baselines are
+    never written on a normal run (`updateSnapshots: 'none'`). Since 2026-11-25 GitHub Actions is
+    not a gate: a change regenerates its baselines locally with `PW_UPDATE_GOLDENS=1` in a
+    container built from the CI image definition (Ubuntu 24.04, Node 24.22.3, Playwright 1.65.0
+    and its pinned browsers), reviews the images and commits them to
+    `client/e2e/__screenshots__/`. `PW_UPDATE_GOLDENS=1` rewrites every shot of the run; restore
+    the unchanged baselines that differ only within the threshold before committing.
   - **`e2e:chart-brush`** (`e2e/chart-brush.spec.ts`): a right drag on `line-1` from 0.1–0.4 brush
     units inside 12:20 to the same inside 12:25 must give exactly `from=…12:20:00.000Z`,
     `to=…12:25:00.000Z`; a double-click then gives 12:17:30–12:27:30 and the header shows it; an
@@ -343,7 +349,11 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
     its own page and with a 30 s limit, does the same for the `line-extreme` frame (the measures
     whose `detail.frame` is that frame's `data-frame-id`; #97) and writes
     `test-results/bench-interim-line-extreme.json` with a `bench:frame-interim-line line-extreme`
-    annotation. Both assert at least 40 samples.
+    annotation. Both assert at least 40 samples. **`bench:frame-interim-categories`** (same file,
+    report only; #173 Part 2) opens the gallery with `&bench=categories` (only `barchart-cap`,
+    600 px wide with a 2 800 px category extent, so 200 bars), makes 50 theme changes and records
+    the `chart-draw` measures with `detail.series` 200; p50 and p95 go to
+    `test-results/bench-interim-categories.json` and an annotation. No threshold.
   - **`e2e:gallery-extreme`** (`e2e/gallery-extreme.spec.ts`, Chromium, Firefox and WebKit; #97,
     60 s limit): the `line-extreme` frame (values over [−MAX, MAX]) becomes ready with a non-empty
     plot, and the page then answers an `evaluate` within 2 s.
@@ -635,7 +645,7 @@ the browser otherwise).
   2026-01-01 00:00–01:00 UTC; each test deletes its board): **`e2e:board-thresholds-legend`** (a
   line panel's legend table with mean, max and last and their threshold states; a row isolates its
   series; a 4-row panel's compact legend reached by keyboard opens the full table and Escape returns
-  focus; Legend Hidden and a threshold edit survive save and reload, stored as `schema_version` 2;
+  focus; Legend Hidden and a threshold edit survive save and reload, stored as `schema_version` 3 (board spec v3, #173);
   an unparsable value blocks the save with no `PUT`) and **`e2e:board-stat-tile`** (the state chip
   and threshold text of a stat with thresholds; canvas pixels in the sparkline band of a range stat,
   none for a scalar stat). `e2e:a11y-rooms` adds `b-1 view, legend and stat chip`, `b-1 edit,
@@ -918,13 +928,14 @@ cgo.
 | `make go-test` | `go test -race ./...` | `ci:go-test` |
 | `make govulncheck` | `govulncheck ./...` | `ci:govulncheck` |
 | `make migrations-lint` | squawk over `server/migrations/*.sql`, then the failing fixture must fail with `require-concurrent-index-creation` | `ci:migrations` |
-| `make itest` | `go test -race -tags itest` against the clusters in `DASH_ITEST_PG_URLS` ([database page](../server/database.md#integration-tests)), with the PulsusDB fake in-process ([testing against PulsusDB](testing-pulsusdb.md)) | `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations`, `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check`; `itest:pulsusdb-contract` runs only with `DASH_CONTRACT_PULSUSDB_URL` and is skipped in CI |
+| `make itest` | `go test -race -tags itest` against the clusters in `DASH_ITEST_PG_URLS` ([database page](../server/database.md#integration-tests)), with the PulsusDB fake in-process ([testing against PulsusDB](testing-pulsusdb.md)) | `itest:rls-isolation`, `itest:no-extensions`, `itest:migrations`, `itest:promql-range`, `itest:promql-errors`, `itest:cancel`, `itest:cancel-mid-stream`, `itest:tenant-header`, `itest:datasource-check`, `itest:board-find`, `itest:board-tags`, `itest:board-list-snapshot`; `itest:pulsusdb-contract` runs only with `DASH_CONTRACT_PULSUSDB_URL` and is skipped in CI, and `itest:board-tags-old-binary` runs only through `make itest-old-binary` |
+| `make itest-old-binary` | `server/scripts/itest-old-binary.sh`: builds the merge-base of `HEAD` with `OLD_BINARY_REF` (default `origin/main`) in a git worktree under `build/old-binary/` (removed on exit), then runs `TestBoardTagsOldBinary` with `DASH_OLD_BINARY` set to that binary; fails unless the test passes (it never skips there). Needs `DASH_ITEST_PG_URLS`. A required local gate for every change to the board schema or spec ([database page](../server/database.md#old-binaries-and-make-itest-old-binary)) | `itest:board-tags-old-binary` |
 | `make cpu-instr` | `server/scripts/cpu-instr.sh`: writes the workload bodies first (outside valgrind, so the input is not counted), then runs the BFF workloads W1, W2 and W3 under cachegrind, minus an empty run that reads the same input, against `server/testdata/bench/cpu-instr.json`; more than +3 % fails, and so does a Go or valgrind version other than the baseline's (`rebaseline`). Needs valgrind | `bench:cpu-instr` |
 | `make cpu-instr-update` | rewrites the baseline; run it in CI and commit the result with the change that moves it | — |
 | `make bench-bff` | the two time budgets `TestBudgetPromqlDecode` and `TestBudgetBffOverhead`: with `REFERENCE_LAB=1` they fail over 30 ms per 10⁶ points, or over 5 ms (p50) and 20 ms (p99) of BFF overhead; without it they skip ([budgets](../server/pulsusdb.md#budgets-t06-7-t05-006)) | `bench:promql-decode`, `bench:bff-overhead` (reference lab) |
 | `make go-licenses` | `server/scripts/go-licenses.sh` (licence check and `build/THIRD_PARTY_NOTICES.txt`), then its self-test `server/scripts/check-go-licenses-fixture.sh` | `ci:go-licenses` |
 | `make no-pulsusdb-host` | the checker's self-test, then (only if it passes) the scan of every tracked file; reads `dev/local.env` if present. `ARGS=--show-paths` names the files | `ci:no-pulsusdb-host` |
-| `make itest-local`, `make dev-up`, `dev-db`, `dev-migrate`, `dev-down`, `dev-reset` | the dev compose stack ([dev stack page](dev-stack.md)) | — |
+| `make itest-local`, `make dev-up`, `dev-db`, `dev-migrate`, `dev-down`, `dev-reset` | the dev compose stack ([dev stack page](dev-stack.md)); `itest-local` runs `$(ITEST_GOAL)` (default `itest`; `ITEST_GOAL=itest-old-binary` runs the old-binary test) against its PostgreSQL 15 and 16 | — |
 | `make dev-smoke` | `dev/smoke.sh`, then `dev/smoke-selftest.sh` ([dev stack page](dev-stack.md#smoke-test-cidev-stack)) | `ci:dev-stack` |
 | `make itest-local-selftest` | `dev/itest-local-selftest.sh`: a failed `up --wait` fails `itest-local`, runs no test and still cleans up (no containers) | `ci:dev-stack` |
 | `make tools-ci` | downloads the pinned golangci-lint and squawk | — |

@@ -48,8 +48,12 @@ paths:
     get:
       operationId: listBoards
       tags: [boards]
+      parameters:
+        - { name: q, in: query, required: false, description: 'Title substring or exact tag, ASCII case-insensitive; 1–100 characters, no Cc', schema: { type: string, minLength: 1, maxLength: 100 } }
+        - { name: tag, in: query, required: false, schema: { $ref: '#/components/schemas/AnnotationTag' } }
       responses:
         '200': { description: Boards of the organisation, content: { application/json: { schema: { $ref: '#/components/schemas/BoardList' } } } }
+        '400': { description: Invalid q or tag, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
         '503': { description: Configuration store unavailable, content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
     post:
       operationId: createBoard
@@ -657,6 +661,7 @@ components:
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
         time: { $ref: '#/components/schemas/TimeRange' }
+        tags: { type: array, maxItems: 16, uniqueItems: true, items: { $ref: '#/components/schemas/AnnotationTag' } }
         panels: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/Panel' } }
         sections: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/Section' } }
     TimeRange: { type: object, additionalProperties: false, required: [from, to], properties: { from: { type: string, pattern: '^(now|now/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$' }, to: { type: string, pattern: '^(now|now/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$' } } }
@@ -669,10 +674,13 @@ components:
         title: { type: string, maxLength: 200 }
         collapsed: { type: boolean }
         panels: { type: array, items: { $ref: '#/components/schemas/Panel' } }
+    # Board spec v5 (#198 Part 1, T24-003): query is optional in the schema; the server requires it
+    # on a data panel (board.panel.query.required) and refuses it on a widget, text or clock
+    # (board.panel.query.forbidden).
     Panel:
       type: object
       additionalProperties: false
-      required: [id, title, grid, query, vis]
+      required: [id, title, grid, vis]
       properties:
         id: { type: string, pattern: '^[a-z0-9-]{1,40}$' }
         title: { type: string, maxLength: 200 }
@@ -694,9 +702,62 @@ components:
       additionalProperties: false
       required: [kind]
       properties:
-        kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs] }
+        kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs, barchart, pie, text, clock] }
         thresholds: { $ref: '#/components/schemas/Thresholds' }
         legend: { $ref: '#/components/schemas/Legend' }
+        options: { $ref: '#/components/schemas/VisOptions' }
+    # Board spec v3 (#173 Part 1, T22 §6.1): the kind's options. Every key is optional; which keys a
+    # kind allows, the bounds of min and max (|v| <= 1e15, min < max), the categoryBy label pattern
+    # and the stat textMode/layout combination are server rules (board.json.unknownKey,
+    # board.options.<key>.invalid), not schema. Board spec v5 (#198 Part 1, T24 §5.1) adds the text
+    # keys (mode, content of at most 65 536 UTF-8 bytes, language in code mode only) and the clock
+    # keys (zones, hourCycle, seconds, date, countdown); the zone name rules, the duplicate zones and
+    # the countdown time grammar are server rules too.
+    VisOptions:
+      type: object
+      additionalProperties: false
+      properties:
+        reducer: { type: string, enum: [last, first, mean, min, max, sum, count] }
+        baselineOffset: { type: string, enum: [1h, 1d, 7d, 28d] }
+        categoryBy: { type: string }
+        sort: { type: string, enum: [valueDesc, valueAsc, label, none] }
+        orientation: { type: string, enum: [auto, horizontal, vertical] }
+        valueLabels: { type: boolean }
+        min: { type: number, format: double }
+        max: { type: number, format: double }
+        donut: { type: boolean }
+        labels: { type: string, enum: [percent, value, name, none] }
+        parts: { type: boolean }
+        layout: { type: string, enum: [single, grid] }
+        colourMode: { type: string, enum: [value, background, none] }
+        textMode: { type: string, enum: [auto, value, valueAndName, name] }
+        graphMode: { type: string, enum: [sparkline, none] }
+        mode: { type: string, enum: [markdown, code] }
+        content: { type: string }
+        language: { type: string, enum: [plaintext, json, yaml, sql, promql, logql, go, shell] }
+        zones: { type: array, minItems: 1, maxItems: 12, items: { $ref: '#/components/schemas/ClockZone' } }
+        hourCycle: { type: string, enum: [auto, h12, h23] }
+        seconds: { type: boolean }
+        date: { type: boolean }
+        countdown: { $ref: '#/components/schemas/ClockCountdown' }
+    # A clock zone: tz '' (the Context zone) or an IANA name the server's build knows; label '' shows
+    # the city.
+    ClockZone:
+      type: object
+      additionalProperties: false
+      required: [tz, label]
+      properties:
+        tz: { type: string, maxLength: 64 }
+        label: { type: string, maxLength: 64 }
+    # A clock's countdown: to is RFC 3339 with an offset; after the time, count up or hide.
+    ClockCountdown:
+      type: object
+      additionalProperties: false
+      required: [to, label, after]
+      properties:
+        to: { type: string, format: date-time }
+        label: { type: string, minLength: 1, maxLength: 64 }
+        after: { type: string, enum: [countUp, hide] }
     # Board spec v2 (#64 Part B, ADR-0022): absolute threshold steps and the legend mode. A value is
     # 0, or 1e-9 <= |value| <= 1e15; values are distinct; validated by the server (board.thresholds.*).
     Thresholds:
@@ -719,20 +780,22 @@ components:
     BoardSummary:
       type: object
       additionalProperties: false
-      required: [uid, title, version, updated_at, updated_by]
-      properties: { uid: { type: string }, title: { type: string }, version: { type: integer, format: int64 }, updated_at: { type: string, format: date-time }, updated_by: { $ref: '#/components/schemas/Author' } }
+      required: [uid, title, version, updated_at, updated_by, tags]
+      properties: { uid: { type: string }, title: { type: string }, version: { type: integer, format: int64 }, updated_at: { type: string, format: date-time }, updated_by: { $ref: '#/components/schemas/Author' }, tags: { type: [array, 'null'], maxItems: 16, items: { $ref: '#/components/schemas/AnnotationTag' }, description: null = not yet known } }
     Board:
       type: object
       additionalProperties: false
       required: [uid, title, version, updated_at, updated_by, etag, schema_version, spec]
       properties: { uid: { type: string }, title: { type: string }, version: { type: integer, format: int64 }, updated_at: { type: string, format: date-time }, updated_by: { $ref: '#/components/schemas/Author' }, etag: { type: string }, schema_version: { type: integer, format: int64 }, spec: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage } }
-    BoardList: { type: object, additionalProperties: false, required: [items, truncated], properties: { items: { type: array, items: { $ref: '#/components/schemas/BoardSummary' } }, truncated: { type: boolean } } }
+    BoardList: { type: object, additionalProperties: false, required: [items, truncated, applied, tagsStale], properties: { items: { type: array, items: { $ref: '#/components/schemas/BoardSummary' } }, truncated: { type: boolean }, applied: { $ref: '#/components/schemas/BoardListApplied' }, tagsStale: { type: integer, format: int64, minimum: 0 } } }
+    BoardListApplied: { type: object, additionalProperties: false, properties: { q: { type: string, minLength: 1, maxLength: 100 }, tag: { $ref: '#/components/schemas/AnnotationTag' } } }
     BoardCreate: { type: object, additionalProperties: false, required: [spec], properties: { spec: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage } } }
     BoardUpdate: { type: object, additionalProperties: false, required: [spec], properties: { spec: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage }, message: { type: string, maxLength: 500 } } }
     BoardSaveResult: { type: object, additionalProperties: false, required: [board, changed], properties: { board: { $ref: '#/components/schemas/Board' }, changed: { type: boolean } } }
     BoardConflict: { type: object, additionalProperties: false, required: [error, current], properties: { error: { $ref: '#/components/schemas/ErrorBody' }, current: { $ref: '#/components/schemas/Board' }, submitted: { allOf: [ { $ref: '#/components/schemas/BoardSpec' } ], x-go-type: json.RawMessage } } }
     BoardRef: { type: object, additionalProperties: false, required: [uid, title], properties: { uid: { type: string }, title: { type: string } } }
-    BoardRefList: { type: object, additionalProperties: false, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/BoardRef' } } } }
+    BoardRefList: { type: object, additionalProperties: false, required: [items, applied, truncated], properties: { items: { type: array, items: { $ref: '#/components/schemas/BoardRef' } }, applied: { $ref: '#/components/schemas/BoardRefApplied' }, truncated: { type: boolean } } }
+    BoardRefApplied: { type: object, additionalProperties: false, properties: {} }
     EpochMs: { type: integer, format: int64, minimum: 0, maximum: 253402300799999, description: ms since the Unix epoch, up to 9999-12-31T23:59:59.999Z }
     AnnotationKind: { type: string, enum: [deploy, config, flag, annotation] }
     AnnotationTag: { type: string, pattern: '^[a-z0-9][a-z0-9_.:/-]{0,63}$' }

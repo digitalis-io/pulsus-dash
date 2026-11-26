@@ -12,6 +12,7 @@ import type {
   VisSpec,
 } from '../engine/api';
 import { formatRangeShort, formatTime, formatValue } from '../i18n/format';
+import { space } from '../styles/tokens';
 import { t, type MessageId } from '../i18n/t';
 
 /** Rows the tooltip shows at once. */
@@ -22,6 +23,7 @@ const KIND: Readonly<Record<VisSpec['kind'], MessageId>> = {
   bars: 'chart.kind.bars',
   heatmap: 'chart.kind.heatmap',
   stat: 'chart.kind.stat',
+  barchart: 'chart.kind.barchart',
 };
 
 /**
@@ -65,6 +67,15 @@ export function valueUnit(spec: VisSpec): Unit {
   return spec.kind === 'heatmap' ? spec.countUnit : spec.unit;
 }
 
+/**
+ * The left edge of a tooltip `width` px wide beside `xCss` (CSS px in the frame): a gap to the
+ * right, flipped to the left at the frame's right edge (`hostWidth`).
+ */
+export function tooltipLeft(xCss: number, width: number, hostWidth: number): number {
+  const left = xCss + space['3'];
+  return left + width > hostWidth ? xCss - space['3'] - width : left;
+}
+
 /** Value descending, then name ascending. */
 export function sortedRows(rows: readonly HoverRow[]): HoverRow[] {
   return [...rows].sort((a, b) => {
@@ -86,24 +97,31 @@ export function pointerWindowStart(n: number, yCss: number, plot: PlotRect): num
 }
 
 /**
- * `Thresholds: {list}.` (#64 Part B §3.9.1): every threshold line of a line or bars spec, in spec
+ * `Thresholds: {list}.` (#64 Part B §3.9.1): every threshold line of a line, bars or barchart spec, in spec
  * order, as `{state} {label}` joined by `; `, whether drawn, stacked, truncated or off-axis; ''
  * when there is none.
  */
 export function thresholdsText(spec: VisSpec): string {
-  const lines = spec.kind === 'line' || spec.kind === 'bars' ? (spec.thresholds ?? []) : [];
+  const lines =
+    spec.kind === 'line' || spec.kind === 'bars' || spec.kind === 'barchart'
+      ? (spec.thresholds ?? [])
+      : [];
   if (lines.length === 0) return '';
   const list = lines.map((l) => `${t(STATE_LABEL[l.state])} ${l.label}`).join('; ');
   return t('chart.thresholds', { list });
 }
 
 /**
- * `{title}: {kind}, {count} {noun}, {range}. Min {min}, max {max}, last {last}.`, then
+ * `{title}: {kind}, {count} {noun}, {range}. Min {min}, max {max}, last {last}.` (a bar chart:
+ * `{title}: {count} bars.`, ADR-0028), then
  * `Y axis fixed at {min} to {max}.` while the value axis is pinned (#93), then the thresholds,
  * then `Events in view: {count}.` when the frame has event labels (ADR-0023).
  */
 export function summaryLabel(spec: VisSpec, s: FrameSummary, tz: string): string {
-  const base = summaryBase(spec, s, tz);
+  const base =
+    spec.kind === 'barchart'
+      ? t('chart.bar.label', { title: spec.title, count: s.seriesShown })
+      : summaryBase(spec, s, tz);
   const th = thresholdsText(spec);
   const withThresholds = th === '' ? base : `${base} ${th}`;
   let count = 0;
@@ -170,5 +188,7 @@ export function issueText(i: FrameDataIssue): string {
       return t('chart.issue.finite');
     case 'grid':
       return t('chart.issue.grid', { key: i.key });
+    case 'cap':
+      return t('chart.issue.cap', { count: i.count, max: i.max });
   }
 }

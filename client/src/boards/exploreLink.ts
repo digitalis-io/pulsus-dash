@@ -5,19 +5,21 @@
  * Without that response there is no link. A LogQL panel links the server's substituted text of its
  * current answer to Explore › Logs (plan #67 §2), and has no link without one.
  */
-import type { PanelSpec } from '../api/types';
+import type { DataPanelSpec } from '../api/types';
 import type { VisKind } from '../engine/api';
 import { contextSearchString, type ContextSearch } from '../state/contextSearch';
 
 export function exploreHref(
   tenant: string,
-  panel: PanelSpec,
+  panel: DataPanelSpec,
   search: ContextSearch,
   expanded: string | null,
 ): string | null {
   if (expanded === null) return null;
   const k = panel.vis.kind;
-  return exploreHrefFor(tenant, panel.query.lang, k === 'logs' ? 'auto' : k, search, expanded);
+  // Logs and the kinds Explore does not draw (barchart and pie, #173 Part 1) open on Auto.
+  const vis = k === 'logs' || k === 'barchart' || k === 'pie' ? 'auto' : k;
+  return exploreHrefFor(tenant, panel.query.lang, vis, search, expanded);
 }
 
 /**

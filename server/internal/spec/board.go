@@ -1,4 +1,5 @@
-// Package spec is the board spec (plan #61 §3.4; v2 by plan #64 Part B §3.1): strict,
+// Package spec is the board spec (plan #61 §3.4; v2 by plan #64 Part B §3.1, v3 by #173 Part 1, v4 by
+// #215, v5 by #198 Part 1): strict,
 // presence-aware decoding, validation with JSON-pointer field errors, the upcaster entry point
 // (T11 §4.0), canonical JSON and the RFC 6902 patch recorded in the audit trail (T11-006).
 package spec
@@ -7,16 +8,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // BoardSchemaVersion is the current board spec version, stored in board_versions.schema_version:
-// 2 adds vis.thresholds and vis.legend (#64 Part B). Version 1 is a subset of 2.
-const BoardSchemaVersion int64 = 2
+// 2 adds vis.thresholds and vis.legend (#64 Part B); 3 adds vis.options and the kinds barchart and
+// pie (#173); 4 adds tags (#215, T24-029); 5 adds widgets: query optional, the kinds text and clock
+// and their options (#198 Part 1, T24-003). Each version is a subset of the next.
+const BoardSchemaVersion int64 = 5 // adds widgets: query optional, text, clock (#198 Part 1)
 
-// Board is a board spec. Panels are the ungrouped panels drawn above the sections.
+// Board is a board spec. Panels are the ungrouped panels drawn above the sections. Tags are 0 to
+// 16 unique AnnotationTags in their order; an empty list is the same as none (no key).
 type Board struct {
 	Title    string     `json:"title"`
 	Time     *TimeRange `json:"time,omitempty"`
+	Tags     []string   `json:"tags,omitempty"`
 	Panels   []Panel    `json:"panels"`
 	Sections []Section  `json:"sections"`
 }
@@ -36,12 +42,12 @@ type Section struct {
 	Panels    []Panel `json:"panels"`
 }
 
-// Panel is one panel of a grid.
+// Panel is one panel of a grid. A data panel has a Query; a widget (text, clock) has none.
 type Panel struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 	Grid  Grid   `json:"grid"`
-	Query Query  `json:"query"`
+	Query *Query `json:"query,omitempty"`
 	Vis   Vis    `json:"vis"`
 }
 
@@ -59,11 +65,82 @@ type Query struct {
 	Text string `json:"text"`
 }
 
-// Vis is a panel's visualisation: auto, line, bars, heatmap, stat or logs.
+// Vis is a panel's visualisation: auto, line, bars, heatmap, stat, logs, barchart or pie (data
+// panels), or the widgets text and clock.
 type Vis struct {
 	Kind       string      `json:"kind"`
 	Thresholds *Thresholds `json:"thresholds,omitempty"`
 	Legend     *Legend     `json:"legend,omitempty"`
+	Options    *Options    `json:"options,omitempty"`
+}
+
+// visJSON is Vis with its options kept raw (UnmarshalJSON).
+type visJSON struct {
+	Kind       string          `json:"kind"`
+	Thresholds *Thresholds     `json:"thresholds"`
+	Legend     *Legend         `json:"legend"`
+	Options    json.RawMessage `json:"options"`
+}
+
+// UnmarshalJSON decodes a vis whose shape is clean. The shape pass checks options only for a kind
+// in visKinds, so the options of any other kind are not decoded: Validate reports that kind, and
+// the spec is refused.
+func (v *Vis) UnmarshalJSON(b []byte) error {
+	var r visJSON
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	*v = Vis{Kind: r.Kind, Thresholds: r.Thresholds, Legend: r.Legend}
+	if len(r.Options) == 0 || !slices.Contains(visKinds, r.Kind) {
+		return nil
+	}
+	return json.Unmarshal(r.Options, &v.Options)
+}
+
+// Options are a panel's vis.options (board spec v3, T22 §6.1; the widget keys by v5, T24 §5.1): one
+// optional key per field, in OPTION_ORDER. Which keys a kind allows is the shape pass's
+// (optionShape); the values are Validate's (board.options.<key>.<rule>).
+type Options struct {
+	Reducer        *string  `json:"reducer,omitempty"`
+	BaselineOffset *string  `json:"baselineOffset,omitempty"`
+	CategoryBy     *string  `json:"categoryBy,omitempty"`
+	Sort           *string  `json:"sort,omitempty"`
+	Orientation    *string  `json:"orientation,omitempty"`
+	ValueLabels    *bool    `json:"valueLabels,omitempty"`
+	Min            *float64 `json:"min,omitempty"`
+	Max            *float64 `json:"max,omitempty"`
+	Donut          *bool    `json:"donut,omitempty"`
+	Labels         *string  `json:"labels,omitempty"`
+	Parts          *bool    `json:"parts,omitempty"`
+	Layout         *string  `json:"layout,omitempty"`
+	ColourMode     *string  `json:"colourMode,omitempty"`
+	TextMode       *string  `json:"textMode,omitempty"`
+	GraphMode      *string  `json:"graphMode,omitempty"`
+	// Text (v5): markdown or code, the content, the code language.
+	Mode     *string `json:"mode,omitempty"`
+	Content  *string `json:"content,omitempty"`
+	Language *string `json:"language,omitempty"`
+	// Clock (v5): 1 to 12 zones, the hour cycle, seconds and date, an optional countdown.
+	Zones     []Zone     `json:"zones,omitempty"`
+	HourCycle *string    `json:"hourCycle,omitempty"`
+	Seconds   *bool      `json:"seconds,omitempty"`
+	Date      *bool      `json:"date,omitempty"`
+	Countdown *Countdown `json:"countdown,omitempty"`
+}
+
+// Zone is one zone of a clock: TZ is "" (the Context zone) or an IANA name; Label "" shows the
+// city.
+type Zone struct {
+	TZ    string `json:"tz"`
+	Label string `json:"label"`
+}
+
+// Countdown is a clock's countdown: To is RFC 3339 with an offset, Label 1 to 64 runes, After
+// countUp or hide.
+type Countdown struct {
+	To    string `json:"to"`
+	Label string `json:"label"`
+	After string `json:"after"`
 }
 
 // Thresholds are a panel's absolute threshold steps (1 to 8, distinct values); Direction is above
@@ -106,7 +183,8 @@ const maxFieldErrors = 50
 
 // ParseBoard strictly decodes a spec of the current version and validates it: exact keys, every
 // key present, no null, no duplicate key, integer grid values and no trailing data (shape.go),
-// then the semantic rules (validate.go). Every problem is a *ValidationError.
+// then the semantic rules (validate.go). Every problem is a *ValidationError. It never asks whether a
+// clock's zone exists (a stored head is always readable); ParseNewBoard does.
 func ParseBoard(raw []byte) (Board, error) {
 	if fields := checkShape(raw); len(fields) > 0 {
 		return Board{}, &ValidationError{Fields: fields}
@@ -129,7 +207,7 @@ func DecodeBoard(raw []byte, schemaVersion int64) (Board, error) {
 }
 
 // DecodeBoardUpTo decodes a stored spec of schemaVersion when schemaMax is the newest version the
-// caller reads. Versions 1 and 2 decode unchanged (v1 is a subset of v2: the identity upcast); a
+// caller reads. Versions 1 to 5 decode unchanged (each is a subset of the next: the identity upcast); a
 // version above schemaMax returns ErrSchemaTooNew and a version below 1 ErrSchemaVersion. With
 // schemaMax 1 it decodes as the previous release did (plan #64 Part B §4.7).
 func DecodeBoardUpTo(raw []byte, schemaVersion, schemaMax int64) (Board, error) {

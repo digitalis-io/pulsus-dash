@@ -1,9 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ChartEngineContext } from '../engine/index';
 import { fakeEngine } from '../test/fakeEngine';
-import { installResizeObserver } from '../test/fakeResizeObserver';
+import { installResizeObserver, resizeAll } from '../test/fakeResizeObserver';
 import '../test/editorDom';
 import { locationOf, renderApp } from '../test/renderApp';
 import type { RouteObject } from 'react-router';
@@ -116,7 +116,7 @@ describe('current nav item', () => {
 });
 
 describe('gallery route', () => {
-  it('renders the eleven gallery charts on stub data', async () => {
+  it('renders the sixteen gallery charts on stub data', async () => {
     installResizeObserver();
     const engine = fakeEngine();
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -129,11 +129,15 @@ describe('gallery route', () => {
       await screen.findByRole('heading', { level: 1, name: 'Chart gallery' }),
     ).toBeInTheDocument();
     await waitFor(() => {
-      expect(document.querySelectorAll('[data-gallery-id]')).toHaveLength(11);
+      expect(document.querySelectorAll('[data-gallery-id]')).toHaveLength(16);
+    });
+    // The five bar charts (#173 Part 2) mount their frames once their cells are measured.
+    act(() => {
+      resizeAll(600, 240);
     });
     expect(screen.getAllByRole('slider')).toHaveLength(9);
-    expect(document.querySelectorAll('canvas')).toHaveLength(11);
-    expect(engine.frames).toHaveLength(11);
+    expect(document.querySelectorAll('canvas')).toHaveLength(16);
+    expect(engine.frames).toHaveLength(16);
   });
 });
 

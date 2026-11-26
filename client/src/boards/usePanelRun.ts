@@ -11,13 +11,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { useContext, useLayoutEffect, useMemo, useRef } from 'react';
 import { useApi } from '../app/providers';
-import { isApiError, type PanelSpec } from '../api/types';
+import { isApiError, type DataPanelSpec } from '../api/types';
 import { promGrid } from '../data/step';
 import type { Diagnostic } from '../editor/lang/types';
 import { refusalOf, runKind, type Refusal } from '../explore/useExploreRun';
 import { useTimeContext } from '../state/useTimeContext';
 import { fromInstant, fromRange } from '../vis/autovis';
 import { BoardRunContext } from './boardRunContext';
+import { PENDING_KINDS } from './options';
 import {
   panelIdleKey,
   panelRunKey,
@@ -33,7 +34,7 @@ import { panelVars, referencedVariables } from './variableRefs';
 
 export interface PanelRunInput {
   readonly tenant: string;
-  readonly panel: PanelSpec;
+  readonly panel: DataPanelSpec;
   /** The text to run: the saved text, or the dialog's run text for the edited panel (§4.4). */
   readonly text: string;
   /** In the viewport, full screen open, or the preview. */
@@ -113,17 +114,19 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const refusedEarly = useMemo(() => refusalOf(text), [text]);
   const pre: PanelState | null = !active
     ? null
-    : panel.vis.kind === 'logs'
-      ? 'logs'
-      : text.trim() === ''
-        ? 'empty'
-        : refusedEarly !== null
-          ? 'refused'
-          : hint.length > 0
-            ? 'variable'
-            : failed && !degraded
-              ? 'langFailed'
-              : null;
+    : PENDING_KINDS.has(panel.vis.kind)
+      ? 'kindUnavailable'
+      : panel.vis.kind === 'logs'
+        ? 'logs'
+        : text.trim() === ''
+          ? 'empty'
+          : refusedEarly !== null
+            ? 'refused'
+            : hint.length > 0
+              ? 'variable'
+              : failed && !degraded
+                ? 'langFailed'
+                : null;
 
   // Nothing is planned before the board's time is set (§4.6).
   const stepMs =

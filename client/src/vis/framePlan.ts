@@ -80,6 +80,9 @@ export function framePlan(
   o: { readonly isolatedKey: string | null; readonly title: string; readonly rateApplied: boolean },
 ): FramePlan {
   if (r.kind === 'string') return { spec: null, data: null, notice: 'string' };
+  // A bar chart is planned by `vis/barchart.ts` (ADR-0028); no surface offers it here until
+  // #173 Part 3, so it is planned as a line.
+  if (vis === 'barchart') return framePlan('line', r, o);
   const unit: Unit = o.rateApplied ? { kind: 'suffix', suffix: '/s' } : { kind: 'none' };
   const { title } = o;
   const heat: VisSpec = { kind: 'heatmap', title, unit: { kind: 'none' }, countUnit: unit };

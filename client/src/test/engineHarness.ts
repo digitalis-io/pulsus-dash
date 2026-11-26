@@ -10,6 +10,9 @@ import type {
   FrameData,
   FrameSummary,
   HoverEvent,
+  MarkEvent,
+  PickEvent,
+  SelectEvent,
   SeriesFrame,
   VisSpec,
 } from '../engine/api';
@@ -31,6 +34,9 @@ export interface Harness {
   readonly brush: BrushEvent[];
   readonly drawn: DrawnEvent[];
   readonly commit: CommitEvent[];
+  readonly mark: (MarkEvent | null)[];
+  readonly pick: PickEvent[];
+  readonly select: SelectEvent[];
   /** Moves the fake clock by `ms`, running every timer that falls due, in order. */
   advance(ms: number): void;
   /** Timers armed and not yet run or cleared. */
@@ -96,6 +102,12 @@ export function harness(
   frame.on('drawn', (d) => drawn.push(d));
   const commit: CommitEvent[] = [];
   frame.on('commit', (c) => commit.push(c));
+  const mark: (MarkEvent | null)[] = [];
+  frame.on('mark', (m) => mark.push(m));
+  const pick: PickEvent[] = [];
+  frame.on('pick', (p) => pick.push(p));
+  const select: SelectEvent[] = [];
+  frame.on('select', (e) => select.push(e));
   const ctxOf = (c: HTMLCanvasElement | undefined): RecordingContext => {
     const r = c === undefined ? undefined : contexts.get(c);
     if (r === undefined) throw new Error('no recording context');
@@ -119,6 +131,9 @@ export function harness(
     brush,
     drawn,
     commit,
+    mark,
+    pick,
+    select,
     advance(ms: number) {
       const end = clock + ms;
       for (;;) {

@@ -39,4 +39,21 @@ describe('board variables', () => {
     expect(boardVariables(spec)).toEqual(['region', 'env', 'pod', name64]);
     expect(boardVariables({ title: 'E', panels: [], sections: [] })).toEqual([]);
   });
+
+  it('widgets have no variables (unit:board-variables, plan #198 Part 1)', () => {
+    const spec: BoardSpec = {
+      title: 'B',
+      panels: [
+        p('p-1', 'rate(x{env="$env"}[5m])', 'promql'),
+        {
+          id: 'p-2',
+          title: 'Notes',
+          grid: { x: 0, y: 1, w: 1, h: 1 },
+          vis: { kind: 'text', options: { content: '$region' } },
+        },
+      ],
+      sections: [],
+    };
+    expect(boardVariables(spec)).toEqual(['env']);
+  });
 });

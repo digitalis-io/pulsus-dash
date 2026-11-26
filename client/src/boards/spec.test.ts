@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -6,7 +7,17 @@ import type { BoardSpec, PanelSpec } from '../api/types';
 import { messages } from '../i18n/messages.en-GB';
 import { fieldMessage } from './fieldMessages';
 import { GRID_LIMITS } from './layout';
-import { canonicalJson, checkBoardSpec, nextId, nextPanelId, nextSectionId } from './spec';
+import { OPTION_ORDER } from './options';
+import {
+  canonicalJson,
+  checkBoardSpec,
+  isRfc3339Offset,
+  MAX_CONTENT_BYTES,
+  MAX_ZONES,
+  nextId,
+  nextPanelId,
+  nextSectionId,
+} from './spec';
 
 /** `api/fixtures/board-spec/` (vitest runs in `client/`). */
 const FIXTURES = join(process.cwd(), '..', 'api', 'fixtures', 'board-spec');
@@ -20,6 +31,8 @@ interface Case {
   spec?: unknown;
   raw?: string;
   fields: { pointer: string; message_key: string }[];
+  /** What the client expects instead of `fields` (zone existence is the server's only). */
+  client_fields?: { pointer: string; message_key: string }[];
 }
 
 const cases = fixture('invalid.json') as Case[];
@@ -68,9 +81,15 @@ describe('unit:board-spec (TS)', () => {
         continue;
       }
       expect(checkBoardSpec(c.spec), c.name).toEqual(
-        c.fields.map((f) => ({ pointer: f.pointer, messageKey: f.message_key })),
+        (c.client_fields ?? c.fields).map((f) => ({
+          pointer: f.pointer,
+          messageKey: f.message_key,
+        })),
       );
     }
+    expect(cases.filter((c) => c.client_fields !== undefined).map((c) => c.name)).toEqual([
+      'w-zone-unknown',
+    ]);
     expect(raw.sort()).toEqual(
       [
         'not-json',
@@ -99,6 +118,216 @@ describe('unit:board-spec (TS)', () => {
     expect(checkBoardSpec(JSON.parse(big?.raw ?? 'null'))).toEqual([
       { pointer: '/panels/0/vis/thresholds/steps/0/value', messageKey: 'board.json.type' },
     ]);
+  });
+
+  it("v3 fixture is valid, and its canonical form is the server's", () => {
+    const x = fixture('v3-full.json');
+    expect(checkBoardSpec(x)).toEqual([]);
+    const c = canonicalJson(x);
+    expect(JSON.parse(c)).toEqual(x);
+    // The Go suite (board_test.go v3CanonicalSHA256) holds the same hash: byte-equal forms.
+    expect(createHash('sha256').update(c, 'utf8').digest('hex')).toBe(
+      '293e4cd4027bf9803c3ce2e467f36d8c41fb0f5b102804b496700df48c22d193',
+    );
+    const names = new Set(cases.map((k) => k.name));
+    for (const n of [
+      'options-depth-keys',
+      'options-wrong-kind-type',
+      'options-before-kind',
+      'options-bad-kind-after',
+      'options-bad-kind-before',
+      'options-kind-not-string',
+      'options-types',
+      'options-not-object',
+      'options-categoryBy',
+      'options-max-range',
+      'options-min-eq-max',
+      'options-enums',
+      'options-stat-text-grid',
+      'options-in-section',
+    ])
+      expect(names.has(n), n).toBe(true);
+  });
+
+  it("v4 fixture is valid, keeps its tag order, and its canonical form is the server's", () => {
+    const x = fixture('v4-board-tags.json');
+    expect(checkBoardSpec(x)).toEqual([]);
+    const c = canonicalJson(x);
+    expect(JSON.parse(c)).toEqual(x);
+    expect(c).toContain('"tags":["team:payments","prod"]');
+    // The Go suite (board_test.go v4CanonicalSHA256) holds the same hash: byte-equal forms.
+    expect(createHash('sha256').update(c, 'utf8').digest('hex')).toBe(
+      '1ee8fecd5dbd9f6d70f5b8552f8a5aeb312f9499c5e969ff7d2a231d753e3a3f',
+    );
+    expect(checkBoardSpec({ title: 'T', panels: [], sections: [], tags: [] })).toEqual([]);
+  });
+
+  it("v5 fixture is valid, and its canonical form is the server's", () => {
+    const x = fixture('v5-widgets.json') as BoardSpec;
+    expect(checkBoardSpec(x)).toEqual([]);
+    const c = canonicalJson(x);
+    expect(JSON.parse(c)).toEqual(x);
+    // The Go suite (board_test.go v5CanonicalSHA256) holds the same hash: byte-equal forms.
+    expect(createHash('sha256').update(c, 'utf8').digest('hex')).toBe(
+      'a42813fc4b36e478ec6dac2a4b5707bd1c50377def15a749ea2d34a8b6bd134f',
+    );
+    const withQuery = [...x.panels, ...x.sections.flatMap((s) => s.panels)]
+      .filter((p) => 'query' in p)
+      .map((p) => p.id);
+    expect(withQuery).toEqual(['p-5']);
+  });
+
+  it('widget rows match the server, and their keys have en-GB text', () => {
+    const byName = new Map(cases.map((c) => [c.name, c]));
+    const rows = cases.filter((c) => c.name.startsWith('w-'));
+    expect(rows).toHaveLength(23);
+    for (const c of rows) {
+      expect(byName.get(c.name), c.name).toBe(c);
+      for (const f of c.fields) {
+        expect(messages, f.message_key).toHaveProperty(`field.${f.message_key}`);
+      }
+    }
+    for (const key of [
+      'board.panel.query.forbidden',
+      'board.panel.query.required',
+      'board.options.mode.invalid',
+      'board.options.content.tooLong',
+      'board.options.language.invalid',
+      'board.options.zones.invalid',
+      'board.options.zones.duplicate',
+      'board.options.hourCycle.invalid',
+      'board.options.countdown.invalid',
+    ]) {
+      expect(messages, key).toHaveProperty(`field.${key}`);
+      expect(fieldMessage(key), key).not.toBe(fieldMessage('board.no.such.key'));
+    }
+    expect(messages).toHaveProperty('widget.kindUnavailable');
+  });
+
+  it('widget limits', () => {
+    const O = '/panels/0/vis/options';
+    const widget = (vis: unknown) => ({
+      title: 'B',
+      panels: [{ id: 'p-1', title: 'A', grid: { x: 0, y: 0, w: 6, h: 8 }, vis }],
+      sections: [],
+    });
+    const text = (content: string) => widget({ kind: 'text', options: { content } });
+    const zone = (tz: string, label = '') => ({ tz, label });
+    const zones = (n: number) =>
+      widget({
+        kind: 'clock',
+        options: {
+          zones: Array.from({ length: n }, (_, i) =>
+            zone(i === 0 ? 'UTC' : `Etc/GMT+${String(i)}`),
+          ),
+        },
+      });
+    const countdown = (label: string) =>
+      widget({
+        kind: 'clock',
+        options: { countdown: { to: '2026-11-26T14:00:00Z', label, after: 'hide' } },
+      });
+    const at = (pointer: string, key: string) => [{ pointer: `${O}${pointer}`, messageKey: key }];
+    const content = `${'€'.repeat(21845)}a`;
+    expect(new TextEncoder().encode(content).length).toBe(MAX_CONTENT_BYTES);
+    expect(checkBoardSpec(text(content))).toEqual([]);
+    expect(checkBoardSpec(text(`${content}a`))).toEqual(
+      at('/content', 'board.options.content.tooLong'),
+    );
+    expect(MAX_ZONES).toBe(12);
+    expect(checkBoardSpec(zones(12))).toEqual([]);
+    expect(checkBoardSpec(zones(13))).toEqual(at('/zones', 'board.options.zones.invalid'));
+    const labelled = (label: string) =>
+      widget({ kind: 'clock', options: { zones: [zone('UTC', label)] } });
+    expect(checkBoardSpec(labelled('é'.repeat(64)))).toEqual([]);
+    expect(checkBoardSpec(labelled('é'.repeat(65)))).toEqual(
+      at('/zones/0/label', 'board.options.zones.invalid'),
+    );
+    expect(checkBoardSpec(countdown(''))).toEqual(
+      at('/countdown/label', 'board.options.countdown.invalid'),
+    );
+    expect(checkBoardSpec(countdown('é'.repeat(64)))).toEqual([]);
+  });
+
+  it("isRfc3339Offset is the server's", () => {
+    for (const s of [
+      '2026-11-26T14:00:00Z',
+      '2026-11-26T14:00:00+09:00',
+      '2026-11-26T14:00:00.123456789-05:30',
+      '2024-02-29T00:00:00Z',
+    ])
+      expect(isRfc3339Offset(s), s).toBe(true);
+    for (const s of [
+      '2026-11-26 14:00',
+      '2026-11-26T14:00:00',
+      '2026-02-29T00:00:00Z',
+      '2026-11-26T24:00:00Z',
+      '2026-11-26T14:00:60Z',
+      '2026-11-26T14:00:00+24:00',
+      '2026-11-26T14:00:00z',
+    ])
+      expect(isRfc3339Offset(s), s).toBe(false);
+  });
+
+  it('tag rows match the server, and their keys have en-GB text', () => {
+    const tagRows = [
+      'tags-too-many',
+      'tags-uppercase',
+      'tags-duplicate',
+      'tags-null',
+      'tags-not-array',
+      'tags-item-number',
+      'tags-empty',
+      'tags-too-long',
+      'tags-nul',
+    ];
+    const byName = new Map(cases.map((c) => [c.name, c]));
+    for (const n of tagRows) {
+      const c = byName.get(n);
+      expect(c, n).toBeDefined();
+      expect(checkBoardSpec(c?.spec), n).toEqual(
+        (c?.fields ?? []).map((f) => ({ pointer: f.pointer, messageKey: f.message_key })),
+      );
+    }
+    for (const key of ['board.tags.invalid', 'board.tags.duplicate']) {
+      expect(messages, key).toHaveProperty(`field.${key}`);
+      expect(fieldMessage(key), key).not.toBe(fieldMessage('board.no.such.key'));
+    }
+  });
+
+  it('a NaN or out-of-range option bound', () => {
+    const spec = fixture('v3-full.json') as BoardSpec;
+    const opts = spec.panels[0]?.vis.options;
+    if (opts === undefined) throw new Error('p-1 has no options');
+    opts.min = NaN;
+    expect(checkBoardSpec(spec)).toEqual([
+      { pointer: '/panels/0/vis/options/min', messageKey: 'board.json.type' },
+    ]);
+    opts.min = -1e15;
+    expect(checkBoardSpec(spec)).toEqual([]);
+    opts.min = -1.0000001e15;
+    expect(checkBoardSpec(spec)).toEqual([
+      { pointer: '/panels/0/vis/options/min', messageKey: 'board.options.min.invalid' },
+    ]);
+  });
+
+  it('every option key has text', () => {
+    const catalogue = new Set<string>(Object.values(messages));
+    expect(OPTION_ORDER).toHaveLength(23);
+    // The widget keys (T24 §5.1): content has a byte bound, seconds and date no rule.
+    const keyOf: Partial<Record<string, string | null>> = {
+      content: 'content.tooLong',
+      seconds: null,
+      date: null,
+    };
+    for (const k of OPTION_ORDER) {
+      const rule = keyOf[k] === undefined ? `${k}.invalid` : keyOf[k];
+      if (rule === null) continue;
+      const key = `board.options.${rule}`;
+      const text = fieldMessage(key);
+      expect(text, key).not.toBe(fieldMessage('board.json.invalid'));
+      expect(catalogue.has(text), key).toBe(true);
+    }
   });
 
   it('v2-threshold-bounds fixture is valid', () => {

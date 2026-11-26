@@ -56,6 +56,24 @@ func (e AuthorKind) Valid() bool {
 	}
 }
 
+// Defines values for ClockCountdownAfter.
+const (
+	CountUp ClockCountdownAfter = "countUp"
+	Hide    ClockCountdownAfter = "hide"
+)
+
+// Valid indicates whether the value is a known member of the ClockCountdownAfter enum.
+func (e ClockCountdownAfter) Valid() bool {
+	switch e {
+	case CountUp:
+		return true
+	case Hide:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CompletenessReadCache.
 const (
 	Bypass CompletenessReadCache = "bypass"
@@ -337,16 +355,16 @@ func (e PromInstantResponseResultType) Valid() bool {
 
 // Defines values for QueryLang.
 const (
-	Logql  QueryLang = "logql"
-	Promql QueryLang = "promql"
+	QueryLangLogql  QueryLang = "logql"
+	QueryLangPromql QueryLang = "promql"
 )
 
 // Valid indicates whether the value is a known member of the QueryLang enum.
 func (e QueryLang) Valid() bool {
 	switch e {
-	case Logql:
+	case QueryLangLogql:
 		return true
-	case Promql:
+	case QueryLangPromql:
 		return true
 	default:
 		return false
@@ -484,28 +502,322 @@ func (e ThresholdsDirection) Valid() bool {
 
 // Defines values for VisKind.
 const (
-	Auto    VisKind = "auto"
-	Bars    VisKind = "bars"
-	Heatmap VisKind = "heatmap"
-	Line    VisKind = "line"
-	Logs    VisKind = "logs"
-	Stat    VisKind = "stat"
+	VisKindAuto     VisKind = "auto"
+	VisKindBarchart VisKind = "barchart"
+	VisKindBars     VisKind = "bars"
+	VisKindClock    VisKind = "clock"
+	VisKindHeatmap  VisKind = "heatmap"
+	VisKindLine     VisKind = "line"
+	VisKindLogs     VisKind = "logs"
+	VisKindPie      VisKind = "pie"
+	VisKindStat     VisKind = "stat"
+	VisKindText     VisKind = "text"
 )
 
 // Valid indicates whether the value is a known member of the VisKind enum.
 func (e VisKind) Valid() bool {
 	switch e {
-	case Auto:
+	case VisKindAuto:
 		return true
-	case Bars:
+	case VisKindBarchart:
 		return true
-	case Heatmap:
+	case VisKindBars:
 		return true
-	case Line:
+	case VisKindClock:
 		return true
-	case Logs:
+	case VisKindHeatmap:
 		return true
-	case Stat:
+	case VisKindLine:
+		return true
+	case VisKindLogs:
+		return true
+	case VisKindPie:
+		return true
+	case VisKindStat:
+		return true
+	case VisKindText:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsBaselineOffset.
+const (
+	N1d  VisOptionsBaselineOffset = "1d"
+	N1h  VisOptionsBaselineOffset = "1h"
+	N28d VisOptionsBaselineOffset = "28d"
+	N7d  VisOptionsBaselineOffset = "7d"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsBaselineOffset enum.
+func (e VisOptionsBaselineOffset) Valid() bool {
+	switch e {
+	case N1d:
+		return true
+	case N1h:
+		return true
+	case N28d:
+		return true
+	case N7d:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsColourMode.
+const (
+	VisOptionsColourModeBackground VisOptionsColourMode = "background"
+	VisOptionsColourModeNone       VisOptionsColourMode = "none"
+	VisOptionsColourModeValue      VisOptionsColourMode = "value"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsColourMode enum.
+func (e VisOptionsColourMode) Valid() bool {
+	switch e {
+	case VisOptionsColourModeBackground:
+		return true
+	case VisOptionsColourModeNone:
+		return true
+	case VisOptionsColourModeValue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsGraphMode.
+const (
+	VisOptionsGraphModeNone      VisOptionsGraphMode = "none"
+	VisOptionsGraphModeSparkline VisOptionsGraphMode = "sparkline"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsGraphMode enum.
+func (e VisOptionsGraphMode) Valid() bool {
+	switch e {
+	case VisOptionsGraphModeNone:
+		return true
+	case VisOptionsGraphModeSparkline:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsHourCycle.
+const (
+	VisOptionsHourCycleAuto VisOptionsHourCycle = "auto"
+	VisOptionsHourCycleH12  VisOptionsHourCycle = "h12"
+	VisOptionsHourCycleH23  VisOptionsHourCycle = "h23"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsHourCycle enum.
+func (e VisOptionsHourCycle) Valid() bool {
+	switch e {
+	case VisOptionsHourCycleAuto:
+		return true
+	case VisOptionsHourCycleH12:
+		return true
+	case VisOptionsHourCycleH23:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsLabels.
+const (
+	VisOptionsLabelsName    VisOptionsLabels = "name"
+	VisOptionsLabelsNone    VisOptionsLabels = "none"
+	VisOptionsLabelsPercent VisOptionsLabels = "percent"
+	VisOptionsLabelsValue   VisOptionsLabels = "value"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsLabels enum.
+func (e VisOptionsLabels) Valid() bool {
+	switch e {
+	case VisOptionsLabelsName:
+		return true
+	case VisOptionsLabelsNone:
+		return true
+	case VisOptionsLabelsPercent:
+		return true
+	case VisOptionsLabelsValue:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsLanguage.
+const (
+	VisOptionsLanguageGo        VisOptionsLanguage = "go"
+	VisOptionsLanguageJson      VisOptionsLanguage = "json"
+	VisOptionsLanguageLogql     VisOptionsLanguage = "logql"
+	VisOptionsLanguagePlaintext VisOptionsLanguage = "plaintext"
+	VisOptionsLanguagePromql    VisOptionsLanguage = "promql"
+	VisOptionsLanguageShell     VisOptionsLanguage = "shell"
+	VisOptionsLanguageSql       VisOptionsLanguage = "sql"
+	VisOptionsLanguageYaml      VisOptionsLanguage = "yaml"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsLanguage enum.
+func (e VisOptionsLanguage) Valid() bool {
+	switch e {
+	case VisOptionsLanguageGo:
+		return true
+	case VisOptionsLanguageJson:
+		return true
+	case VisOptionsLanguageLogql:
+		return true
+	case VisOptionsLanguagePlaintext:
+		return true
+	case VisOptionsLanguagePromql:
+		return true
+	case VisOptionsLanguageShell:
+		return true
+	case VisOptionsLanguageSql:
+		return true
+	case VisOptionsLanguageYaml:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsLayout.
+const (
+	VisOptionsLayoutGrid   VisOptionsLayout = "grid"
+	VisOptionsLayoutSingle VisOptionsLayout = "single"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsLayout enum.
+func (e VisOptionsLayout) Valid() bool {
+	switch e {
+	case VisOptionsLayoutGrid:
+		return true
+	case VisOptionsLayoutSingle:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsMode.
+const (
+	Code     VisOptionsMode = "code"
+	Markdown VisOptionsMode = "markdown"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsMode enum.
+func (e VisOptionsMode) Valid() bool {
+	switch e {
+	case Code:
+		return true
+	case Markdown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsOrientation.
+const (
+	VisOptionsOrientationAuto       VisOptionsOrientation = "auto"
+	VisOptionsOrientationHorizontal VisOptionsOrientation = "horizontal"
+	VisOptionsOrientationVertical   VisOptionsOrientation = "vertical"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsOrientation enum.
+func (e VisOptionsOrientation) Valid() bool {
+	switch e {
+	case VisOptionsOrientationAuto:
+		return true
+	case VisOptionsOrientationHorizontal:
+		return true
+	case VisOptionsOrientationVertical:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsReducer.
+const (
+	Count VisOptionsReducer = "count"
+	First VisOptionsReducer = "first"
+	Last  VisOptionsReducer = "last"
+	Max   VisOptionsReducer = "max"
+	Mean  VisOptionsReducer = "mean"
+	Min   VisOptionsReducer = "min"
+	Sum   VisOptionsReducer = "sum"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsReducer enum.
+func (e VisOptionsReducer) Valid() bool {
+	switch e {
+	case Count:
+		return true
+	case First:
+		return true
+	case Last:
+		return true
+	case Max:
+		return true
+	case Mean:
+		return true
+	case Min:
+		return true
+	case Sum:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsSort.
+const (
+	VisOptionsSortLabel     VisOptionsSort = "label"
+	VisOptionsSortNone      VisOptionsSort = "none"
+	VisOptionsSortValueAsc  VisOptionsSort = "valueAsc"
+	VisOptionsSortValueDesc VisOptionsSort = "valueDesc"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsSort enum.
+func (e VisOptionsSort) Valid() bool {
+	switch e {
+	case VisOptionsSortLabel:
+		return true
+	case VisOptionsSortNone:
+		return true
+	case VisOptionsSortValueAsc:
+		return true
+	case VisOptionsSortValueDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsTextMode.
+const (
+	VisOptionsTextModeAuto         VisOptionsTextMode = "auto"
+	VisOptionsTextModeName         VisOptionsTextMode = "name"
+	VisOptionsTextModeValue        VisOptionsTextMode = "value"
+	VisOptionsTextModeValueAndName VisOptionsTextMode = "valueAndName"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsTextMode enum.
+func (e VisOptionsTextMode) Valid() bool {
+	switch e {
+	case VisOptionsTextModeAuto:
+		return true
+	case VisOptionsTextModeName:
+		return true
+	case VisOptionsTextModeValue:
+		return true
+	case VisOptionsTextModeValueAndName:
 		return true
 	default:
 		return false
@@ -582,8 +894,16 @@ type BoardCreate struct {
 
 // BoardList defines model for BoardList.
 type BoardList struct {
-	Items     []BoardSummary `json:"items"`
-	Truncated bool           `json:"truncated"`
+	Applied   BoardListApplied `json:"applied"`
+	Items     []BoardSummary   `json:"items"`
+	TagsStale int64            `json:"tagsStale"`
+	Truncated bool             `json:"truncated"`
+}
+
+// BoardListApplied defines model for BoardListApplied.
+type BoardListApplied struct {
+	Q   *string        `json:"q,omitempty"`
+	Tag *AnnotationTag `json:"tag,omitempty"`
 }
 
 // BoardRef defines model for BoardRef.
@@ -592,9 +912,14 @@ type BoardRef struct {
 	Uid   string `json:"uid"`
 }
 
+// BoardRefApplied defines model for BoardRefApplied.
+type BoardRefApplied = map[string]interface{}
+
 // BoardRefList defines model for BoardRefList.
 type BoardRefList struct {
-	Items []BoardRef `json:"items"`
+	Applied   BoardRefApplied `json:"applied"`
+	Items     []BoardRef      `json:"items"`
+	Truncated bool            `json:"truncated"`
 }
 
 // BoardSaveResult defines model for BoardSaveResult.
@@ -605,19 +930,22 @@ type BoardSaveResult struct {
 
 // BoardSpec defines model for BoardSpec.
 type BoardSpec struct {
-	Panels   []Panel    `json:"panels"`
-	Sections []Section  `json:"sections"`
-	Time     *TimeRange `json:"time,omitempty"`
-	Title    string     `json:"title"`
+	Panels   []Panel          `json:"panels"`
+	Sections []Section        `json:"sections"`
+	Tags     *[]AnnotationTag `json:"tags,omitempty"`
+	Time     *TimeRange       `json:"time,omitempty"`
+	Title    string           `json:"title"`
 }
 
 // BoardSummary defines model for BoardSummary.
 type BoardSummary struct {
-	Title     string    `json:"title"`
-	Uid       string    `json:"uid"`
-	UpdatedAt time.Time `json:"updated_at"`
-	UpdatedBy Author    `json:"updated_by"`
-	Version   int64     `json:"version"`
+	// Tags null = not yet known
+	Tags      *[]AnnotationTag `json:"tags"`
+	Title     string           `json:"title"`
+	Uid       string           `json:"uid"`
+	UpdatedAt time.Time        `json:"updated_at"`
+	UpdatedBy Author           `json:"updated_by"`
+	Version   int64            `json:"version"`
 }
 
 // BoardUpdate defines model for BoardUpdate.
@@ -634,6 +962,22 @@ type Bootstrap struct {
 	Principal     Principal    `json:"principal"`
 	Server        Version      `json:"server"`
 	Tenants       []TenantInfo `json:"tenants"`
+}
+
+// ClockCountdown defines model for ClockCountdown.
+type ClockCountdown struct {
+	After ClockCountdownAfter `json:"after"`
+	Label string              `json:"label"`
+	To    time.Time           `json:"to"`
+}
+
+// ClockCountdownAfter defines model for ClockCountdown.After.
+type ClockCountdownAfter string
+
+// ClockZone defines model for ClockZone.
+type ClockZone struct {
+	Label string `json:"label"`
+	Tz    string `json:"tz"`
 }
 
 // Completeness defines model for Completeness.
@@ -843,7 +1187,7 @@ type OrgInfo struct {
 type Panel struct {
 	Grid  Grid   `json:"grid"`
 	Id    string `json:"id"`
-	Query Query  `json:"query"`
+	Query *Query `json:"query,omitempty"`
 	Title string `json:"title"`
 	Vis   Vis    `json:"vis"`
 }
@@ -1060,11 +1404,75 @@ type Version struct {
 type Vis struct {
 	Kind       VisKind     `json:"kind"`
 	Legend     *Legend     `json:"legend,omitempty"`
+	Options    *VisOptions `json:"options,omitempty"`
 	Thresholds *Thresholds `json:"thresholds,omitempty"`
 }
 
 // VisKind defines model for Vis.Kind.
 type VisKind string
+
+// VisOptions defines model for VisOptions.
+type VisOptions struct {
+	BaselineOffset *VisOptionsBaselineOffset `json:"baselineOffset,omitempty"`
+	CategoryBy     *string                   `json:"categoryBy,omitempty"`
+	ColourMode     *VisOptionsColourMode     `json:"colourMode,omitempty"`
+	Content        *string                   `json:"content,omitempty"`
+	Countdown      *ClockCountdown           `json:"countdown,omitempty"`
+	Date           *bool                     `json:"date,omitempty"`
+	Donut          *bool                     `json:"donut,omitempty"`
+	GraphMode      *VisOptionsGraphMode      `json:"graphMode,omitempty"`
+	HourCycle      *VisOptionsHourCycle      `json:"hourCycle,omitempty"`
+	Labels         *VisOptionsLabels         `json:"labels,omitempty"`
+	Language       *VisOptionsLanguage       `json:"language,omitempty"`
+	Layout         *VisOptionsLayout         `json:"layout,omitempty"`
+	Max            *float64                  `json:"max,omitempty"`
+	Min            *float64                  `json:"min,omitempty"`
+	Mode           *VisOptionsMode           `json:"mode,omitempty"`
+	Orientation    *VisOptionsOrientation    `json:"orientation,omitempty"`
+	Parts          *bool                     `json:"parts,omitempty"`
+	Reducer        *VisOptionsReducer        `json:"reducer,omitempty"`
+	Seconds        *bool                     `json:"seconds,omitempty"`
+	Sort           *VisOptionsSort           `json:"sort,omitempty"`
+	TextMode       *VisOptionsTextMode       `json:"textMode,omitempty"`
+	ValueLabels    *bool                     `json:"valueLabels,omitempty"`
+	Zones          *[]ClockZone              `json:"zones,omitempty"`
+}
+
+// VisOptionsBaselineOffset defines model for VisOptions.BaselineOffset.
+type VisOptionsBaselineOffset string
+
+// VisOptionsColourMode defines model for VisOptions.ColourMode.
+type VisOptionsColourMode string
+
+// VisOptionsGraphMode defines model for VisOptions.GraphMode.
+type VisOptionsGraphMode string
+
+// VisOptionsHourCycle defines model for VisOptions.HourCycle.
+type VisOptionsHourCycle string
+
+// VisOptionsLabels defines model for VisOptions.Labels.
+type VisOptionsLabels string
+
+// VisOptionsLanguage defines model for VisOptions.Language.
+type VisOptionsLanguage string
+
+// VisOptionsLayout defines model for VisOptions.Layout.
+type VisOptionsLayout string
+
+// VisOptionsMode defines model for VisOptions.Mode.
+type VisOptionsMode string
+
+// VisOptionsOrientation defines model for VisOptions.Orientation.
+type VisOptionsOrientation string
+
+// VisOptionsReducer defines model for VisOptions.Reducer.
+type VisOptionsReducer string
+
+// VisOptionsSort defines model for VisOptions.Sort.
+type VisOptionsSort string
+
+// VisOptionsTextMode defines model for VisOptions.TextMode.
+type VisOptionsTextMode string
 
 // From defines model for From.
 type From = int64
@@ -1089,6 +1497,13 @@ type To = int64
 
 // RateLimited defines model for RateLimited.
 type RateLimited = ErrorEnvelope
+
+// ListBoardsParams defines parameters for ListBoards.
+type ListBoardsParams struct {
+	// Q Title substring or exact tag, ASCII case-insensitive; 1–100 characters, no Cc
+	Q   *string        `form:"q,omitempty" json:"q,omitempty"`
+	Tag *AnnotationTag `form:"tag,omitempty" json:"tag,omitempty"`
+}
 
 // DeleteBoardParams defines parameters for DeleteBoard.
 type DeleteBoardParams struct {
@@ -1374,7 +1789,7 @@ func (t *LogqlRangeResponse) UnmarshalJSON(b []byte) error {
 type ServerInterface interface {
 
 	// (GET /api/dash/v1/boards)
-	ListBoards(w http.ResponseWriter, r *http.Request)
+	ListBoards(w http.ResponseWriter, r *http.Request, params ListBoardsParams)
 
 	// (POST /api/dash/v1/boards)
 	CreateBoard(w http.ResponseWriter, r *http.Request)
@@ -1448,7 +1863,7 @@ type ServerInterface interface {
 type Unimplemented struct{}
 
 // (GET /api/dash/v1/boards)
-func (_ Unimplemented) ListBoards(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) ListBoards(w http.ResponseWriter, r *http.Request, params ListBoardsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1574,8 +1989,40 @@ type MiddlewareFunc func(http.Handler) http.Handler
 // ListBoards operation middleware
 func (siw *ServerInterfaceWrapper) ListBoards(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBoardsParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListBoards(w, r)
+		siw.Handler.ListBoards(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2752,6 +3199,7 @@ type RateLimitedJSONResponse struct {
 }
 
 type ListBoardsRequestObject struct {
+	Params ListBoardsParams
 }
 
 type ListBoardsResponseObject interface {
@@ -2768,6 +3216,20 @@ func (response ListBoards200JSONResponse) VisitListBoardsResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListBoards400JSONResponse ErrorEnvelope
+
+func (response ListBoards400JSONResponse) VisitListBoardsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4054,8 +4516,10 @@ type strictHandler struct {
 }
 
 // ListBoards operation middleware
-func (sh *strictHandler) ListBoards(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) ListBoards(w http.ResponseWriter, r *http.Request, params ListBoardsParams) {
 	var request ListBoardsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListBoards(ctx, request.(ListBoardsRequestObject))

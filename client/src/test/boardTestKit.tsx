@@ -11,8 +11,9 @@ import type { StubSeed } from '../api/StubApi';
 import type {
   Board,
   BoardSpec,
+  DataPanelSpec,
+  DataVisKind,
   PanelSpec,
-  PanelVisKind,
   SectionSpec,
   TimeRangeSpec,
 } from '../api/types';
@@ -166,9 +167,9 @@ export function panel(
   id: string,
   title: string,
   text: string,
-  kind: PanelVisKind = 'auto',
+  kind: DataVisKind = 'auto',
   g?: readonly [number, number, number, number],
-): PanelSpec {
+): DataPanelSpec {
   const n = Math.max(1, Number(/\d+$/.exec(id)?.[0] ?? '1'));
   const [x, y, w, h] = g ?? [6 * ((n - 1) % 2), 8 * Math.floor((n - 1) / 2), 6, 8];
   return { id, title, grid: { x, y, w, h }, query: { lang: 'promql', text }, vis: { kind } };

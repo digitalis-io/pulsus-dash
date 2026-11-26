@@ -5,7 +5,7 @@
  */
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PanelSpec } from '../../api/types';
+import type { DataPanelSpec } from '../../api/types';
 import { resetQueryLanguages } from '../../boards/useQueryLanguage';
 import { editorOn, openBoard, ready, settled, show, type Board } from '../../test/boardPanelKit';
 import { panel } from '../../test/boardTestKit';
@@ -32,7 +32,7 @@ afterEach(() => {
   uninstallIntersectionObserver();
 });
 
-type Vis = PanelSpec['vis'];
+type Vis = DataPanelSpec['vis'];
 const TWO: Vis['thresholds'] = {
   direction: 'above',
   steps: [

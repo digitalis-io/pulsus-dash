@@ -207,6 +207,27 @@ describe('panel runs', () => {
     expect(panelState('Broken')).toBe('langFailed');
   });
 
+  it('pending kinds show their message and send no query (#173 Part 1)', async () => {
+    const t = openBoard([
+      panel('p-1', 'Versions', 'sum by (version) (up)', 'barchart'),
+      panel('p-2', 'Share', 'sum by (version) (up)', 'pie'),
+    ]);
+    await ready('Versions', 'Share');
+    show('Versions', 'Share');
+    for (const title of ['Versions', 'Share']) {
+      expect(
+        await within(panelOf(title)).findByText(
+          "This chart type isn't available in this version yet.",
+        ),
+        title,
+      ).toBeInTheDocument();
+      expect(panelState(title)).toBe('kindUnavailable');
+    }
+    await settledLanguage();
+    expect(t.range).not.toHaveBeenCalled();
+    expect(t.instant).not.toHaveBeenCalled();
+  });
+
   it('waits for language and width', async () => {
     const gate = deferred<undefined>();
     lang.hold = gate.promise.then(() => undefined);

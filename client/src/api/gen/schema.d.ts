@@ -730,6 +730,7 @@ export interface components {
         BoardSpec: {
             title: string;
             time?: components["schemas"]["TimeRange"];
+            tags?: components["schemas"]["AnnotationTag"][];
             panels: components["schemas"]["Panel"][];
             sections: components["schemas"]["Section"][];
         };
@@ -747,7 +748,7 @@ export interface components {
             id: string;
             title: string;
             grid: components["schemas"]["Grid"];
-            query: components["schemas"]["Query"];
+            query?: components["schemas"]["Query"];
             vis: components["schemas"]["Vis"];
         };
         Grid: {
@@ -763,9 +764,60 @@ export interface components {
         };
         Vis: {
             /** @enum {string} */
-            kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs";
+            kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs" | "barchart" | "pie" | "text" | "clock";
             thresholds?: components["schemas"]["Thresholds"];
             legend?: components["schemas"]["Legend"];
+            options?: components["schemas"]["VisOptions"];
+        };
+        VisOptions: {
+            /** @enum {string} */
+            reducer?: "last" | "first" | "mean" | "min" | "max" | "sum" | "count";
+            /** @enum {string} */
+            baselineOffset?: "1h" | "1d" | "7d" | "28d";
+            categoryBy?: string;
+            /** @enum {string} */
+            sort?: "valueDesc" | "valueAsc" | "label" | "none";
+            /** @enum {string} */
+            orientation?: "auto" | "horizontal" | "vertical";
+            valueLabels?: boolean;
+            /** Format: double */
+            min?: number;
+            /** Format: double */
+            max?: number;
+            donut?: boolean;
+            /** @enum {string} */
+            labels?: "percent" | "value" | "name" | "none";
+            parts?: boolean;
+            /** @enum {string} */
+            layout?: "single" | "grid";
+            /** @enum {string} */
+            colourMode?: "value" | "background" | "none";
+            /** @enum {string} */
+            textMode?: "auto" | "value" | "valueAndName" | "name";
+            /** @enum {string} */
+            graphMode?: "sparkline" | "none";
+            /** @enum {string} */
+            mode?: "markdown" | "code";
+            content?: string;
+            /** @enum {string} */
+            language?: "plaintext" | "json" | "yaml" | "sql" | "promql" | "logql" | "go" | "shell";
+            zones?: components["schemas"]["ClockZone"][];
+            /** @enum {string} */
+            hourCycle?: "auto" | "h12" | "h23";
+            seconds?: boolean;
+            date?: boolean;
+            countdown?: components["schemas"]["ClockCountdown"];
+        };
+        ClockZone: {
+            tz: string;
+            label: string;
+        };
+        ClockCountdown: {
+            /** Format: date-time */
+            to: string;
+            label: string;
+            /** @enum {string} */
+            after: "countUp" | "hide";
         };
         Thresholds: {
             /** @enum {string} */
@@ -796,6 +848,8 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
             updated_by: components["schemas"]["Author"];
+            /** @description null = not yet known */
+            tags: components["schemas"]["AnnotationTag"][] | null;
         };
         Board: {
             uid: string;
@@ -813,6 +867,13 @@ export interface components {
         BoardList: {
             items: components["schemas"]["BoardSummary"][];
             truncated: boolean;
+            applied: components["schemas"]["BoardListApplied"];
+            /** Format: int64 */
+            tagsStale: number;
+        };
+        BoardListApplied: {
+            q?: string;
+            tag?: components["schemas"]["AnnotationTag"];
         };
         BoardCreate: {
             spec: components["schemas"]["BoardSpec"];
@@ -836,7 +897,10 @@ export interface components {
         };
         BoardRefList: {
             items: components["schemas"]["BoardRef"][];
+            applied: components["schemas"]["BoardRefApplied"];
+            truncated: boolean;
         };
+        BoardRefApplied: Record<string, never>;
         /**
          * Format: int64
          * @description ms since the Unix epoch
@@ -1109,7 +1173,11 @@ export interface operations {
     };
     listBoards: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Title substring or exact tag, ASCII case-insensitive; 1–100 characters, no Cc */
+                q?: string;
+                tag?: components["schemas"]["AnnotationTag"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1123,6 +1191,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BoardList"];
+                };
+            };
+            /** @description Invalid q or tag */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Configuration store unavailable */

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-25 |
+| **Version** | 1.6-rc · 2026-11-25 |
 | **Requirement area** | `IA` |
 | **Source draft** | plans/02-information-architecture.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [04](04-surfaces.md), [06](06-ai-copilot.md), [07](07-alerting.md), [11](11-enterprise.md), [13](13-core-flow-storyboard.md), [15](15-estate-navigation.md), [T11](../technical/T11-postgres-schema.md) |
@@ -392,7 +392,7 @@ Every view is deep-linkable and reproducible. The URL encodes Context + scene + 
 | `/t/{tenant}/space/{scene}?e={entityRef,...}&from=…&to=…&cmp=-7d&f={filters}&cam={compact camera}&persp={perspective}` | A Space scene (Atlas, Lens, Edge Lens) with Context and camera |
 | `/t/{tenant}/explore/{signal}?q={queries}&from=…&to=…&f={filters}` | An Explore workbench, `signal` = `metrics` \| `logs` (later `traces` \| `profiles`), with its queries and Context |
 | `/t/{tenant}/boards` | The Boards list |
-| `/t/{tenant}/board/{boardUid}?e={entityRef,...}&var-x=…&f={filters}&collapse={sectionId}&expand={sectionId}&from=…&to=…&vp={focusedViewport}` | A Board with the entity set, variables, filters, View-mode section state, time and focused viewport |
+| `/t/{tenant}/board/{boardUid}?e={entityRef,...}&var-x=…&f={filters}&collapse={sectionId}&expand={sectionId}&from=…&to=…&vp={focusedViewport}&map={mapView}&geo={mapArea}` | A Board with the entity set, variables, filters, View-mode section state, time, focused viewport, map views and map area |
 | `/t/{tenant}/inv/{investigationId}#evidence-{n}` | An Investigation, scrolled to evidence item n |
 | `/t/{tenant}/incident/{incidentId}` | The Alert Lens (RCA card) for the incident |
 | `/t/{tenant}/alerts/{view}?…` | The Alerts room, `view` = `map` \| `topology` \| `city` \| `infra` \| `segments` \| `list` \| `timeline` |
@@ -402,7 +402,12 @@ AUD-048).
 
 On the board pattern, `f` is repeated, one `label=value` equality filter per parameter (at most 20);
 `var-<name>` carries one value; `collapse` and `expand` are repeated View-mode overrides of a
-section's saved collapsed state. The board link's path and search stay within 4 096 bytes.
+section's saved collapsed state. `map` is repeated, one map view per scope (`*` for the synced maps,
+else a panel id; `‹scope›_‹lat›_‹lon›_‹zoom›`); `geo` is at most one map area
+(`‹scope›_‹w›_‹s›_‹e›_‹n›`), a filter like `f` written by the maps that have the bounds filter on
+([T24](../technical/T24-geo-schematic-and-widget-panels.md#t24-096--view-state-and-history) T24-096,
+T24-098). The board link's path and search stay within 4 096 bytes; when a write would exceed it,
+`map` entries are dropped first (T24 §4.18).
 
 An `entityRef` is a canonical `EntityId`, a lower-case UUID
 ([T12-010](../technical/T12-entity-catalogue.md#t12-010--stable-identity-64-bit-wire-id)); `e` is one
@@ -476,6 +481,14 @@ the Context line names them as not carried; the acceptance is C1 now and C3–C4
 list. The Change feed in `context` mode filters by it (any-of, T24-031). An entry that is not a canonical id leaves the feed
 unfiltered with "Entity filter unavailable for this context"; it is never guessed from a name
 (`unit:change-entity`).
+
+*Map area (#184 step 2, [T24](../technical/T24-geo-schematic-and-widget-panels.md#t24-098--map-area)):*
+the map area is a filter, like `f=` (this table is unchanged): a map with "bounds as filter" writes
+`geo=` on each committed move, and the other board panels keep only the returned series inside it,
+with the rest counted on the coverage meter. It applies only while its writer has the option on; the
+filter bar shows it as a chip with a remove button, and pivots name it as not carried
+([T25-010](../technical/T25-inspector-and-pivots.md#t25-010--pivot-context); `unit:geo-writers`,
+`unit:pivot-context`).
 
 #### IA-027 — Label ⇄ attribute translation
 **MUST** · M-UI2 · SRE, Engineer, Platform, Admin
@@ -562,3 +575,4 @@ tenant table, with the acceptance unchanged.
 | 1.3-rc | 2026-11-21 | #61 Part C: IA-021 revised in place: Recent is the last five boards the user opened, and Starred and Recent are stored per user by the server (the same after reload, in every browser and under every tenant), with the ordering guarantee of decision D-RECENT-window; its acceptance adds a fresh browser profile. §4 board pattern adds `f`, `collapse` and `expand`, with a note on their form and the 4 096-byte link budget |
 | 1.4-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): IA-026 pivot row note (per T25-010; entity set and baseline travel as `ContextSearch` members from the T12 entity-set issue and I6, named as not carried until then; acceptance C1 now, C3–C4 at delivery); IA-027 staging note (interim built-in seed in I1, the tenant table in I5, acceptance unchanged) |
 | 1.5-rc | 2026-11-25 | #181 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part B2): §4 the board pattern gains `e={entityRef,...}`, and an `entityRef` is a canonical `EntityId` (T12-010), at most 16; IA-026 entity-set note (`ContextSearch.e`; the Change feed filters by it; a non-canonical entry is never guessed); the pivot row note's entity set comes from #223 |
+| 1.6-rc | 2026-11-25 | #184 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part E step 2): §4 the board pattern gains `map={mapView}` (repeated, one per scope) and `geo={mapArea}` (at most one), with their forms and the eviction order over the 4 096-byte budget; IA-026 map-area note (a filter like `f=`, effective only while its writer has the option on; the table is unchanged) |

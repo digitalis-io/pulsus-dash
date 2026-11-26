@@ -5,6 +5,8 @@ How a board panel runs its PromQL query (#64 Part A) or its LogQL query (#67,
 open, visible-only queries, the panel states and menu, and the query field of the panel editor;
 and the board's event markers (#64 Part C). The board page itself (modes, saving, sections, the filter bar) is in
 [Client application › Boards](README.md#boards); the user's view is [Boards](../user/boards.md).
+Widget panels (board spec v5: Text and Clock, no query) are on [the widgets page](widgets.md); a
+widget never reaches anything on this page.
 
 | Module | Role |
 |---|---|
@@ -18,7 +20,7 @@ and the board's event markers (#64 Part C). The board page itself (modes, saving
 | `src/boards/boardEvents.ts` | `useBoardEvents`, `BoardEventsContext`, `NO_EVENTS`, `toMarkers` (event markers) |
 | `src/boards/exploreLink.ts` | `exploreHref` |
 | `src/boards/useQueryLanguage.ts` | one `LANGUAGES[id]()` per language per page load; `null` loads none |
-| `src/pages/board/PanelFrame.tsx`, `PanelNotices.tsx`, `PanelEditor.tsx` | the panel chrome, the completeness badge, the editor |
+| `src/pages/board/PanelFrame.tsx`, `PanelNotices.tsx`, `PanelEditor.tsx` | the panel chrome (a widget's `WidgetFrame`, else `DataPanelFrame`), the completeness badge, the editor |
 | `src/pages/board/PanelQueryField.tsx`, `PanelLogqlField.tsx`, `useQueryFieldRun.ts` | the editor's Query field per language and their shared run rules |
 
 ## What a panel sends (ADR-0021)
@@ -131,6 +133,7 @@ First match; the text is from `messages.en-GB.ts`.
 
 | Condition | View | Text |
 |---|---|---|
+| a pending kind (Bar chart, Pie; PromQL or LogQL) | message `kindUnavailable` | "This chart type isn't available in this version yet." |
 | PromQL, visualisation Logs | message `logs` | "A metric query has no log lines. Choose Auto or a chart." |
 | blank text | message `empty` | "Add a query" |
 | a referenced variable without a value | message `variable` | "Set a value for `$a, $b` to run this panel" |
@@ -164,10 +167,71 @@ never carry them. `panelFrame(view, key)` is the frame with series `key` isolate
 `framePlan` isolation, thresholds carried over), and `legendRows(result)` the legend rows
 (`seriesRows`, cached per result).
 
+### Pending kinds
+
+Board spec v3 (#173 Part 1, [the boards API](../server/boards-api.md#visoptions-v3)) stores the
+kinds `barchart` and `pie` and their `vis.options`, before boards can draw them (the bar chart
+comes to boards with #173 Part 3, the pie with T22 I3). `PENDING_KINDS` (`boards/options.ts`) lists
+them. #173 Part 2 ships the bar chart's engine seam, drawing, fit and meter
+([Charts](charts.md#bar-chart-adr-0028), [Categorical panels](panels.md)), shown only in the chart
+gallery: boards keep both kinds pending. Such a panel is blocked before anything is sent, in both languages
+(`usePanelRun`/`useLogPanelRun` set `pre` to `kindUnavailable`, ahead of every other check), so it
+makes no request, and shows the message above. Its saved spec, options included, is kept as it
+is. Open in Explore opens such a panel's query on Auto, and a LogQL panel of a pending kind maps to
+the `logs-frame` path (unused while it is blocked). The editor lists Bar chart and Pie only as the
+disabled option of a panel that stores them. The auto-vis row 11 (bar chart) is not in the boards'
+`available` set either, so an `auto` panel with a `reducer` over a few range series is still a line
+(`unit:autovis-table`, and the boundary tests in `boards/panelRun.test.ts` and
+`pages/board/PanelEditorKinds.test.tsx`).
+
 `data-panel-state` on the panel's root is the view kind or the message state, and `data-panel-vis`
 the drawn vis of a frame. The completeness badge (`PanelNotices`: **Partial data** or **Warnings**,
 labelled "`<badge>`: `<title>`") shows with any frame or message of an outcome and opens Explore's
 `CompletenessNotice` in a popover.
+
+### Board tags (#215)
+
+Board spec v4 ([the boards API](../server/boards-api.md#board-spec-v4)) adds the optional `tags`:
+0 to 16 unique tags of `^[a-z0-9][a-z0-9_.:/-]{0,63}$`. The client accepts and keeps them; it has
+no editor for them yet (the tags editor and the Board list widget come with #216).
+
+- `checkBoardSpec` (`boards/spec.ts`) checks them as the server does, with the same pointers and
+  keys: more than `MAX_BOARD_TAGS` (16) at `/tags` (`board.tags.invalid`), then each item against
+  `TAG_PATTERN` (`board.tags.invalid`) and the earlier items (`board.tags.duplicate`), after the
+  time and before the panels. The shared `invalid.json` rows and `v4-board-tags.json` hold the two
+  suites together, the canonical form's SHA-256 included.
+- The editor never drops them: every action rebuilds the draft from the previous one, and turning
+  off **Save current time range** (`setTime` with `null`) removes only `time`. A tagged board opens,
+  edits and saves with its tags unchanged.
+- The en-GB texts are `field.board.tags.invalid` ("Use at most 16 tags of lower-case letters,
+  digits and _ . : / -, each up to 64 characters") and `field.board.tags.duplicate` ("Use each tag
+  once").
+
+`canonicalJson` is unchanged: the client never creates `tags`, and heads come canonical from the
+server, where `tags: []` is stored as no key. The list's `tags`, `applied` and `tagsStale` members
+are not read by the client yet (#216).
+
+### Widgets and the query typing (#198 Part 1)
+
+Board spec v5 ([the boards API](../server/boards-api.md#widgets-text-and-clock-v5)) makes `query`
+optional and adds the widget kinds `text` and `clock`. `PanelSpec` is the union
+`DataPanelSpec | WidgetPanelSpec` (`api/types.ts`): a data panel has a `query`, a widget has none
+(`query?: never`). Every reader of `query` takes a `DataPanelSpec` and gets one through
+`isDataPanel` (`widgets/spec.ts`), with no `!` and no cast, so `npm run typecheck` finds any new
+reader that forgets the widgets:
+
+| Reader | Takes |
+|---|---|
+| `usePanelRun`, `panelView`, `exploreHref`, `logPanelPath`, `withKind` | a data panel (`DataPanelSpec`, `DataVisKind`) |
+| `PanelFrame` | any panel: a widget renders `WidgetFrame`, a data panel `DataPanelFrame` (today's body) |
+| `PanelEditor`, `PanelPreview` | a data panel only: `BoardPage` opens the editor, and sets the edited run, only when `edit` and the selected panel `isDataPanel` |
+| `updatePanel` (`editorState.ts`) | a `PanelPatch` of a data panel's title, query or vis; on a widget only the title applies |
+| `boardVariables` (`variables.ts`) | data panels only: a widget has no variables |
+| `HttpApi` `toBoard` | the wire spec: a widget kind becomes a `WidgetPanelSpec`; a data panel without a query is a `badResponse` |
+
+`checkBoardSpec` checks the v5 rules as the server does, in the same order and with the same
+pointers and keys ([the widgets page](widgets.md#validation)); the client does not know which zones
+exist, so `w-zone-unknown` is the one `invalid.json` row whose `client_fields` (none) differ.
 
 ## Thresholds, legends and stat tiles (#64 Part B)
 
@@ -235,7 +299,12 @@ the stat chip and the threshold labels all use it.
 ### The editor's Thresholds and Legend
 
 `ThresholdsField` and the Legend select follow Visualisation. Every vis edit is one `updatePanel`
-of a `vis` built from `panel.vis` by spread, so a kind change keeps the thresholds and the legend;
+of a `vis` built from `panel.vis` by spread, so a kind change keeps the thresholds and the legend.
+A kind change goes through `withKind(vis, kind)`, which also keeps only the `vis.options` keys the
+new kind allows (`keepOptions`, the `OPTION_KEYS` table) and drops the `options` member when none
+is left, so the draft stays valid. A stored pending kind (Bar chart, Pie) shows in the
+Visualisation select as a disabled option: the select names it, and it cannot be chosen for another
+panel;
 Legend Table and the last threshold's removal delete their member (the saved spec has no key).
 **Add threshold** starts at `{ direction: 'above', steps: [{ value: 0, state: 'degraded' }] }`, then
 adds the largest finite value + 1 (above) or the smallest − 1 (below); it is disabled at 8.
@@ -314,6 +383,10 @@ routed through the app's router) and Copy query. Duplicate and Remove dispatch `
 `duplicatePanel` (the copy at `firstFree` of the same grid, title "`<title>` (copy)" cut to 200
 code points, announced in the live region) or `removePanel` (focus then moves to Add panel); both
 are disabled while a save is in flight.
+
+A widget's menu has **Duplicate** and **Remove** only (T24-002): no Edit panel (Part 3 adds it for
+Text), Open in Explore, Copy query or Full screen. A duplicated widget keeps its `vis` and has no
+`query`.
 
 ## The panel editor's Query field (§3.8, §4.4)
 
@@ -512,3 +585,14 @@ failing 0.05 "SLO breach").
 - [09 Performance contract](../../designs/product/09-performance-contract.md): PRF-030, PRF-031
   (board subsets); [08 Visual language](../../designs/product/08-visual-language.md): VL-015 (the
   shimmer).
+- Widgets and the panel union (#198 Part 1):
+  [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-002, T24-003, §5.1;
+  [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) VIZ-053
+  (staged), VIZ-057.
+- Board tags (#215): [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-029
+  and §5.5; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v3 upcast).
+- Board spec v3 and the pending kinds (#173 Parts 1 and 2):
+  [T22](../../designs/technical/T22-value-categorical-and-table-panels.md) §6.1 (`vis.options`),
+  T22-002 and §4.5 (row 11 not available on boards until Part 3);
+  [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v2 upcast); the categorical
+  transforms are on [the panels page](panels.md).

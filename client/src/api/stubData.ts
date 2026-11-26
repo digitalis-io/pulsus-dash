@@ -1,17 +1,17 @@
 import type { PromMetricMetadata } from '../data/decode';
 import type { StubSeed } from './StubApi';
-import type { PanelSpec } from './types';
+import type { DataPanelSpec, DataVisKind, QueryLang } from './types';
 
 function panel(
   id: string,
   title: string,
-  lang: PanelSpec['query']['lang'],
+  lang: QueryLang,
   text: string,
-  kind: PanelSpec['vis']['kind'],
+  kind: DataVisKind,
   [x, y, w, h]: readonly [number, number, number, number],
   /** More of the panel's `vis` (thresholds, legend; #64 Part B B.9). */
-  vis: Omit<PanelSpec['vis'], 'kind'> = {},
-): PanelSpec {
+  vis: Omit<DataPanelSpec['vis'], 'kind'> = {},
+): DataPanelSpec {
   return { id, title, grid: { x, y, w, h }, query: { lang, text }, vis: { kind, ...vis } };
 }
 

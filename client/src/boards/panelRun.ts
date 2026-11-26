@@ -7,7 +7,7 @@
  * #64 Part B §3.8). A LogQL panel (plan #67 §3.4) is a stream view of its pager, a frame of its
  * metric answer, or the log volume by level for Bars.
  */
-import type { PanelSpec, PlannedQuery } from '../api/types';
+import type { DataPanelSpec, PlannedQuery } from '../api/types';
 import type { VolumeResult } from '../data/decode';
 import type { FrameData } from '../data/frames';
 import type { Diagnostic } from '../editor/lang/types';
@@ -92,6 +92,8 @@ export type PanelState =
   | 'variable'
   | 'notMetric'
   | 'logs'
+  /** A kind this version does not draw yet (`PENDING_KINDS`, plan #173 Part 1): no query. */
+  | 'kindUnavailable'
   | 'refused'
   | 'langFailed'
   | 'noBuckets'
@@ -236,7 +238,7 @@ function frameView(
   chosen: VisKind,
   r: ExploreResult,
   rateApplied: boolean,
-  panelVis: PanelSpec['vis'],
+  panelVis: DataPanelSpec['vis'],
   title: string,
 ): PanelView {
   const plan = cachedPlan(chosen, r, rateApplied, title);
@@ -274,7 +276,7 @@ function streamResult(s: StreamSeries): ExploreResult {
 const volumePlans = new WeakMap<VolumeResult, ReturnType<typeof volumePlan>>();
 
 /** A LogQL panel's stream path (§3.4): its pager's state decides. */
-function streamView(s: PanelStream, panelVis: PanelSpec['vis'], title: string): PanelView {
+function streamView(s: PanelStream, panelVis: DataPanelSpec['vis'], title: string): PanelView {
   const state = s.state;
   if (s.pager === null || state === null) return { kind: 'loading' };
   if (state.phase === 'streams') return { kind: 'stream', stream: { ...s, pager: s.pager } };
@@ -290,11 +292,13 @@ function streamView(s: PanelStream, panelVis: PanelSpec['vis'], title: string): 
  * legend); `title` is the panel title (`panelTitle`). A LogQL panel's rows (plan #67 §3.4) follow
  * the blocked and error rows: its stream path, then its frame path by the probe's answer kind.
  */
-export function panelView(run: PanelRun, panelVis: PanelSpec['vis'], title: string): PanelView {
+export function panelView(run: PanelRun, panelVis: DataPanelSpec['vis'], title: string): PanelView {
   const vis = panelVis.kind;
   switch (run.blocked) {
     case 'logs':
       return message('logs', t('panel.noVis'));
+    case 'kindUnavailable':
+      return message('kindUnavailable', t('panel.kindUnavailable'));
     case 'empty':
       return message('empty', t('panel.empty'));
     case 'variable':
@@ -350,7 +354,9 @@ export function panelView(run: PanelRun, panelVis: PanelSpec['vis'], title: stri
     rateApplied: o.planned.rateApplied,
     result: r,
   });
-  // PromQL `logs` is blocked above; any other saved kind overrides the auto vis.
-  const chosen = chooseVis(vis === 'auto' || vis === 'logs' ? 'auto' : vis, auto) ?? 'line';
+  // PromQL `logs` and the pending kinds (barchart, pie) are blocked above; any other saved kind
+  // overrides the auto vis.
+  const saved = vis === 'logs' || vis === 'barchart' || vis === 'pie' ? 'auto' : vis;
+  const chosen = chooseVis(saved, auto) ?? 'line';
   return frameView(chosen, r, o.planned.rateApplied, panelVis, title);
 }

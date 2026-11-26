@@ -27,6 +27,7 @@ import { useLogPager, useLogPagerState } from '../logs/useLogPager';
 import { useTimeContext } from '../state/useTimeContext';
 import { BoardRunContext } from './boardRunContext';
 import { fetchLogFrame, logPanelPath, streamInput, streamMeta, type StreamRun } from './logPanel';
+import { PENDING_KINDS } from './options';
 import {
   panelIdleKey,
   panelRunKey,
@@ -57,13 +58,15 @@ export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const refusedEarly = useMemo(() => refusalOf(text), [text]);
   const pre: PanelState | null = !active
     ? null
-    : text.trim() === ''
-      ? 'empty'
-      : refusedEarly !== null
-        ? 'refused'
-        : hint.length > 0
-          ? 'variable'
-          : null;
+    : PENDING_KINDS.has(panel.vis.kind)
+      ? 'kindUnavailable'
+      : text.trim() === ''
+        ? 'empty'
+        : refusedEarly !== null
+          ? 'refused'
+          : hint.length > 0
+            ? 'variable'
+            : null;
   // Nothing is sent while inactive, blocked or before the board's time is set (§4.6).
   const runnable = active && pre === null && timeReady;
   const path = logPanelPath(panel.vis.kind);

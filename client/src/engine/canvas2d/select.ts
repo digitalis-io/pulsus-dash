@@ -40,6 +40,9 @@ export function pickItem(model: LayerModel, view: Span, p: Point): HoverItem | n
         count: row.value,
       };
     }
+    case 'barchart':
+      // A bar chart reports `pick`, never `select` (ADR-0028).
+      return null;
   }
 }
 

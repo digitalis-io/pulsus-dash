@@ -119,15 +119,48 @@ export interface Session {
   canSignOut: boolean;
 }
 
-export type BoardSpec = components['schemas']['BoardSpec'];
-export type PanelSpec = components['schemas']['Panel'];
-export type SectionSpec = components['schemas']['Section'];
-export type GridPos = components['schemas']['Grid'];
-export type TimeRangeSpec = components['schemas']['TimeRange'];
+type S = components['schemas'];
+/** A panel as the OpenAPI document has it: `query` optional, any kind (board spec v5). */
+type RawPanel = S['Panel'];
+export type GridPos = S['Grid'];
+export type TimeRangeSpec = S['TimeRange'];
+export type PanelQuery = S['Query'];
 /** `'promql' | 'logql'`. */
-export type QueryLang = PanelSpec['query']['lang'];
-/** `'auto' | 'line' | 'bars' | 'heatmap' | 'stat' | 'logs'`. */
-export type PanelVisKind = PanelSpec['vis']['kind'];
+export type QueryLang = PanelQuery['lang'];
+export type PanelVis = RawPanel['vis'];
+/** The data kinds `auto` … `pie`, and the widgets `text` and `clock` (board spec v5). */
+export type PanelVisKind = PanelVis['kind'];
+/** The widget kinds (T24-002): no query, chart or Inspector. #216 adds `boardList`. */
+export type WidgetKind = Extract<PanelVisKind, 'text' | 'clock'>;
+export type DataVisKind = Exclude<PanelVisKind, WidgetKind>;
+/** A panel's `vis.options` (board spec v3, T22 §6.1; the widget keys by v5, T24 §5.1). */
+export type VisOptions = NonNullable<PanelVis['options']>;
+/** A text widget's code language (T24 §5.1). */
+export type CodeLanguage = NonNullable<VisOptions['language']>;
+export type ClockZone = S['ClockZone'];
+export type ClockCountdown = S['ClockCountdown'];
+
+/**
+ * The panels of a valid spec (plan #198 Part 1 §3.3): a data panel has a query, a widget has none.
+ * Every reader of `query` takes a `DataPanelSpec` (`isDataPanel` narrows), so the compiler guards
+ * them all.
+ */
+export interface DataPanelSpec extends Omit<RawPanel, 'query' | 'vis'> {
+  query: PanelQuery;
+  vis: PanelVis & { kind: DataVisKind };
+}
+export interface WidgetPanelSpec extends Omit<RawPanel, 'query' | 'vis'> {
+  query?: never;
+  vis: PanelVis & { kind: WidgetKind };
+}
+export type PanelSpec = DataPanelSpec | WidgetPanelSpec;
+export interface SectionSpec extends Omit<S['Section'], 'panels'> {
+  panels: PanelSpec[];
+}
+export interface BoardSpec extends Omit<S['BoardSpec'], 'panels' | 'sections'> {
+  panels: PanelSpec[];
+  sections: SectionSpec[];
+}
 
 /** A board of the organisation (boards are not per tenant; the tenant picks the data source). */
 export interface BoardSummary {

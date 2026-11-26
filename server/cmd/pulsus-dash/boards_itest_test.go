@@ -30,11 +30,17 @@ var requestSeq atomic.Int64
 // do sends one request to s with X-Request-Id itest-<n> and returns the status, headers and body.
 func do(t *testing.T, s *served, method, path string, body []byte, hdr ...string) (int, http.Header, []byte) {
 	t.Helper()
+	return doAt(t, s.addr, method, path, body, hdr...)
+}
+
+// doAt is do against a server at addr (host:port).
+func doAt(t *testing.T, addr, method, path string, body []byte, hdr ...string) (int, http.Header, []byte) {
+	t.Helper()
 	var r io.Reader
 	if body != nil {
 		r = bytes.NewReader(body)
 	}
-	req, err := http.NewRequest(method, "http://"+s.addr+path, r)
+	req, err := http.NewRequest(method, "http://"+addr+path, r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,101 +105,161 @@ func boardCounts(t *testing.T, db *storetest.TestDB) string {
 
 const boardsURL = "/api/dash/v1/boards"
 
+// boardCRUD is the create, read, save, conflict and delete round trip of the boards API against a
+// server at addr (plan #61 §5; plan #215: also run against the previous release). at, when not
+// nil, runs after each numbered step, for the checks that need a database of this board only. It
+// returns the board's uid and the request IDs of its writes.
+func boardCRUD(t *testing.T, addr string, at func(step int, uid string)) (string, []string) {
+	t.Helper()
+	step := func(n int, uid string) {
+		if at != nil {
+			at(n, uid)
+		}
+	}
+	minimal, full := specFixture(t, "v1-minimal.json"), specFixture(t, "v1-full.json")
+	canonMinimal := []byte(`{"panels":[],"sections":[],"title":"New board"}`)
+	var reqIDs []string
+
+	// 1 create
+	code, hdr, b := doAt(t, addr, "POST", boardsURL, []byte(`{"spec":`+string(minimal)+`}`))
+	reqIDs = append(reqIDs, hdr.Get("X-Request-Id"))
+	m := obj(t, b)
+	uid, _ := m["uid"].(string)
+	if code != 201 || hdr.Get("ETag") != `"1"` || !regexp.MustCompile(`^[0-9a-z]{14}$`).MatchString(uid) {
+		t.Fatalf("1 create = %d ETag %q %s", code, hdr.Get("ETag"), b)
+	}
+	step(1, uid)
+	path := boardsURL + "/" + uid
+	// 2 get
+	code, hdr, b = doAt(t, addr, "GET", path, nil)
+	if m = obj(t, b); code != 200 || hdr.Get("ETag") != `"1"` || string(raw(m, "spec")) != string(canonMinimal) {
+		t.Errorf("2 get = %d ETag %q %s", code, hdr.Get("ETag"), b)
+	}
+	// 3 save full
+	code, hdr, b = doAt(t, addr, "PUT", path, []byte(`{"spec":`+string(full)+`}`), "If-Match", `"1"`)
+	reqIDs = append(reqIDs, hdr.Get("X-Request-Id"))
+	m = obj(t, b)
+	board, _ := m["board"].(map[string]any)
+	if code != 200 || m["changed"] != true || board["version"] != float64(2) || hdr.Get("ETag") != `"2"` || !sameJSON(t, raw(board, "spec"), full) {
+		t.Errorf("3 save = %d ETag %q %s", code, hdr.Get("ETag"), b)
+	}
+	step(3, uid)
+	// 4 same body: no-op
+	code, hdr, b = doAt(t, addr, "PUT", path, []byte(`{"spec":`+string(full)+`}`), "If-Match", `"2"`)
+	m = obj(t, b)
+	board, _ = m["board"].(map[string]any)
+	if code != 200 || m["changed"] != false || board["version"] != float64(2) || hdr.Get("ETag") != `"2"` {
+		t.Errorf("4 unchanged save = %d ETag %q %s", code, hdr.Get("ETag"), b)
+	}
+	step(4, uid)
+	// 5 stale If-Match
+	code, _, b = doAt(t, addr, "PUT", path, []byte(`{"spec":`+string(minimal)+`}`), "If-Match", `"1"`)
+	m = obj(t, b)
+	e, _ := m["error"].(map[string]any)
+	cur, _ := m["current"].(map[string]any)
+	if code != 409 || e["code"] != "conflict" || cur["version"] != float64(2) || !sameJSON(t, raw(cur, "spec"), full) || !sameJSON(t, raw(m, "submitted"), minimal) {
+		t.Errorf("5 conflict = %d %s", code, b)
+	}
+	step(5, uid)
+	// 6 no If-Match
+	if code, _, b = doAt(t, addr, "PUT", path, []byte(`{"spec":`+string(minimal)+`}`)); code != 428 {
+		t.Errorf("6 = %d %s, want 428", code, b)
+	}
+	// 7 list (the caller's checks)
+	step(7, uid)
+	// 8 delete
+	code, hdr, b = doAt(t, addr, "DELETE", path, nil, "If-Match", `"2"`)
+	reqIDs = append(reqIDs, hdr.Get("X-Request-Id"))
+	if code != 204 {
+		t.Errorf("8 delete = %d %s", code, b)
+	}
+	if code, _, _ = doAt(t, addr, "GET", path, nil); code != 404 {
+		t.Errorf("8 get after delete = %d, want 404", code)
+	}
+	step(8, uid)
+	return uid, reqIDs
+}
+
 func TestBoardCRUD(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {
 			db, cfg, env := migratedDB(t, c, "")
 			s := startServe(t, cfg, env)
 			s.waitReady(t)
-			minimal, full := specFixture(t, "v1-minimal.json"), specFixture(t, "v1-full.json")
-			canonMinimal := []byte(`{"panels":[],"sections":[],"title":"New board"}`)
-			var reqIDs []string
-
-			// 1 create
-			code, hdr, b := do(t, s, "POST", boardsURL, []byte(`{"spec":`+string(minimal)+`}`))
-			reqIDs = append(reqIDs, hdr.Get("X-Request-Id"))
-			m := obj(t, b)
-			uid, _ := m["uid"].(string)
-			if code != 201 || hdr.Get("ETag") != `"1"` || !regexp.MustCompile(`^[0-9a-z]{14}$`).MatchString(uid) {
-				t.Fatalf("1 create = %d ETag %q %s", code, hdr.Get("ETag"), b)
-			}
-			if got := boardCounts(t, db); got != "versions 1 audit 1" {
-				t.Errorf("1: %s", got)
-			}
-			path := boardsURL + "/" + uid
-			// 2 get
-			code, hdr, b = do(t, s, "GET", path, nil)
-			if m = obj(t, b); code != 200 || hdr.Get("ETag") != `"1"` || string(raw(m, "spec")) != string(canonMinimal) {
-				t.Errorf("2 get = %d ETag %q %s", code, hdr.Get("ETag"), b)
-			}
-			// 3 save full
-			code, hdr, b = do(t, s, "PUT", path, []byte(`{"spec":`+string(full)+`}`), "If-Match", `"1"`)
-			reqIDs = append(reqIDs, hdr.Get("X-Request-Id"))
-			m = obj(t, b)
-			board, _ := m["board"].(map[string]any)
-			if code != 200 || m["changed"] != true || board["version"] != float64(2) || hdr.Get("ETag") != `"2"` || !sameJSON(t, raw(board, "spec"), full) {
-				t.Errorf("3 save = %d ETag %q %s", code, hdr.Get("ETag"), b)
-			}
-			if got := boardCounts(t, db); got != "versions 2 audit 2" {
-				t.Errorf("3: %s", got)
-			}
-			// 4 same body: no-op
-			code, hdr, b = do(t, s, "PUT", path, []byte(`{"spec":`+string(full)+`}`), "If-Match", `"2"`)
-			m = obj(t, b)
-			board, _ = m["board"].(map[string]any)
-			if code != 200 || m["changed"] != false || board["version"] != float64(2) || hdr.Get("ETag") != `"2"` {
-				t.Errorf("4 unchanged save = %d ETag %q %s", code, hdr.Get("ETag"), b)
-			}
-			if got := boardCounts(t, db); got != "versions 2 audit 2" {
-				t.Errorf("4: %s", got)
-			}
-			// 5 stale If-Match
-			code, _, b = do(t, s, "PUT", path, []byte(`{"spec":`+string(minimal)+`}`), "If-Match", `"1"`)
-			m = obj(t, b)
-			e, _ := m["error"].(map[string]any)
-			cur, _ := m["current"].(map[string]any)
-			if code != 409 || e["code"] != "conflict" || cur["version"] != float64(2) || !sameJSON(t, raw(cur, "spec"), full) || !sameJSON(t, raw(m, "submitted"), minimal) {
-				t.Errorf("5 conflict = %d %s", code, b)
-			}
-			if got := boardCounts(t, db); got != "versions 2 audit 2" {
-				t.Errorf("5: %s", got)
-			}
-			// 6 no If-Match
-			if code, _, b = do(t, s, "PUT", path, []byte(`{"spec":`+string(minimal)+`}`)); code != 428 {
-				t.Errorf("6 = %d %s, want 428", code, b)
-			}
-			// 7 list
-			code, _, b = do(t, s, "GET", boardsURL, nil)
-			items, _ := obj(t, b)["items"].([]any)
-			if code != 200 || len(items) != 1 {
-				t.Fatalf("7 list = %d %s", code, b)
-			}
-			it, _ := items[0].(map[string]any)
-			if it["title"] != "Service overview" || string(raw(it, "updated_by")) != `{"kind":"local","name":"Local user"}` {
-				t.Errorf("7 item = %v", it)
-			}
-			// 8 delete
-			code, hdr, b = do(t, s, "DELETE", path, nil, "If-Match", `"2"`)
-			reqIDs = append(reqIDs, hdr.Get("X-Request-Id"))
-			if code != 204 {
-				t.Errorf("8 delete = %d %s", code, b)
-			}
-			if code, _, _ = do(t, s, "GET", path, nil); code != 404 {
-				t.Errorf("8 get after delete = %d, want 404", code)
-			}
-			if _, _, b = do(t, s, "GET", boardsURL, nil); string(raw(obj(t, b), "items")) != "[]" {
-				t.Errorf("8 list after delete = %s", b)
-			}
-			if got := boardCounts(t, db); got != "versions 2 audit 3" {
-				t.Errorf("8: %s", got)
-			}
+			counts := map[int]string{1: "versions 1 audit 1", 3: "versions 2 audit 2", 4: "versions 2 audit 2", 5: "versions 2 audit 2", 8: "versions 2 audit 3"}
+			uid, reqIDs := boardCRUD(t, s.addr, func(step int, uid string) {
+				if want, ok := counts[step]; ok {
+					if got := boardCounts(t, db); got != want {
+						t.Errorf("%d: %s, want %s", step, got, want)
+					}
+				}
+				switch step {
+				case 7:
+					code, _, b := do(t, s, "GET", boardsURL, nil)
+					items, _ := obj(t, b)["items"].([]any)
+					if code != 200 || len(items) != 1 {
+						t.Fatalf("7 list = %d %s", code, b)
+					}
+					it, _ := items[0].(map[string]any)
+					if it["title"] != "Service overview" || string(raw(it, "updated_by")) != `{"kind":"local","name":"Local user"}` || string(raw(it, "tags")) != "[]" {
+						t.Errorf("7 item = %v", it)
+					}
+				case 8:
+					if _, _, b := do(t, s, "GET", boardsURL, nil); string(raw(obj(t, b), "items")) != "[]" {
+						t.Errorf("8 list after delete = %s", b)
+					}
+				}
+			})
 			rows := storetest.QueryRows(t, db.SuperURL, "SELECT actor_kind, actor_id::text, resource_id, request_id, action FROM audit_events ORDER BY at, id")
 			wantActions := []string{"board.create", "board.update", "board.delete"}
+			if len(rows) != len(wantActions) {
+				t.Fatalf("%d audit rows, want %d", len(rows), len(wantActions))
+			}
 			for i, r := range rows {
 				want := []string{"local", core.LocalPrincipalID.String(), uid, reqIDs[i], wantActions[i]}
 				if strings.Join(r, " ") != strings.Join(want, " ") {
 					t.Errorf("audit row %d = %v, want %v", i, r, want)
 				}
+			}
+			s.stop(t)
+		})
+	}
+}
+
+// TestBoardFindParams: q and tag of GET /boards over HTTP (T24-021).
+func TestBoardFindParams(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			_, cfg, env := migratedDB(t, c, "")
+			s := startServe(t, cfg, env)
+			s.waitReady(t)
+			if code, _, b := do(t, s, "POST", boardsURL, []byte(`{"spec":{"title":"Checkout","panels":[],"sections":[]}}`)); code != 201 {
+				t.Fatalf("create = %d %s", code, b)
+			}
+			if code, _, b := do(t, s, "POST", boardsURL, []byte(`{"spec":{"title":"Other","panels":[],"sections":[]}}`)); code != 201 {
+				t.Fatalf("create = %d %s", code, b)
+			}
+			code, _, b := do(t, s, "GET", boardsURL+"?q=check", nil)
+			m := obj(t, b)
+			items, _ := m["items"].([]any)
+			if code != 200 || len(items) != 1 || string(raw(m, "applied")) != `{"q":"check"}` || m["tagsStale"] != float64(0) {
+				t.Errorf("?q=check = %d %s, want 200, 1 item, applied {\"q\":\"check\"}", code, b)
+			}
+			fieldKey := func(b []byte) string {
+				e, _ := obj(t, b)["error"].(map[string]any)
+				fs, _ := e["fields"].([]any)
+				if len(fs) != 1 {
+					return ""
+				}
+				f, _ := fs[0].(map[string]any)
+				k, _ := f["message_key"].(string)
+				return k
+			}
+			if code, _, b := do(t, s, "GET", boardsURL+"?q="+strings.Repeat("a", 101), nil); code != 400 || fieldKey(b) != "boards.q.invalid" {
+				t.Errorf("101-character q = %d %s, want 400 boards.q.invalid", code, b)
+			}
+			if code, _, b := do(t, s, "GET", boardsURL+"?tag=Bad%20Tag", nil); code != 400 || fieldKey(b) != "boards.tag.invalid" {
+				t.Errorf("tag=Bad Tag = %d %s, want 400 boards.tag.invalid", code, b)
 			}
 			s.stop(t)
 		})
@@ -351,6 +417,44 @@ func TestBoardPrefs(t *testing.T) {
 			}
 			if _, _, b := do(t, s, "GET", starred, nil); refUIDs(t, b) != "" {
 				t.Errorf("starred after deleting A = %s, want []", b)
+			}
+
+			// T24-021: starred stops at 200 and recent at limit, each with truncated and applied {}.
+			var many []string
+			for i := range 201 {
+				code, _, b := do(t, s, "POST", boardsURL, []byte(fmt.Sprintf(`{"spec":{"title":"S%03d","panels":[],"sections":[]}}`, i)))
+				if code != 201 {
+					t.Fatalf("create S%03d = %d %s", i, code, b)
+				}
+				many = append(many, obj(t, b)["uid"].(string))
+				if code, _, b := do(t, s, "PUT", starred+"/"+many[i], nil); code != 204 {
+					t.Fatalf("star S%03d = %d %s", i, code, b)
+				}
+			}
+			refList := func(path string) (int, bool, string) {
+				t.Helper()
+				_, _, b := do(t, s, "GET", path, nil)
+				m := obj(t, b)
+				items, _ := m["items"].([]any)
+				tr, _ := m["truncated"].(bool)
+				return len(items), tr, string(raw(m, "applied"))
+			}
+			if n, tr, applied := refList(starred); n != 200 || !tr || applied != "{}" {
+				t.Errorf("201 starred: %d items, truncated %v, applied %s; want 200, true, {}", n, tr, applied)
+			}
+			if code, _, _ := do(t, s, "DELETE", starred+"/"+many[0], nil); code != 204 {
+				t.Errorf("unstar = %d", code)
+			}
+			if n, tr, _ := refList(starred); n != 200 || tr {
+				t.Errorf("200 starred: %d items, truncated %v; want 200, false", n, tr)
+			}
+			for i := range 51 {
+				if code, _, b := do(t, s, "PUT", recent+"/"+many[i], nil); code != 204 {
+					t.Fatalf("view S%03d = %d %s", i, code, b)
+				}
+			}
+			if n, tr, applied := refList(recent + "?limit=50"); n != 50 || !tr || applied != "{}" {
+				t.Errorf("recent?limit=50 after 51 views: %d items, truncated %v, applied %s; want 50, true, {}", n, tr, applied)
 			}
 			s.stop(t)
 		})
