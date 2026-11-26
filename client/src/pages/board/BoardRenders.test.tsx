@@ -1,11 +1,12 @@
 /**
- * Render and mount counts of the board's panels (#111). One grid serves View and Edit mode, so
+ * Render and mount counts of the board's panels (#111; stabilised by plan #198 Part 3a §4.5). One grid serves View and Edit mode, so
  * entering Edit mode (Edit board, or Edit panel from View mode) and leaving it neither unmount,
  * mount nor render a panel; opening the editor from View mode renders no other panel.
  * In Edit mode, opening the panel editor, editing in it and closing it render only the panel being
  * edited. A panel is counted through its `PanelFullScreen`, which every `PanelFrame` render
  * renders and which mounts and unmounts with it.
  */
+import type { QueryClient } from '@tanstack/react-query';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { useEffect } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,23 +21,28 @@ const counts = vi.hoisted(() => ({
   /** The diagnostic (plan #198 Part 3a §4.5): each counted render, printed when a count fails. */
   log: [] as string[],
   /** The last props each panel's `PanelFullScreen` and `PanelFrame` rendered with. */
-  last: new Map<string, Record<string, unknown>>(),
+  last: new Map<string, object>(),
   t0: 0,
+  /** When a panel last rendered (never cleared), for `settle`. */
+  lastAt: 0,
 }));
 
 /** The names of the props whose values differ from the last render's (`onClose` is per render). */
-function diff(key: string, props: Record<string, unknown>): string {
-  const before = counts.last.get(key);
+function diff(key: string, props: object): string {
+  const was = counts.last.get(key);
   counts.last.set(key, props);
-  if (before === undefined) return '(first)';
-  const changed = Object.keys({ ...before, ...props }).filter(
-    (k) => k !== 'onClose' && !Object.is(before[k], props[k]),
+  if (was === undefined) return '(first)';
+  const before = new Map(Object.entries(was));
+  const after = new Map(Object.entries(props));
+  const changed = [...new Set([...before.keys(), ...after.keys()])].filter(
+    (k) => k !== 'onClose' && !Object.is(before.get(k), after.get(k)),
   );
   return changed.length === 0 ? '(none)' : changed.join(',');
 }
 
-function note(what: string, title: string, props: Record<string, unknown>): void {
-  const ms = (performance.now() - counts.t0).toFixed(1);
+function note(what: string, title: string, props: object): void {
+  counts.lastAt = performance.now();
+  const ms = (counts.lastAt - counts.t0).toFixed(1);
   counts.log.push(`${ms} ms ${what} ${title}: ${diff(`${what}:${title}`, props)}`);
 }
 
@@ -78,7 +84,7 @@ vi.mock('./PanelFrame', async (importOriginal) => {
     ...m,
     PanelFrame: memo(
       forwardRef<HTMLElement, Parameters<typeof m.PanelFrame>[0]>(function LoggedFrame(p, ref) {
-        note('page-props', p.panel.title, p as unknown as Record<string, unknown>);
+        note('page-props', p.panel.title, p);
         return createElement(m.PanelFrame, { ...p, ref });
       }),
     ),
@@ -115,23 +121,23 @@ function clear(): void {
   counts.t0 = performance.now();
 }
 
-function total(): number {
-  let n = 0;
-  for (const v of counts.renders.values()) n += v;
-  return n;
-}
+/** The query client of the board under test, for `settle`. */
+let client: QueryClient | null = null;
 
 /**
  * Lets the panels' own follow-up renders (the grid's width, their data, their viewport state)
- * settle: until no panel renders for 50 ms (at most 2 s), so a busy runner does not count them.
+ * settle, so a busy runner does not count them (plan #198 Part 3a §4.5: the diagnostic found such
+ * late renders with no page prop changed): until no panel has rendered for 200 ms and no query is
+ * fetching, at most 5 s.
  */
 async function settle(): Promise<void> {
-  for (let i = 0; i < 40; i++) {
-    const before = total();
+  const start = performance.now();
+  while (performance.now() - start < 5_000) {
     await act(async () => {
-      await new Promise((res) => setTimeout(res, 50));
+      await new Promise((res) => setTimeout(res, 25));
     });
-    if (total() === before) return;
+    const quiet = performance.now() - counts.lastAt >= 200;
+    if (quiet && (client?.isFetching() ?? 0) === 0) return;
   }
 }
 
@@ -139,6 +145,7 @@ async function settle(): Promise<void> {
 async function viewBoard() {
   clear();
   const r = renderApp('/t/demo/board/b-1', { wrapper: EngineWrapper });
+  client = r.queryClient;
   await waitFor(() => {
     expect(of(counts.mounts, ALL)).toEqual(each(ALL, 1));
   });
