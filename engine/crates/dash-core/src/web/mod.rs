@@ -3,6 +3,14 @@
 //! mark frames dirty and the worker's animation frame runs `engine_tick`, which builds, draws and
 //! presents the dirty frames and returns their events as one JSON array. Nothing here waits on
 //! another thread's lock (T03-008); decimation on T2 joins its own rayon tasks on the pool.
+//!
+//! Part C2a1 (§4.2, §4.3): each tick starts by draining the input ring (the camera and the size
+//! of the frames, T03-019) and ends with one `applied` per frame whose records it applied. A
+//! presentation is captured when its draw list is submitted; a deferred one waits in `awaiting`
+//! with its capture, and its `drawn` reports that capture once the read-back says it is complete.
+//! When nothing is left to do, `engine_wants_frame` marks the worker idle and re-checks the ring.
+//! The `probe` feature (the probe build only, T03-024) logs the decoded records for
+//! `e2e:shim-fuzz`.
 
 mod control;
 mod gpu;
@@ -15,14 +23,15 @@ use std::sync::atomic::Ordering;
 
 use dash_gpu::Tier;
 use dash_marks::line::{Pending, Renderer, RendererOptions, Sync};
-use dash_marks::{DrawList, DrawnEvent, MarkItem};
-use dash_protocol::{Status, caps};
+use dash_marks::{DrawList, DrawnEvent};
+use dash_protocol::{Status, caps, off};
 use dash_scene::Theme;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::events::{self, FailReason};
-use crate::frames::Frames;
+use crate::frames::{Frames, Presented};
+use crate::input::{self, Decoded};
 use crate::recovery::{LossAction, LossPolicy, Restored, restore_events, restored};
 use control::Control;
 use gpu::{Gpu, SurfaceTarget, bitmap_context, format};
@@ -72,8 +81,15 @@ struct Engine {
     frames: Frames,
     gpus: BTreeMap<u32, FrameGpu>,
     dirty: BTreeSet<u32>,
-    awaiting: BTreeSet<u32>,
+    /// Presentations waiting for their status read-back, with what they show.
+    awaiting: BTreeMap<u32, Presented>,
     failed: BTreeSet<u32>,
+    /// The records drained this tick (kept for its capacity).
+    inbox: Vec<Decoded>,
+    /// A rejected input record was logged (once per worker).
+    bad_logged: bool,
+    #[cfg(feature = "probe")]
+    probe: Vec<serde_json::Value>,
     /// Events produced outside a tick (a surface that could not be made).
     queued: Vec<String>,
     frame_no: u64,
@@ -139,8 +155,12 @@ pub async fn engine_start(force_t2: bool, caps_bits: u32, epoch: u32) -> BootSta
                     frames: Frames::new(),
                     gpus: BTreeMap::new(),
                     dirty: BTreeSet::new(),
-                    awaiting: BTreeSet::new(),
+                    awaiting: BTreeMap::new(),
                     failed: BTreeSet::new(),
+                    inbox: Vec::new(),
+                    bad_logged: false,
+                    #[cfg(feature = "probe")]
+                    probe: Vec::new(),
                     queued: Vec::new(),
                     frame_no: 0,
                     losses: LossPolicy::default(),
@@ -228,14 +248,6 @@ pub fn frame_data_clear(id: u32) {
     });
 }
 
-#[wasm_bindgen]
-pub fn frame_set_window(id: u32, from_ms: f64, to_ms: f64) {
-    with(|e| {
-        e.dirty.insert(id);
-        e.frames.set_window(id, from_ms, to_ms);
-    });
-}
-
 /// 0 dark, 1 light.
 #[wasm_bindgen]
 pub fn frame_set_theme(id: u32, theme: u8) {
@@ -247,15 +259,6 @@ pub fn frame_set_theme(id: u32, theme: u8) {
     with(|e| {
         e.dirty.insert(id);
         e.frames.set_theme(id, theme);
-    });
-}
-
-/// CSS px and DPR (a message until C2's input ring carries Resize records).
-#[wasm_bindgen]
-pub fn frame_resize(id: u32, css_w: f64, css_h: f64, dpr: f64) {
-    with(|e| {
-        e.dirty.insert(id);
-        e.frames.resize(id, css_w, css_h, dpr as f32);
     });
 }
 
@@ -276,38 +279,62 @@ pub fn engine_tick(now_ms: f64) -> String {
     with(|e| e.tick(now_ms)).unwrap_or_default()
 }
 
-/// Whether another animation frame is needed (dirty, awaiting a read-back, or events queued).
+/// Whether another animation frame is needed (dirty, awaiting a read-back, events queued, or a
+/// device loss); otherwise the worker goes idle unless the input ring has records
+/// (`input::before_sleep`): then it ticks again.
 #[wasm_bindgen]
 pub fn engine_wants_frame() -> bool {
     with(|e| {
-        !e.dead
-            && (!e.dirty.is_empty()
-                || !e.awaiting.is_empty()
-                || !e.queued.is_empty()
-                || e.gpu.lost.load(Ordering::Acquire))
+        if e.dead {
+            return false;
+        }
+        let busy = !e.dirty.is_empty()
+            || !e.awaiting.is_empty()
+            || !e.queued.is_empty()
+            || e.gpu.lost.load(Ordering::Acquire);
+        busy || input::before_sleep(&e.cb)
     })
     .unwrap_or(false)
 }
 
-/// Series a draw list draws.
-fn series_of(list: &DrawList) -> u32 {
-    list.items
-        .iter()
-        .map(|i| match i {
-            MarkItem::Line { series, .. } => series.end.saturating_sub(series.start),
-            MarkItem::Guides { .. } => 0,
-        })
-        .sum()
+/// The probe log's bound.
+#[cfg(feature = "probe")]
+const PROBE_LOG: usize = 20_000;
+
+/// The probe build: the decoded input records so far (at most `PROBE_LOG`), as a JSON array in
+/// the adapter's `InputRec` shape (`input::log_json`).
+#[cfg(feature = "probe")]
+#[wasm_bindgen]
+pub fn engine_probe_input() -> String {
+    with(|e| serde_json::Value::Array(e.probe.clone()).to_string()).unwrap_or_default()
 }
 
-/// `round(css × dpr)`, at least 1 and at most the device's texture limit.
-fn device_px(css: f64, dpr: f32, max: u32) -> u32 {
-    ((css * f64::from(dpr)).round().max(1.0) as u32).min(max.max(1))
+/// The probe build: head = tail = `v` before the first record (`e2e:shim-fuzz` rollover).
+#[cfg(feature = "probe")]
+#[wasm_bindgen]
+pub fn engine_probe_ring_start(v: u32) {
+    use crate::input::Words;
+    with(|e| {
+        Words::store(&e.cb, off::INPUT_HEAD, v, Ordering::SeqCst);
+        Words::store(&e.cb, off::INPUT_TAIL, v, Ordering::SeqCst);
+    });
+}
+
+/// The device px of a Resize, at least 1 and at most the device's texture limit.
+fn device_px(px: u32, max: u32) -> u32 {
+    px.clamp(1, max.max(1))
 }
 
 impl Engine {
     fn create(&mut self, id: u32, canvas: web_sys::OffscreenCanvas, frame_id: Option<String>) {
-        self.frames.create(id, frame_id);
+        if !self.frames.create(id, frame_id) {
+            // The adapter's ids are never reused (plan #68 C2a1 §3.1): no `created`.
+            web_sys::console::error_1(
+                &format!("pulsus engine: frame {id} is not above the highest id seen").into(),
+            );
+            return;
+        }
+        self.queued.push(events::created(id));
         self.failed.remove(&id);
         let (surface, bitmap) = match self.gpu.ctx.tier {
             Tier::T1 => match self
@@ -367,44 +394,73 @@ impl Engine {
         if self.dead {
             return events::batch(&out);
         }
+        self.read_input();
+        self.draw_frames(now_ms, t0, &mut out);
+        out.extend(self.frames.take_applied());
+        events::batch(&out)
+    }
+
+    /// The input ring's records, applied in order (T03-019); rejected records are counted in
+    /// `INPUT_BAD` and the first one is logged.
+    fn read_input(&mut self) {
+        self.inbox.clear();
+        let drained = input::drain(&self.cb, &mut self.inbox);
+        let bad_before = self.frames.bad();
+        for d in &self.inbox {
+            #[cfg(feature = "probe")]
+            if self.probe.len() < PROBE_LOG {
+                self.probe.push(input::log_json(d));
+            }
+            if let Some(id) = self.frames.apply(d) {
+                self.dirty.insert(id);
+            }
+        }
+        let bad = self.frames.bad().wrapping_sub(bad_before) + u32::from(drained.is_err());
+        if bad > 0 {
+            self.cb.add(off::INPUT_BAD, bad);
+            if !self.bad_logged {
+                self.bad_logged = true;
+                let what = match drained {
+                    Err(e) => e.to_string(),
+                    Ok(()) => "a camera record out of range".to_owned(),
+                };
+                web_sys::console::error_1(&format!("pulsus engine: {what}").into());
+            }
+        }
+    }
+
+    /// The device-loss policy, the read-backs and the dirty frames of one tick.
+    fn draw_frames(&mut self, now_ms: f64, t0: f64, out: &mut Vec<String>) {
         if self.gpu.lost.load(Ordering::Acquire) && !self.restoring {
             match self.losses.on_lost(now_ms) {
                 LossAction::Fatal => {
                     self.dead = true;
                     out.push(events::fatal("device-lost"));
-                    return events::batch(&out);
+                    return;
                 }
                 LossAction::Restore => self.restore(),
             }
         }
         if self.restoring {
-            return events::batch(&out);
+            return;
         }
-        let mut drawn: Vec<(u32, DrawnEvent, u32)> = Vec::new();
-        // Read-backs first: a complete frame is drawn; an under-sized one is drawn again.
-        for id in self.awaiting.clone() {
+        let mut done: Vec<(u32, Presented)> = Vec::new();
+        // Read-backs first: a complete presentation reports its capture, never the current
+        // state; an under-sized one is drawn again (and captured again).
+        for (id, p) in std::mem::take(&mut self.awaiting) {
             let Some(r) = self.gpus.get_mut(&id).and_then(|g| g.renderer.as_mut()) else {
-                self.awaiting.remove(&id);
                 continue;
             };
             match r.poll() {
-                Pending::Waiting => {}
-                Pending::Complete(d) => {
-                    self.awaiting.remove(&id);
-                    if let Some((list, _)) = self.frames.build(id) {
-                        drawn.push((id, d, series_of(&list)));
-                    }
+                Pending::Waiting => {
+                    self.awaiting.insert(id, p);
                 }
+                Pending::Complete(_) => done.push((id, p)),
                 Pending::Rerun => {
-                    self.awaiting.remove(&id);
                     self.dirty.insert(id);
                 }
-                Pending::Failed => {
-                    self.fail(id, FailReason::Readback);
-                }
-                Pending::Idle => {
-                    self.awaiting.remove(&id);
-                }
+                Pending::Failed => self.fail(id, FailReason::Readback),
+                Pending::Idle => {}
             }
         }
         out.append(&mut self.queued);
@@ -422,14 +478,17 @@ impl Engine {
             if !(list.css.0 > 0.0 && list.css.1 > 0.0) {
                 continue;
             }
+            let Some(p) = self.frames.submit(id) else {
+                continue;
+            };
             match self.draw(id, &list) {
-                Ok(Some(d)) => {
+                Ok(Some(_)) => {
                     presented = true;
-                    drawn.push((id, d, series_of(&list)));
+                    done.push((id, p));
                 }
                 Ok(None) => {
                     presented = true;
-                    self.awaiting.insert(id);
+                    self.awaiting.insert(id, p);
                 }
                 Err(Skip::Retry) => {
                     self.dirty.insert(id);
@@ -439,29 +498,22 @@ impl Engine {
         }
         out.append(&mut self.queued);
         let end_ms = now_ms + (now() - t0).max(0.0);
-        for (id, d, series) in drawn {
-            // Only at the size last applied, never 0 (ADR-0019, D-DRAWN).
-            let size = self.frames.size(id);
-            let at_size = size.is_some_and(|(w, h, _)| w == d.css_width && h == d.css_height);
-            if at_size && d.css_width > 0.0 && d.css_height > 0.0 {
-                out.push(events::drawn(id, &d, now_ms, end_ms, series));
-            }
+        for (id, p) in done {
+            // What the presentation shows, never 0 (ADR-0019, D-DRAWN).
+            out.extend(self.frames.complete(id, &p, now_ms, end_ms));
         }
         if presented {
             self.frame_no += 1;
             self.cb.write_clock(self.frame_no, end_ms);
         }
-        events::batch(&out)
     }
 
     /// Draws and presents one frame: `Ok(Some)` complete, `Ok(None)` complete only once its
     /// read-back says so.
     fn draw(&mut self, id: u32, list: &DrawList) -> Result<Option<DrawnEvent>, Skip> {
         let max = self.gpu.ctx.device.limits().max_texture_dimension_2d;
-        let size = (
-            device_px(list.css.0, list.dpr, max),
-            device_px(list.css.1, list.dpr, max),
-        );
+        let (_, _, (w, h)) = self.frames.size(id).ok_or(Skip::Retry)?;
+        let size = (device_px(w, max), device_px(h, max));
         let Some(fg) = self.gpus.get_mut(&id) else {
             return Err(Skip::Fail(FailReason::Surface));
         };

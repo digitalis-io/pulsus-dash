@@ -4,7 +4,9 @@
  * Chromium (`make engine-e2e`), against the e2e BFFs of the fault build. Two projects (R1: Dawn
  * lists no lavapipe adapter): `lavapipe` (WebGL2 through ANGLE on the pinned Mesa: the gated tier,
  * goldens included) and `swiftshader` (WebGPU on Dawn's CPU adapter: gated functionally, goldens
- * report-only). `e2e/engine-legs.json`, if present, makes the WebGPU leg report-only.
+ * report-only). `e2e/engine-legs.json`, if present, makes the WebGPU leg report-only. A third
+ * project, `probe` (plan #68 C2a1 §3.5), runs `e2e:shim-fuzz` alone on lavapipe against the probe
+ * build's BFF (`make e2e-build-probe`, port 4175); every other spec stays on the fault build.
  */
 import { defineConfig, devices } from '@playwright/test';
 
@@ -30,8 +32,9 @@ export default defineConfig({
     'golden-engine-line.spec.ts',
     'engine-recovery.spec.ts',
     'csp-violations.spec.ts',
+    'engine-shim-fuzz.spec.ts',
   ],
-  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)/,
+  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz/,
   retries: 0,
   workers: 2,
   reporter: [['list'], ['./e2e/engineLegsReporter.ts']],
@@ -46,6 +49,7 @@ export default defineConfig({
     // Gated: WebGL2 through ANGLE on the lavapipe Vulkan ICD (T05-004's Mesa pin).
     {
       name: 'lavapipe',
+      testIgnore: 'engine-shim-fuzz.spec.ts',
       use: {
         ...devices['Desktop Chrome'],
         viewport,
@@ -57,11 +61,24 @@ export default defineConfig({
     // functionally, its goldens report-only.
     {
       name: 'swiftshader',
+      testIgnore: 'engine-shim-fuzz.spec.ts',
       use: {
         ...devices['Desktop Chrome'],
         viewport,
         channel: 'chromium',
         launchOptions: { args: [...SWIFTSHADER_ARGS] },
+      },
+    },
+    // The probe build (plan #68 C2a1 §3.5): `e2e:shim-fuzz` only, on the gated tier.
+    {
+      name: 'probe',
+      testMatch: 'engine-shim-fuzz.spec.ts',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport,
+        baseURL: 'http://localhost:4175',
+        channel: 'chromium',
+        launchOptions: { args: [...LAVAPIPE_ARGS] },
       },
     },
   ],
@@ -77,6 +94,13 @@ export default defineConfig({
       command: 'tools/e2e/serve.sh stub 4173',
       cwd: '..',
       url: 'http://localhost:4173/healthz',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command: 'tools/e2e/serve.sh probe 4175',
+      cwd: '..',
+      url: 'http://localhost:4175/healthz',
       reuseExistingServer: false,
       timeout: 120_000,
     },

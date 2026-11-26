@@ -16,6 +16,9 @@ crate-type = ["cdylib", "rlib"]
 [features]
 # A test hook build of the renderer (`fail_maps_after`); never in the release engine.
 test-hooks = ["dash-gpu/test-hooks"]
+# The probe build of `e2e:shim-fuzz` (plan #68 C2a1 §3.5): `engine_probe_input` and
+# `engine_probe_ring_start`; never in the release or fault builds (T03-024, `ci:probe-absent`).
+probe = []
 
 [dependencies]
 dash-gpu.workspace = true
@@ -48,4 +51,5 @@ wgpu.workspace = true
 
 
 [dev-dependencies]
+dash-axes.workspace = true
 pulsus-synth.workspace = true
