@@ -313,12 +313,12 @@ tokens; none is a resource position. `buildUrlAllowlist` lists exactly those tha
 `check-build-origins` reports in `dist` and `dist-http`:
 
 - from parse5 (reason "parse5 namespace/DOCTYPE string (Markdown chunk)"): the XHTML and XMLNS
-  namespace URIs (`http://www.w3.org/1999/xhtml`, `http://www.w3.org/2000/xmlns/`), the quirks-mode
-  system id (`…/ibmxhtml1-transitional.dtd`), and the 20 `//…` tokens that the minified DOCTYPE
-  public-id prefixes of `parse5/dist/common/doctype.js` give (for example `//,-//ietf//dtd`). The
-  SVG, XLink, MathML and XML namespaces were already listed for react-dom;
-- from commonmark (reason "commonmark XML renderer namespace string (Markdown chunk)"):
-  `http://commonmark.org/xml/1.0`. `XmlRenderer` is never called, but the package has no
+  namespace URIs, the quirks-mode system id (`…/ibmxhtml1-transitional.dtd`), and the 20 `//…`
+  tokens that the minified DOCTYPE public-id prefixes of `parse5/dist/common/doctype.js` give (for
+  example `//,-//ietf//dtd`). The SVG, XLink, MathML and XML namespaces were already listed for
+  react-dom;
+- from commonmark (reason "commonmark XML renderer namespace string (Markdown chunk)"): the
+  namespace of its XML renderer. `XmlRenderer` is never called, but the package has no
   `sideEffects` flag, so its module stays in the chunk.
 
 An update of either package can change the tokens: the origins check then fails, and the entries
