@@ -95,6 +95,61 @@ export interface LayerInput {
   readonly selection?: FrameSelection | null;
   /** Device px per CSS px, for the band's 1 device px minimum; absent = 1. */
   readonly dpr?: number;
+  /**
+   * The dim layer's scratch canvas (plan #68 C2c2 §1, ADR-0032): a line layer with a match draws
+   * its unmatched series onto it at alpha 1 and composites it once at `dimmed`; without a match it
+   * is released to 0×0. Absent: each unmatched series is stroked at `dimmed` (no frame).
+   */
+  readonly scratch?: DimScratch | null;
+}
+
+/** A scratch canvas and its context (ADR-0032). */
+export interface DimScratch {
+  readonly canvas: HTMLCanvasElement;
+  readonly ctx: Ctx2D;
+}
+
+/** The scratch released to 0×0 (its memory freed), unless it already is. */
+export function releaseScratch(sc: DimScratch | null | undefined): void {
+  if (sc === null || sc === undefined) return;
+  if (sc.canvas.width !== 0) sc.canvas.width = 0;
+  if (sc.canvas.height !== 0) sc.canvas.height = 0;
+}
+
+/**
+ * ADR-0032: the unmatched series, drawn by the unchanged `drawLineSeries` at alpha 1 onto the
+ * scratch at the layer's device size (cleared under identity first; drawn under the DPR transform
+ * and the layer's own conditional clip, inside one `save`/`restore`), then composited once onto
+ * the layer at `dimmed` under identity, inside `save`/`restore`, so later marks keep the DPR
+ * transform and alpha 1.
+ */
+function drawDimmed(
+  i: LayerInput,
+  sc: DimScratch,
+  plot: PlotRect,
+  draw: (ctx: Ctx2D) => void,
+): void {
+  const dpr = i.dpr ?? 1;
+  const w = Math.max(0, Math.round(i.cssW * dpr));
+  const h = Math.max(0, Math.round(i.cssH * dpr));
+  if (sc.canvas.width !== w) sc.canvas.width = w;
+  if (sc.canvas.height !== h) sc.canvas.height = h;
+  const s = sc.ctx;
+  s.setTransform(1, 0, 0, 1, 0, 0);
+  s.clearRect(0, 0, w, h);
+  s.save();
+  s.setTransform(dpr, 0, 0, dpr, 0, 0);
+  s.globalAlpha = 1;
+  clipped({ ...i, ctx: s }, plot, () => {
+    draw(s);
+  });
+  s.restore();
+  const ctx = i.ctx;
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = i.colours.dimmed;
+  ctx.drawImage(sc.canvas, 0, 0);
+  ctx.restore();
 }
 
 /** What picking and the overlay need from the last layer draw. */
@@ -472,20 +527,35 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
     i.selection,
     shown.map((s) => s.key),
   );
+  if (matched === null) releaseScratch(i.scratch);
+  const colourOf = (s: SeriesFrame): string => i.colours.series[seriesColourIndex(s)] ?? '';
+  const sc = i.scratch;
+  if (matched !== null && sc !== null && sc !== undefined) {
+    // ADR-0032: the others dimmed together, one layer composited once at `dimmed`.
+    drawDimmed(i, sc, plot, (ctx) => {
+      for (const s of shown) {
+        if (matched.has(s.key)) continue;
+        const cols = lineColumns(s.timestamps, s.values, i.window, plot);
+        drawLineSeries(ctx, cols, plot, y, colourOf(s), size['chart-line']);
+      }
+    });
+  }
   clipped(i, plot, () => {
     const draw = (s: SeriesFrame, colour: string, width: number): void => {
       const cols = lineColumns(s.timestamps, s.values, i.window, plot);
       drawLineSeries(i.ctx, cols, plot, y, colour, width);
     };
-    const colourOf = (s: SeriesFrame): string => i.colours.series[seriesColourIndex(s)] ?? '';
     if (matched === null) {
       for (const s of shown) draw(s, colourOf(s), size['chart-line']);
       return;
     }
-    // T25-006: the others at `dimmed`, then each selected series over a focus underlay 4 px wider.
-    i.ctx.globalAlpha = i.colours.dimmed;
-    for (const s of shown) if (!matched.has(s.key)) draw(s, colourOf(s), size['chart-line']);
-    i.ctx.globalAlpha = 1;
+    if (sc === null || sc === undefined) {
+      // No scratch (no frame): each unmatched series at `dimmed`.
+      i.ctx.globalAlpha = i.colours.dimmed;
+      for (const s of shown) if (!matched.has(s.key)) draw(s, colourOf(s), size['chart-line']);
+      i.ctx.globalAlpha = 1;
+    }
+    // T25-006, ADR-0025 decision 4: then each selected series over a focus underlay 4 px wider.
     for (const s of shown) {
       if (!matched.has(s.key)) continue;
       draw(s, i.colours.focus, size['chart-line'] + 4);

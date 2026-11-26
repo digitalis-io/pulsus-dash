@@ -418,6 +418,8 @@ function selectionCtx(
 ): Record<string, unknown> {
   const nop = (): void => undefined;
   let first: number | null = null;
+  // `save`/`restore` keep the alpha (the dim layer's composite restores it).
+  const alphas: number[] = [];
   const ctx: Record<string, unknown> = {
     setTransform: nop,
     clearRect: nop,
@@ -426,8 +428,10 @@ function selectionCtx(
     drawImage: nop,
     rect: nop,
     clip: nop,
-    save: nop,
-    restore: nop,
+    save: () => alphas.push(ctx.globalAlpha as number),
+    restore: () => {
+      ctx.globalAlpha = alphas.pop() ?? 1;
+    },
     setLineDash: nop,
     getLineDash: () => [],
     fillText: nop,

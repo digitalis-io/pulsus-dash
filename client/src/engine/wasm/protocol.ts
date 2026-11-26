@@ -4,7 +4,7 @@
  *
  * Main → render: `boot`, then per frame `create` (the canvas transferred), `spec`, `data` (series
  * cloned; heatmap and scalar data `null`), `theme` (0 dark, 1 light), `events` (the markers'
- * times, plan #68 C2c1) and `dispose`; `input` wakes
+ * times, plan #68 C2c1), `selection` (keys and interval, C2c2) and `dispose`; `input` wakes
  * an idle worker after a publish to the input ring (the camera and the size travel there,
  * `ring.ts`). Render → main: `status` (after `engine_start`, with the shared memory), `spawn-pool`
  * (one per pool thread) and `events` (one JSON array per animation frame). Main → pool: `pool`.

@@ -44,7 +44,9 @@ import {
   forgetValueBands,
   minValueBand,
   MAX_SERIES,
+  releaseScratch,
   STAT_FONT,
+  type DimScratch,
   type LayerModel,
 } from './draw';
 import { windowWheelLatch, type WheelLatch } from './input';
@@ -148,8 +150,7 @@ class Canvas2DFrame implements ChartFrame {
   private readonly layer: HTMLCanvasElement;
   private readonly layerCtx: Ctx2D;
   /** The dim layer's scratch canvas (plan #68 C2c2 §1, ADR-0032): 0×0 unless a selection dims. */
-  private readonly scratch: HTMLCanvasElement;
-  private readonly scratchCtx: Ctx2D;
+  private readonly dim: DimScratch;
   private spec: VisSpec | null = null;
   private data: FrameData | null = null;
   /** The last `setEvents` (ADR-0023); [] = none. */
@@ -189,12 +190,11 @@ class Canvas2DFrame implements ChartFrame {
     const layerCtx = r.contextOf(this.layer);
     if (layerCtx === null) throw new ChartUnsupportedError('no 2D context for the layer');
     this.layerCtx = layerCtx;
-    this.scratch = r.createCanvas();
-    const scratchCtx = r.contextOf(this.scratch);
+    const scratch = r.createCanvas();
+    const scratchCtx = r.contextOf(scratch);
     if (scratchCtx === null) throw new ChartUnsupportedError('no 2D context for the dim layer');
-    this.scratchCtx = scratchCtx;
-    this.scratch.width = 0;
-    this.scratch.height = 0;
+    this.dim = { canvas: scratch, ctx: scratchCtx };
+    releaseScratch(this.dim);
     const hooks: BarHooks = {
       down: (e, p) => this.bar.down(e, p, this.barPick()),
       move: (e, p) => {
@@ -330,6 +330,7 @@ class Canvas2DFrame implements ChartFrame {
       c.width = w;
       c.height = h;
     }
+    if (w === 0 || h === 0) releaseScratch(this.dim);
     this.changed();
   }
 
@@ -355,7 +356,8 @@ class Canvas2DFrame implements ChartFrame {
     // No commit after dispose: the controller drops the gesture and its timers.
     this.ctl.dispose();
     this.listeners.clear();
-    for (const c of [this.canvas, this.layer, this.scratch]) {
+    releaseScratch(this.dim);
+    for (const c of [this.canvas, this.layer]) {
       c.width = 0;
       c.height = 0;
     }
@@ -474,6 +476,8 @@ class Canvas2DFrame implements ChartFrame {
     const colours = themeColours(this.theme);
     // A bar chart has no time axis: it draws without a window (ADR-0028).
     const v = this.ctl.view ?? (this.spec?.kind === 'barchart' ? { lo: 0, hi: 0 } : null);
+    // The dim layer exists only while a line layer dims (ADR-0032).
+    if (this.spec?.kind !== 'line') releaseScratch(this.dim);
     if (this.spec === null || this.data === null || v === null) {
       ctx.fillStyle = colours.background;
       ctx.fillRect(0, 0, this.cssW, this.cssH);
@@ -496,6 +500,7 @@ class Canvas2DFrame implements ChartFrame {
       events: this.events,
       selection: this.selection,
       dpr: this.dpr,
+      scratch: this.dim,
     });
   }
 

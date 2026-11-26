@@ -6,7 +6,7 @@
  * `handle`. The camera comes only from `setCamera`: `ControlledFrame` runs the camera controller
  * on the main thread and sends it. Series data is cloned (the caller keeps its arrays); heatmap and
  * scalar data are not drawn by the engine yet and go as `null`. Event markers go as their times
- * (`events`, plan #68 C2c1); the selection is kept by the routing frame and not sent (C2c2).
+ * (`events`, plan #68 C2c1), the selection as its keys and interval (`selection`, C2c2).
  * Nothing is sent or emitted after `dispose`.
  *
  * | Call or event | Behaviour |
@@ -14,6 +14,7 @@
  * | `setCamera(c)` | a Camera record (view, value: null = auto, band: null = measured) |
  * | `setSpec(s)` | a message |
  * | `setEvents(e)` (C2c1) | an `events` message of every `atMs`, for an array new by identity |
+ * | `setSelection(s)` (C2c2) | a `selection` message of its keys and interval, unless equal to the last one posted |
  * | `stage` | `stage()` is the last completed presentation's: only an event of the latest `resize()` call counts (none while a Resize is held or unpublished, and only for that call's seq); every `resize()` blocks it until then; a zero size makes it null at once. `onStage` on every change |
  * | Camera, Resize before `created` | held, the latest per kind; on `created` enqueued in call order |
  * | `drawn` | only for the latest `resize()` call: none while a Resize is held or unpublished, and only when the event's `rseq` is that call's seq; reported with the caller's values, never at 0, with its `chart-draw` measure |
@@ -34,6 +35,7 @@ import type {
   ValueRange,
   VisSpec,
 } from '../api';
+import { sameSelection } from '../canvas2d/gesture';
 import { REC_OVERLAY, REC_RESIZE } from './layout.gen';
 import type { FrameEvent, MainToRender, SeriesMessage, StageWire } from './protocol';
 import { extendSeq } from './ring';
@@ -243,9 +245,23 @@ export class WasmFrame implements EngineFrame {
   }
 
   /** Kept by the routing frame; drawn from C2 on. */
+  /**
+   * The page selection (plan #68 C2c2 §3.1): a `selection` message of its keys and interval
+   * (`null`: no keys, no interval), unless equal to the last one posted; the first call always
+   * posts.
+   */
   setSelection(sel: FrameSelection | null): void {
-    // Kept, not sent yet (plan #68 C2c2 test-first stub).
-    this.selection = sel;
+    if (this.disposed) return;
+    if (this.selection !== undefined && sameSelection(this.selection, sel)) return;
+    this.selection =
+      sel === null ? null : { keys: [...sel.keys], fromMs: sel.fromMs, toMs: sel.toMs };
+    this.post({
+      t: 'selection',
+      id: this.id,
+      keys: sel === null ? [] : [...sel.keys],
+      fromMs: sel?.fromMs ?? null,
+      toMs: sel?.toMs ?? null,
+    });
   }
 
   resize(cssWidth: number, cssHeight: number, dpr: number): void {

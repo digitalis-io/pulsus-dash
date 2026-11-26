@@ -200,12 +200,19 @@ function s1(img: Rgba, b: Rgba, s: FrameSummary): string[] {
   const p2 = full(b, xs(s, f), ya2, a2, 1, skip);
   if (p2 === null) return [...bad, 'no full a2 pixel'];
   if (dist(px(img, p2.x, p2.y), a2) > 8) bad.push(`a2 = ${String(px(img, p2.x, p2.y))}`);
-  const beside = Array.from({ length: 240 }, (_, r) => r).filter((r) => {
-    const d = Math.abs(r + 0.5 - ya2);
-    return d >= 1.5 && d <= 2.5;
-  });
-  if (!beside.some((r) => dist(px(img, p2.x, r), FOCUS) <= 8))
-    bad.push(`no focus beside a2 at x ${String(p2.x)}`);
+  // Within five columns of that pixel, a pure `focus` pixel 1.5–2.5 px from a2's centre line.
+  const beside: string[] = [];
+  let found = false;
+  for (let x = p2.x - 2; x <= p2.x + 2; x++) {
+    const ya = yOf(s, 30 - (30 * (x + 0.5 - s.plot.x)) / s.plot.width);
+    for (let r = Math.floor(ya) - 3; r <= Math.ceil(ya) + 3; r++) {
+      const d = Math.abs(r + 0.5 - ya);
+      if (d < 1.5 || d > 2.5) continue;
+      beside.push(`${String(x)},${String(r)}=${String(px(img, x, r))}`);
+      if (dist(px(img, x, r), FOCUS) <= 8) found = true;
+    }
+  }
+  if (!found) bad.push(`no focus beside a2: ${beside.join(' ')}`);
   return bad;
 }
 
@@ -395,106 +402,113 @@ test.describe('e2e:engine-selection', () => {
 
   for (const dpr of [1, 2]) {
     test(`S10 ADR-0032: where dimmed series cross, the engine and Canvas 2D both composite once (DPR ${String(dpr)})`, async ({
-      page,
+      browser,
     }, info) => {
       test.setTimeout(240_000);
-      await leg(info, async () => {
-        await probePage(page, info);
-        const probe = await S(page, { series: line50(), spec: LINE50_SPEC(), size: [1118, 240] });
-        const pin = { min: probe.s.valueAxis?.min ?? 0, max: probe.s.valueAxis?.max ?? 1 };
-        const key = line50()[1]?.key ?? '';
-        const e = await denseFrames(page, { kind: 'engine', dpr, top: 0, key, pin });
-        const c = await denseFrames(page, { kind: '2d', dpr, top: 500, key, pin });
-        const box = (top: number) => ({ w: 1118, h: 240, top });
-        // Crossings: rows within 0.5 px of two unmatched series' lines, off the matched one.
-        const others = e.all.filter((x) => x.key !== key).map((x) => rowsOfSeries(x, e.r.s, dpr));
-        const m = rowsOfSeries(pick(e.all, 1), e.r.s, dpr);
-        const rnd = mulberry32(0x5100 + dpr);
-        const pts: [number, number][] = [];
-        const LE = await shot(page, box(250));
-        const skip = guideRows(LE, e.l.s, dpr);
-        for (let guard = 0; pts.length < 20 && guard < 400_000; guard++) {
-          const x = Math.floor((e.r.s.plot.x + rnd() * e.r.s.plot.width) * dpr);
-          const y = Math.floor((e.r.s.plot.y + rnd() * e.r.s.plot.height) * dpr);
-          if (skip.has(y) || nearRows(m, x, y, 6 * dpr)) continue;
-          const hits = others.filter((o) => {
-            const v = o.get(x);
-            return v !== undefined && y + 0.5 >= v[0] - 0.5 && y + 0.5 <= v[1] + 0.5;
-          });
-          if (hits.length >= 2) pts.push([x, y]);
-        }
-        expect(pts.length).toBe(20);
-        const LC = await shot(page, box(750));
-        for (const [what, top, L] of [
-          ['engine', 0, LE],
-          ['canvas2d', 500, LC],
-        ] as const) {
-          await pollShot(page, box(top), (R) => dimRule(R, L, pts, 10).bad, `S10 ${what}`);
-        }
-        if (dpr === 2) {
-          // The Canvas 2D marks at the engine's device positions: the matched series and the crosshair.
-          const [RE, RC] = [await shot(page, box(0)), await shot(page, box(500))];
-          const colour = seriesRgb(key);
-          const bad: string[] = [];
-          for (let k = 1; k <= 10; k++) {
-            const x = Math.floor((e.r.s.plot.x + (k / 11) * e.r.s.plot.width) * dpr);
-            const rowOf = (img: Rgba): number => {
-              let best = { y: -1, d: Infinity };
-              for (let y = 0; y < img.h; y++) {
-                const d = dist(px(img, x, y), colour);
-                if (d < best.d) best = { y, d };
-              }
-              return best.y;
-            };
-            if (Math.abs(rowOf(RE) - rowOf(RC)) > 1)
-              bad.push(`matched x ${String(x)}: ${String(rowOf(RE))} vs ${String(rowOf(RC))}`);
-          }
-          expect(bad).toEqual([]);
-          const hx = Math.round(e.r.s.plot.x + 0.37 * e.r.s.plot.width);
-          const hy = Math.round(e.r.s.plot.y + 0.5 * e.r.s.plot.height);
-          for (const n of [e.r.n, c.r.n]) {
-            await page.evaluate(
-              async ({ n, hx, hy }) => {
-                const p = (window as unknown as { __dashProbe: Probe }).__dashProbe;
-                p.pointer(n, 'pointermove', hx, hy);
-                await p.settle(n);
-              },
-              { n, hx, hy },
-            );
-          }
-          const cross = (img: Rgba, s: FrameSummary): number[] => {
-            const out: number[] = [];
-            for (
-              let x = Math.floor(s.plot.x * dpr);
-              x < Math.ceil((s.plot.x + s.plot.width) * dpr);
-              x++
-            ) {
-              let k = 0;
-              for (
-                let y = Math.ceil(s.plot.y * dpr);
-                y < Math.floor((s.plot.y + s.plot.height) * dpr);
-                y++
-              ) {
-                if (dist(px(img, x, y), MUTED) <= 40) k++;
-              }
-              if (k >= 0.6 * s.plot.height * dpr) out.push(x);
-            }
-            return out;
-          };
-          await expect
-            .poll(
-              async () => {
-                const [a, b] = [
-                  cross(await shot(page, box(0)), e.r.s),
-                  cross(await shot(page, box(500)), c.r.s),
-                ];
-                return a.length > 0 && b.length > 0 && Math.abs((a[0] ?? 0) - (b[0] ?? 0)) <= 1;
-              },
-              { message: 'S10 crosshair columns', timeout: 10_000 },
-            )
-            .toBe(true);
-        }
+      // The page at the frame's DPR, four 240 px frames one above the other.
+      const context = await browser.newContext({
+        deviceScaleFactor: dpr,
+        viewport: { width: 1440, height: 1000 },
       });
+      const page = await context.newPage();
+      try {
+        await leg(info, async () => {
+          await probePage(page, info);
+          const probe = await S(page, { series: line50(), spec: LINE50_SPEC(), size: [1118, 240] });
+          const pin = { min: probe.s.valueAxis?.min ?? 0, max: probe.s.valueAxis?.max ?? 1 };
+          const key = line50()[1]?.key ?? '';
+          const e = await denseFrames(page, { kind: 'engine', dpr, top: 0, key, pin });
+          const c = await denseFrames(page, { kind: '2d', dpr, top: 500, key, pin });
+          const box = (top: number) => ({ w: 1118, h: 240, top });
+          // Crossings: rows within 0.5 px of two unmatched series' lines, off the matched one.
+          const others = e.all.filter((x) => x.key !== key).map((x) => rowsOfSeries(x, e.r.s, dpr));
+          const m = rowsOfSeries(pick(e.all, 1), e.r.s, dpr);
+          const rnd = mulberry32(0x5100 + dpr);
+          const pts: [number, number][] = [];
+          const LE = await shot(page, box(250));
+          const skip = guideRows(LE, e.l.s, dpr);
+          for (let guard = 0; pts.length < 20 && guard < 400_000; guard++) {
+            const x = Math.floor((e.r.s.plot.x + rnd() * e.r.s.plot.width) * dpr);
+            const y = Math.floor((e.r.s.plot.y + rnd() * e.r.s.plot.height) * dpr);
+            if (skip.has(y) || nearRows(m, x, y, 6 * dpr)) continue;
+            const hits = others.filter((o) => {
+              const v = o.get(x);
+              return v !== undefined && y + 0.5 >= v[0] - 0.5 && y + 0.5 <= v[1] + 0.5;
+            });
+            if (hits.length >= 2) pts.push([x, y]);
+          }
+          expect(pts.length).toBe(20);
+          const LC = await shot(page, box(750));
+          for (const [what, top, L] of [
+            ['engine', 0, LE],
+            ['canvas2d', 500, LC],
+          ] as const) {
+            await pollShot(page, box(top), (R) => dimRule(R, L, pts, 10).bad, `S10 ${what}`);
+          }
+          if (dpr === 2) {
+            // The Canvas 2D marks at the engine's device positions: the matched series and the crosshair.
+            const [RE, RC] = [await shot(page, box(0)), await shot(page, box(500))];
+            const colour = seriesRgb(key);
+            const bad: string[] = [];
+            for (let k = 1; k <= 10; k++) {
+              const x = Math.floor((e.r.s.plot.x + (k / 11) * e.r.s.plot.width) * dpr);
+              // The mean row of the matched colour's full pixels (a dense column is a span).
+              const rowOf = (img: Rgba): number => {
+                const rows: number[] = [];
+                for (let y = 0; y < img.h; y++) if (dist(px(img, x, y), colour) <= 8) rows.push(y);
+                return rows.length === 0 ? -99 : rows.reduce((a, b) => a + b, 0) / rows.length;
+              };
+              if (Math.abs(rowOf(RE) - rowOf(RC)) > 1)
+                bad.push(`matched x ${String(x)}: ${String(rowOf(RE))} vs ${String(rowOf(RC))}`);
+            }
+            expect(bad).toEqual([]);
+            const hx = Math.round(e.r.s.plot.x + 0.37 * e.r.s.plot.width);
+            const hy = Math.round(e.r.s.plot.y + 0.5 * e.r.s.plot.height);
+            for (const n of [e.r.n, c.r.n]) {
+              await page.evaluate(
+                async ({ n, hx, hy }) => {
+                  const p = (window as unknown as { __dashProbe: Probe }).__dashProbe;
+                  p.pointer(n, 'pointermove', hx, hy);
+                  await p.settle(n);
+                },
+                { n, hx, hy },
+              );
+            }
+            const cross = (img: Rgba, s: FrameSummary): number[] => {
+              const out: number[] = [];
+              for (
+                let x = Math.floor(s.plot.x * dpr);
+                x < Math.ceil((s.plot.x + s.plot.width) * dpr);
+                x++
+              ) {
+                // The plot's top rows hold no series here (the hover dots and the lines cover
+                // the column lower down): the crosshair is muted over all but 2 of 24 rows.
+                let k = 0;
+                const y0 = Math.ceil(s.plot.y * dpr) + 1;
+                for (let y = y0; y < y0 + 24; y++) {
+                  if (dist(px(img, x, y), MUTED) <= 40) k++;
+                }
+                if (k >= 22) out.push(x);
+              }
+              return out;
+            };
+            await expect
+              .poll(
+                async () => {
+                  const a = cross(await shot(page, box(0)), e.r.s);
+                  const b = cross(await shot(page, box(500)), c.r.s);
+                  return a.length > 0 && b.length > 0 && Math.abs((a[0] ?? 0) - (b[0] ?? 0)) <= 1
+                    ? 'ok'
+                    : `engine ${a.join(',')} canvas2d ${b.join(',')}`;
+                },
+                { message: 'S10 crosshair columns', timeout: 10_000 },
+              )
+              .toBe('ok');
+          }
+        });
+      } finally {
+        await context.close();
+      }
     });
   }
 

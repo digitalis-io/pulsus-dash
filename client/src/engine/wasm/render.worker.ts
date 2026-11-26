@@ -24,6 +24,7 @@ import init, {
   frame_dispose,
   frame_set_spec,
   frame_set_events,
+  frame_set_selection,
   frame_set_theme,
   pool_start,
 } from 'virtual:dash-engine';
@@ -147,6 +148,9 @@ function apply(m: MainToRender): void {
       break;
     case 'events':
       frame_set_events(m.id, m.atMs);
+      break;
+    case 'selection':
+      frame_set_selection(m.id, [...m.keys], m.fromMs, m.toMs);
       break;
     case 'dispose':
       frame_dispose(m.id);
