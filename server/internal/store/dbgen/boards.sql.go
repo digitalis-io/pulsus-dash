@@ -159,8 +159,8 @@ func (q *Queries) InsertAudit(ctx context.Context, arg InsertAuditParams) error 
 }
 
 const insertBoard = `-- name: InsertBoard :one
-INSERT INTO boards (org_id, id, uid, folder_id, title, head_version, etag) VALUES ($1, $2, $3, $4, $5, 1, 1)
-ON CONFLICT (org_id, uid) DO NOTHING RETURNING id
+INSERT INTO boards (org_id, id, uid, folder_id, title, head_version, etag, tags, tags_version)
+VALUES ($1, $2, $3, $4, $5, 1, 1, $6::text[], 1) ON CONFLICT (org_id, uid) DO NOTHING RETURNING id
 `
 
 type InsertBoardParams struct {
@@ -169,8 +169,10 @@ type InsertBoardParams struct {
 	Uid      string
 	FolderID pgtype.UUID
 	Title    string
+	Tags     []string
 }
 
+// The head at version 1 with its tags cache fresh (tags_version = head_version, T24-029).
 func (q *Queries) InsertBoard(ctx context.Context, arg InsertBoardParams) (pgtype.UUID, error) {
 	row := q.db.QueryRow(ctx, insertBoard,
 		arg.OrgID,
@@ -178,6 +180,7 @@ func (q *Queries) InsertBoard(ctx context.Context, arg InsertBoardParams) (pgtyp
 		arg.Uid,
 		arg.FolderID,
 		arg.Title,
+		arg.Tags,
 	)
 	var id pgtype.UUID
 	err := row.Scan(&id)
@@ -219,25 +222,46 @@ func (q *Queries) InsertBoardVersion(ctx context.Context, arg InsertBoardVersion
 }
 
 const listBoards = `-- name: ListBoards :many
-SELECT b.id, b.uid, b.title, b.head_version, b.etag, v.schema_version, v.created_at, v.author_kind, v.author_id
-FROM boards b JOIN board_versions v ON v.org_id = b.org_id AND v.board_id = b.id AND v.version = b.head_version
-WHERE b.org_id = $1 AND b.deleted_at IS NULL ORDER BY v.created_at DESC, b.uid LIMIT 1001
+WITH m AS (
+  SELECT b.uid, b.title, b.tags, b.tags_version = b.head_version AS fresh, b.head_version, v.created_at, v.author_kind, v.author_id,
+         ($1::text = '' OR strpos(lower(b.title COLLATE "C"), lower($1::text COLLATE "C")) > 0
+            OR (b.tags_version = b.head_version AND lower($1::text COLLATE "C") = ANY (b.tags)))
+     AND ($2::text = '' OR (b.tags_version = b.head_version AND $2::text = ANY (b.tags))) AS hit
+  FROM boards b JOIN board_versions v ON v.org_id = b.org_id AND v.board_id = b.id AND v.version = b.head_version
+  WHERE b.org_id = $3 AND b.deleted_at IS NULL),
+st AS (SELECT count(*) FILTER (WHERE NOT fresh) AS tags_stale FROM m)
+SELECT st.tags_stale, (h.uid IS NOT NULL)::boolean AS found, coalesce(h.uid, '')::text AS uid, coalesce(h.title, '')::text AS title,
+       coalesce(h.fresh, false)::boolean AS fresh, coalesce(CASE WHEN h.fresh THEN h.tags END, '{}')::text[] AS tags,
+       coalesce(h.head_version, 0)::bigint AS head_version, h.created_at, coalesce(h.author_kind, '')::text AS author_kind, h.author_id
+FROM st LEFT JOIN LATERAL (SELECT uid, title, tags, fresh, head_version, created_at, author_kind, author_id, hit FROM m WHERE hit ORDER BY created_at DESC, uid LIMIT 1001) h ON true
+ORDER BY h.created_at DESC NULLS LAST, h.uid
 `
 
-type ListBoardsRow struct {
-	ID            pgtype.UUID
-	Uid           string
-	Title         string
-	HeadVersion   int64
-	Etag          int64
-	SchemaVersion int64
-	CreatedAt     pgtype.Timestamptz
-	AuthorKind    string
-	AuthorID      pgtype.UUID
+type ListBoardsParams struct {
+	Q     string
+	Tag   string
+	OrgID pgtype.UUID
 }
 
-func (q *Queries) ListBoards(ctx context.Context, orgID pgtype.UUID) ([]ListBoardsRow, error) {
-	rows, err := q.db.Query(ctx, listBoards, orgID)
+type ListBoardsRow struct {
+	TagsStale   int64
+	Found       bool
+	Uid         string
+	Title       string
+	Fresh       bool
+	Tags        []string
+	HeadVersion int64
+	CreatedAt   pgtype.Timestamptz
+	AuthorKind  string
+	AuthorID    pgtype.UUID
+}
+
+// One statement (T24-029): the matching boards (at most 1001, most recently updated first), and
+// tagsStale, the organisation's live stale rows. With no match it returns one row with found false.
+// q is a title substring (strpos: % and _ are literal) or an exact fresh tag, folded ASCII-only
+// (COLLATE "C"); tag is an exact fresh tag; "" is absent. A stale row matches by title only.
+func (q *Queries) ListBoards(ctx context.Context, arg ListBoardsParams) ([]ListBoardsRow, error) {
+	rows, err := q.db.Query(ctx, listBoards, arg.Q, arg.Tag, arg.OrgID)
 	if err != nil {
 		return nil, err
 	}
@@ -246,12 +270,13 @@ func (q *Queries) ListBoards(ctx context.Context, orgID pgtype.UUID) ([]ListBoar
 	for rows.Next() {
 		var i ListBoardsRow
 		if err := rows.Scan(
-			&i.ID,
+			&i.TagsStale,
+			&i.Found,
 			&i.Uid,
 			&i.Title,
+			&i.Fresh,
+			&i.Tags,
 			&i.HeadVersion,
-			&i.Etag,
-			&i.SchemaVersion,
 			&i.CreatedAt,
 			&i.AuthorKind,
 			&i.AuthorID,
@@ -304,7 +329,7 @@ func (q *Queries) ListRecent(ctx context.Context, arg ListRecentParams) ([]ListR
 
 const listStarred = `-- name: ListStarred :many
 SELECT b.uid, b.title FROM stars s JOIN boards b ON b.org_id = s.org_id AND b.id = s.object_id
-WHERE s.org_id = $1 AND s.user_id = $2 AND s.kind = 'board' AND b.deleted_at IS NULL ORDER BY lower(b.title), b.uid LIMIT 200
+WHERE s.org_id = $1 AND s.user_id = $2 AND s.kind = 'board' AND b.deleted_at IS NULL ORDER BY lower(b.title), b.uid LIMIT 201
 `
 
 type ListStarredParams struct {
@@ -360,7 +385,8 @@ func (q *Queries) LockBoard(ctx context.Context, arg LockBoardParams) (LockBoard
 }
 
 const moveBoardHead = `-- name: MoveBoardHead :exec
-UPDATE boards SET head_version = $3, etag = etag + 1, title = $4 WHERE org_id = $1 AND id = $2
+UPDATE boards SET head_version = $3, etag = etag + 1, title = $4, tags = $5::text[], tags_version = $3
+WHERE org_id = $1 AND id = $2
 `
 
 type MoveBoardHeadParams struct {
@@ -368,14 +394,17 @@ type MoveBoardHeadParams struct {
 	ID          pgtype.UUID
 	HeadVersion int64
 	Title       string
+	Tags        []string
 }
 
+// Every head move by this binary refreshes the tags cache (T24-029).
 func (q *Queries) MoveBoardHead(ctx context.Context, arg MoveBoardHeadParams) error {
 	_, err := q.db.Exec(ctx, moveBoardHead,
 		arg.OrgID,
 		arg.ID,
 		arg.HeadVersion,
 		arg.Title,
+		arg.Tags,
 	)
 	return err
 }
@@ -393,6 +422,24 @@ type RecentLockParams struct {
 func (q *Queries) RecentLock(ctx context.Context, arg RecentLockParams) error {
 	_, err := q.db.Exec(ctx, recentLock, arg.OrgID, arg.UserID)
 	return err
+}
+
+const repairBoardTags = `-- name: RepairBoardTags :execrows
+WITH s AS (SELECT id FROM boards WHERE org_id = $1 AND deleted_at IS NULL AND tags_version <> head_version
+           ORDER BY id LIMIT 200 FOR UPDATE SKIP LOCKED)
+UPDATE boards b SET tags = coalesce(ARRAY(SELECT jsonb_array_elements_text(v.spec->'tags')), '{}'), tags_version = b.head_version
+FROM s, board_versions v
+WHERE b.org_id = $1 AND b.id = s.id AND v.org_id = $1 AND v.board_id = b.id AND v.version = b.head_version
+`
+
+// Refreshes at most 200 stale cache rows of the organisation from their head specs (T24-029); rows
+// a save holds (FOR UPDATE) are skipped, never waited for. No audit event, no ETag change.
+func (q *Queries) RepairBoardTags(ctx context.Context, orgID pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, repairBoardTags, orgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const rootFolderID = `-- name: RootFolderID :one

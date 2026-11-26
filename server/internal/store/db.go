@@ -81,6 +81,16 @@ func scrub(err error, password string) error {
 	return &scrubbedError{msg: strings.ReplaceAll(err.Error(), password, "xxxxx"), err: err}
 }
 
+// SQLState returns the SQLSTATE of the Postgres error in err's chain, or "" (for logs that must
+// not carry the error's text, which can hold values).
+func SQLState(err error) string {
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) {
+		return pg.Code
+	}
+	return ""
+}
+
 func isUndefinedTable(err error) bool {
 	var pg *pgconn.PgError
 	return errors.As(err, &pg) && pg.Code == sqlstateUndefinedTable
