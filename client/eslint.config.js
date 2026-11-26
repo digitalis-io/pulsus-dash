@@ -134,7 +134,7 @@ export default tseslint.config(
   {
     files: ['src/**/*.{ts,tsx}', 'e2e/**/*.{ts,tsx}'],
     plugins: { security },
-    rules: { 'security/no-iframe': 'error' },
+    rules: { 'security/no-iframe': 'error', 'security/no-html-sink': 'error' },
   },
   {
     files: ['src/**/*.{ts,tsx}'],

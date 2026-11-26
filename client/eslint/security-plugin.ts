@@ -3,7 +3,11 @@
  *
  * - `security/no-iframe` (`ci:no-iframe`; T08-009, VIZ-056), over `src/**` and `e2e/**`: no JSX
  *   `iframe`, `frame`, `frameset`, `object` or `embed`; no `createElement` of those names in any
- *   case; no JSX `srcDoc`; no `new DOMParser`; no `.createContextualFragment(`.
+ *   case; no JSX `srcDoc`, `srcdoc` assignment or `setAttribute('srcdoc')`; no `new DOMParser`
+ *   (also `new window.DOMParser`); no `.createContextualFragment(`. Static computed keys
+ *   (`document['createElement']('iframe')`) count as the plain name.
+ * - `security/no-html-sink` (T18-004), over the same files: no `innerHTML` or `outerHTML`
+ *   assignment and no `insertAdjacentHTML` call, by name or by a static computed key.
  * - `security/markdown-boundary` (ADR-0024), over `src/**`: `commonmark` only under
  *   `src/security/sanitise/`; `parse5` and `parse5-sax-parser/feedback` only in `findIframes.ts` and
  *   the sanitise tests; never commonmark's `HtmlRenderer` or `XmlRenderer`; never `minimist`; the
@@ -33,6 +37,32 @@ function relative(context: Rule.RuleContext): string {
 interface JsxName {
   type: string;
   name?: unknown;
+}
+
+/**
+ * The name a member or call target spells statically: an identifier (`a.b`, `b`), a string literal
+ * (`a['b']`) or a template literal without expressions (``a[`b`]``); `null` for a dynamic one.
+ */
+function staticName(node: ESTree.Node | null | undefined): string | null {
+  if (node === null || node === undefined) return null;
+  if (node.type === 'Identifier') return node.name;
+  if (node.type === 'Literal') return typeof node.value === 'string' ? node.value : null;
+  if (node.type === 'TemplateLiteral' && node.expressions.length === 0) {
+    return node.quasis[0]?.value.cooked ?? null;
+  }
+  return null;
+}
+
+/** The property name of `a.b`, `a['b']` or ``a[`b`]``; `null` if computed from an expression. */
+function memberName(node: ESTree.Node): string | null {
+  if (node.type !== 'MemberExpression') return null;
+  if (!node.computed) return node.property.type === 'Identifier' ? node.property.name : null;
+  return node.property.type === 'Identifier' ? null : staticName(node.property);
+}
+
+/** The called or constructed name: `f`, `a.f`, `a['f']`, ``a[`f`]``. */
+function calleeName(node: ESTree.Node): string | null {
+  return node.type === 'Identifier' ? node.name : memberName(node);
 }
 
 const noIframe: Rule.RuleModule = {
@@ -67,27 +97,53 @@ const noIframe: Rule.RuleModule = {
         }
       },
       CallExpression(node) {
-        const c = node.callee;
-        const name =
-          c.type === 'MemberExpression' && !c.computed && c.property.type === 'Identifier'
-            ? c.property.name
-            : c.type === 'Identifier'
-              ? c.name
-              : '';
+        const name = calleeName(node.callee);
         if (name === 'createContextualFragment') report(node, 'createContextualFragment');
-        if (name !== 'createElement' && name !== 'createElementNS') return;
-        const arg = node.arguments[name === 'createElement' ? 0 : 1];
-        if (arg?.type === 'Literal' && typeof arg.value === 'string') {
-          if (EMBEDDING.has(arg.value.toLowerCase())) report(node, `createElement('${arg.value}')`);
-        } else if (arg?.type === 'TemplateLiteral' && arg.expressions.length === 0) {
-          const v = arg.quasis[0]?.value.cooked ?? '';
-          if (EMBEDDING.has(v.toLowerCase())) report(node, `createElement('${v}')`);
+        if (name === 'setAttribute' || name === 'setAttributeNS') {
+          const attr = staticName(node.arguments[name === 'setAttribute' ? 0 : 1]);
+          if (attr?.toLowerCase() === 'srcdoc') report(node, `setAttribute('${attr}')`);
         }
+        if (name !== 'createElement' && name !== 'createElementNS') return;
+        const tag = staticName(node.arguments[name === 'createElement' ? 0 : 1]);
+        if (tag !== null && EMBEDDING.has(tag.toLowerCase()))
+          report(node, `createElement('${tag}')`);
       },
       NewExpression(node) {
-        if (node.callee.type === 'Identifier' && node.callee.name === 'DOMParser') {
-          report(node, 'new DOMParser');
-        }
+        // `new DOMParser`, `new window.DOMParser`, `new globalThis['DOMParser']`.
+        if (calleeName(node.callee) === 'DOMParser') report(node, 'new DOMParser');
+      },
+      AssignmentExpression(node) {
+        if (memberName(node.left)?.toLowerCase() === 'srcdoc') report(node, 'srcdoc');
+      },
+    };
+  },
+};
+
+const HTML_PROPERTIES = new Set(['innerHTML', 'outerHTML']);
+
+/**
+ * HTML string sinks in every spelling (T18-004, Trusted Types): `innerHTML` and `outerHTML`
+ * assignments and `insertAdjacentHTML` calls, by name or by a static computed key. The plain forms
+ * are also in `eslint.config.js` `bannedSyntax`; this rule's name is its own, so no
+ * `no-restricted-syntax` override drops it.
+ */
+const noHtmlSink: Rule.RuleModule = {
+  meta: {
+    type: 'problem',
+    docs: { description: 'no HTML string sinks, also through static computed keys' },
+    schema: [],
+  },
+  create(context) {
+    const report = (node: ESTree.Node, what: string): void => {
+      context.report({ node, message: `${what} is banned (Trusted Types, T18-004).` });
+    };
+    return {
+      AssignmentExpression(node) {
+        const name = memberName(node.left);
+        if (name !== null && HTML_PROPERTIES.has(name)) report(node, `${name} assignment`);
+      },
+      CallExpression(node) {
+        if (calleeName(node.callee) === 'insertAdjacentHTML') report(node, 'insertAdjacentHTML');
       },
     };
   },
@@ -175,7 +231,11 @@ const markdownBoundary: Rule.RuleModule = {
 
 const plugin = {
   meta: { name: 'security' },
-  rules: { 'no-iframe': noIframe, 'markdown-boundary': markdownBoundary },
+  rules: {
+    'no-iframe': noIframe,
+    'no-html-sink': noHtmlSink,
+    'markdown-boundary': markdownBoundary,
+  },
 } satisfies ESLint.Plugin;
 
 export const SECURITY_RULE_IDS = Object.keys(plugin.rules).map((r) => `security/${r}`);

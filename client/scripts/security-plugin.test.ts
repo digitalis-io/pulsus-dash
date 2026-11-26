@@ -23,7 +23,11 @@ function eslint(): ESLint {
           parserOptions: { ecmaFeatures: { jsx: true } },
         },
         plugins: { security },
-        rules: { 'security/no-iframe': 'error', 'security/markdown-boundary': 'error' },
+        rules: {
+          'security/no-iframe': 'error',
+          'security/no-html-sink': 'error',
+          'security/markdown-boundary': 'error',
+        },
       },
     ],
   });
@@ -37,6 +41,7 @@ async function rules(code: string, filePath: string): Promise<(string | null)[]>
 
 const NO_IFRAME = 'security/no-iframe';
 const BOUNDARY = 'security/markdown-boundary';
+const HTML_SINK = 'security/no-html-sink';
 
 describe('unit:security-lint: security/no-iframe', () => {
   it('reports the embedding elements in JSX and allows a link', async () => {
@@ -70,6 +75,72 @@ describe('unit:security-lint: security/no-iframe', () => {
         'src/x.ts',
       ),
     ).toEqual([NO_IFRAME]);
+  });
+});
+
+describe('unit:security-lint: static computed keys and qualified constructors (review r1)', () => {
+  const ts = 'src/x.ts';
+
+  it('reports createElement and createContextualFragment through a static computed key', async () => {
+    for (const code of [
+      "export const e = document['createElement']('iframe');\n",
+      'export const e = document[`createElement`](`IFRAME`);\n',
+      "export const e = document['createElementNS']('http://www.w3.org/1999/xhtml', 'embed');\n",
+      "export const f = (r: Range, s: string) => r['createContextualFragment'](s);\n",
+    ]) {
+      expect(await rules(code, ts), code).toEqual([NO_IFRAME]);
+    }
+    for (const code of [
+      "export const e = document['createElement']('div');\n",
+      "const k = 'createElement';\nexport const e = document[k]('div');\n",
+    ]) {
+      expect(await rules(code, ts), code).toEqual([]);
+    }
+  });
+
+  it('reports a member-qualified DOMParser', async () => {
+    for (const code of [
+      'export const p = new window.DOMParser();\n',
+      'export const p = new globalThis.DOMParser();\n',
+      "export const p = new self['DOMParser']();\n",
+    ]) {
+      expect(await rules(code, ts), code).toEqual([NO_IFRAME]);
+    }
+    expect(await rules('export const p = new window.URL("/a", "http://x.test");\n', ts)).toEqual(
+      [],
+    );
+  });
+
+  it('reports srcdoc assignments and setAttribute, in any spelling', async () => {
+    for (const code of [
+      "export const f = (el: HTMLIFrameElement) => { el['srcdoc'] = 'x'; };\n",
+      "export const f = (el: HTMLIFrameElement) => { el.srcdoc = 'x'; };\n",
+      "export const f = (el: Element) => { el.setAttribute('srcdoc', 'x'); };\n",
+      "export const f = (el: Element) => { el['setAttribute']('SRCDOC', 'x'); };\n",
+    ]) {
+      expect(await rules(code, ts), code).toEqual([NO_IFRAME]);
+    }
+    expect(
+      await rules("export const f = (el: Element) => { el.setAttribute('title', 'x'); };\n", ts),
+    ).toEqual([]);
+  });
+
+  it('security/no-html-sink reports innerHTML, outerHTML and insertAdjacentHTML in any spelling', async () => {
+    for (const code of [
+      "export const f = (el: Element) => { el['innerHTML'] = 'x'; };\n",
+      "export const f = (el: Element) => { el[`outerHTML`] = 'x'; };\n",
+      "export const f = (el: Element) => { el.innerHTML = 'x'; };\n",
+      "export const f = (el: Element) => { el['insertAdjacentHTML']('beforeend', 'x'); };\n",
+      "export const f = (el: Element) => { el.insertAdjacentHTML('beforeend', 'x'); };\n",
+    ]) {
+      expect(await rules(code, ts), code).toEqual([HTML_SINK]);
+    }
+    for (const code of [
+      "export const f = (el: Element) => { el['textContent'] = 'x'; };\n",
+      'export const f = (el: Element) => el.innerHTML;\n',
+    ]) {
+      expect(await rules(code, ts), code).toEqual([]);
+    }
   });
 });
 
@@ -123,9 +194,11 @@ describe('unit:security-lint: configuration', () => {
     };
     expect(src.rules?.[NO_IFRAME]).toEqual([2]);
     expect(src.rules?.[BOUNDARY]).toEqual([2]);
+    expect(src.rules?.[HTML_SINK]).toEqual([2]);
     const e2e = (await full.calculateConfigForFile('e2e/x.spec.ts')) as {
       rules?: Record<string, unknown>;
     };
     expect(e2e.rules?.[NO_IFRAME]).toEqual([2]);
+    expect(e2e.rules?.[HTML_SINK]).toEqual([2]);
   });
 });
