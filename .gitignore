@@ -41,6 +41,8 @@ blob-report/
 
 # Server build output and pinned tools (make server-build, make tools-ci)
 build/
+# ...but not the geo build fixtures (tools/geo/build.py --fixtures, plan #231)
+!client/src/vis/geo/fixtures/build/
 # The packed client the BFF embeds (make assets-pack)
 server/internal/gateway/static/dist/
 
