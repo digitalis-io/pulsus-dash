@@ -261,10 +261,12 @@ bans commonmark's `HtmlRenderer` and `XmlRenderer` and `minimist`, and allows th
 **Module graph** (`ci:dep-audit`). `minimist` is reachable only from commonmark's CLI, so a browser
 build never holds it; the check proves it on every audited build rather than assuming it:
 
-- The `dash-module-ids` Vite plugin writes `{chunkFile: moduleIds}` after each build to
-  `node_modules/.cache/dash-build/<basename(outDir)>/modules.json`: one file per output directory,
-  outside every `dist*` directory, so the signed asset set is unchanged. The engine's worker bundles
-  are not in this graph.
+- The `dash-module-ids` Vite plugin (`config/moduleGraph.ts`) writes `{chunkFile: moduleIds}` after
+  each build to `node_modules/.cache/dash-build/<basename(outDir)>/modules.json`: one file per
+  output directory, outside every `dist*` directory, so the signed asset set is unchanged. The graph
+  holds the main bundle's chunks and the chunks of every worker bundle that Vite builds separately
+  (the engine's `dash-engine-*` workers, recorded through `worker.plugins` under the file names they
+  are written with).
 - `scripts/check-bundle-modules.ts [--cache <dir>] <outDir>…` reads each named build's file and
   fails (`forbidden-module`, naming the chunk and the module) on a module under
   `node_modules/minimist/`, a `node:` id (with or without the virtual-module NUL), Vite's
@@ -288,7 +290,7 @@ When a page first imports parse5, its namespace and DOCTYPE identifier strings j
 
 | Gate | File |
 |---|---|
-| `unit:bundle-modules` | `scripts/check-bundle-modules.test.ts` with `scripts/__fixtures__/bundle-modules/` (a clean graph, `minimist`, `node:stream`, a NUL-prefixed `node:` id, the browser-external id with and without NUL, `SAXParser`'s entry; a missing graph) |
+| `unit:bundle-modules` | `config/moduleGraph.test.ts`: a probe whose worker extends `node:stream` gives a graph with the worker chunk and a finding in it (`scripts/__fixtures__/worker-probe/`); `scripts/check-bundle-modules.test.ts` with `scripts/__fixtures__/bundle-modules/` (a worker chunk with a browser-external id, a clean graph, `minimist`, `node:stream`, a NUL-prefixed `node:` id, the browser-external id with and without NUL, `SAXParser`'s entry; a missing graph) |
 | `unit:sanitise-bundle` | `scripts/sanitise-bundle.test.ts` (prints the measured size) |
 
 ## Advisories and signatures
