@@ -163,7 +163,7 @@ export function markdownInRoute(
       continue;
     }
     const visited = new Set<string>();
-    const stack = [root];
+    const stack: string[] = [root];
     while (stack.length > 0) {
       const key = stack.pop() ?? '';
       if (visited.has(key)) continue;
