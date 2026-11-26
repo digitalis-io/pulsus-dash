@@ -1,5 +1,6 @@
 /// <reference types="vitest/config" />
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import optimizeLocales from '@react-aria/optimize-locales-plugin';
 import react from '@vitejs/plugin-react';
@@ -44,6 +45,28 @@ export { default as wasmUrl } from '${gen}dash_core_mt_bg.wasm?url';`;
   };
 }
 
+/**
+ * `dash-module-ids` (plan #198 Part 2a §3.6): after writing a build, records `{chunkFile: moduleIds}`
+ * in `node_modules/.cache/dash-build/<basename(outDir)>/modules.json` for `check-bundle-modules.ts`
+ * (`ci:dep-audit`). The file is outside every output directory, so the signed asset set is unchanged,
+ * and each output directory has its own file.
+ */
+function dashModuleIds(): Plugin {
+  return {
+    name: 'dash-module-ids',
+    apply: 'build',
+    writeBundle(options, bundle) {
+      const graph: Record<string, string[]> = {};
+      for (const [file, out] of Object.entries(bundle)) {
+        if (out.type === 'chunk') graph[file] = [...out.moduleIds];
+      }
+      const dir = `${root}node_modules/.cache/dash-build/${basename(options.dir ?? 'dist')}`;
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(`${dir}/modules.json`, `${JSON.stringify(graph, null, 1)}\n`);
+    },
+  };
+}
+
 /** Engine modules: their chunks are `dash-engine-*` (`ci:bundle-size` engine row). */
 const ENGINE_MODULE = /\/src\/engine\/wasm\/|dash-engine/;
 const pkg = JSON.parse(readFileSync(`${root}package.json`, 'utf8')) as { version: string };
@@ -52,7 +75,17 @@ const pkg = JSON.parse(readFileSync(`${root}package.json`, 'utf8')) as { version
 const bff = process.env['PULSUS_DASH_DEV_BFF'] ?? 'http://localhost:8080';
 
 export default defineConfig({
-  plugins: [react(), optimizeLocales.vite({ locales: ['en-US'] }), dashEngine()],
+  plugins: [react(), optimizeLocales.vite({ locales: ['en-US'] }), dashEngine(), dashModuleIds()],
+  resolve: {
+    // `findIframes` (plan #198 Part 2a §3.3): `parse5-sax-parser`'s tokenizer driver without its
+    // `SAXParser` entry, which extends `node:stream` (pinned at 8.0.1; applies to vitest too).
+    alias: [
+      {
+        find: /^parse5-sax-parser\/feedback$/,
+        replacement: `${root}node_modules/parse5-sax-parser/dist/parser-feedback-simulator.js`,
+      },
+    ],
+  },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
