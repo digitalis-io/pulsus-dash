@@ -326,6 +326,20 @@ of the frame's own series, a `focus` underlay under a selected line, a 2 px inne
 a selected bar segment, a 2 px `focus` ring on a selected stat, and a `selection` band for an
 interval on line and heatmap.
 
+**One rule set, two engines (#68 Part C2b).** The hover and click rules live in
+`canvas2d/pick.ts` (`hoverAt`: the keyboard crosshair or the pointer's nearest sample, and
+`hoverRows`), `canvas2d/select.ts` (`pickItem`, line: the hover row nearest the pointer's y) and
+`data/frames.ts` (`seriesName`). The WASM engine's render worker uses a Rust port of the line
+rules (`dash-scene::hover`: `hover_at`, `pick_item`, `series_name`, with `nearest_index`), with the
+same arithmetic in the same order so every number is bit-equal. `npm run engine-fixtures`
+writes `engine/fixtures/hover.json` from the TS functions (line-50 at every 6th sample, line-gaps,
+line-1, two series of 15 s and 60 s steps, NaN samples, a manual axis; key indices 0, n − 1 and
+n; 200 seeded pointers; names with quotes, backslashes, newlines, no `__name__` and keys that sort
+differently by UTF-16 code unit than by code point), and `unit:hover-parity` checks the port
+against it. Change the TS rule, rewrite the fixture, and the port must follow. The engine draws
+the crosshair, dots and box band as `drawOverlay` does
+([the engine](engine.md#hover-select-and-the-overlay-part-c2b)); the tooltip stays DOM for both.
+
 The tooltip is DOM, beside the crosshair (flipped left at the frame's right edge), positioned with
 CSSOM (`style.translate`, allowed by the CSP, T18-004). It shows the time and the rows sorted by value
 (descending, then name), 20 at a time with "Rows a–b of n". With the pointer, the 20-row window
@@ -749,7 +763,8 @@ script (and `scripts/threshold-draw-probe.ts`) load a CSS module as a class-name
 The WASM engine implements the same `ChartEngine` interface and is returned by
 `defaultChartEngine()`; only `engine/index.ts` changes. Its line frames already run the camera
 controller above (Part C2a2): zoom, pan, axis drags, the band hold and the commits behave as on
-Canvas 2D; hover, select and the box band are drawn from Part C2b on. It implements the threshold lines,
+Canvas 2D; since Part C2b hover, the keyboard crosshair, the click's `select` and the box band do
+too (the same rules, ported). It implements the threshold lines,
 labels and the stat sparkline (ADR-0022), and the event markers (ADR-0023, as M1 verticals and M9
 glyphs), the selection and the `select` item (ADR-0025), and the bar chart (ADR-0028: the
 `categories` data, `categoryExtent` and `barLayout` exactly, `mark`, `pick` and the drawing) before
