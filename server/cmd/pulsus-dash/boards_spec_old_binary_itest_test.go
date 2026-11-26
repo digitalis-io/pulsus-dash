@@ -125,8 +125,9 @@ func TestBoardSpecOldBinary(t *testing.T) {
 			if code, _, b := doAt(t, old, "GET", boardsURL+"/"+wUID, nil); code != 503 || errMsg(t, b) != tooNew {
 				t.Errorf("old get W = %d %s, want 503 %s", code, b, tooNew)
 			}
-			v4 := specFixture(t, "v4-board-tags.json")
-			if code, _, b := doAt(t, old, "PUT", boardsURL+"/"+wUID, []byte(`{"spec":`+string(v4)+`}`), "If-Match", `"1"`); code != 503 || errMsg(t, b) != tooNew {
+			// A spec of its own version (its own fixture): only the stored head refuses the save.
+			vSpec := oldFixture(t)
+			if code, _, b := doAt(t, old, "PUT", boardsURL+"/"+wUID, []byte(`{"spec":`+string(vSpec)+`}`), "If-Match", `"1"`); code != 503 || errMsg(t, b) != tooNew {
 				t.Errorf("old save W = %d %s, want 503 %s", code, b, tooNew)
 			}
 			if v := versionsOf(wUID); v != 1 {
@@ -153,7 +154,6 @@ func TestBoardSpecOldBinary(t *testing.T) {
 			// 5 the previous release creates V from its own fixture and cannot save a widget spec
 			// over it; this release reads V, saves it with a clock, and the previous release is
 			// then refused.
-			vSpec := oldFixture(t)
 			code, _, b = doAt(t, old, "POST", boardsURL, []byte(`{"spec":`+string(vSpec)+`}`))
 			if code != 201 {
 				t.Fatalf("old create V = %d %s", code, b)
