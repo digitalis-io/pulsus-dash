@@ -132,6 +132,17 @@ export const messages = {
   'panel.noVis': 'A metric query has no log lines. Choose Auto or a chart.',
   'panel.kindUnavailable': "This chart type isn't available in this version yet.",
   'widget.kindUnavailable': "This widget isn't available in this version yet.",
+  'boardList.mode.starred': 'Starred',
+  'boardList.mode.recent': 'Recent',
+  'boardList.mode.search': 'Search',
+  'boardList.mode.tag': 'Tag',
+  'boardList.ranking': 'Ranking by use during incidents is available with investigations (M-UI4)',
+  'boardList.thisBoard': 'this board',
+  'boardList.facts': '{n} boards',
+  'boardList.factsMore': '{n}+ boards',
+  'boardList.factsUnknown': ' (coverage unknown)',
+  'boardList.factsStale': ' (stale)',
+  'boardList.factsUnknownStale': ' (coverage unknown, stale)',
   'panel.logs.notMetric':
     'Line, Heatmap and Stat draw metric queries. Choose Auto, Logs or Bars for log lines.',
   'panel.logs.label': 'Log lines: {title}',
@@ -222,8 +233,7 @@ export const messages = {
   'field.board.options.reducer.invalid': 'Choose last, first, mean, min, max, sum or count.',
   'field.board.options.baselineOffset.invalid': 'Choose 1h, 1d, 7d or 28d.',
   'field.board.options.categoryBy.invalid': 'Use a label name, or leave it empty.',
-  'field.board.options.sort.invalid':
-    'Choose by value (descending or ascending), by label or none.',
+  'field.board.options.sort.invalid': 'Choose a listed sort order.',
   'field.board.options.orientation.invalid': 'Choose horizontal or vertical (stat: also auto).',
   'field.board.options.valueLabels.invalid': 'Choose on or off.',
   'field.board.options.min.invalid': 'Use a value at most 1e15 in size.',
@@ -236,7 +246,7 @@ export const messages = {
   'field.board.options.textMode.invalid':
     'Choose auto, value, value and name, or name (a grid shows names).',
   'field.board.options.graphMode.invalid': 'Choose sparkline or none.',
-  'field.board.options.mode.invalid': 'Choose Markdown or code.',
+  'field.board.options.mode.invalid': 'Choose a listed mode.',
   'field.board.options.content.tooLong': 'Use at most 65 536 bytes.',
   'field.board.options.language.invalid': 'Choose a listed language (code mode).',
   'field.board.options.zones.invalid': 'Use 1 to 12 known time zones, labels up to 64 characters.',
@@ -244,6 +254,10 @@ export const messages = {
   'field.board.options.hourCycle.invalid': 'Choose auto, 12-hour or 24-hour.',
   'field.board.options.countdown.invalid':
     'Use a time with an offset, a 1–64 character label, and count up or hide.',
+  'field.board.options.query.invalid':
+    'Use up to 100 characters without control characters, in search mode only.',
+  'field.board.options.tag.invalid': 'Use one valid tag, in tag mode only.',
+  'field.board.options.limit.invalid': 'Use a whole number from 1 to 50.',
 
   'boards.title': 'Boards',
   'boards.list': 'All boards',

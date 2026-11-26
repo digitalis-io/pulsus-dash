@@ -86,7 +86,7 @@ function toSession(b: Bootstrap): Session {
   };
 }
 
-/** The summary members a board and a list row share (a list row's `tags` is #216's). */
+/** The summary members a board and a list row share. */
 function toSummary(
   b: Pick<WireSummary, 'uid' | 'title' | 'version' | 'updated_at' | 'updated_by'>,
 ) {
@@ -101,6 +101,32 @@ function toSummary(
 
 function toRef(r: WireRef): BoardRef {
   return { uid: r.uid, title: r.title };
+}
+
+/**
+ * A `GET /boards` answer (plan #216 Part 1 §4.2). An old server, one without board search, sends no
+ * `applied`, `tagsStale` or item `tags`: they read as null, 0 and null. Absence is checked with
+ * `Object.hasOwn`, since the generated types call every member required.
+ */
+function toBoardPage(list: components['schemas']['BoardList']): BoardPage {
+  return {
+    items: list.items.map((x) => ({
+      ...toSummary(x),
+      tags: Object.hasOwn(x, 'tags') ? x.tags : null,
+    })),
+    truncated: list.truncated,
+    applied: Object.hasOwn(list, 'applied') ? list.applied : null,
+    tagsStale: Object.hasOwn(list, 'tagsStale') ? list.tagsStale : 0,
+  };
+}
+
+/** A Starred or Recent answer: an old server's (no `applied`) is `truncated` false, `applied` null. */
+function toRefPage(list: components['schemas']['BoardRefList']): RefPage {
+  return {
+    items: list.items.map(toRef),
+    truncated: Object.hasOwn(list, 'truncated') ? list.truncated : false,
+    applied: Object.hasOwn(list, 'applied') ? {} : null,
+  };
 }
 
 type WireSpec = WireBoard['spec'];
@@ -375,24 +401,28 @@ export class HttpApi implements Api {
     }
   }
 
+  /** `q` is sent only when non-empty, `tag` only when given (plan #216 Part 1 §4.2). */
   async listBoards(
     tenant: string,
     signal?: AbortSignal,
-    _f?: { readonly q?: string; readonly tag?: string },
+    f?: { readonly q?: string; readonly tag?: string },
   ): Promise<BoardPage> {
     this.checkTenant(tenant);
+    const query = {
+      ...(f?.q !== undefined && f.q !== '' ? { q: f.q } : {}),
+      ...(f?.tag !== undefined ? { tag: f.tag } : {}),
+    };
     const list = required(
       await call(
-        () => this.client.GET('/api/dash/v1/boards', signal === undefined ? {} : { signal }),
+        () =>
+          this.client.GET('/api/dash/v1/boards', {
+            params: { query },
+            ...(signal === undefined ? {} : { signal }),
+          }),
         200,
       ),
     );
-    return {
-      items: list.items.map((x) => ({ ...toSummary(x), tags: null })),
-      truncated: list.truncated,
-      applied: null,
-      tagsStale: 0,
-    };
+    return toBoardPage(list);
   }
 
   async getBoard(tenant: string, uid: string, signal?: AbortSignal): Promise<Board> {
@@ -447,7 +477,7 @@ export class HttpApi implements Api {
         this.client.GET('/api/dash/v1/me/starred-boards', signal === undefined ? {} : { signal }),
       200,
     );
-    return { items: required(list).items.map(toRef), truncated: false, applied: null };
+    return toRefPage(required(list));
   }
 
   async setStarred(tenant: string, uid: string, starred: boolean): Promise<void> {
@@ -462,17 +492,17 @@ export class HttpApi implements Api {
     );
   }
 
-  async listRecent(tenant: string, signal?: AbortSignal, _limit?: number): Promise<RefPage> {
+  async listRecent(tenant: string, signal?: AbortSignal, limit?: number): Promise<RefPage> {
     this.checkTenant(tenant);
     const list = await call(
       () =>
         this.client.GET('/api/dash/v1/me/recent-boards', {
-          params: { query: { limit: RECENT_LIMIT } },
+          params: { query: { limit: limit ?? RECENT_LIMIT } },
           ...(signal === undefined ? {} : { signal }),
         }),
       200,
     );
-    return { items: required(list).items.map(toRef), truncated: false, applied: null };
+    return toRefPage(required(list));
   }
 
   async recordView(tenant: string, uid: string, at: number, signal?: AbortSignal): Promise<void> {

@@ -1,8 +1,10 @@
 /**
- * Widget panels (plan #198 Part 1 §3.3; T24-002, T24-003, T24 §5.1): the widget kinds, the kinds
+ * Widget panels (plan #198 Part 1 §3.3; T24-002, T24-003, T24 §5.1; the board list by plan #216
+ * Part 1): the widget kinds, the kinds
  * not drawn yet, the guards that split a panel into a data panel (with a query) and a widget
  * (without one), and the text and clock options with their defaults.
  */
+import { OPTION_VALUES } from '../boards/options';
 import type {
   ClockCountdown,
   ClockZone,
@@ -16,13 +18,21 @@ import type {
 } from '../api/types';
 
 /** The kinds without a query (the Go `widgetKinds`). */
-export const WIDGET_KINDS: ReadonlySet<PanelVisKind> = new Set<PanelVisKind>(['text', 'clock']);
+export const WIDGET_KINDS: ReadonlySet<PanelVisKind> = new Set<PanelVisKind>([
+  'text',
+  'clock',
+  'boardList',
+]);
 
 /**
  * The widget kinds this version does not draw yet: such a panel shows `widget.kindUnavailable`.
- * Text until #198 Part 3, clock until A2.
+ * Text until #198 Part 3, clock until A2, the board list until #216 Part 2.
  */
-export const PENDING_WIDGETS: ReadonlySet<WidgetKind> = new Set<WidgetKind>(['text', 'clock']);
+export const PENDING_WIDGETS: ReadonlySet<WidgetKind> = new Set<WidgetKind>([
+  'text',
+  'clock',
+  'boardList',
+]);
 
 /** Whether `kind` is a widget kind. */
 export function isWidgetKind(kind: PanelVisKind): kind is WidgetKind {
@@ -43,11 +53,15 @@ export interface TextOptions {
   readonly language: CodeLanguage;
 }
 
+/** A text widget's default mode. */
 export const DEFAULT_TEXT_MODE = 'markdown';
 
-/** Whether `v` is a text mode (stub). */
+/**
+ * Whether `v` is a text mode (`OPTION_VALUES.mode`): the stored `mode` may hold a board list's
+ * value, which the validator refuses on a text; the reader falls back to the default.
+ */
 export function isTextMode(v: unknown): v is TextOptions['mode'] {
-  return typeof v === 'string';
+  return (OPTION_VALUES.mode as readonly unknown[]).includes(v);
 }
 
 /** A text widget's options with the T24 §5.1 defaults: markdown, `''`, plaintext. */
