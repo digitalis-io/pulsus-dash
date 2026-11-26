@@ -1015,3 +1015,27 @@ fn stage_pick_count() {
         );
     }
 }
+
+/// Code review r1 (plan #68 C2b): a key index from the previous stage's `pickCount` after
+/// `setData` shortened series 0 (the new stage not yet on main) is clamped to the last sample of
+/// the presented data: a finite hover of the new data's last sample, never a NaN time. With no
+/// sample at all there is no hover.
+#[test]
+fn key_index_past_new_data() {
+    let mut f = Frames::new();
+    let _ = presented(&mut f, |f| line_data(f, 1, 61), W0);
+    // The data shrinks to 31 samples; main still has pickCount 61 and sends End (60).
+    line_data(&mut f, 1, 31);
+    assert_eq!(f.apply(&overlay_rec(1, 3, 2, 0.0, 0.0, 60)), Some(1));
+    let (_, h) = build_hover(&mut f, 1);
+    let ev = &h["ev"];
+    assert_eq!(ev["source"], "keyboard", "{h}");
+    assert_eq!(ev["tMs"].as_f64(), Some(T0 + 30.0 * 60_000.0), "{h}");
+    assert!(ev["xCss"].as_f64().is_some_and(f64::is_finite), "{h}");
+    assert_eq!(ev["rows"][0]["value"].as_f64(), Some(15.0), "{h}");
+    // No series left: no hover.
+    line_data(&mut f, 1, 0);
+    assert_eq!(f.apply(&overlay_rec(1, 4, 2, 0.0, 0.0, 30)), Some(1));
+    let (_, h) = build_hover(&mut f, 1);
+    assert!(h["ev"].is_null(), "{h}");
+}

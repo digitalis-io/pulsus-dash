@@ -32,7 +32,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use dash_marks::{DrawList, MarkItem};
-use dash_scene::hover::{HoverAt, HoverOut, PickSnap, hover_at, overlay_item, pick_item};
+use dash_scene::hover::{HoverAt, HoverOut, PickSnap, hover_at, key_on, overlay_item, pick_item};
 use dash_scene::{
     Band, Camera, PlotCamera, Range64, Size64, StageInfo, Theme, Viewport, VisKind, VisSpec,
     YRange, build_frame,
@@ -665,9 +665,13 @@ impl Frames {
             f.layer = Some(built.list);
             f.layer_dirty = false;
         }
-        // The hover of the last Overlay, on this list's pick (none without a plot).
+        // The hover of the last Overlay, on this list's pick (none without a plot); a key index
+        // from an older stage is clamped to this pick's samples (`key_on`).
         let hover = if std::mem::take(&mut f.overlay_dirty) {
-            f.last_hover = f.pick.as_deref().and_then(|p| hover_at(p, f.overlay.hover));
+            f.last_hover = f
+                .pick
+                .as_deref()
+                .and_then(|p| hover_at(p, key_on(p, f.overlay.hover)));
             Some(events::hover(id, f.oseq, f.last_hover.as_ref()))
         } else {
             None

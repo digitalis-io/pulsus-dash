@@ -826,7 +826,11 @@ after `dispose`. Every layout input clears the hover, so it also writes an Overl
 The hover rules are the Canvas 2D line rules, ported bit for bit ([charts](charts.md#interaction-int-033-ia-020-subset)):
 the pointer snaps to the nearest sample of series 0 (ties to the earlier), and every shown series
 whose nearest sample is within half its own mean step gives a row (NaN omitted); the keyboard
-crosshair is a sample index of series 0 at the plot's top. A click picks the row nearest the
+crosshair is a sample index of series 0 at the plot's top. The main thread takes its key range
+from the stage it has, which can be an older presentation's (new data shortened series 0 before
+its stage arrived), so the worker clamps a key index to the last sample of the pick it uses
+(`key_on`: End still means the last sample) and gives no hover when there is no sample; a hover
+never carries a non-finite time or position. A click picks the row nearest the
 pointer's y at the snapped time. The hover drawn stays until the next Overlay (Canvas 2D's
 `lastHover`).
 

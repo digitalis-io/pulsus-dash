@@ -176,6 +176,21 @@ impl PickSnap {
     }
 }
 
+/// The keyboard crosshair of `at` validated against `s` (code review r1): the main thread sends
+/// key indices from the stage it has, which can be an older presentation's (a `setData` that
+/// shortened series 0 before its stage arrived). An index past the last sample becomes the last
+/// sample, so End still means "last"; with no sample there is no hover. Pointer and none pass
+/// through. [`hover_at`] stays the TS rule; the worker calls it with this.
+pub fn key_on(s: &PickSnap, at: HoverAt) -> HoverAt {
+    match at {
+        HoverAt::Key(i) => match s.ref_len() {
+            0 => HoverAt::None,
+            n => HoverAt::Key(i.min(u32::try_from(n - 1).unwrap_or(u32::MAX))),
+        },
+        other => other,
+    }
+}
+
 /// The hover at `at` (TS `hoverAt`, line): the keyboard crosshair at a reference index (y = the
 /// plot's top), or the pointer's nearest reference sample; None for no hover or no sample.
 pub fn hover_at(s: &PickSnap, at: HoverAt) -> Option<HoverOut> {
