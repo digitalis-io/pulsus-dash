@@ -70,14 +70,22 @@ var (
 
 	// optionFields are the keys of vis.options in OPTION_ORDER (client boards/options.ts), all
 	// optional; optionKinds lists the keys each kind allows. Both equal
-	// api/fixtures/board-spec/option-keys.json.
+	// api/fixtures/board-spec/option-keys.json. Board spec v5 (#198 Part 1, T24 §5.1) adds the text
+	// and clock keys: zones is an array of {tz, label}, countdown an object {to, label, after}, every
+	// member a required string (OPTION_MEMBERS).
 	optionFields = []field{{"reducer", false, tString}, {"baselineOffset", false, tString},
 		{"categoryBy", false, tString}, {"sort", false, tString}, {"orientation", false, tString},
 		{"valueLabels", false, tBool}, {"min", false, tNumber}, {"max", false, tNumber},
 		{"donut", false, tBool}, {"labels", false, tString}, {"parts", false, tBool},
 		{"layout", false, tString}, {"colourMode", false, tString}, {"textMode", false, tString},
-		{"graphMode", false, tString}}
-	optionKinds = map[string][]string{
+		{"graphMode", false, tString},
+		{"mode", false, tString}, {"content", false, tString}, {"language", false, tString},
+		{"zones", false, valueType{kind: kArray, elem: &valueType{kind: kObject, shape: zoneShape}}},
+		{"hourCycle", false, tString}, {"seconds", false, tBool}, {"date", false, tBool},
+		{"countdown", false, valueType{kind: kObject, shape: countdownShape}}}
+	zoneShape      = []field{{"tz", true, tString}, {"label", true, tString}}
+	countdownShape = []field{{"to", true, tString}, {"label", true, tString}, {"after", true, tString}}
+	optionKinds    = map[string][]string{
 		"auto":     {"reducer", "parts"},
 		"line":     {},
 		"bars":     {},
@@ -86,10 +94,14 @@ var (
 		"logs":     {},
 		"barchart": {"reducer", "baselineOffset", "categoryBy", "sort", "orientation", "valueLabels", "min", "max"},
 		"pie":      {"reducer", "categoryBy", "sort", "donut", "labels", "parts"},
+		"text":     {"mode", "content", "language"},
+		"clock":    {"zones", "hourCycle", "seconds", "date", "countdown"},
 	}
 	panelShape = []field{{"id", true, tString}, {"title", true, tString},
 		{"grid", true, valueType{kind: kObject, shape: gridShape}},
-		{"query", true, valueType{kind: kObject, shape: queryShape}},
+		// Optional from board spec v5 (#198 Part 1): the rules pass requires it on a data panel and
+		// refuses it on a widget (validate.go).
+		{"query", false, valueType{kind: kObject, shape: queryShape}},
 		{"vis", true, valueType{kind: kObject, shape: visShape}}}
 	tPanels      = valueType{kind: kArray, elem: &valueType{kind: kObject, shape: panelShape}}
 	sectionShape = []field{{"id", true, tString}, {"title", true, tString}, {"collapsed", true, tBool}, {"panels", true, tPanels}}
