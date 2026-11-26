@@ -136,7 +136,7 @@ y = round(lat · 100), rounded half away from zero; the basemap's latitudes are 
   azure 57). A code may repeat (60 region codes have two or more Natural Earth rows): such a
   lookup is `sharedCode`, not a guess.
 
-Sizes: 138 106 and 260 498 bytes raw; 31 441 and 91 909 bytes brotli, inside the `geoBasemap`
+Sizes: 138 106 and 260 490 bytes raw; 31 441 and 91 842 bytes brotli, inside the `geoBasemap`
 (40 000) and `geoGazetteer` (104 000) budgets of `ci:bundle-size`
 ([bundle budgets](../development/build-and-ci.md#bundle-budgets)).
 
@@ -165,35 +165,42 @@ each provider's published public-cloud region list, named by title in each recor
 An unlisted id resolves to `unknownCode`. A region added later needs a new dated reconciliation
 ([refreshing the data](supply-chain.md#geo-data)).
 
-**Places.** `place` is the provider's published location, in the provider's spelling (`Sao Paulo
-State`, `Queretaro`, `Tokyo, Saitama`). Where the provider gives only a country, `place` is a
-**curated choice**, not a provider statement: aws `eu-west-1` Dublin, `ap-southeast-5` Malaysia,
-`ap-southeast-6` New Zealand, `ap-southeast-7` Thailand, `ca-central-1` Canada (Central),
-`eu-south-2` Spain, `me-central-1` UAE, `mx-central-1` Mexico (Central); azure `westeurope`
-Amsterdam. Where the provider gives a state or a country (azure `eastus` Virginia, `norwayeast`
-Norway), that is the place, and the position below is curated.
+**Places.** `place` is the provider's published location in the provider's spelling (`St.
+Ghislain`, `Queretaro`, `Tokyo, Saitama`) where that is a city or a campus. Where the provider gives
+only a country or a state, `place` is a **curated city**, not a provider statement: the provider's
+metro where it is known, else the obvious data-centre metro, always a Natural Earth populated place,
+so the name and the position agree. `unit:geo-assets` fails if any place is a bare country or a US
+or Australian state name (Hong Kong and Singapore are cities too). The curated choices:
 
-**Positions.** The position is the Natural Earth populated place `ne_id`. Where the published
-location is not one (a state, a country, a campus, another spelling), it is a curated populated
-place in the same country, the named city where there is one, else the nearest:
+| Region | Provider location | Curated city (and position) |
+|---|---|---|
+| aws `us-east-1` | N. Virginia | Alexandria (the Ashburn area; Natural Earth has no Ashburn) |
+| aws `us-east-2`; `us-west-1` | Ohio; N. California | Columbus; San Jose |
+| aws `us-west-2` | Oregon | Pendleton (the nearest Oregon place to the Boardman campus) |
+| aws `ca-central-1`; `mx-central-1` | Canada; Mexico | Montréal; Querétaro |
+| aws `ap-southeast-5`, `-6`, `-7` | Malaysia; New Zealand; Thailand | Kuala Lumpur; Auckland; Bangkok |
+| aws `eu-west-1`; `eu-south-2` | Ireland; Spain | Dublin; Zaragoza (Aragón) |
+| aws `me-central-1`; `me-south-1` | United Arab Emirates; Bahrain | Abu Dhabi; Manama |
+| azure `eastus`; `eastus2` | Virginia | Roanoke (at the provider's published coordinates); Danville (the nearest Virginia place to the Boydton campus) |
+| azure `centralus`; `northcentralus`; `southcentralus` | Iowa; Illinois; Texas | Des Moines; Chicago; San Antonio |
+| azure `westus`; `westus2`; `westcentralus` | California; Washington; Wyoming | San Francisco; Wenatchee (by the Quincy campus); Cheyenne |
+| azure `australiaeast`; `australiasoutheast` | New South Wales; Victoria | Sydney; Melbourne |
+| azure `brazilsouth`; `mexicocentral` | Sao Paulo State; Querétaro State | São Paulo; Querétaro |
+| azure `northeurope`; `westeurope` | Ireland; Netherlands | Dublin; Amsterdam |
+| azure `norwayeast`; `norwaywest`; `israelcentral` | Norway; Norway; Israel | Oslo; Stavanger; Tel Aviv |
+
+**Positions.** For every other region the position is the Natural Earth populated place `ne_id` of
+the published location; where that location is not one (a campus or a district), it is a curated
+populated place in the same country, the named city where there is one, else the nearest:
 
 | Region | Place | Natural Earth place used |
 |---|---|---|
-| aws `us-east-1`; gcp `us-east4` | N. Virginia; Ashburn | Alexandria |
-| aws `us-west-2`; `us-east-2`; `us-west-1` | Oregon; Ohio; N. California | Richland; Columbus; San Jose |
-| aws `ca-central-1`; `eu-south-2`; `mx-central-1` | Canada (Central); Spain; Mexico (Central) | Montréal; Zaragoza; Querétaro |
-| aws `ap-southeast-5`, `-6`, `-7` | Malaysia; New Zealand; Thailand | Kuala Lumpur; Auckland; Bangkok |
-| aws `me-central-1`; `me-south-1` | UAE; Bahrain | Abu Dhabi; Manama |
+| gcp `us-east4` | Ashburn | Alexandria |
 | gcp `asia-east1`; `asia-south2` | Changhua County; Delhi | Changhua; New Delhi |
 | gcp `asia-southeast1`; `southamerica-east1` | Jurong West; Osasco | Singapore; São Paulo |
 | gcp `europe-north1`; `europe-west1`; `europe-west4` | Hamina; St. Ghislain; Eemshaven | Kouvola; Mons; Groningen |
 | gcp `us-east1`; `us-west1` | Moncks Corner; The Dalles | Charleston; Vancouver (WA) |
-| azure `eastus`; `eastus2` | Virginia | Roanoke; Durham |
-| azure `centralus`; `northcentralus`; `southcentralus` | Iowa; Illinois; Texas | Des Moines; Chicago; San Antonio |
-| azure `westus`; `westus2`; `westcentralus` | California; Washington; Wyoming | San Francisco; Wenatchee; Cheyenne |
-| azure `australiaeast`; `australiasoutheast` | New South Wales; Victoria | Sydney; Melbourne |
-| azure `brazilsouth`; `brazilsoutheast` | Sao Paulo State; Rio | São Paulo; Rio de Janeiro |
-| azure `northeurope`; `norwayeast`; `norwaywest`; `israelcentral` | Ireland; Norway; Norway; Israel | Dublin; Oslo; Stavanger; Tel Aviv |
+| azure `brazilsoutheast`; `japaneast` | Rio; Tokyo, Saitama | Rio de Janeiro; Tokyo |
 
 Spelling-only differences (Osaka and Ōsaka, Zurich and Zürich, Quebec and Québec, Copenhagen and
 København, Queretaro and Querétaro) are not listed.

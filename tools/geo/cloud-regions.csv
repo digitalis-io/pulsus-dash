@@ -12,69 +12,69 @@ aws,ap-southeast-1,Singapore,SG,1159151627,AWS Regions - AWS Regions and Availab
 aws,ap-southeast-2,Sydney,AU,1159151623,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,ap-southeast-3,Jakarta,ID,1159151599,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,ap-southeast-4,Melbourne,AU,1159151565,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,ap-southeast-5,Malaysia,MY,1159151317,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,ap-southeast-6,New Zealand,NZ,1159151703,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,ap-southeast-7,Thailand,TH,1159151509,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,ca-central-1,Canada (Central),CA,1159151457,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-southeast-5,Kuala Lumpur,MY,1159151317,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-southeast-6,Auckland,NZ,1159151703,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-southeast-7,Bangkok,TH,1159151509,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ca-central-1,Montréal,CA,1159151457,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,ca-west-1,Calgary,CA,1159151035,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,eu-central-1,Frankfurt,DE,1159151351,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,eu-central-2,Zurich,CH,1159151271,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,eu-north-1,Stockholm,SE,1159151507,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,eu-south-1,Milan,IT,1159151315,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,eu-south-2,Spain,ES,1159148251,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,eu-south-2,Zaragoza,ES,1159148251,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,eu-west-1,Dublin,IE,1159151309,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,eu-west-2,London,GB,1159151577,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,eu-west-3,Paris,FR,1159151613,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,il-central-1,Tel Aviv,IL,1159151417,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,me-central-1,UAE,AE,1159150565,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,me-south-1,Bahrain,BH,1159150451,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,mx-central-1,Mexico (Central),MX,1159146811,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,me-central-1,Abu Dhabi,AE,1159150565,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,me-south-1,Manama,BH,1159150451,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,mx-central-1,Querétaro,MX,1159146811,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 aws,sa-east-1,São Paulo,BR,1159151621,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,us-east-1,N. Virginia,US,1159133487,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,us-east-2,Ohio,US,1159147453,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,us-west-1,N. California,US,1159150479,AWS Regions - AWS Regions and Availability Zones,2026-11-26
-aws,us-west-2,Oregon,US,1159132537,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,us-east-1,Alexandria,US,1159133487,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,us-east-2,Columbus,US,1159147453,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,us-west-1,San Jose,US,1159150479,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,us-west-2,Pendleton,US,1159132803,AWS Regions - AWS Regions and Availability Zones,2026-11-26
 azure,australiacentral,Canberra,AU,1159151161,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,australiacentral2,Canberra,AU,1159151161,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,australiaeast,New South Wales,AU,1159151623,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,australiasoutheast,Victoria,AU,1159151565,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,australiaeast,Sydney,AU,1159151623,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,australiasoutheast,Melbourne,AU,1159151565,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,austriaeast,Vienna,AT,1159151563,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,belgiumcentral,Brussels,BE,1159151465,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,brazilsouth,Sao Paulo State,BR,1159151621,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,brazilsouth,São Paulo,BR,1159151621,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,brazilsoutheast,Rio,BR,1159151619,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,canadacentral,Toronto,CA,1159151557,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,canadaeast,Quebec,CA,1159151065,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,centralindia,Pune,IN,1159151411,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,centralus,Iowa,US,1159150495,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,centralus,Des Moines,US,1159150495,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,chilecentral,Santiago,CL,1159151615,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,denmarkeast,Copenhagen,DK,1159151437,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,eastasia,Hong Kong,HK,1159151629,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,eastus,Virginia,US,1159133495,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,eastus2,Virginia,US,1159125281,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,eastus,Roanoke,US,1159133495,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,eastus2,Danville,US,1159133501,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,francecentral,Paris,FR,1159151613,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,francesouth,Marseille,FR,1159150037,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,germanynorth,Berlin,DE,1159151529,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,germanywestcentral,Frankfurt,DE,1159151351,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,indiasouthcentral,Hyderabad,IN,1159151407,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,indonesiacentral,Jakarta,ID,1159151599,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,israelcentral,Israel,IL,1159151417,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,israelcentral,Tel Aviv,IL,1159151417,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,italynorth,Milan,IT,1159151315,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,japaneast,"Tokyo, Saitama",JP,1159151609,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,japanwest,Osaka,JP,1159151537,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,koreacentral,Seoul,KR,1159151523,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,koreasouth,Busan,KR,1159149599,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,malaysiawest,Kuala Lumpur,MY,1159151317,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,mexicocentral,Querétaro State,MX,1159146811,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,mexicocentral,Querétaro,MX,1159146811,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,newzealandnorth,Auckland,NZ,1159151703,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,northcentralus,Illinois,US,1159151491,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,northeurope,Ireland,IE,1159151309,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,norwayeast,Norway,NO,1159151281,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,norwaywest,Norway,NO,1159146443,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,northcentralus,Chicago,US,1159151491,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,northeurope,Dublin,IE,1159151309,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,norwayeast,Oslo,NO,1159151281,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,norwaywest,Stavanger,NO,1159146443,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,polandcentral,Warsaw,PL,1159151299,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,qatarcentral,Doha,QA,1159149469,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,southafricanorth,Johannesburg,ZA,1159151515,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,southafricawest,Cape Town,ZA,1159151583,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,southcentralus,Texas,US,1159150503,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,southcentralus,San Antonio,US,1159150503,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,southeastasia,Singapore,SG,1159151627,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,southindia,Chennai,IN,1159151431,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,spaincentral,Madrid,ES,1159151503,List of Azure Regions - Microsoft Learn,2026-11-26
@@ -85,11 +85,11 @@ azure,uaecentral,Abu Dhabi,AE,1159150565,List of Azure Regions - Microsoft Learn
 azure,uaenorth,Dubai,AE,1159151497,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,uksouth,London,GB,1159151577,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,ukwest,Cardiff,GB,1159146373,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,westcentralus,Wyoming,US,1159150493,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,westcentralus,Cheyenne,US,1159150493,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,westeurope,Amsterdam,NL,1159151519,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,westindia,Mumbai,IN,1159151611,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,westus,California,US,1159151479,List of Azure Regions - Microsoft Learn,2026-11-26
-azure,westus2,Washington,US,1159147355,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,westus,San Francisco,US,1159151479,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,westus2,Wenatchee,US,1159147355,List of Azure Regions - Microsoft Learn,2026-11-26
 azure,westus3,Phoenix,US,1159151225,List of Azure Regions - Microsoft Learn,2026-11-26
 gcp,africa-south1,Johannesburg,ZA,1159151515,Regions and zones - Compute Engine,2026-11-26
 gcp,asia-east1,Changhua County,TW,1159146169,Regions and zones - Compute Engine,2026-11-26

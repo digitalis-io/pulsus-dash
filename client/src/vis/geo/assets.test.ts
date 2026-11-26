@@ -152,6 +152,19 @@ describe('unit:geo-assets (VIZ-045, VIZ-046)', () => {
     for (const id of ['australiacentral2', 'brazilsoutheast', 'uaecentral']) {
       expect(azure.has(id), id).toBe(true);
     }
+    // A provider location that is only a country or a state is replaced by a curated city.
+    const bare = new Set([
+      // Hong Kong and Singapore are cities as well as countries.
+      ...gz.country.map((r) => r.name).filter((n) => n !== 'Hong Kong' && n !== 'Singapore'),
+      ...gz.region.filter((r) => /^(?:US|AU)-/.test(r.code)).map((r) => r.name),
+      'UAE',
+      'N. Virginia',
+      'N. California',
+      'Canada (Central)',
+      'Mexico (Central)',
+    ]);
+    for (const r of gz.cloud)
+      expect(bare.has(r.place), `${r.provider} ${r.id}: ${r.place}`).toBe(false);
     for (const id of ['jioindiacentral', 'jioindiawest', 'saudiarabiaeast']) {
       expect(azure.has(id), id).toBe(false);
     }

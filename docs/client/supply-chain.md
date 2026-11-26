@@ -408,7 +408,7 @@ validator.
    `file`). For the cloud regions, reconcile `tools/geo/cloud-regions.csv` with each provider's
    published region list (the page titles are in each record's `source`; the coverage rule is in
    [Geomap data](geomap.md#cloud-regions)): each record gets the published place in the provider's
-   spelling (a curated city where only a country is given), `iso_a2`, the Natural Earth `ne_id`
+   spelling (a curated city, a Natural Earth populated place, where only a country or a state is given), `iso_a2`, the Natural Earth `ne_id`
    (or a curated populated place in the same country) and the reconciliation date in `retrieved`.
    Update the `# as of` line, the cloud row's `retrieved` in `sources.json`, and the id list and
    `asOf` of `client/src/vis/geo/fixtures/cloud-inventory.json`.
