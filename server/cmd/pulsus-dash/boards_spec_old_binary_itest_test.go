@@ -1,0 +1,189 @@
+//go:build itest
+
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"strconv"
+	"testing"
+
+	"github.com/digitalis-io/pulsus-dash/server/internal/spec"
+	"github.com/digitalis-io/pulsus-dash/server/internal/store"
+	"github.com/digitalis-io/pulsus-dash/server/internal/store/storetest"
+)
+
+// oldSpecVersion is DASH_OLD_SPEC_VERSION, the board spec version of the previous release that
+// make itest-old-binary builds (its spec.BoardSchemaVersion).
+func oldSpecVersion(t *testing.T) int64 {
+	t.Helper()
+	v, err := strconv.ParseInt(os.Getenv("DASH_OLD_SPEC_VERSION"), 10, 64)
+	if err != nil || v < 1 {
+		t.Fatalf("DASH_OLD_SPEC_VERSION %q is not a positive integer", os.Getenv("DASH_OLD_SPEC_VERSION"))
+	}
+	return v
+}
+
+// oldFixture is DASH_OLD_FIXTURE: the previous release's own fixture of its spec version (the
+// first, by name, of v<P>-*.json in its tree).
+func oldFixture(t *testing.T) []byte {
+	t.Helper()
+	p := os.Getenv("DASH_OLD_FIXTURE")
+	if p == "" {
+		t.Fatal("DASH_OLD_FIXTURE is not set")
+	}
+	b, err := os.ReadFile(p) //nolint:gosec // the previous release's fixture (make itest-old-binary)
+	if err != nil {
+		t.Fatalf("DASH_OLD_FIXTURE: %v", err)
+	}
+	return b
+}
+
+// firstField is the first field error of a 400 invalid body, as "pointer key".
+func firstField(t *testing.T, b []byte) string {
+	t.Helper()
+	e, _ := obj(t, b)["error"].(map[string]any)
+	fields, _ := e["fields"].([]any)
+	if len(fields) == 0 {
+		return ""
+	}
+	f, _ := fields[0].(map[string]any)
+	p, _ := f["pointer"].(string)
+	k, _ := f["message_key"].(string)
+	return p + " " + k
+}
+
+// withClock is spec with a clock panel added below its top-level panels.
+func withClock(t *testing.T, raw []byte) []byte {
+	t.Helper()
+	var s map[string]any
+	if err := json.Unmarshal(raw, &s); err != nil {
+		t.Fatal(err)
+	}
+	panels, _ := s["panels"].([]any)
+	bottom := 0.0
+	for _, p := range panels {
+		g, _ := p.(map[string]any)["grid"].(map[string]any)
+		y, _ := g["y"].(float64)
+		h, _ := g["h"].(float64)
+		bottom = max(bottom, y+h)
+	}
+	s["panels"] = append(panels, map[string]any{"id": "widget-clock", "title": "Clock",
+		"grid": map[string]any{"x": 0, "y": bottom, "w": 4, "h": 4}, "vis": map[string]any{"kind": "clock"}})
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// itest:board-spec-old-binary (T11-015, T11-016; plan #198 Part 1 §4.4): the previous release,
+// at an older board spec version, beside this one on one database. It cannot read or overwrite a
+// head this release saved with widgets, refuses a widget spec on its own writes, and keeps working.
+func TestBoardSpecOldBinary(t *testing.T) {
+	bin := oldBinary(t)
+	if oldSpecVersion(t) == spec.BoardSchemaVersion {
+		t.Skip("the board spec version is unchanged")
+	}
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			ctx := itestCtx(t)
+			db := storetest.NewDB(t, c)
+			// 1 migrate with this release; start the previous release and this one.
+			if _, err := store.Migrate(ctx, db.OwnerURL, store.MigrateOptions{Seed: staticSeed}); err != nil {
+				t.Fatalf("migrate: %v", err)
+			}
+			old := startOld(t, bin, db)
+			cfg, env := dbConfig(t, db, seedYAML)
+			n := startServe(t, cfg, env)
+			n.waitReady(t)
+			versionsOf := func(uid string) int64 {
+				return storetest.QueryInt(t, db.SuperURL, "SELECT count(*) FROM board_versions v JOIN boards b ON b.org_id = v.org_id AND b.id = v.board_id WHERE b.uid = $1", uid)
+			}
+			headOf := func(uid string) string {
+				return storetest.QueryString(t, db.SuperURL, "SELECT encode(v.content_hash, 'hex') FROM boards b JOIN board_versions v ON v.org_id = b.org_id AND v.board_id = b.id AND v.version = b.head_version WHERE b.uid = $1", uid)
+			}
+			const tooNew = "board saved by a newer server version"
+
+			// 2 this release creates W, a board with widgets.
+			w := specFixture(t, "v5-widgets.json")
+			canonW, err := spec.Canonical(w)
+			if err != nil {
+				t.Fatal(err)
+			}
+			code, _, b := do(t, n, "POST", boardsURL, []byte(`{"spec":`+string(w)+`}`))
+			if code != 201 {
+				t.Fatalf("N create W = %d %s", code, b)
+			}
+			wUID, _ := obj(t, b)["uid"].(string)
+			code, _, b = do(t, n, "GET", boardsURL+"/"+wUID, nil)
+			if m := obj(t, b); code != 200 || m["schema_version"] != float64(spec.BoardSchemaVersion) || string(raw(m, "spec")) != string(canonW) {
+				t.Errorf("N get W = %d %s, want schema_version %d and the canonical fixture", code, b, spec.BoardSchemaVersion)
+			}
+
+			// 3 the previous release cannot read or overwrite W, and still lists it.
+			if code, _, b := doAt(t, old, "GET", boardsURL+"/"+wUID, nil); code != 503 || errMsg(t, b) != tooNew {
+				t.Errorf("old get W = %d %s, want 503 %s", code, b, tooNew)
+			}
+			v4 := specFixture(t, "v4-board-tags.json")
+			if code, _, b := doAt(t, old, "PUT", boardsURL+"/"+wUID, []byte(`{"spec":`+string(v4)+`}`), "If-Match", `"1"`); code != 503 || errMsg(t, b) != tooNew {
+				t.Errorf("old save W = %d %s, want 503 %s", code, b, tooNew)
+			}
+			if v := versionsOf(wUID); v != 1 {
+				t.Errorf("W has %d versions, want 1", v)
+			}
+			code, _, b = doAt(t, old, "GET", boardsURL, nil)
+			listed := false
+			items, _ := obj(t, b)["items"].([]any)
+			for _, it := range items {
+				if m, _ := it.(map[string]any); m["uid"] == wUID {
+					listed = true
+				}
+			}
+			if code != 200 || !listed {
+				t.Errorf("old list = %d %s, want W listed", code, b)
+			}
+
+			// 4 the previous release refuses a widget spec on create.
+			const noQuery = "/panels/0/query board.json.required"
+			if code, _, b := doAt(t, old, "POST", boardsURL, []byte(`{"spec":`+string(w)+`}`)); code != 400 || firstField(t, b) != noQuery {
+				t.Errorf("old create of W's spec = %d %s, want 400 %s", code, b, noQuery)
+			}
+
+			// 5 the previous release creates V from its own fixture and cannot save a widget spec
+			// over it; this release reads V, saves it with a clock, and the previous release is
+			// then refused.
+			vSpec := oldFixture(t)
+			code, _, b = doAt(t, old, "POST", boardsURL, []byte(`{"spec":`+string(vSpec)+`}`))
+			if code != 201 {
+				t.Fatalf("old create V = %d %s", code, b)
+			}
+			vUID, _ := obj(t, b)["uid"].(string)
+			before := headOf(vUID)
+			if code, _, b := doAt(t, old, "PUT", boardsURL+"/"+vUID, []byte(`{"spec":`+string(w)+`}`), "If-Match", `"1"`); code != 400 || firstField(t, b) != noQuery {
+				t.Errorf("old save of W's spec over V = %d %s, want 400 %s", code, b, noQuery)
+			}
+			if after, v := headOf(vUID), versionsOf(vUID); after != before || v != 1 {
+				t.Errorf("V head %s with %d versions, want %s with 1", after, v, before)
+			}
+			canonV, err := spec.Canonical(vSpec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			code, _, b = do(t, n, "GET", boardsURL+"/"+vUID, nil)
+			if m := obj(t, b); code != 200 || m["schema_version"] != float64(spec.BoardSchemaVersion) || string(raw(m, "spec")) != string(canonV) {
+				t.Errorf("N get V = %d %s, want schema_version %d and V's canonical spec", code, b, spec.BoardSchemaVersion)
+			}
+			if code, _, b := do(t, n, "PUT", boardsURL+"/"+vUID, []byte(`{"spec":`+string(withClock(t, canonV))+`}`), "If-Match", `"1"`); code != 200 {
+				t.Errorf("N save V with a clock = %d %s, want 200", code, b)
+			}
+			if code, _, b := doAt(t, old, "GET", boardsURL+"/"+vUID, nil); code != 503 || errMsg(t, b) != tooNew {
+				t.Errorf("old get V = %d %s, want 503 %s", code, b, tooNew)
+			}
+
+			// 6 the previous release's own round trip still passes.
+			boardCRUD(t, old, nil)
+			n.stop(t)
+		})
+	}
+}

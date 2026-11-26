@@ -201,13 +201,15 @@ func (v *validator) panels(pointer string, panels []Panel) {
 		default:
 			placed = append(placed, p.Grid)
 		}
-		v.str(pp+"/query/lang", p.Query.Lang, oneOf(queryLangs, "board.query.lang.invalid"))
-		v.str(pp+"/query/text", p.Query.Text, func(s string) string {
-			if len(s) > maxQueryBytes {
-				return "board.query.text.tooLong"
-			}
-			return ""
-		})
+		if p.Query != nil {
+			v.str(pp+"/query/lang", p.Query.Lang, oneOf(queryLangs, "board.query.lang.invalid"))
+			v.str(pp+"/query/text", p.Query.Text, func(s string) string {
+				if len(s) > maxQueryBytes {
+					return "board.query.text.tooLong"
+				}
+				return ""
+			})
+		}
 		v.str(pp+"/vis/kind", p.Vis.Kind, oneOf(visKinds, "board.vis.kind.invalid"))
 		v.vis(pp+"/vis", p.Vis)
 	}

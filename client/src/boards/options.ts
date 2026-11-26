@@ -49,6 +49,9 @@ export const OPTION_TYPES: Readonly<Record<OptionKey, 'string' | 'bool' | 'numbe
     graphMode: 'string',
   });
 
+/** Stub until the widgets version (plan #198 Part 1 §3.3). */
+export const OPTION_MEMBERS = Object.freeze({});
+
 /** The keys each kind allows, in `OPTION_ORDER`; any other key is `board.json.unknownKey`. */
 export const OPTION_KEYS: Readonly<Record<PanelVisKind, readonly OptionKey[]>> = Object.freeze({
   auto: ['reducer', 'parts'],

@@ -1,0 +1,84 @@
+{
+  "title": "Widgets",
+  "panels": [
+    {
+      "id": "p-1",
+      "title": "Runbook",
+      "grid": { "x": 0, "y": 0, "w": 6, "h": 8 },
+      "vis": {
+        "kind": "text",
+        "options": {
+          "mode": "markdown",
+          "content": "# Runbook\nSee [the guide](/boards/b1)."
+        }
+      }
+    },
+    {
+      "id": "p-2",
+      "title": "Request rate query",
+      "grid": { "x": 6, "y": 0, "w": 6, "h": 8 },
+      "vis": {
+        "kind": "text",
+        "options": {
+          "mode": "code",
+          "language": "promql",
+          "content": "sum(rate(http_requests_total[5m]))"
+        }
+      }
+    },
+    {
+      "id": "p-3",
+      "title": "Notes",
+      "grid": { "x": 0, "y": 8, "w": 6, "h": 8 },
+      "vis": { "kind": "text" }
+    },
+    {
+      "id": "p-4",
+      "title": "Clocks",
+      "grid": { "x": 6, "y": 8, "w": 6, "h": 8 },
+      "vis": {
+        "kind": "clock",
+        "options": {
+          "zones": [
+            { "tz": "", "label": "" },
+            { "tz": "Asia/Tokyo", "label": "Tokyo" },
+            { "tz": "America/New_York", "label": "" }
+          ],
+          "hourCycle": "h23",
+          "seconds": true,
+          "date": false,
+          "countdown": {
+            "to": "2026-11-26T14:00:00+09:00",
+            "label": "Maintenance",
+            "after": "countUp"
+          }
+        }
+      }
+    },
+    {
+      "id": "p-5",
+      "title": "Requests",
+      "grid": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": { "kind": "line" }
+    }
+  ],
+  "sections": [
+    {
+      "id": "s-1",
+      "title": "Time",
+      "collapsed": false,
+      "panels": [
+        {
+          "id": "p-6",
+          "title": "Local time",
+          "grid": { "x": 0, "y": 0, "w": 4, "h": 4 },
+          "vis": { "kind": "clock", "options": {} }
+        }
+      ]
+    }
+  ]
+}

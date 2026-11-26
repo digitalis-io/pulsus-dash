@@ -102,9 +102,14 @@ func startOld(t *testing.T, bin string, db *storetest.TestDB) string {
 
 // itest:board-tags-old-binary (T11-012, T11-013, T11-015; plan #215 §5): migration 4 on a seeded
 // schema-3 database is metadata only, the previous release keeps working beside this one, its
-// head moves go stale and are repaired, and it cannot move a head this release saved.
+// head moves go stale and are repaired, and it cannot move a head this release saved. It needs a
+// previous release before board spec 4 (#215: its writes keep the tags fresh), so it skips against
+// a later one; run it with OLD_BINARY_REF at such a release (docs/server/database.md).
 func TestBoardTagsOldBinary(t *testing.T) {
 	bin := oldBinary(t)
+	if oldSpecVersion(t) >= 4 {
+		t.Skip("the tags transition needs a previous release before board spec 4")
+	}
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {
 			ctx := itestCtx(t)

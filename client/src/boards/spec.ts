@@ -29,6 +29,12 @@ export const MAX_QUERY_BYTES = 16384;
 export const MAX_BOARD_TAGS = 16;
 /** A board tag: the OpenAPI `AnnotationTag` (the Go `tagPattern`). */
 export const TAG_PATTERN = /^[a-z0-9][a-z0-9_.:/-]{0,63}$/;
+/** Stubs until the widgets version (plan #198 Part 1 §3.3). */
+export const MAX_CONTENT_BYTES = 0;
+export const MAX_ZONES = 0;
+export function isRfc3339Offset(_s: string): boolean {
+  return false;
+}
 /** At most this many field errors per spec, in document order. */
 export const MAX_FIELD_ERRORS = 50;
 /**

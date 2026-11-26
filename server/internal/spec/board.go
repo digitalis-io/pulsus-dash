@@ -46,7 +46,7 @@ type Panel struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
 	Grid  Grid   `json:"grid"`
-	Query Query  `json:"query"`
+	Query *Query `json:"query,omitempty"`
 	Vis   Vis    `json:"vis"`
 }
 

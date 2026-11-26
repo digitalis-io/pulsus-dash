@@ -8,6 +8,7 @@ import {
   barchartOptions,
   keepOptions,
   OPTION_KEYS,
+  OPTION_MEMBERS,
   OPTION_ORDER,
   OPTION_TYPES,
   PENDING_KINDS,
@@ -63,10 +64,12 @@ describe('unit:board-options', () => {
   it('the key tables equal option-keys.json', () => {
     const f = JSON.parse(readFileSync(FIXTURE, 'utf8')) as {
       types: Record<string, string>;
+      members: Record<string, string[]>;
       kinds: Record<string, string[]>;
     };
     expect(OPTION_ORDER).toEqual(Object.keys(f.types));
     expect(OPTION_TYPES).toEqual(f.types);
+    expect(OPTION_MEMBERS).toEqual(f.members);
     expect(OPTION_KEYS).toEqual(f.kinds);
     // Every kind's keys are in OPTION_ORDER order.
     for (const [kind, keys] of Object.entries(OPTION_KEYS))
