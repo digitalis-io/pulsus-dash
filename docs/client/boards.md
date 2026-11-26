@@ -199,7 +199,8 @@ it, anything else shows `Enter a number` and writes nothing) and Baseline (None,
 A kind change (`withKind`) keeps only the options the new kind allows **with a valid value**:
 `keepOptions(kind, options)` keeps a key when `optionValueValid(kind, key, value)` holds
 (`boards/spec.ts`: the validator's own shape and rules run on a one-panel board holding only that
-key; a `language` is checked as for `mode: code`), then drops `max` when min ≥ max and `textMode`
+key; a `language` is checked as for `mode: code`, a board list's `query` as for `mode: search`
+and its `tag` as for `mode: tag`), then drops `max` when min ≥ max and `textMode`
 when it is `value` with the `grid` layout. So a stat's `orientation: 'auto'` does not survive a
 change to the bar chart (T22 §6.1).
 
