@@ -6,18 +6,77 @@
 //! A kind the engine does not draw yet (`bars`, `heatmap`, `stat`) clears and reports an empty
 //! summary (no series, null values and axis, the whole canvas as the plot) until #69. A spec that
 //! does not parse clears the frame and reports nothing.
+//!
+//! Part C2a1 (§3.2, §4.3): the camera and the size come from the input ring ([`Frames::apply`]);
+//! a frame without a camera is cleared and reports nothing. Each applied record sets the frame's
+//! ack seq, reported once per tick by [`Frames::take_applied`]. A presentation captures the state
+//! it draws when it is submitted ([`Frames::submit`]), and its `drawn` reports exactly that
+//! ([`Frames::complete`]), whatever was applied while it was in flight. Frame ids are never taken
+//! twice: a `create` at or below the highest id seen is refused.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use dash_marks::DrawList;
+use dash_marks::{DrawList, MarkItem};
 use dash_scene::{
-    Band, Camera, PlotCamera, Range64, Size64, Theme, Viewport, VisKind, VisSpec, build,
+    Band, Camera, PlotCamera, Range64, Size64, Theme, Viewport, VisKind, VisSpec, YRange, build,
 };
 use dash_wire::{Chunk, ChunkBuilder, ChunkError, IdAlloc, IdSpace, SeriesMeta};
 use serde_json::{Value, json};
 
 use crate::CoreError;
+use crate::events;
+use crate::input::{Decoded, Record};
+
+/// The camera of a Camera record: the time range, a manual value range (None = auto) and a fixed
+/// value-label band in CSS px (None = measured).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CameraIn {
+    pub view: Range64,
+    pub value: Option<Range64>,
+    pub band: Option<f64>,
+}
+
+impl CameraIn {
+    /// None: view not finite or hi ≤ lo; value: both NaN (auto) or finite with min < max; band:
+    /// NaN (measured) or finite ≥ 0.
+    pub fn from_record(view: (f64, f64), value: (f64, f64), band: f64) -> Option<Self> {
+        let (lo, hi) = view;
+        if !(lo.is_finite() && hi.is_finite() && hi > lo) {
+            return None;
+        }
+        let value = match value {
+            (a, b) if a.is_nan() && b.is_nan() => None,
+            (a, b) if a.is_finite() && b.is_finite() && a < b => Some(Range64 { lo: a, hi: b }),
+            _ => return None,
+        };
+        let band = match band {
+            b if b.is_nan() => None,
+            b if b.is_finite() && b >= 0.0 => Some(b),
+            _ => return None,
+        };
+        Some(Self {
+            view: Range64 { lo, hi },
+            value,
+            band,
+        })
+    }
+}
+
+/// What one submitted presentation shows, captured at submit (C2a2 adds `stage`): the frame's
+/// last applied seq, the seq of its last applied Resize, its CSS size and DPR, and the series its
+/// draw list draws.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Presented {
+    pub seq: u32,
+    pub rseq: u32,
+    pub css: (f32, f32),
+    pub dpr: f32,
+    pub series: u32,
+}
+
+/// A Resize as applied: CSS px, DPR and device px.
+pub type FrameSize = ((f32, f32), f32, (u32, u32));
 
 /// The chunk being built from TS series.
 #[derive(Debug)]
@@ -35,14 +94,21 @@ struct Frame {
     frame_id: Option<String>,
     /// `None` before the first spec and after a spec error (the frame is cleared).
     spec: Option<VisSpec>,
-    window: Option<(f64, f64)>,
+    camera: Option<CameraIn>,
     theme: Theme,
-    /// CSS px and DPR of the last resize.
-    size: Option<(f64, f64, f32)>,
+    /// CSS px, DPR and device px of the last resize.
+    size: Option<FrameSize>,
     data: Option<Arc<Chunk>>,
     building: Option<Building>,
     /// The summary JSON reported last.
     last_a11y: Option<String>,
+    /// The seq of the last record applied (the ack) and of the last Resize applied.
+    seq: u32,
+    rseq: u32,
+    /// Records were applied since the last `take_applied`.
+    applied: bool,
+    /// Series the last built draw list draws.
+    series: u32,
 }
 
 impl Frame {
@@ -50,12 +116,16 @@ impl Frame {
         Self {
             frame_id,
             spec: None,
-            window: None,
+            camera: None,
             theme: Theme::Dark,
             size: None,
             data: None,
             building: None,
             last_a11y: None,
+            seq: 0,
+            rseq: 0,
+            applied: false,
+            series: 0,
         }
     }
 }
@@ -65,6 +135,10 @@ impl Frame {
 pub struct Frames {
     frames: BTreeMap<u32, Frame>,
     ids: IdAlloc,
+    /// The highest frame id created (ids are never reused, §3.1).
+    highest: u32,
+    /// Camera records rejected by `apply`.
+    bad: u32,
 }
 
 impl Default for Frames {
@@ -72,8 +146,21 @@ impl Default for Frames {
         Self {
             frames: BTreeMap::new(),
             ids: IdAlloc::new(IdSpace::Local),
+            highest: 0,
+            bad: 0,
         }
     }
+}
+
+/// Series a draw list draws.
+pub fn series_of(list: &DrawList) -> u32 {
+    list.items
+        .iter()
+        .map(|i| match i {
+            MarkItem::Line { series, .. } => series.end.saturating_sub(series.start),
+            MarkItem::Guides { .. } => 0,
+        })
+        .sum()
 }
 
 /// `key` as the series key hash: exactly 16 lower-case hex digits (the TS `KEY_PATTERN`).
@@ -112,9 +199,98 @@ impl Frames {
         Self::default()
     }
 
-    /// A new frame (replacing one with the same id).
-    pub fn create(&mut self, id: u32, frame_id: Option<String>) {
+    /// A new frame; false (nothing changes) when `id` is at or below the highest id seen.
+    pub fn create(&mut self, id: u32, frame_id: Option<String>) -> bool {
+        if id <= self.highest {
+            return false;
+        }
+        self.highest = id;
         self.frames.insert(id, Frame::new(frame_id));
+        true
+    }
+
+    /// Applies one input record: the frame it dirtied, or None. A record of an unknown frame (one
+    /// disposed after the publish) is ignored. A Camera that `CameraIn::from_record` rejects is
+    /// counted in [`Frames::bad`] and leaves the camera unchanged, but still dirties the frame: the
+    /// ack seq moves to the record's and the next presentation carries it.
+    pub fn apply(&mut self, d: &Decoded) -> Option<u32> {
+        match d.rec {
+            Record::Resize {
+                frame,
+                css_w,
+                css_h,
+                dpr,
+                device_w,
+                device_h,
+            } => {
+                let f = self.frames.get_mut(&frame)?;
+                f.size = Some(((css_w, css_h), dpr, (device_w, device_h)));
+                f.rseq = d.seq;
+                f.seq = d.seq;
+                f.applied = true;
+                Some(frame)
+            }
+            Record::Camera {
+                frame,
+                view,
+                value,
+                band,
+            } => {
+                let f = self.frames.get_mut(&frame)?;
+                f.seq = d.seq;
+                f.applied = true;
+                match CameraIn::from_record(view, value, band) {
+                    Some(c) => {
+                        f.camera = Some(c);
+                        Some(frame)
+                    }
+                    // Rejected: counted, the camera unchanged, but the frame still presents, so
+                    // the next `drawn` carries the consumed seq and the adapter's settle resolves.
+                    None => {
+                        self.bad = self.bad.saturating_add(1);
+                        Some(frame)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Camera records rejected by `apply` so far.
+    pub fn bad(&self) -> u32 {
+        self.bad
+    }
+
+    /// The state of the list being drawn: call it when the frame's draw list is submitted.
+    pub fn submit(&self, id: u32) -> Option<Presented> {
+        let f = self.frames.get(&id)?;
+        let (css, dpr, _) = f.size.unwrap_or(((0.0, 0.0), 1.0, (0, 0)));
+        Some(Presented {
+            seq: f.seq,
+            rseq: f.rseq,
+            css,
+            dpr,
+            series: f.series,
+        })
+    }
+
+    /// The presentation `p` is complete: its `drawn` (ADR-0019), from `p` only; none for a frame
+    /// gone since, or at size 0.
+    pub fn complete(&mut self, id: u32, p: &Presented, start_ms: f64, end_ms: f64) -> Vec<String> {
+        if !self.frames.contains_key(&id) || !(p.css.0 > 0.0 && p.css.1 > 0.0) {
+            return Vec::new();
+        }
+        vec![events::drawn(id, p, start_ms, end_ms)]
+    }
+
+    /// The end of a tick: one `applied` per frame with records applied since the last call.
+    pub fn take_applied(&mut self) -> Vec<String> {
+        let mut out = Vec::new();
+        for (id, f) in &mut self.frames {
+            if std::mem::take(&mut f.applied) {
+                out.push(events::applied(*id, f.seq));
+            }
+        }
+        out
     }
 
     pub fn contains(&self, id: u32) -> bool {
@@ -141,9 +317,9 @@ impl Frames {
         }
     }
 
-    pub fn set_window(&mut self, id: u32, from_ms: f64, to_ms: f64) {
+    pub fn set_camera(&mut self, id: u32, c: CameraIn) {
         if let Some(f) = self.frames.get_mut(&id) {
-            f.window = Some((from_ms, to_ms));
+            f.camera = Some(c);
         }
     }
 
@@ -153,14 +329,16 @@ impl Frames {
         }
     }
 
-    pub fn resize(&mut self, id: u32, css_w: f64, css_h: f64, dpr: f32) {
+    /// CSS px, DPR and device px; `rseq` is the Resize record's seq.
+    pub fn resize(&mut self, id: u32, css: (f32, f32), dpr: f32, device: (u32, u32), rseq: u32) {
         if let Some(f) = self.frames.get_mut(&id) {
-            f.size = Some((css_w, css_h, dpr));
+            f.size = Some((css, dpr, device));
+            f.rseq = rseq;
         }
     }
 
-    /// CSS px and DPR of the last resize.
-    pub fn size(&self, id: u32) -> Option<(f64, f64, f32)> {
+    /// CSS px, DPR and device px of the last resize.
+    pub fn size(&self, id: u32) -> Option<FrameSize> {
         self.frames.get(&id)?.size
     }
 
@@ -251,9 +429,14 @@ impl Frames {
     /// build; `None` for an unknown frame.
     pub fn build(&mut self, id: u32) -> Option<(DrawList, Option<String>)> {
         let f = self.frames.get_mut(&id)?;
-        let (w, h, dpr) = f.size.unwrap_or((0.0, 0.0, 1.0));
-        let css = Size64 { w, h };
-        let window = f.window.unwrap_or((f64::NAN, f64::NAN));
+        let ((w, h), dpr, _) = f.size.unwrap_or(((0.0, 0.0), 1.0, (0, 0)));
+        let css = Size64 {
+            w: f64::from(w),
+            h: f64::from(h),
+        };
+        let window = f
+            .camera
+            .map_or((f64::NAN, f64::NAN), |c| (c.view.lo, c.view.hi));
         let spec = f
             .spec
             .clone()
@@ -264,17 +447,26 @@ impl Frames {
             css,
             dpr,
             theme: f.theme,
-            camera: Camera::Plot2D(PlotCamera::idle(Range64::from(window), &spec)),
+            camera: Camera::Plot2D(PlotCamera {
+                x: Range64::from(window),
+                y: f.camera
+                    .and_then(|c| c.value)
+                    .map_or(YRange::Auto, YRange::Manual),
+            }),
             spec: spec.clone(),
             data: f.data.clone(),
-            band: Band::Measure,
+            band: f
+                .camera
+                .and_then(|c| c.band)
+                .map_or(Band::Measure, Band::Fixed),
         };
         let (list, summary) = build(&v);
+        f.series = series_of(&list);
         let summary = match (&f.spec, summary) {
             (None, _) => None,
-            (Some(VisSpec::Unsupported(kind)), _) => {
-                f.window.map(|win| unsupported_summary(*kind, win, css))
-            }
+            (Some(VisSpec::Unsupported(kind)), _) => f
+                .camera
+                .map(|c| unsupported_summary(*kind, (c.view.lo, c.view.hi), css)),
             (Some(VisSpec::Line(_)), Some(s)) => serde_json::to_value(s).ok().map(|mut s| {
                 if let Some(o) = s.as_object_mut() {
                     o.insert("thresholdLabels".into(), json!([]));

@@ -20,10 +20,8 @@ export const frame_data_clear = absent;
 export const frame_data_end = absent;
 export const frame_data_series = absent;
 export const frame_dispose = absent;
-export const frame_resize = absent;
 export const frame_set_spec = absent;
 export const frame_set_theme = absent;
-export const frame_set_window = absent;
 export const pool_run = absent;
 export const pool_start = absent;
 /** Never constructed: `engine_start` throws first. */

@@ -17,6 +17,7 @@ SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11
 
 .PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci engine-image engine-test engine-lint \
 	engine-goldens engine-goldens-update engine-web-image engine-wasm engine-wasm-check engine-e2e \
+	engine-wasm-probe e2e-build-probe \
 	engine-gpu-smoke \
 	go-licenses no-pulsusdb-host dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local itest-old-binary dev-smoke \
 	itest-local-selftest bench-bff cpu-instr cpu-instr-update
@@ -40,15 +41,17 @@ ITEST_PG15_PORT ?= 57433
 # The goal itest-local runs against its stack: itest, or itest-old-binary.
 ITEST_GOAL ?= itest
 
-# The client build the BFF embeds (VITE_API_MODE=$(API_MODE)), with the engine (plan #68 C1).
+# The client build the BFF embeds (VITE_API_MODE=$(API_MODE)), with the engine (plan #68 C1), into
+# client/$(CLIENT_OUT) (the probe build writes client/dist-probe, plan #68 C2a1).
+CLIENT_OUT ?= dist
 client-build: engine-wasm
-	VITE_API_MODE=$(API_MODE) VITE_GIT_SHA=$(GIT_SHA) npm --prefix client run build
+	VITE_API_MODE=$(API_MODE) VITE_GIT_SHA=$(GIT_SHA) npm --prefix client run build -- --outDir $(CLIENT_OUT) --emptyOutDir
 
 # Packs client/dist into the embedded tree with a signed manifest, under a key generated afresh
 # for this build (plan #59 Q3); the private key never leaves build/keys/.
 assets-pack:
 	node client/scripts/pack-assets.ts --gen-key build/keys
-	node client/scripts/pack-assets.ts --in client/dist --out server/internal/gateway/static/dist --key build/keys/asset-signing.key
+	node client/scripts/pack-assets.ts --in client/$(CLIENT_OUT) --out server/internal/gateway/static/dist --key build/keys/asset-signing.key
 
 # The release binary: the client embedded (-tags embedassets) and the build's public key.
 build: client-build assets-pack
@@ -60,6 +63,14 @@ e2e-build:
 	$(MAKE) build API_MODE=stub VERSION=0.1.0-e2e OUT=$(CURDIR)/build/e2e-stub/pulsus-dash
 	$(MAKE) build API_MODE=http VERSION=0.1.0-e2e OUT=$(CURDIR)/build/e2e-http/pulsus-dash
 	CGO_ENABLED=0 go -C server build -trimpath -o $(CURDIR)/build/e2e-fake/pulsus-fake ./cmd/pulsus-fake
+
+# The probe build of e2e:shim-fuzz (plan #68 C2a1 §3.5): the fault build with the probe engine
+# (VITE_ENGINE_PROBE=1: client/src/engine/wasm/gen-probe/) in client/dist-probe, served by its own
+# stub BFF (tools/e2e/serve.sh probe PORT). Its tree must hold every fault site and the probe
+# export; no other build may (ci:probe-absent).
+e2e-build-probe: engine-wasm-probe
+	VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1 $(MAKE) build API_MODE=stub VERSION=0.1.0-e2e CLIENT_OUT=dist-probe OUT=$(CURDIR)/build/e2e-probe/pulsus-dash
+	node client/scripts/probe-absent.ts --expect-faults --expect-probe client/dist-probe
 
 # Needs make e2e-build and E2E_PG_APP_URL / E2E_PG_OWNER_URL (docs/development/build-and-ci.md).
 e2e:
@@ -267,6 +278,15 @@ else
 	$(ENGINE_WEB_RUN) make engine-wasm
 endif
 
+# client/src/engine/wasm/gen-probe/ (git-ignored): the engine with the `probe` feature, for the probe
+# build only (`cargo xtask build-wasm --probe`).
+engine-wasm-probe:
+ifeq ($(ENGINE_IN_IMAGE),1)
+	cd engine && cargo xtask build-wasm --probe
+else
+	$(ENGINE_WEB_RUN) make engine-wasm-probe
+endif
+
 # ci:engine-gen: two builds from separate target directories are byte-equal, and their .d.ts and
 # the generated layout equal the committed files.
 ENGINE_GEN_FILES := dash_core_mt.js dash_core_mt.d.ts dash_core_mt_bg.wasm dash_core_mt_bg.wasm.d.ts
@@ -296,7 +316,8 @@ endif
 # compose service, in its own project, taken down with its volume on exit; E2E_PG_APP_URL and
 # E2E_PG_OWNER_URL set by the caller skip it), then in the image: the fault build served by the
 # e2e BFFs (its tree must hold every fault site), the clean stub and http builds (engine row, no
-# test hook), and the specs with dash-golden. The WebGPU leg's report-only reason heads the run.
+# test hook), the probe build (e2e-build-probe, for e2e:shim-fuzz only), and the specs with
+# dash-golden. The WebGPU leg's report-only reason heads the run.
 engine-e2e:
 ifeq ($(ENGINE_IN_IMAGE),1)
 	cd client && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && \
@@ -306,6 +327,7 @@ ifeq ($(ENGINE_IN_IMAGE),1)
 	  VITE_API_MODE=http npx vite build --outDir dist-release-http --emptyOutDir && \
 	  npm run size -- dist-release-stub && npm run size -- dist-release-http && \
 	  node scripts/probe-absent.ts dist-release-stub && node scripts/probe-absent.ts dist-release-http && \
+	  $(MAKE) -C .. e2e-build-probe && \
 	  (cd ../engine && cargo build -p dash-golden --release --locked) && \
 	  DASH_GOLDEN_BIN=$${CARGO_TARGET_DIR:-../engine/target}/release/dash-golden \
 	    npx playwright test -c playwright.engine.config.ts

@@ -35,7 +35,9 @@ export function engine_start(force_t2: boolean, caps_bits: number, epoch: number
 export function engine_tick(now_ms: number): string;
 
 /**
- * Whether another animation frame is needed (dirty, awaiting a read-back, or events queued).
+ * Whether another animation frame is needed (dirty, awaiting a read-back, events queued, or a
+ * device loss); otherwise the worker goes idle unless the input ring has records
+ * (`input::before_sleep`): then it ticks again.
  */
 export function engine_wants_frame(): boolean;
 
@@ -61,19 +63,12 @@ export function frame_data_series(id: number, key: string, names: string[], valu
 
 export function frame_dispose(id: number): void;
 
-/**
- * CSS px and DPR (a message until C2's input ring carries Resize records).
- */
-export function frame_resize(id: number, css_w: number, css_h: number, dpr: number): void;
-
 export function frame_set_spec(id: number, json: string): void;
 
 /**
  * 0 dark, 1 light.
  */
 export function frame_set_theme(id: number, theme: number): void;
-
-export function frame_set_window(id: number, from_ms: number, to_ms: number): void;
 
 /**
  * Runs the pool thread `ptr` (from `pool_start`) on this pool worker; returns only when the
@@ -105,21 +100,19 @@ export interface InitOutput {
     readonly frame_data_end: (a: number) => [number, number];
     readonly frame_data_series: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number];
     readonly frame_dispose: (a: number) => void;
-    readonly frame_resize: (a: number, b: number, c: number, d: number) => void;
     readonly frame_set_spec: (a: number, b: number, c: number) => [number, number];
     readonly frame_set_theme: (a: number, b: number) => void;
-    readonly frame_set_window: (a: number, b: number, c: number) => void;
     readonly pool_run: (a: number) => void;
     readonly pool_start: (a: number, b: any) => [number, number];
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___js_sys_5ad0944f19124a33___Function_fn_wasm_bindgen_fdf7a4a3b6a46677___JsValue_____wasm_bindgen_fdf7a4a3b6a46677___sys__Undefined___js_sys_5ad0944f19124a33___Function_fn_wasm_bindgen_fdf7a4a3b6a46677___JsValue_____wasm_bindgen_fdf7a4a3b6a46677___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue__core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true_: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true_: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__28: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__29: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__26: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__27: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___js_sys_5ad0944f19124a33___futures__task__wait_async_polyfill__MessageEvent______true_: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true_: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__26: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__27: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__24: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__25: (a: number, b: number, c: any) => void;
     readonly memory: WebAssembly.Memory;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

@@ -9,6 +9,7 @@ describe('unit:engine-fixtures', () => {
     expect(Object.keys(files).sort()).toEqual([
       'columns.json',
       'format.json',
+      'input-ring.json',
       'layout.json',
       'palette.json',
       'pow.json',

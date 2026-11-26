@@ -7,7 +7,7 @@ use dash_protocol::{CB_ALIGN, CB_BYTES, LAYOUT_VERSION, REGIONS, Status, caps, g
 fn offsets_are_the_t03_table() {
     assert_eq!(LAYOUT_VERSION, 1);
     assert_eq!((CB_BYTES, CB_ALIGN), (0x40000, 64));
-    let want: [(&str, u32); 17] = [
+    let want: [(&str, u32); 19] = [
         ("MAGIC", 0x00),
         ("LAYOUT_VERSION", 0x04),
         ("CAPS", 0x08),
@@ -21,9 +21,11 @@ fn offsets_are_the_t03_table() {
         ("INPUT_HEAD", 0x80),
         ("INPUT_TAIL", 0xC0),
         ("INPUT_OVERFLOW", 0xC4),
+        ("INPUT_IDLE", 0xC8),
         ("CHORDS", 0x100),
         ("COPY", 0x400),
         ("COUNTERS", 0x4400),
+        ("INPUT_BAD", 0x4D10),
         ("INPUT_DATA", 0x10000),
     ];
     assert_eq!(off::ALL, want);

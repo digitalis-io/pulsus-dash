@@ -1,10 +1,13 @@
 //! The JSON events the render worker posts to the main thread (plan #68 C1 §3.4): `a11y` (the TS
 //! `FrameSummary`), `drawn` (ADR-0019, with the times and series count of the `chart-draw`
-//! measure) and `failed` (the frame falls back to Canvas 2D). `engine_tick` joins them into one
-//! JSON array per frame.
+//! measure) and `failed` (the frame falls back to Canvas 2D). Part C2a1 (§3.4) adds `created` (the
+//! frame's input records may be published), `applied` (the ack of a frame's records in one tick)
+//! and the seqs of a `drawn`'s presentation. `engine_tick` joins them into one JSON array per frame.
 
 use dash_marks::DrawnEvent;
 use serde_json::json;
+
+use crate::frames::Presented;
 
 /// Why a frame falls back to Canvas 2D.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,18 +35,36 @@ pub fn a11y(id: u32, summary_json: &str) -> String {
     format!(r#"{{"t":"a11y","id":{id},"ev":{summary_json}}}"#)
 }
 
-/// `{"t":"drawn","id":…,"ev":{"cssWidth","cssHeight","dpr"},"startMs":…,"endMs":…,"series":…}`;
+/// `{"t":"drawn","id":…,"ev":{"cssWidth","cssHeight","dpr"},"startMs":…,"endMs":…,"series":…,
+/// "seq":…,"rseq":…}` of the presentation `p` (its CSS size, DPR and series as captured at submit);
 /// the times are on the main thread's time origin.
-pub fn drawn(id: u32, ev: &DrawnEvent, start_ms: f64, end_ms: f64, series: u32) -> String {
+pub fn drawn(id: u32, p: &Presented, start_ms: f64, end_ms: f64) -> String {
+    let ev = DrawnEvent {
+        css_width: f64::from(p.css.0),
+        css_height: f64::from(p.css.1),
+        dpr: f64::from(p.dpr),
+    };
     json!({
         "t": "drawn",
         "id": id,
         "ev": ev,
         "startMs": start_ms,
         "endMs": end_ms,
-        "series": series,
+        "series": p.series,
+        "seq": p.seq,
+        "rseq": p.rseq,
     })
     .to_string()
+}
+
+/// `{"t":"created","id":…}`: `frame_create` took the id.
+pub fn created(id: u32) -> String {
+    json!({"t": "created", "id": id}).to_string()
+}
+
+/// `{"t":"applied","id":…,"seq":…}`: the last seq of the frame's records applied this tick.
+pub fn applied(id: u32, seq: u32) -> String {
+    json!({"t": "applied", "id": id, "seq": seq}).to_string()
 }
 
 /// `{"t":"tier","tier":"t1"|"t2","status":1|2,"adapter":…}`: the engine's tier, runtime status

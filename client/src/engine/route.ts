@@ -44,14 +44,21 @@ export interface WasmBackend {
   ): ChartFrame;
 }
 
-const EVENTS: readonly (keyof FrameEvents)[] = [
-  'hover',
-  'brush',
-  'select',
-  'a11y',
-  'drawn',
-  'commit',
-];
+/**
+ * Every `FrameEvents` key, forwarded from the bound frame (a `Record`, so a new event cannot be
+ * left out: `mark` and `pick` were, plan #68 C2a1).
+ */
+const FORWARDED: Readonly<Record<keyof FrameEvents, true>> = {
+  hover: true,
+  brush: true,
+  select: true,
+  a11y: true,
+  drawn: true,
+  commit: true,
+  mark: true,
+  pick: true,
+};
+const EVENTS = Object.keys(FORWARDED) as (keyof FrameEvents)[];
 
 type Listener = (ev: never) => void;
 

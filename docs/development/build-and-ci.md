@@ -845,8 +845,10 @@ repository at `/w`, git's common directory mounted where a worktree's `.git` fil
 | `make engine-web-image` | builds `pulsus-engine-web:local` (after `make engine-image`) | — |
 | `make engine-wasm` | `cargo xtask build-wasm` into the git-ignored `client/src/engine/wasm/gen/`; `make build` (so `make e2e-build`) needs it | — |
 | `make engine-wasm-check` | two builds from separate target directories, byte-equal; the generated `dash_core_mt.d.ts` equal to the committed one; `cargo xtask gen-layout --check` | `ci:engine-gen` |
+| `make engine-wasm-probe` | `cargo xtask build-wasm --probe`: the engine with the `probe` feature (`engine_probe_input`, `engine_probe_ring_start`) into the git-ignored `client/src/engine/wasm/gen-probe/` (plan #68 C2a1) | — |
+| `make e2e-build-probe` | after `make engine-wasm-probe`: `VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1 make build API_MODE=stub CLIENT_OUT=dist-probe` (Vite resolves `virtual:dash-engine` to `gen-probe/`) into `client/dist-probe` and `build/e2e-probe/pulsus-dash`, then `probe-absent.ts --expect-faults --expect-probe client/dist-probe` | `ci:probe-absent` (probe tree) |
 | `make engine-gpu-smoke` | per engine e2e project, the adapter headless Chromium sees and whether it renders | — |
-| `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` and `probe-absent.ts` on each; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine) |
+| `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` and `probe-absent.ts` on each; `make e2e-build-probe`; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine), `e2e:shim-fuzz` |
 
 **Projects.** `lavapipe` (gated): `--use-angle=vulkan --enable-features=Vulkan --use-vulkan=native
 --ignore-gpu-blocklist --disable-vulkan-surface`, WebGL2 through ANGLE on lavapipe.
@@ -856,7 +858,9 @@ SwiftShader cannot render in the pinned image (`onSubmittedWorkDone` and `mapAsy
 `client/e2e/engine-legs.json` (`{"webgpu": "report", "reason": …}`) makes the `swiftshader`
 project's failures soft; the run, `make engine-e2e` and `make engine-gpu-smoke` print
 `WebGPU leg report-only: <reason>`. Remove the file when the leg renders. Real-GPU WebGPU is a
-hardware-runner follow-up.
+hardware-runner follow-up. `probe` (plan #68 C2a1): the `lavapipe` flags against the probe build's
+BFF (`tools/e2e/serve.sh probe 4175`), `e2e/engine-shim-fuzz.spec.ts` only; the other two
+projects skip that spec, and every other spec and golden runs on the fault build (release wasm).
 
 **Goldens in the browser.** `golden:engine-line` compares the browser engine's canvas
 (`&engine=wasm&mode=t2`, status 2, llvmpipe) with `dash-golden render` of the same page, theme, CSS
@@ -864,10 +868,12 @@ size and DPR: both images `round(css × dpr)`, `compare --max 0.001 --tile-max 0
 parity` is sampled geometric parity with Canvas 2D (equal plot rects, a sampled line mask); the two
 renderers anti-alias differently by design.
 
-**`ci:probe-absent`.** `node scripts/probe-absent.ts [--expect-faults] <dist>` scans every file of
-the tree, recursively: `__dashProbe` or `__pulsus_engine_fault__` in a release tree is
-`probe-in-release`; with `--expect-faults` each of the three fault sites
-(`__pulsus_engine_fault__:route|boot|worker`) missing is `fault-site-missing`.
+**`ci:probe-absent`.** `node scripts/probe-absent.ts [--expect-faults] [--expect-probe] <dist>`
+scans every file of the tree, recursively: `__dashProbe` or `__pulsus_engine_fault__` in a release
+tree is `probe-in-release`; with `--expect-faults` each of the three fault sites
+(`__pulsus_engine_fault__:route|boot|worker`) missing is `fault-site-missing`. The probe engine's
+export `engine_probe_input` in any `.wasm` is `probe-in-release` in every tree (the fault build's
+included) unless `--expect-probe`, which requires it instead (`probe-missing`).
 
 ### Engine CI
 
