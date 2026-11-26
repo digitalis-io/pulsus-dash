@@ -1,12 +1,15 @@
 /**
  * Panel options (board spec v3; T22 §6.1, plan #173 Part 1 §3.3 and §3.6; the widget keys by board
  * spec v5, plan #198 Part 1, T24 §5.1; the board list keys by v6, plan #216 Part 1, T24 §5.5): the
- * keys each kind allows, their types, members and values,
- * the kinds not drawn yet, a kind change, and the bar chart's defaults. The Go tables (`server/internal/spec/shape.go`, `validate.go`) are the same; both
+ * keys each kind allows, their types, members and values, the kinds not drawn yet, a kind change
+ * (valid values only, #173 Part 3a), and the bar chart's defaults. The Go tables
+ * (`server/internal/spec/shape.go`, `validate.go`) are the same; both
  * suites compare them with `api/fixtures/board-spec/option-keys.json`.
  */
 import type { DataPanelSpec, DataVisKind, PanelVisKind, VisOptions } from '../api/types';
 import type { Reducer } from '../data/frames';
+// A cycle with `spec.ts`, safe: neither module reads the other's bindings while it loads.
+import { optionValueValid } from './spec';
 
 export type OptionKey = keyof VisOptions;
 export type Sort = 'valueDesc' | 'valueAsc' | 'label' | 'none';
@@ -166,13 +169,21 @@ export interface BarchartOptions {
   readonly max: number | undefined;
 }
 
-/** The options `kind` allows, of `o`; undefined when none is left. */
+export { optionValueValid };
+
+/**
+ * The options of `o` that `kind` allows with a valid value (`optionValueValid`, T22 §6.1, plan
+ * #173 Part 3a §3.9); then `max` is dropped when min ≥ max, and `textMode` when it is `value` with
+ * the `grid` layout. Undefined when none is left.
+ */
 export function keepOptions(kind: PanelVisKind, o: VisOptions | undefined): VisOptions | undefined {
   if (o === undefined) return undefined;
-  const allowed: readonly string[] = OPTION_KEYS[kind];
-  const kept = Object.fromEntries(
-    Object.entries(o).filter(([k]) => allowed.includes(k)),
-  ) as VisOptions;
+  const kept: Record<string, unknown> = Object.fromEntries(
+    Object.entries(o).filter(([k, v]) => optionValueValid(kind, k as OptionKey, v)),
+  );
+  const { min, max } = kept as VisOptions;
+  if (min !== undefined && max !== undefined && min >= max) delete kept['max'];
+  if (kept['textMode'] === 'value' && kept['layout'] === 'grid') delete kept['textMode'];
   return Object.keys(kept).length === 0 ? undefined : kept;
 }
 

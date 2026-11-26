@@ -2,10 +2,12 @@
  * `<CategoryChart>` (plan #173 Part 2 §4.1, §5): the fit per cell size, the frame or the `tooSmall`
  * notice, the hidden-labels note and the meter. The offscreen measure is 6 px per character.
  */
-import { act, cleanup, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BOTTOM, LABEL_HEIGHT } from '../engine/canvas2d/layout';
-import { byVersion, fkey, instant } from '../test/categoryFixtures';
+import { byVersion, fkey, instant, many } from '../test/categoryFixtures';
 import { lastFrame, renderChart } from '../test/chartFrameKit';
 import { fakeEngine } from '../test/fakeEngine';
 import { installResizeObserver, resizeOf } from '../test/fakeResizeObserver';
@@ -125,15 +127,20 @@ describe('unit:barchart-plan (CategoryChart)', () => {
 
 describe('bar list (review r1: the bars for assistive technology)', () => {
   const items = (): string[] =>
-    [...document.querySelectorAll('[data-bar-list] li')].map((li) => li.textContent);
+    [
+      ...document.querySelectorAll(
+        '[data-bar-list] [role=option], [data-bar-list] + [id$="-more"]',
+      ),
+    ].map((li) => li.textContent);
 
   it('names every drawn bar in full with its value, then the bars not shown', () => {
     const { engine, size } = mount(model());
     size(600, 240);
     const list = document.querySelector('[data-bar-list]');
-    expect(list?.tagName).toBe('UL');
+    expect(list).toHaveAttribute('role', 'listbox');
     expect(lastFrame(engine).canvas).toHaveAttribute('aria-describedby', list?.id ?? 'none');
     expect(items()).toEqual(['2.31: 120', '2.29: 40', '2.33: 15', '2.30: 7', '2.32: 3']);
+    // One tab stop: the listbox itself (ADR-0029); its options are not focusable.
     expect(list?.querySelectorAll('[tabindex], a, button')).toHaveLength(0);
     // A cap of 2 (extent 28 px): min and max, then the rest counted.
     size(600, 28 + 8 + BOTTOM);
@@ -163,5 +170,97 @@ describe('bar list (review r1: the bars for assistive technology)', () => {
     again.size(600, 240);
     expect(items()[0]).toBe('2.31: 120, Failing');
     expect(items()[1]).toBe('2.29: 40, OK');
+  });
+});
+
+/** A caller that keeps the table flag, as a board panel or the gallery does (plan §3.6). */
+function mountTable(m: BarchartModel, o: { ghost?: boolean; baselineFailed?: boolean } = {}) {
+  const engine = fakeEngine();
+  function Caller() {
+    const [table, setTable] = useState(false);
+    return (
+      <CategoryChart
+        model={m}
+        title="Versions"
+        onNarrow={vi.fn()}
+        table={table}
+        onTable={setTable}
+        {...(o.ghost === undefined ? {} : { ghost: o.ghost })}
+        {...(o.baselineFailed === undefined ? {} : { baselineFailed: o.baselineFailed })}
+      />
+    );
+  }
+  renderChart(engine, <Caller />);
+  const cell = document.querySelector('[data-category-cell]');
+  if (cell === null) throw new Error('no cell');
+  const size = (w: number, h: number): void => {
+    act(() => {
+      resizeOf(cell, w, h);
+    });
+  };
+  const shiftT = (el: Element): boolean => {
+    let passed = true;
+    act(() => {
+      passed = fireEvent.keyDown(el, { key: 'T', shiftKey: true });
+    });
+    return passed;
+  };
+  return { engine, size, shiftT };
+}
+
+describe('unit:category-chart-table', () => {
+  it('Shift+T swaps the chart and the table; focus follows; inputs and no onTable are left alone', () => {
+    const { engine, size, shiftT } = mountTable(model(), { ghost: true, baselineFailed: true });
+    size(600, 240);
+    expect(lastFrame(engine).last('setSpec')?.[0]).toMatchObject({ ghost: true });
+    expect(screen.getByText('Baseline unavailable: the shifted query failed.')).toBeInTheDocument();
+    expect(shiftT(screen.getByRole('listbox'))).toBe(false);
+    expect(frames()).toBe(0);
+    const grid = screen.getByRole('grid', { name: 'Versions' });
+    expect(document.activeElement).toBe(grid);
+    shiftT(grid);
+    expect(frames()).toBe(1);
+    expect(screen.queryByRole('grid')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('listbox'));
+
+    const root = document.querySelector('[data-category-chart]');
+    const input = document.createElement('input');
+    root?.appendChild(input);
+    expect(shiftT(input)).toBe(true);
+    expect(frames()).toBe(1);
+    input.remove();
+
+    cleanup();
+    const plain = mount(model());
+    plain.size(600, 240);
+    expect(shiftT(screen.getByRole('listbox'))).toBe(true);
+    expect(frames()).toBe(1);
+  });
+});
+
+describe('unit:category-tiny (table)', () => {
+  it('the tooSmall notice is focusable and Shift+T from it lists every row', async () => {
+    const rows = many();
+    const r = instant(rows.map((x) => ({ key: x.key, labels: x.labels, value: x.value })));
+    const m = { ...model(r), all: rows };
+    const { size, shiftT } = mountTable(m);
+    size(600, 20 + 8 + BOTTOM);
+    expect(frames()).toBe(0);
+    await userEvent.setup().tab();
+    const notice = screen.getByRole('group', {
+      name: 'Versions: panel too small — press Shift+T for the table',
+    });
+    expect(document.activeElement).toBe(notice);
+    shiftT(notice);
+    const grid = screen.getByRole('grid', { name: 'Versions' });
+    expect(grid).toHaveAttribute('aria-rowcount', '251');
+    expect(screen.getByText('250 rows · 0 drawn')).toBeInTheDocument();
+    expect(document.activeElement).toBe(grid);
+    shiftT(grid);
+    expect(document.activeElement).toBe(
+      screen.getByRole('group', {
+        name: 'Versions: panel too small — press Shift+T for the table',
+      }),
+    );
   });
 });

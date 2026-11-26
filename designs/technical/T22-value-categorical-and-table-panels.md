@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-26 |
+| **Version** | 1.8-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (stat delta), M-UI2 (bar chart), M-UI5 (pie, stat grid) |
-| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0028](../adr/0028-chart-seam-bar-chart.md) (the I1 seam, #173 Part 2) |
+| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0028](../adr/0028-chart-seam-bar-chart.md) (the I1 seam, #173 Part 2), [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md) (the bar chart's keys and brush, #173 Part 3a) |
 | **Source draft** | plans/151/plan.md (not tracked) |
 
 ## 1. Context & problem
@@ -94,6 +94,7 @@ Quoted n/a lines are tooltip text.
   - the Inspector shows the labels, the value with its unit, the state and the baseline;
   - each label pair is a chip that opens Explore with `{k="v"}` added. This label chip is T25's Label filter chip, so this part of `e2e:bars-inspect` needs T25 I3 (label filters in Explore).
 - **Anomaly toggle:** a VL-004 glow on marks with `anomaly` > 0. Without scores, the tooltip reads `No anomaly scores for this query`.
+- **Bar tooltip lines** (amended by #173 Part 3a): after the name, value and state, in order: with the ghost on, `baseline <v>`, or in its place `baseline truncated` or `baseline limited (N warnings)` when the baseline run is incomplete (T22-006); on a board without a filter pair the T22-007 reason, on Explore `Filters apply on boards`; the crosshair n/a line `Values are reduced over <from> – <to>` (T22-011); with anomaly on and no score, `No anomaly scores for this query`.
 
 ### 4.4 Design rules
 
@@ -127,6 +128,20 @@ Quoted n/a lines are tooltip text.
 #### T22-010 — Keyboard
 **MUST** — Arrows and Home/End MUST move mark focus in draw order. Enter = click; Shift+arrow brushes; Esc clears. Each move emits `mark` (`source:'keyboard'`)
 
+Amended by #173 Part 3a ([ADR-0029](../adr/0029-bar-chart-keys-and-brush.md)): the bar chart's keys arrive on its mirror listbox (`keyTarget`). n = drawn rows, f = the focus index, a = the brush anchor.
+
+| Input | Effect | Emits |
+|---|---|---|
+| `focus` | f = min(f ?? 0, n − 1) | `mark` {source `keyboard`, f} |
+| ArrowRight / ArrowDown, ArrowLeft / ArrowUp | f ± 1, clamped to [0, n − 1]; a = null | `mark` |
+| Home / End | f = 0 / n − 1; a = null | `mark` |
+| Shift + any of the above | a ??= f, then f moves | `mark`, then `pick` {rows a…f in draw order, `brush`, `keyboard`} |
+| Enter, Space | — | `pick` {[key f], `click`, `keyboard`} |
+| Escape | a = null | nothing; not prevented, so the T25 ladder clears the selection |
+| `focusout` | f = a = null | `mark` null |
+
+Ctrl, Meta or Alt: ignored and not prevented; handled keys are prevented. With n = 0 nothing is emitted. New data clamps f to n − 1 (null at n = 0) and sets a = null. The focus mark is a 2 px `focus` stroke around band f, from the name band's left edge to the plot's right edge (horizontal) or from the plot top to the name band's bottom (vertical), drawn in the overlay pass.
+
 #### T22-011 — Universal interactions
 **MUST** — Each kind MUST implement the §4.3 matrix. An n/a gesture or toggle is accepted without error and shows its quoted tooltip
 
@@ -135,6 +150,8 @@ Quoted n/a lines are tooltip text.
 
 #### T22-013 — Table view and CSV
 **MUST** — `Shift+T` MUST show `PanelRows`: all N rows before the cap, with the §4.3 columns and `drawn` (`yes`/`no`). The view is virtualised (`@tanstack/react-virtual`, 28 px rows, overscan 10), so every row is reachable by scroll and keyboard. `Export CSV` writes the same rows in the same order as RFC 4180 with a header row, every cell through `csvCell` ([T24-026](T24-geo-schematic-and-widget-panels.md#t24-026--table-csv-facts), `client/src/data/csv.ts`; amended by #173 Part 1): numbers as `String(v)`, NaN or absent as an empty field, states by name. The file is named after the panel title with `[^A-Za-z0-9-_]` replaced by `_`
+
+Amended by #173 Part 3a: the view is `PanelTable`, a read-only `role="grid"` named by the title (`aria-rowcount` n + 1) under a bar with the caption `<n> rows · <d> drawn`, `Export CSV` and `Show chart (Shift+T)`. Each row has the stable id `<tableId>-r<i>` and `aria-rowindex` i + 2; the grid's active row (set by the first arrow, Home or End; moved by ↑/↓, Home/End, PageUp/PageDown; Enter picks it) is named by `aria-activedescendant` and kept mounted by the range extractor when scrolled away. A row's name button keeps its own Enter and Space. The view keeps the panel cell's size and the meter. When the fit gives `tooSmall`, the notice is a focusable `role="group"` named `<title>: panel too small — press Shift+T for the table`, so `Shift+T` works from it; opening the view focuses the grid, closing it focuses the chart's listbox, else the notice
 
 #### T22-014 — Summary facts
 **MUST** — `summaryFacts` MUST fill `SummaryFacts` (VIZ-068). `subject` = title. *Focus mark* = the single tile, else the worst state (ties: higher value, then lower key). `current` = the focus mark's reduced value (formatted) and name. `change` is **one event** in the focus series: the largest \|Δ\| between consecutive finite samples in the window (first on ties); `from` = the value before it, `to` = the value after it, `atMs` (onset) = the time of the after sample. It is null for instant results and for fewer than 2 finite samples. `extent` = min and max of the **reduced mark values** (every pre-cap mark), not raw samples; null if none is finite. `baselineRatio` = current / the focus mark's baseline, when both are finite, the baseline ≠ 0 and the baseline run is complete (not truncated and no warnings, T22-006); otherwise null. #160 writes the text
@@ -199,16 +216,19 @@ export type VisSpec = /* existing line | bars | heatmap */
   | ({ kind: 'pie'; title: string; unit: Unit; donut: boolean; labels: 'percent' | 'value' | 'name' | 'none' } & Ov);
 export interface MarkEvent { source: 'pointer' | 'keyboard'; key: string; index: number;
   xCss: number; yCss: number; rows: HoverRow[] }
-export interface PickEvent { keys: string[]; gesture: 'click' | 'brush' }   // keys [] = an empty click
+export interface PickEvent { keys: string[]; gesture: 'click' | 'brush';
+  source: 'pointer' | 'keyboard' }                                          // keys [] = an empty click (source: ADR-0029)
 // FrameEvents adds  mark: MarkEvent | null;  pick: PickEvent
 // FrameSummary.valueAxis: a stat with a sparkline reports its sparkline axis (was null for stat)
 // FrameSummary gains coverage?: Coverage (copied from categories/stats data; absent for other kinds),
 //   namesHidden?: true and valuesHidden?: true (barchart; ADR-0028)
 
 // Payload for the T25 Inspector host: the InspectorTarget member {type:'mark'; target: InspectTarget}; members per T25-011
-export interface InspectTarget { panelId: string; kind: VisKind; title: string; mark: Mark;
+// In client/src/inspector/types.ts (amended by #173 Part 3a): panelId null on Explore, query null before a run;
+// `kind` is 'barchart' in I1 (I2 and I3 add theirs)
+export interface InspectTarget { panelId: string | null; kind: 'barchart'; title: string; mark: Mark;
   members: CategoryRow['members'];   // aggregate: the Inspector shows members[0] as `<name> (in other)` plus the list
-  unit: Unit; window: TimeWindow; query: { lang: 'promql' | 'logql'; text: string } }
+  unit: Unit; window: TimeWindow; query: { lang: 'promql' | 'logql'; text: string } | null }
 ```
 
 | Kind | Accepts |
@@ -254,6 +274,8 @@ export function summaryFacts(kind: TableKind, title: string, r: ExploreResult, a
 | `board.json.unknownKey` | the key is not allowed for the kind |
 | `board.options.<key>.invalid` | a bad enum value; a `min`/`max` that is not finite or has \|v\| > 1e15; a non-empty label key that fails `FILTER_LABEL` |
 | `board.options.max.invalid` | both set and `min` ≥ `max` |
+
+**A kind change** (amended by #173 Part 3a) keeps only the options the new kind allows with a valid value: `optionValueValid(kind, key, value)` (the validator's own shape and rules on that key alone), then `max` is dropped when `min` ≥ `max`, and `textMode` when it is `value` with the `grid` layout (`keepOptions`, `boards/options.ts`). A stat's `orientation: 'auto'` is not kept on a change to the bar chart.
 
 **Bounds mapping:** `resolveBounds(min, max, auto)` gives the `valueRange` that a barchart and a stat sparkline (VisSpec `valueRange`) use. The auto bounds are the ADR-0022 auto domain: drawn values and thresholds, or the stat's spark values.
 - An absent bound takes its auto value.
@@ -426,3 +448,4 @@ None.
 | 1.5-rc | 2026-11-25 | #173 Part 1 (I1, the categorical foundations): §5.2 gains `mergeDuplicates(…, source)`, `CategoryResult`, `TableKind`, `coverageText(c, timeZone?)` and `summaryFacts(…, baseline)` with null facts when no mark is finite; T22-003 states the range and instant conflict counts of the shared `mergeKey`; T22-004 names over the pre-cap rows, breadth-first, all differing keys past 16; §6.1 checks the kind's shape first, so `unknownKey` precedes type errors; T22-013 sends every CSV cell through `csvCell` |
 | 1.6-rc | 2026-11-25 | #184 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 2, the map area): T22-006 and §5.1 `Coverage` gain the optional `area` counts (`outside`, `unlocated`, `unapplied`) and their meter parts (`k outside the map area`, `k without a location`, `map area not applied to k (locations unavailable)`), after the existing parts |
 | 1.7-rc | 2026-11-26 | #173 Part 2 (I1, the bar chart's seam and drawing): new [ADR-0028](../adr/0028-chart-seam-bar-chart.md) (header, §2); §4.1 steps 2–3 are `barchartModel` and `fitBarchart` at `categoryExtent`, with the value-axis fit and an empty drawn set on every `tooSmall`; §4.5 row 11 follows row 8, its instant branch needs `source === 'instant'`, and it picks only a kind in the caller's `available` set (none holds `barchart` until Part 3); T22-004 gains the visible labels (middle fit, suffixes, hidden names with a note); §5.1: `VisKind` gains `barchart` (pie in I3), `BarchartSpec.names`, `FrameSummary.coverage` optional with `namesHidden`/`valuesHidden`, `PickEvent.keys` `[]` is an empty click, the ghost is `text-muted` (there is no `text-secondary` token; also in `e2e:categorical-interactions`); `Coverage` keeps `geo` and `area`, which `EMPTY_COVERAGE` omits; §10.3 names the five gallery bar charts |
+| 1.8-rc | 2026-11-26 | #173 Part 3a (I1, the bar chart's interactions at unit and component level): new [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md) (header); T22-010 gains the key table on the mirror listbox and the focus mark; §4.3 the bar tooltip lines (the crosshair n/a line of T22-011, the baseline run's gaps, the filter hint, the anomaly note); T22-013 the `PanelTable` ids, the pinned active row, the caption and the focusable `tooSmall` notice; §5.1 `PickEvent.source` and `InspectTarget` in `inspector/types.ts` (`panelId: string \| null`, `kind: 'barchart'`, `query` nullable); §6.1 a kind change keeps only valid values |

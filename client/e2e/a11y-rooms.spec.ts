@@ -680,11 +680,14 @@ test.describe('e2e:a11y-rooms gallery', () => {
     );
     // #173 Part 2: a bar chart counts its bars; its meter is outside the frame.
     expect(await label('barchart')).toBe('Requests by version: 5 bars');
-    // Review r1: the canvas is described by a hidden list of every bar, full name and value.
+    // Review r1, ADR-0029: the canvas is described by the mirror listbox of every bar, full name
+    // and value; the listbox is the chart's one tab stop.
     const listId = await frame(page, 'barchart').locator('canvas').getAttribute('aria-describedby');
     expect(listId).not.toBeNull();
     const list = page.locator(`[id="${listId ?? ''}"]`);
-    await expect(list.locator('li')).toHaveText([
+    await expect(list).toHaveRole('listbox');
+    await expect(list).toHaveAttribute('tabindex', '0');
+    await expect(list.getByRole('option')).toHaveText([
       '2.31: 120',
       '2.29: 40',
       '2.33: 15',
@@ -692,7 +695,7 @@ test.describe('e2e:a11y-rooms gallery', () => {
       '2.32: 3',
     ]);
     await expect(
-      frame(page, 'barchart-thresholds').locator('[data-bar-list] li').first(),
+      frame(page, 'barchart-thresholds').locator('[data-bar-list] [role=option]').first(),
     ).toHaveText('2.31: 120, Failing');
     await expect(
       page.locator('[data-gallery-id="barchart"] [data-coverage-meter]').getByRole('status'),

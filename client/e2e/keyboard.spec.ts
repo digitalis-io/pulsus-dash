@@ -679,6 +679,23 @@ async function shellLoops(s: Script): Promise<void> {
       await expect(tip).toBeHidden();
       await expect(slider).toHaveAttribute('aria-valuetext', 'Use the arrow keys to read values');
     }
+    // #173 Part 3a (ADR-0029): each bar chart's one tab stop is its mirror listbox; the arrows,
+    // Home and End move the focus bar, and the active option follows.
+    const lists = page.getByRole('listbox');
+    await expect(lists).toHaveCount(5);
+    for (const name of await lists.evaluateAll((els) =>
+      els.map((e) => e.getAttribute('aria-label') ?? ''),
+    )) {
+      const list = page.getByRole('listbox', { name, exact: true });
+      await s.focus(`listbox "${name}"`, { max: 80 });
+      await expect(list).toHaveAttribute('aria-activedescendant', /-0$/);
+      await press('End');
+      const n = await list.getByRole('option').count();
+      await expect(list).toHaveAttribute('aria-activedescendant', new RegExp(`-${String(n - 1)}$`));
+      await press('Home');
+      await expect(list).toHaveAttribute('aria-activedescendant', /-0$/);
+      await press('Escape');
+    }
   });
 }
 

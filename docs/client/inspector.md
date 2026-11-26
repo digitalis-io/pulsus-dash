@@ -55,7 +55,7 @@ A kind sends one `InspectRequest` (`inspector/types.ts`):
 | Field | Meaning |
 |---|---|
 | `origin` | `surface`, `panelId` (null on Explore), `title`, `query` (board: the panel's expanded text; Explore: `q`; null before a run), the Context `window` at the gesture, `unit` |
-| `target` | one member of `InspectorTarget`: `point` (line, bars), `bucket` (heatmap), `value` (stat), `logLine` |
+| `target` | one member of `InspectorTarget`: `point` (line, bars), `bucket` (heatmap), `value` (stat), `logLine`, `mark` (the bar chart, #173 Part 3a) |
 | `selection` | what the inspect selects: `selectionOf(target)` |
 | `source`, `returnFocus` | pointer or keyboard; the element focus returns to on close |
 
@@ -71,6 +71,14 @@ zone to the millisecond, and a log line also shows its exact nanoseconds (T25-00
 | `bucket` | the count in the count unit | Range (`≤ hi`, `lo – hi`, `> lo`), Raw count, From – to | `{[], tMs, toMs}` |
 | `value` | the value; a crossed threshold shows its state colour and glyph | Raw, Time (if any), State (if any) | `{[key], null, null}`, or none for a scalar |
 | `logLine` | the line (monospace, scrolls past 120 px) | Level, Time in ns, Local time; Metadata and Parsed labels | `{[streamKey], ms, ms + 1}` |
+| `mark` | the value in the target's unit (`no data` when not finite); a crossed threshold shows its state; no subheading | Raw, Baseline (finite only), State (if any), Series key, Reduced over `<from> – <to>` (`formatClockMs`) | `{[key], null, null}`, or the members' keys for an aggregate |
+
+A `mark` target is `{ type: 'mark', target: InspectTarget }`, where `InspectTarget` (also in
+`inspector/types.ts`) is `{ panelId, kind: 'barchart', title, mark, members, unit, window, query }`:
+the reduced mark, its members (null until I3), the unit and the window it was reduced over. It has
+no instant: the announcement has no time, the pivots keep the origin window, and Explore opens with
+`vis=barchart`. Its labels are the mark's; members are not listed yet (I3). `barAction`
+([Categorical panels](panels.md#the-pick-decision-visbaractionts)) builds it from a bar's `pick`.
 
 ### Adding a kind
 
@@ -118,7 +126,8 @@ loaded streams, or an interval with no keys) the other rows show their line in `
 
 The host's one `document` listener (bubble phase) skips an event that is not Escape, is already
 `defaultPrevented` or `isComposing`, comes from inside `[role=dialog]`, `[role=menu]`,
-`[role=listbox]` or `.cm-editor`, comes from an `input`, `textarea` or `select` not marked
+`[role=listbox]` or `.cm-editor` (unless every such owner around it is marked
+`data-escape-ladder`, as a bar chart's mirror listbox is, ADR-0029), comes from an `input`, `textarea` or `select` not marked
 `data-escape-ladder`, or arrives while an `[aria-modal=true]` element exists. Otherwise each Esc
 runs the first step that applies and prevents the default:
 

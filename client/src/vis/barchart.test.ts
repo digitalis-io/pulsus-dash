@@ -5,10 +5,13 @@
 import { describe, expect, it } from 'vitest';
 import { BOTTOM, categoryExtent, LABEL_HEIGHT } from '../engine/canvas2d/layout';
 import { barLayout, minPlotPx } from '../engine/canvas2d/barLayout';
-import { BY_VERSION, byVersion, instant } from '../test/categoryFixtures';
+import { BY_VERSION, COMPLETE, byVersion, fkey, instant } from '../test/categoryFixtures';
+import type { ExploreResult } from './autovis';
 import { barchartModel, fitBarchart, type BarchartFit, type BarchartModel } from './barchart';
 import { coverageText, panelRows, summaryFacts } from './reduce';
 import type { Thresholds } from './thresholds';
+
+type Result = Exclude<ExploreResult, { kind: 'string' }>;
 
 const m6 = (t: string): number => 6 * Array.from(t).length;
 const L = LABEL_HEIGHT;
@@ -179,5 +182,45 @@ describe('unit:barchart-plan', () => {
     });
     expect(m.all.map((x) => x.state)).toEqual(['failing', 'ok', 'ok', 'ok', 'ok']);
     expect(m.spec.thresholds).toEqual([{ value: 100, state: 'failing', label: '≥ 100' }]);
+  });
+});
+
+describe('unit:barchart-plan (base)', () => {
+  // Keyed as `byVersion` (by index), so a filtered list keeps each series' key.
+  const half = BY_VERSION.map((s, i) => ({ ...s, key: fkey(i + 1), value: s.value / 2 }));
+  const LIMITED = { ...COMPLETE, warnings: ['w1'] };
+  const withBase = (r: Result, base: Result | null) =>
+    barchartModel(r, {
+      title: 'Versions',
+      rateApplied: false,
+      options: undefined,
+      thresholds: null,
+      base,
+    });
+
+  it('the baseline run sets each row baseline by key and the model completeness', () => {
+    const m = withBase(byVersion() as Result, instant(half, LIMITED) as Result);
+    expect(m.all.find((r) => r.name === '2.31')?.baseline).toBe(60);
+    expect(m.baseline).toEqual(LIMITED);
+    const partial = withBase(
+      byVersion() as Result,
+      instant(half.filter((s) => s.labels['version'] !== '2.32')) as Result,
+    );
+    expect(partial.all.find((r) => r.name === '2.32')?.baseline).toBeNull();
+    expect(partial.all.find((r) => r.name === '2.31')?.baseline).toBe(60);
+    expect(withBase(byVersion() as Result, null).baseline).toBeNull();
+  });
+
+  it('duplicate keys in the baseline run keep the max', () => {
+    const K = fkey(7);
+    const r = instant([
+      { key: K, labels: { version: '2.31' }, value: 50 },
+      { key: K, labels: { version: '2.31' }, value: 70 },
+    ]);
+    const base = instant([
+      { key: K, labels: { version: '2.31' }, value: 30 },
+      { key: K, labels: { version: '2.31' }, value: 35 },
+    ]);
+    expect(withBase(r as Result, base as Result).all[0]?.baseline).toBe(35);
   });
 });

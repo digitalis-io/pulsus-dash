@@ -170,6 +170,8 @@ log-stream = 560
 inspector = 360
 inspector-tab = 40
 inspector-inset = 12
+# The table view (#173 Part 3a, T22-013): one row of a panel's virtualised table.
+table-row = 28
 
 [radius]
 default = 6

@@ -18,6 +18,8 @@ export interface SegmentedControlProps<K extends string> {
   readonly options: readonly SegmentedOption<K>[];
   readonly value: K;
   readonly onChange: (v: K) => void;
+  /** Shown but not operable (a read-only editor). */
+  readonly isDisabled?: boolean;
 }
 
 export function SegmentedControl<K extends string>({
@@ -25,6 +27,7 @@ export function SegmentedControl<K extends string>({
   options,
   value,
   onChange,
+  isDisabled = false,
 }: SegmentedControlProps<K>): JSX.Element {
   const ids = options.map((o) => o.id);
   return (
@@ -32,6 +35,7 @@ export function SegmentedControl<K extends string>({
       aria-label={label}
       selectionMode="single"
       disallowEmptySelection
+      isDisabled={isDisabled}
       selectedKeys={[value]}
       onSelectionChange={(s: Set<Key>) => {
         const next = ids.find((id) => s.has(id));

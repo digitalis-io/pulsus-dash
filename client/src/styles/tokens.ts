@@ -150,6 +150,7 @@ export const size = {
   "page-padding": 24,
   "sidebar-collapsed": 56,
   "sidebar-expanded": 240,
+  "table-row": 28,
   "target-min": 24,
   "tenant-badge": 32,
 } as const;

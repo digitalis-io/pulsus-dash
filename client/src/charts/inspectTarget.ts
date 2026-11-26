@@ -121,5 +121,14 @@ export function selectionOf(t: InspectorTarget): Selection {
       const ms = Number(t.tsNs / 1_000_000n);
       return { keys: [t.streamKey], fromMs: ms, toMs: ms + 1 };
     }
+    case 'mark': {
+      // An aggregate (I3) selects its members; a bar its own key (T25 §4.2).
+      const { mark, members } = t.target;
+      return {
+        keys: members === null ? [mark.key] : members.map((m) => m.key),
+        fromMs: null,
+        toMs: null,
+      };
+    }
   }
 }

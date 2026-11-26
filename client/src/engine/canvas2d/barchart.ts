@@ -2,7 +2,8 @@
  * The Canvas 2D bar chart (ADR-0028, plan #173 Part 2 §4.2): one bar per `categories` row in data
  * order, laid out by `barLayout`, with the value axis, the names (state glyph first), the value
  * labels outside the bars, the threshold lines with their glyphs, the baseline ghost and the
- * selection. Colours come from `ThemeColours` only: the state colour of a row with a state, else
+ * selection; and its overlay (ADR-0029): the keyboard focus mark and the brush band. Colours come
+ * from `ThemeColours` only: the state colour of a row with a state, else
  * its own series colour (T22-004); no gradient, pattern or shadow (T22-001). The layer returns the
  * bands that `mark` and `pick` hit; the frame copies the data's coverage into the summary.
  */
@@ -19,10 +20,12 @@ import type {
   ThresholdLabelBox,
   ValueRange,
 } from '../api';
+import type { BarOverlay } from './barInput';
 import { barLayout, valueText, type BarLayout } from './barLayout';
+import type { Ctx2D } from './ctx';
 import type { LayerInput, LayerModel } from './draw';
 import { AXIS_FONT, BAR_VALUE_BAND, EVENT_BAND, LABEL_HEIGHT } from './layout';
-import { seriesColourIndex } from './palette';
+import { seriesColourIndex, type ThemeColours } from './palette';
 import { drawFocusRing, matchedKeys } from './selection';
 import { frameSummary } from './summary';
 import { fitText } from './text';
@@ -50,6 +53,8 @@ export interface BarPick {
   readonly horizontal: boolean;
   /** Where a pointer hits a band: the name band and the plot, across the category axis. */
   readonly area: PlotRect;
+  /** The plot: the brush band spans it across the category axis (ADR-0029). */
+  readonly plot: PlotRect;
   readonly bands: readonly BarHit[];
 }
 
@@ -305,7 +310,7 @@ export function drawBarchart(
   const bands: BarHit[] = [];
   const model = (summary: FrameSummary): LayerModel => ({
     summary: { ...summary, coverage, ...flags },
-    pick: { kind: 'barchart', ref: NO_REF, horizontal, area, bands },
+    pick: { kind: 'barchart', ref: NO_REF, horizontal, area, plot, bands },
     labelW: 0,
     valueDomain: null,
     bandHeld: false,
@@ -381,4 +386,57 @@ export function barAt(pick: BarPick, p: { x: number; y: number }): BarHit | null
   const c = pick.horizontal ? p.y : p.x;
   for (const b of pick.bands) if (c >= b.lo && c < b.hi) return b;
   return null;
+}
+
+/** The band at draw index `i`, or null (ADR-0029: the keyboard focus and the Shift brush). */
+export function barByIndex(pick: BarPick, i: number): BarHit | null {
+  return pick.bands[i] ?? null;
+}
+
+/**
+ * The draw index of the band at `p` along the category axis, clamped to the drawn bands (the
+ * pointer brush, ADR-0029); null when no band is drawn.
+ */
+export function bandIndexAt(pick: BarPick, p: { x: number; y: number }): number | null {
+  const n = pick.bands.length;
+  const first = pick.bands[0];
+  const last = pick.bands[n - 1];
+  if (first === undefined || last === undefined) return null;
+  const c = pick.horizontal ? p.y : p.x;
+  if (c < first.lo) return 0;
+  if (c >= last.hi) return n - 1;
+  const i = pick.bands.findIndex((b) => c >= b.lo && c < b.hi);
+  return i < 0 ? n - 1 : i;
+}
+
+/**
+ * The bar chart's overlay (ADR-0029), drawn on the visible canvas after the layer: the brushed
+ * bands filled with `selection` across the plot, and a 2 px `focus` stroke around the keyboard
+ * focus band, from the name band's left edge to the plot's right edge (H) or from the plot top to
+ * the name band's bottom (V).
+ */
+export function drawBarOverlay(
+  ctx: Ctx2D,
+  pick: BarPick,
+  colours: ThemeColours,
+  o: BarOverlay,
+): void {
+  const { plot, area } = pick;
+  if (o.brush !== null) {
+    const a = barByIndex(pick, o.brush.lo);
+    const b = barByIndex(pick, o.brush.hi);
+    if (a !== null && b !== null) {
+      ctx.fillStyle = colours.selection;
+      if (pick.horizontal) ctx.fillRect(plot.x, a.lo, plot.width, b.hi - a.lo);
+      else ctx.fillRect(a.lo, plot.y, b.hi - a.lo, plot.height);
+    }
+  }
+  const f = o.focus === null ? null : barByIndex(pick, o.focus);
+  if (f === null) return;
+  ctx.save();
+  ctx.strokeStyle = colours.focus;
+  ctx.lineWidth = 2;
+  if (pick.horizontal) ctx.strokeRect(area.x, f.lo, area.width, f.hi - f.lo);
+  else ctx.strokeRect(f.lo, area.y, f.hi - f.lo, area.height);
+  ctx.restore();
 }

@@ -32,6 +32,7 @@ import {
   OPTION_MEMBERS,
   OPTION_TYPES,
   OPTION_VALUES,
+  type OptionKey,
 } from './options';
 
 export const MAX_PANELS = 200;
@@ -148,21 +149,29 @@ function membersShape(names: readonly string[]): ValueType {
   return obj(names.map((n) => req(n, tString)));
 }
 
-/** The type of each option key (`shape.go` `optionFields`). */
-const OPTION_VALUE_TYPES: Readonly<Record<string, ValueType>> = Object.freeze({
-  ...Object.fromEntries(
-    Object.entries(OPTION_TYPES).map(([k, t]) => [
-      k,
-      t === 'bool' ? tBool : t === 'number' ? tNumber : tString,
-    ]),
-  ),
-  zones: { kind: 'array', elem: membersShape(OPTION_MEMBERS.zones) },
-  countdown: membersShape(OPTION_MEMBERS.countdown),
-});
+let optionValueTypes: Readonly<Record<string, ValueType>> | null = null;
+
+/**
+ * The type of each option key (`shape.go` `optionFields`), built at first use: `options.ts` imports
+ * `optionValueValid` from here, so nothing of `options.ts` is read while this module loads.
+ */
+function optionValueType(k: string): ValueType {
+  optionValueTypes ??= Object.freeze({
+    ...Object.fromEntries(
+      Object.entries(OPTION_TYPES).map(([key, t]) => [
+        key,
+        t === 'bool' ? tBool : t === 'number' ? tNumber : tString,
+      ]),
+    ),
+    zones: { kind: 'array', elem: membersShape(OPTION_MEMBERS.zones) },
+    countdown: membersShape(OPTION_MEMBERS.countdown),
+  });
+  return optionValueTypes[k] ?? tString;
+}
 
 /** A kind's options shape (`shape.go` `optionShape`): its keys, optional and typed. */
 function optionShape(kind: PanelVisKind): readonly Field[] {
-  return OPTION_KEYS[kind].map((k) => opt(k, OPTION_VALUE_TYPES[k] ?? tString));
+  return OPTION_KEYS[kind].map((k) => opt(k, optionValueType(k)));
 }
 
 const gridShape = [req('x', tInt), req('y', tInt), req('w', tInt), req('h', tInt)];
@@ -609,6 +618,41 @@ export function nextId(spec: BoardSpec, prefix: string): string {
     const id = `${prefix}-${String(n)}`;
     if (!used.has(id)) return id;
   }
+}
+
+/**
+ * True when `v` is a valid value of option `key` on a `kind` panel (plan #173 Part 3a §3.9): the
+ * validator's own shape and rules, run on a one-panel board with only that key, report nothing at
+ * the key. Rules between keys are not seen: min ≥ max and `textMode` with a grid layout are
+ * `keepOptions`'; a `language` is checked as for `mode: code`, a board list's `query` as for
+ * `mode: search` and its `tag` as for `mode: tag`. A key the kind does not allow is not valid.
+ */
+export function optionValueValid(kind: PanelVisKind, key: OptionKey, v: unknown): boolean {
+  if (!OPTION_KEYS[kind].includes(key)) return false;
+  // A key whose rule depends on `mode` is checked with the mode it belongs to.
+  const mode =
+    key === 'language'
+      ? 'code'
+      : kind !== 'boardList'
+        ? null
+        : key === 'query'
+          ? 'search'
+          : key === 'tag'
+            ? 'tag'
+            : null;
+  const options: Record<string, unknown> = mode === null ? {} : { mode };
+  options[key] = v;
+  const panel = {
+    id: 'p-1',
+    title: '',
+    grid: { x: 0, y: 0, w: 1, h: 1 },
+    ...(isWidgetKind(kind) ? {} : { query: { lang: 'promql', text: 'up' } }),
+    vis: { kind, options },
+  };
+  const at = `/panels/0/vis/options/${key}`;
+  return !checkBoardSpec({ title: 'B', panels: [panel], sections: [] }).some(
+    (f) => f.pointer === at || f.pointer.startsWith(`${at}/`),
+  );
 }
 
 /** `p-<n>`: see `nextId`. */

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.67-rc · 2026-11-26 |
+| **Version** | 1.68-rc · 2026-11-26 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -1182,17 +1182,29 @@ The existing gates `bench:rooms-long-tasks` (the "histogram 2·10⁶ values" sce
 | `unit:category-bounds` | T22 §6.1, ADR-0022: `resolveBounds` and `outsideCount` | PR |
 | `unit:category-summary-facts` | T22-014, VIZ-068: focus, change, extent and ratio; instant, warning baseline, no finite mark | PR |
 | `unit:category-table` | T22-013, T24-026: `panelRows` (aggregates), `panelCsv`, `csvCell` and `csvFileName` | PR |
-| `unit:board-options` | T22 §6.1: `withKind`, `keepOptions`, the bar chart defaults, the key tables against `option-keys.json` | PR |
+| `unit:board-options` | T22 §6.1: `withKind`, `keepOptions`, the bar chart defaults, the key tables against `option-keys.json`; #173 Part 3a: a kind change keeps only valid values, and `optionValueValid` is false exactly where the validator reports a value in `invalid.json` (the cross-key rules aside) | PR |
 | `unit:frame-coverage` | T22-006, [ADR-0028](../adr/0028-chart-seam-bar-chart.md): `many` at a 2 800 px extent draws 200; the `a11y` summary has 250 / 200 and the data's `coverage`; a line summary has none | PR |
 | `unit:category-colour` | T22-004, T22-001, VIZ-067: series colours without thresholds, no pattern, gradient or shadow; `many` at 300 px gives 21 named bars; with thresholds the state colour, the glyph before the name and two dashed lines | PR |
 | `unit:barchart-layout` | T22-004, T22-006: `categoryExtent` (H and V, with thresholds), data order, value labels outside the bars (also clipped at a fixed range and negative), none when off, vertical names at −90° | PR |
 | `unit:barchart-labels` | T22-004: the middle fit, ` (k)` then draw-index suffixes, hidden names with the note, full names in `mark` | PR |
 | `unit:barchart-fit-stages` | T22-006: the fit's stages by width (H) and height (V), with and without value labels; no frame and an empty drawn set at `tooSmall`; mounted plots ≥ `minPlotPx`; the matching note | PR |
-| `unit:barchart-events` | ADR-0028: `mark` once per band change and null once on leaving; `pick` for a click and an empty click; a drag, a right click, the wheel and a double click emit nothing | PR |
+| `unit:barchart-events` | ADR-0028, [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md): `mark` once per band change and null once on leaving; `pick` `{…, source: 'pointer'}` for a click and an empty click; a 5 px drag picks a one-band `brush`; a right click, the wheel and a double click emit nothing | PR |
 | `unit:barchart-selection` | T22-008, ADR-0025: the others at `dimmed`, a focus ring on the selected bar; a foreign or null selection draws as none | PR |
 | `unit:barchart-ghost` | ADR-0028: the dashed `text-muted` rectangle from x(0) to x(baseline), as thick as the bar; none off or without a baseline | PR |
 | `unit:frame-data-categories` | ADR-0028: `validateFrameData` for `barchart`: `kind`, `cap` over 200, `key` (bad or repeated) | PR |
 | `unit:barchart-plan` | T22-006, VIZ-005: `barchartModel` and `fitBarchart`: the sorted rows, `100 %`, `tooSmall` at caps 1 and 0 with drawn 0, one row at a cap of 1, the bounds and `outside`, thresholds; a resize within one cap and stage keeps the data | PR |
+| `unit:barchart-keys` | T22-010, ADR-0029: focus, arrows, Home/End, the Shift brush (`brush`, `keyboard`, draw order), Enter, Escape (not prevented, silent), Ctrl ignored, `focusout` → `mark` null, new data clamps f; the 2 px `focus` stroke; no rows emit nothing | PR |
+| `unit:barchart-brush` | T22-008, T22 §4.3, ADR-0029: the `selection` fill over the brushed bands while dragging; `pick` {keys in draw order, `brush`, `pointer`} both ways; clamped below the plot; `pointercancel` picks nothing | PR |
+| `unit:bar-list` | T08-016, T22-010, ADR-0029: the mirror listbox is the key target, its `aria-activedescendant` follows a keyboard `mark` only, `data-escape-ladder`, `k more` outside it, the canvas's description resolves to it with every bar | PR |
+| `unit:bar-list-selected` | T22-008, T08-016: options selected from the page selection; null selects none; every gallery listbox none at first paint | PR |
+| `unit:bar-action` | T22-007, T22-005, VIZ-037: `barAction` (click, filter toggle, no pair, Explore, clear, brush, unknown key, merged duplicates) and `barHint` | PR |
+| `unit:mark-tooltip` | T22-011, T22-006: the bar tooltip lines (baseline, its truncated or limited run, the filter hint, the reduced window, the anomaly note) | PR |
+| `unit:panel-table` | T22-013, VIZ-066: `PanelTable` caption, `aria-rowcount`, virtualised rows, End, Enter, a name click, Export (Blob = `panelCsv`, the file name); an empty table | PR |
+| `unit:panel-table-active` | T22-013, T08-016: the active row's id names a mounted row and stays mounted when scrolled away; new rows clear it | PR |
+| `unit:panel-table-button` | T22-013: a row button's Enter and Space pick its row once; the grid's active row stays | PR |
+| `unit:category-chart-table` | T22-013: Shift+T swaps chart and table with focus following; inputs and an absent `onTable` are left alone; the ghost on the spec and the baseline-failed note; the gallery's per-entry table; the focusable `tooSmall` notice (`unit:category-tiny` (table)) | PR |
+| `unit:baseline-window` | T22-012: `baselineOffset`, `OFFSET_MS`, `shiftWindow` | PR |
+| `unit:barchart-options-field` | T22 §6.1: `BarchartOptionsField` defaults, each key written, empty removes, Min/Max number errors, the baseline offset, `errorAt` | PR |
 | `bench:frame-interim-categories` | VIZ-004: the 200-bar `barchart-cap` over 50 theme changes; p50 and p95 reported, no threshold | PR (report) |
 
 `unit:board-spec` covers board spec v3 (#173 Part 1): `v3-full.json` round-trips with the same
@@ -1203,10 +1215,10 @@ previous release (`max` 2) refuses a v3 row.
 
 | Gate | Checks | Stage |
 |---|---|---|
-| `unit:inspector-model` | T25-003, T25-004, T25-015: fixture P sections, raw values, pivot reasons, staged actions and `announce`; the edge cases (no value, no labels, no query, bucket ranges, ns log time) | PR |
+| `unit:inspector-model` | T25-003, T25-004, T25-015: fixture P sections, raw values, pivot reasons, staged actions and `announce`; the edge cases (no value, no labels, no query, bucket ranges, ns log time); #173 Part 3a: the `mark` target (value, Baseline, State, Series key, Reduced over, labels, selection, `vis=barchart`, the origin window) | PR |
 | `unit:inspector-pivots` | T25-010: the Logs ±1 min href, LogQL escaping, `job` translation and the job reason | PR |
 | `unit:pivot-context` | T25-010, IA-026, IA-027, INT-035: rows C1, C1′ and C2; C3 (added by I6) and C4 (added by #223: the canonical `e=` entity set); C5 and C6 (added by #184 step 2 E3a: the map area disclosed only while effective, never carried) | PR |
-| `unit:escape-ladder` | T25-007, T23-011: pre and post steps, `data-escape-ladder` fields, unmarked inputs skipped | PR |
+| `unit:escape-ladder` | T25-007, T23-011: pre and post steps, `data-escape-ladder` fields, unmarked inputs skipped; a listbox marked `data-escape-ladder` is not skipped, an unmarked one is (#173 Part 3a) | PR |
 | `unit:inspector-members` | T25-011, T21-005: two lists, complete and stale results, reset | PR |
 | `unit:engine-select` | T25-005: pointer hit rules for line, bars and heatmap | PR |
 | `unit:inspector-nav` | #184, T25-007, T25 §4.8: the navigation stack (push, pop, no-ops, reset, the Esc pop) | PR |
@@ -1394,4 +1406,5 @@ Meta-testing:
 | 1.64-rc | 2026-11-26 | #222 ([T24](T24-geo-schematic-and-widget-panels.md) part B2, I5): §7.1 `unit:entity-id` is in Go `entity/entity_test.go`; `itest:annotations-old-binary` runs by `make itest-old-binary` (local, skipping once the previous release has migration 5), with migration 5 beside a reader and the old binary listing N's entity rows |
 | 1.65-rc | 2026-11-26 | #68 Part C2b (hover, click select and the overlay on engine frames): §7.1 new `e2e:engine-hover`, `golden:engine-overlay` and `unit:hover-parity`; `unit:input-ring` adds the Overlay and Select records and the Select cap; `golden:engine-line` adds the hover and band cases; `e2e:shim-fuzz` adds hover, click and key records; `bench:shim-input-cost` dispatch includes the flush. Numbered after #222's 1.64-rc |
 | 1.66-rc | 2026-11-26 | #68 Part C2c1 (threshold lines and event lines on engine frames): §7.1 new `e2e:engine-layer` and `unit:layer-parity`; `golden:engine-line`, `golden:engine-overlay` and `canvas2d parity` add `line-thresholds` and `line-events` |
-| 1.67-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md), the engine is the default renderer): §7.1 `e2e:mode-matrix` as M1–M15 and the amended integrity leg (the reload after a failed boot makes no engine request); new `e2e:canvas2d-pin` and `ci:engine-built`; the main suite's builds pin Canvas 2D and the engine suite proves the default |
+| 1.67-rc | 2026-11-26 | #173 Part 3a ([T22](T22-value-categorical-and-table-panels.md) I1, [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md)): §7.1's T22 block adds `unit:barchart-keys`, `unit:barchart-brush`, `unit:bar-list`, `unit:bar-list-selected`, `unit:bar-action`, `unit:mark-tooltip`, `unit:panel-table`, `unit:panel-table-active`, `unit:panel-table-button`, `unit:category-chart-table`, `unit:baseline-window` and `unit:barchart-options-field` (PR); `unit:barchart-events` (`PickEvent.source`, a drag brushes), `unit:board-options` (valid values on a kind change), `unit:inspector-model` (the `mark` target) and `unit:escape-ladder` (a marked listbox) amended. Numbered after #68 Part C2c1's 1.66-rc (the 1.56-rc to 1.66-rc rows are other issues') |
+| 1.68-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md), the engine is the default renderer): §7.1 `e2e:mode-matrix` as M1–M15 and the amended integrity leg (the reload after a failed boot makes no engine request); new `e2e:canvas2d-pin` and `ci:engine-built`; the main suite's builds pin Canvas 2D and the engine suite proves the default |

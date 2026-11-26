@@ -11,8 +11,9 @@
  * external input or emitted commit, and `abortGesture()`, which drops a gesture when the stage is
  * withdrawn and restores `committed`, emitting nothing.
  *
- * A bar chart (ADR-0028) has no camera: its pointer events go to the `BarHooks`, and its wheel,
- * gestures, double click, context menu and keys are ignored.
+ * A bar chart (ADR-0028, ADR-0029) has no camera: its pointer events and its key target's keydown,
+ * `focus` and `focusout` go to the `BarHooks`, and its wheel, gestures, double click and context
+ * menu are ignored.
  */
 import type { CommitEvent, FrameInit, PlotRect, TimeWindow, ValueRange, VisSpec } from '../api';
 import {
@@ -107,6 +108,7 @@ export class FrameController {
     ];
     this.keyHandlers = [
       listen('keydown', this.onKeyDown.bind(this)),
+      listen('focus', this.onFocus.bind(this)),
       listen('focusout', this.onFocusOut.bind(this)),
     ];
   }
@@ -513,7 +515,7 @@ export class FrameController {
 
   private onPointerLeave(): void {
     if (this.isBar()) {
-      this.bar?.clearMark();
+      this.bar?.leave();
       return;
     }
     this.pointerAt = null;
@@ -528,7 +530,7 @@ export class FrameController {
 
   private onPointerDown(e: PointerEvent): void {
     if (this.isBar()) {
-      this.bar?.down(e, this.local(e));
+      if (this.bar?.down(e, this.local(e)) === true) this.capture(e.pointerId);
       return;
     }
     this.clearRightPress();
@@ -543,13 +545,7 @@ export class FrameController {
     // A pending wheel move commits before the press starts.
     if (this.gesture?.kind === 'wheel') this.endWheel();
     e.preventDefault();
-    // Not every environment implements pointer capture (jsdom does not).
-    const target: { setPointerCapture?: (id: number) => void } = this.canvas;
-    try {
-      target.setPointerCapture?.(e.pointerId);
-    } catch {
-      // Capture is best effort: a drag that leaves the canvas still ends on pointerup or cancel.
-    }
+    this.capture(e.pointerId);
     this.gesture = {
       kind: 'press',
       press,
@@ -598,6 +594,16 @@ export class FrameController {
       return;
     }
     this.commit(g.changed, g.zone === 'plot' ? 'pan' : 'axis');
+  }
+
+  private capture(pointerId: number): void {
+    // Not every environment implements pointer capture (jsdom does not).
+    const target: { setPointerCapture?: (id: number) => void } = this.canvas;
+    try {
+      target.setPointerCapture?.(pointerId);
+    } catch {
+      // Capture is best effort: a drag that leaves the canvas still ends on pointerup or cancel.
+    }
   }
 
   /** The box zoom: the dragged span, snapped as the brush always was (≥ 1 s). */
@@ -675,7 +681,11 @@ export class FrameController {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    if (this.isBar() || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (this.isBar()) {
+      this.bar?.key(e);
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const n = this.host.model()?.pickCount ?? 0;
     const i = this.keyAt;
     let next: number | null | undefined;
@@ -718,7 +728,15 @@ export class FrameController {
     this.host.hover();
   }
 
+  private onFocus(): void {
+    if (this.isBar()) this.bar?.focus();
+  }
+
   private onFocusOut(): void {
+    if (this.isBar()) {
+      this.bar?.blur();
+      return;
+    }
     if (this.keyAt === null) return;
     this.keyAt = null;
     this.host.hover();
