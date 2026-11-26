@@ -9758,6 +9758,274 @@
    }
   },
   {
+   "id": "L7",
+   "group": "L",
+   "src": "![a](/%61%70%69%2F%FF)",
+   "vars": [
+    [
+     "env",
+     "prod"
+    ]
+   ],
+   "entity": null,
+   "nodes": [
+    "paragraph@1",
+    "image /%61%70%69%2F%FF"
+   ],
+   "expect": {
+    "board": {
+     "dom": "<p><a:local>a↗</a></p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    },
+    "ai": {
+     "dom": "<p>a</p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "L8",
+   "group": "L",
+   "src": "![a](/%41PI/%C0)",
+   "vars": [
+    [
+     "env",
+     "prod"
+    ]
+   ],
+   "entity": null,
+   "nodes": [
+    "paragraph@1",
+    "image /%41PI/%C0"
+   ],
+   "expect": {
+    "board": {
+     "dom": "<p><a:local>a↗</a></p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    },
+    "ai": {
+     "dom": "<p>a</p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "L9",
+   "group": "L",
+   "src": "![a](/%2561pi/x)",
+   "vars": [
+    [
+     "env",
+     "prod"
+    ]
+   ],
+   "entity": null,
+   "nodes": [
+    "paragraph@1",
+    "image /%2561pi/x"
+   ],
+   "expect": {
+    "board": {
+     "dom": "<p><a:local>a↗</a></p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    },
+    "ai": {
+     "dom": "<p>a</p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "L10",
+   "group": "L",
+   "src": "![a](/auth%2F%FE)",
+   "vars": [
+    [
+     "env",
+     "prod"
+    ]
+   ],
+   "entity": null,
+   "nodes": [
+    "paragraph@1",
+    "image /auth%2F%FE"
+   ],
+   "expect": {
+    "board": {
+     "dom": "<p><a:local>a↗</a></p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    },
+    "ai": {
+     "dom": "<p>a</p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "L11",
+   "group": "L",
+   "src": "![a](/apix/y)",
+   "vars": [
+    [
+     "env",
+     "prod"
+    ]
+   ],
+   "entity": null,
+   "nodes": [
+    "paragraph@1",
+    "image /apix/y"
+   ],
+   "expect": {
+    "board": {
+     "dom": "<p><img:ok alt=\"a\"></p>",
+     "removals": []
+    },
+    "ai": {
+     "dom": "<p>a</p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "L12",
+   "group": "L",
+   "src": "![a](/ap%69.svg)",
+   "vars": [
+    [
+     "env",
+     "prod"
+    ]
+   ],
+   "entity": null,
+   "nodes": [
+    "paragraph@1",
+    "image /ap%69.svg"
+   ],
+   "expect": {
+    "board": {
+     "dom": "<p><img:ok alt=\"a\"></p>",
+     "removals": []
+    },
+    "ai": {
+     "dom": "<p>a</p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "L13",
+   "group": "L",
+   "src": "![a](/l%C3%A9.svg)",
+   "vars": [
+    [
+     "env",
+     "prod"
+    ]
+   ],
+   "entity": null,
+   "nodes": [
+    "paragraph@1",
+    "image /l%C3%A9.svg"
+   ],
+   "expect": {
+    "board": {
+     "dom": "<p><img:ok alt=\"a\"></p>",
+     "removals": []
+    },
+    "ai": {
+     "dom": "<p>a</p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    }
+   }
+  },
+  {
+   "id": "L14",
+   "group": "L",
+   "src": "![a](/a/api/x)",
+   "vars": [
+    [
+     "env",
+     "prod"
+    ]
+   ],
+   "entity": null,
+   "nodes": [
+    "paragraph@1",
+    "image /a/api/x"
+   ],
+   "expect": {
+    "board": {
+     "dom": "<p><img:ok alt=\"a\"></p>",
+     "removals": []
+    },
+    "ai": {
+     "dom": "<p>a</p>",
+     "removals": [
+      [
+       "image",
+       1
+      ]
+     ]
+    }
+   }
+  },
+  {
    "id": "N1",
    "group": "N",
    "src": "[![i](/l.svg) t](/b)",

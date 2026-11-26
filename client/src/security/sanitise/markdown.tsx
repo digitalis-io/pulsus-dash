@@ -58,8 +58,6 @@ const DEST_ENTITY = /%7[Bb]%7[Bb]entity%7[Dd]%7[Dd]/g;
 const TEXT_SUBST = new RegExp(`\\{\\{entity\\}\\}|${VARIABLE_REF.source}`, 'g');
 const DEST_SUBST = new RegExp(`${DEST_ENTITY.source}|${DEST_REF.source}`, 'g');
 const LINE = /[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/g;
-const PCT_RUN = /(?:%[0-9A-Fa-f]{2})+/g;
-const SERVER_ROUTE = /^\/(?:api|auth)(?:\/|$)/;
 const LANG = /^[a-z0-9-]{1,20}$/;
 const IFRAME_NAME = /iframe/i;
 const REL = 'noopener noreferrer nofollow';
@@ -89,22 +87,60 @@ export function sourceLines(src: string, start: number, end: number): string {
   return lines.slice(s - 1, e).join('');
 }
 
-/** True if a local href's percent-decoded path is `/api`, `/auth` or under them (server routes). */
-function serverRoute(href: string): boolean {
-  let path = href.split(/[?#]/)[0] ?? '';
-  for (let i = 0; i < 3; i++) {
-    const next = path.replace(PCT_RUN, (run) => {
-      try {
-        return decodeURIComponent(run);
-      } catch {
-        return run;
-      }
-    });
-    if (next === path) return SERVER_ROUTE.test(path.toLowerCase());
-    path = next;
+const UTF8 = new TextEncoder();
+const STRICT_UTF8 = new TextDecoder('utf-8', { fatal: true });
+
+/** One round of byte-level percent-decoding: each `%XX` becomes its byte. */
+function decodeBytes(bytes: Uint8Array): Uint8Array {
+  const out = new Uint8Array(bytes.length);
+  let n = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    const b = bytes[i] ?? 0;
+    const hex = b === 0x25 ? String.fromCharCode(bytes[i + 1] ?? 0, bytes[i + 2] ?? 0) : '';
+    if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
+      out[n++] = parseInt(hex, 16);
+      i += 2;
+    } else {
+      out[n++] = b;
+    }
   }
-  // Still changing after three rounds: treat it as a server route (not loaded).
+  return out.slice(0, n);
+}
+
+/** `bytes` starts with `prefix` (ASCII, compared case-insensitively). */
+function bytePrefix(bytes: Uint8Array, prefix: string): boolean {
+  for (let i = 0; i < prefix.length; i++) {
+    const b = bytes[i];
+    if (b === undefined) return false;
+    const lower = b >= 0x41 && b <= 0x5a ? b + 0x20 : b;
+    if (lower !== prefix.charCodeAt(i)) return false;
+  }
   return true;
+}
+
+/**
+ * True if a local href's path is a server route (`/api`, `/auth` or under them), so that an image
+ * there is not loaded (T24-018). The path is percent-decoded at the byte level, as the server
+ * routes on it, for up to three rounds; a path that still changes after three rounds, or whose
+ * bytes are not valid UTF-8, counts as a server route too.
+ */
+function serverRoute(href: string): boolean {
+  let bytes: Uint8Array = UTF8.encode(href.split(/[?#]/)[0] ?? '');
+  for (let round = 0; round < 3; round++) {
+    const next = decodeBytes(bytes);
+    if (next.length === bytes.length) break;
+    bytes = next;
+  }
+  if (decodeBytes(bytes).length !== bytes.length) return true;
+  try {
+    STRICT_UTF8.decode(bytes);
+  } catch {
+    return true;
+  }
+  const exact = (p: string): boolean => bytes.length === p.length && bytePrefix(bytes, p);
+  return (
+    exact('/api') || exact('/auth') || bytePrefix(bytes, '/api/') || bytePrefix(bytes, '/auth/')
+  );
 }
 
 type Out = string | ReactElement;

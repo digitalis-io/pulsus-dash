@@ -125,6 +125,16 @@ export const IMAGES: readonly string[] = [
   '/l.svg',
   '/%61pi/x',
   'data:,x',
+  // Byte-level server-route decoding: invalid UTF-8 after an encoded prefix, double encoding.
+  '/%61%70%69%2F%FF',
+  '/%41PI/%C0',
+  '/%2561pi/x',
+  '/auth%2F%FE',
+  // Near misses that stay images.
+  '/apix/y',
+  '/ap%69.svg',
+  '/l%C3%A9.svg',
+  '/a/api/x',
 ];
 
 /** N: nested images and links. */

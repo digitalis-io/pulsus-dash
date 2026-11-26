@@ -14,6 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderMarkdown, type Removal, type RenderPolicy } from './markdown';
 import styles from './markdown.module.css';
 import { checkInvariants, fromDom, shapeOf, type TElement, type TNode } from './testInvariants';
+import { checkHref, checkImgSrc } from './urlCheck';
 
 interface Expectation {
   dom: string;
@@ -130,5 +131,33 @@ describe('checkInvariants', () => {
       expect(checkInvariants(tree, policy), JSON.stringify(shapeOf(tree))).not.toEqual([]);
     }
     expect(checkInvariants(root(el('h1', {})), 'board', { headingOffset: 0 })).toEqual([]);
+  });
+});
+
+describe('urlCheck', () => {
+  it('checkImgSrc decodes the path at the byte level', () => {
+    for (const p of [
+      '/%61%70%69%2F%FF',
+      '/%41PI/%C0',
+      '/%2561pi/x',
+      '/auth%2F%FE',
+      '/api',
+      '/%2525252561pi/x',
+      '/l%FF.svg',
+      '/l%C0%AF.svg',
+    ]) {
+      expect(checkImgSrc(p), p).toBe(false);
+    }
+    for (const p of [
+      '/apix/y',
+      '/ap%69.svg',
+      '/l%C3%A9.svg',
+      '/a/api/x',
+      '/%61pix/y',
+      '/l.svg?x=/api/',
+    ]) {
+      expect(checkImgSrc(p), p).toBe(true);
+    }
+    expect(checkHref('/%61%70%69%2F%FF')).toBe('local');
   });
 });

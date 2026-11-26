@@ -345,7 +345,12 @@ Every destination is interpolated first, then classified with `classifyUrl`
 
 The `ai` policy never creates an `<img>` or any other element that loads on its own (T24-018). No
 external image is loaded until the image proxy ships (T18-014 interim). A `/api` or `/auth` image
-counts as external because the server routes on the decoded path. An image's alt is the text of its
+counts as external because the server routes on the decoded path. The path is percent-decoded at
+the byte level (each `%XX` becomes its byte) for up to three rounds, then compared with `/api`,
+`/auth`, `/api/…` and `/auth/…` (ASCII letters in any case). A path that still changes after three
+rounds, or whose bytes are not valid UTF-8, counts as a server route too, so `/%61%70%69%2F%FF`,
+`/%41PI/%C0`, `/%2561pi/x` and `/auth%2F%FE` are links, while `/apix/y`, `/ap%69.svg` and
+`/l%C3%A9.svg` stay images. An image's alt is the text of its
 children: links, emphasis and code inside it give their text, and a nested image gives its alt and
 records `image`.
 
@@ -442,16 +447,18 @@ imports neither `url.ts` nor `URL`.
 
 `checkHref` returns `bad` for any scheme in D other than `http`, `https` or `mailto`, and `local`
 for an R that starts with one `/`. It returns `external` for `http(s)://` with a non-empty authority
-without `@`, and `mailto` for `mailto:`. `checkImgSrc` requires `local` and a D path outside `/api`
-and `/auth`.
+without `@`, and `mailto` for `mailto:`. `checkImgSrc` requires `local`, and then decodes R's path
+at the byte level on its own (its own UTF-8 encoder and validator, up to three rounds): a path
+outside `/api` and `/auth` that settles within three rounds and is valid UTF-8.
 
 `src/security/sanitise/testInvariants.ts` holds `checkInvariants(tree, policy)`, which lists the
 violations of a rendered tree:
 
 - Tags must be in `p`, `h4`–`h6` (`h1`–`h6` with heading offset 0), `blockquote`, `ul`, `ol`, `li`,
   `hr`, `pre`, `code`, `br`, `em`, `strong`, `a`, `img` and `span`.
-- Attributes must be in `href`, `target`, `rel`, `src`, `alt`, `loading`, `start`, `data-lang`,
-  `class` and `aria-hidden`, with no `on*`, `style` or `srcdoc`.
+- Attributes are allowed per element: `a` `href`, `target`, `rel`; `img` `src`, `alt`, `loading`;
+  `ol` `start`; `code` `data-lang`; `span` `class`, `aria-hidden`; no other element has any. So
+  there is no `on*`, `style` or `srcdoc` anywhere, and no `href` on an `img` or `src` on an `a`.
 - Every `a` has `target=_blank`, the three `rel` values and a `checkHref` other than `bad`; under
   `ai`, only `local`.
 - `img` appears only under `board` and passes `checkImgSrc`.

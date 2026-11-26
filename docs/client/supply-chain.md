@@ -281,7 +281,7 @@ build never holds it; the check proves it on every audited build rather than ass
 `classifyUrl`, `findIframes`, `convertImportedText` and, since #198 Part 2b, `renderMarkdown`, with
 this project's alias and React external: the lazy chunk holds the three packages, the renderer and
 no forbidden module, and must be at most **100 000** bytes brotli 11. Measured with vite 8.3.8 on
-2026-11-26: 96 812 with the renderer, which also brings in the i18n catalogue (it uses `t`; in the
+2026-11-26: 97 077 with the renderer, which also brings in the i18n catalogue (it uses `t`; in the
 app the catalogue is already in the main bundle); 85 037 without it; a dependencies-only probe was
 83 975, and today's `BoardPage` chunk is 22 302 against the 120 000 lazy-chunk budget. A second
 probe that extends `node:stream`'s `Transform`, as `SAXParser` does, must give a `forbidden-module`

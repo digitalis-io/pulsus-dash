@@ -439,6 +439,27 @@ describe('unit:markdown-images', () => {
       removals: rm(['image', 1]),
     });
     expect(md('![a](/%61pi/x)').container.querySelector('img')).toBeNull();
+  });
+
+  it('server routes are found at the byte level; near misses stay images', () => {
+    for (const p of [
+      '/%61%70%69%2F%FF',
+      '/%41PI/%C0',
+      '/%2561pi/x',
+      '/auth%2F%FE',
+      '/%61pi',
+      '/AUTH',
+    ]) {
+      const r = md(`![a](${p})`);
+      expect(r.container.querySelector('img'), p).toBeNull();
+      expect(r.container.querySelector('a')?.getAttribute('href'), p).toBe(p);
+      expect(r.removals, p).toEqual(rm(['image', 1]));
+    }
+    for (const p of ['/apix/y', '/ap%69.svg', '/l%C3%A9.svg', '/a/api/x', '/%61pix/y', '/authx']) {
+      const r = md(`![a](${p})`);
+      expect(r.container.querySelector('img')?.getAttribute('src'), p).toBe(p);
+      expect(r.removals, p).toEqual([]);
+    }
     const nested = md('[![g](https://x.test/g.png)](/b)');
     expect(nested.container.querySelectorAll('a')).toHaveLength(1);
     expect(nested.html).toBe('<p><a href="/b">g…</a></p>');
