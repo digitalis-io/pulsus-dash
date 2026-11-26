@@ -41,8 +41,8 @@ from `https://registry.npmjs.org/` (`non-registry-resolved`) or without an `sha5
 | Field | Meaning |
 |---|---|
 | `forbiddenCategories` | `charting`, `mapping`, `3d`, `graph-diagram`, `css-in-js` (ADR-0014 §7; charts are drawn by our own renderer, ADR-0007) |
-| `runtimeAllowlist` | the only names allowed in `dependencies`: `react`, `react-dom`, `react-router`, `@tanstack/react-query`, `react-aria-components`, `@internationalized/date`, `openapi-fetch` (the BFF client, ADR-0014 §1), `react-grid-layout` (the board grid, [below](#react-grid-layout)), the ten query-editor packages ([below](#query-editor)), and `@tanstack/react-virtual` (the log stream, [below](#tanstackreact-virtual)) |
-| `runtimeClosure` | every package of the runtime closure (52 today), by category: `ui-framework`, `routing`, `server-state`, `accessible-components`, `i18n`, `api-client` (`openapi-fetch` 0.17.0 and its only dependency `openapi-typescript-helpers` 0.1.0, both MIT), `runtime-helper`, `board-layout` (`react-grid-layout` and the 9 packages it adds), `query-editor` (the 17 packages of the PromQL editor), `virtual-list` (`@tanstack/react-virtual` and `@tanstack/virtual-core`) |
+| `runtimeAllowlist` | the only names allowed in `dependencies`: `react`, `react-dom`, `react-router`, `@tanstack/react-query`, `react-aria-components`, `@internationalized/date`, `openapi-fetch` (the BFF client, ADR-0014 §1), `react-grid-layout` (the board grid, [below](#react-grid-layout)), the ten query-editor packages ([below](#query-editor)), `@tanstack/react-virtual` (the log stream, [below](#tanstackreact-virtual)), and `commonmark`, `parse5` and `parse5-sax-parser` (the Markdown sanitiser, [below](#markdown)) |
+| `runtimeClosure` | every package of the runtime closure (58 today), by category: `ui-framework`, `routing`, `server-state`, `accessible-components`, `i18n`, `api-client` (`openapi-fetch` 0.17.0 and its only dependency `openapi-typescript-helpers` 0.1.0, both MIT), `runtime-helper`, `board-layout` (`react-grid-layout` and the 9 packages it adds), `query-editor` (the 17 packages of the PromQL editor), `virtual-list` (`@tanstack/react-virtual` and `@tanstack/virtual-core`), `markdown` (the six packages of [Markdown](#markdown)) |
 | `licenceAllowlist` | MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0, 0BSD, MPL-2.0 (ADR-0014 §7, unchanged) |
 | `licenceExceptionAllowlist` | exact `"<licence> WITH <exception>"` pairs; empty. Adding one needs an ADR |
 | `buildUrlAllowlist` | the exact URL strings the production bundle may contain as plain text, each with a reason (namespace URIs, the URL-parsing base, error-help links) |
@@ -218,6 +218,78 @@ is only in the dev-only harness chunk, a lazy route chunk that the `http` build 
 | Initial JS (unchanged by the library) | 189 668 | 200 000 (`initialJs`) |
 
 `bundle-budgets.json` is unchanged. The chunk contains no URL string.
+
+## Markdown
+
+The Markdown sanitiser ([Widgets](widgets.md#sanitiser-modules-part-2a), #198 Part 2a;
+[ADR-0024](../../designs/adr/0024-markdown-runtime-dependencies.md), amending ADR-0014 §7) parses
+with `commonmark` and finds iframes with `parse5` and `parse5-sax-parser`. Category `markdown`;
+installed with the 7-day cut-off and exact pins:
+
+```sh
+npm install --ignore-scripts --before=<date 7 days ago> commonmark@0.31.2 parse5@8.1.1 parse5-sax-parser@8.0.1
+npm install --ignore-scripts --before=<date 7 days ago> --save-dev @types/commonmark@0.27.10
+```
+
+| Package | Version | Licence | Published | Note |
+|---|---|---|---|---|
+| `commonmark` | 0.31.2 | BSD-2-Clause | 2024-09-19 | the parser; its tree is walked, never rendered to a string |
+| `entities` (under `commonmark`) | 3.0.1 | BSD-2-Clause | — | entity decoding for commonmark |
+| `mdurl` | 1.0.1 | MIT | — | URL normalisation for commonmark |
+| `minimist` | 1.2.8 | MIT | — | commonmark's CLI only; never in a browser chunk |
+| `parse5` | 8.1.1 | MIT | 2026-11-07 | moved from `devDependencies` (the origins check uses it too) |
+| `entities` | 9.0.0 | BSD-2-Clause | — | entity decoding for parse5 |
+| `parse5-sax-parser` | 8.0.1 | MIT | 2026-11-07 | only its `ParserFeedbackSimulator`, through an alias |
+| `@types/commonmark` (dev) | 0.27.10 | MIT | 2025-06-28 | types |
+
+None has an install script. The closure grows from 52 to 58 names; `entities` is one name in two
+versions (3.0.1 nested under `commonmark`, 9.0.0 at the top level) until `commonmark` updates.
+
+**The alias.** `SAXParser`, the package entry of `parse5-sax-parser`, extends `Transform` from
+`node:stream`, which browsers lack. `vite.config.ts` `resolve.alias` maps
+`parse5-sax-parser/feedback` to `node_modules/parse5-sax-parser/dist/parser-feedback-simulator.js`,
+the tokenizer driver that `SAXParser` wraps, which imports only `parse5`. An update of the package
+can move that file: the exact pin and `unit:find-iframes` (the simulator's tokens equal
+`SAXParser`'s; the file imports no `node:` module) catch it.
+
+**Import boundary.** The `security/markdown-boundary` ESLint rule keeps `commonmark` inside
+`src/security/sanitise/`, `parse5` and the alias inside `findIframes.ts` (and the sanitise tests),
+bans commonmark's `HtmlRenderer` and `XmlRenderer` and `minimist`, and allows the bare
+`parse5-sax-parser` only in `findIframes.test.ts`. `security/no-iframe` is `ci:no-iframe`
+([Widgets](widgets.md#lint-rules)).
+
+**Module graph** (`ci:dep-audit`). `minimist` is reachable only from commonmark's CLI, so a browser
+build never holds it; the check proves it on every audited build rather than assuming it:
+
+- The `dash-module-ids` Vite plugin writes `{chunkFile: moduleIds}` after each build to
+  `node_modules/.cache/dash-build/<basename(outDir)>/modules.json`: one file per output directory,
+  outside every `dist*` directory, so the signed asset set is unchanged. The engine's worker bundles
+  are not in this graph.
+- `scripts/check-bundle-modules.ts [--cache <dir>] <outDir>…` reads each named build's file and
+  fails (`forbidden-module`, naming the chunk and the module) on a module under
+  `node_modules/minimist/`, a `node:` id (with or without the virtual-module NUL), Vite's
+  `__vite-browser-external` stand-in for a Node built-in, or `parse5-sax-parser`'s
+  `dist/index.js` or `dist/dev-null-stream.js`. Exit 0 none, 1 findings, 2 a graph is missing (that
+  build was not made).
+- `npm run origins` runs it on `dist` and `dist-http` after the origins check; `make engine-e2e`
+  runs it on `dist-release-stub` and `dist-release-http` after their size checks.
+
+**Bundle.** No page imports the sanitiser yet, so `dist/` and `buildUrlAllowlist` are unchanged.
+`unit:sanitise-bundle` builds a probe (`scripts/__fixtures__/sanitise-probe/`) that lazily imports
+`classifyUrl`, `findIframes` and `convertImportedText` with this project's alias and React external:
+the lazy chunk holds the three packages and no forbidden module, and must be at most **100 000**
+bytes brotli 11 (measured 85 037 on 2026-11-26 with vite 8.3.8; a dependencies-only probe was
+83 975, and today's `BoardPage` chunk is 22 302 against the 120 000 lazy-chunk budget). A second
+probe that extends `node:stream`'s `Transform`, as `SAXParser` does, must give a `forbidden-module`
+finding, which proves Vite's browser-external id is caught. Part 2b adds the renderer to the probe
+under the same limit; Part 3 loads the Markdown code as its own dynamic chunk, outside `BoardPage`.
+When a page first imports parse5, its namespace and DOCTYPE identifier strings join
+`buildUrlAllowlist`.
+
+| Gate | File |
+|---|---|
+| `unit:bundle-modules` | `scripts/check-bundle-modules.test.ts` with `scripts/__fixtures__/bundle-modules/` (a clean graph, `minimist`, `node:stream`, a NUL-prefixed `node:` id, the browser-external id with and without NUL, `SAXParser`'s entry; a missing graph) |
+| `unit:sanitise-bundle` | `scripts/sanitise-bundle.test.ts` (prints the measured size) |
 
 ## Advisories and signatures
 
