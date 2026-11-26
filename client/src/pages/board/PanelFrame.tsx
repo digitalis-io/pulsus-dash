@@ -47,20 +47,18 @@ import { useLegendLayout } from '../../boards/useLegendLayout';
 import { PANEL_PREFETCH_ROWS, streamMeta } from '../../boards/logPanel';
 import { usePanelRun, type PanelRun } from '../../boards/usePanelRun';
 import { useInViewport } from '../../boards/visibility';
+import { CategoryChart } from '../../charts/CategoryChart';
 import { ChartFrame, type ChartFrameProps, type FrameSize } from '../../charts/ChartFrame';
 import type { SeriesTableProps } from '../../charts/SeriesTable';
 import { SeriesTable } from '../../charts/SeriesTable';
 import { statValue } from '../../data/frames';
+import type { PickEvent, ThresholdState, Unit } from '../../engine/api';
 import { nextSort, sortRows, toggleIsolation, type SortState } from '../../explore/seriesRows';
 import { useDelayedFlag } from '../../explore/useDelayedFlag';
 import { useElementWidth } from '../../explore/useElementWidth';
 import { t } from '../../i18n/t';
 import { useInspectedPanelId } from '../../inspector/host';
 import type { InspectOrigin } from '../../inspector/types';
-import type { PickEvent, ThresholdState, Unit } from '../../engine/api';
-import type { BoardFilter } from '../../state/boardParams';
-import { barAction, type BarAction, type BarContext } from '../../vis/barAction';
-import { CategoryChart } from '../../charts/CategoryChart';
 import { useChartInspect } from '../../inspector/useChartInspect';
 import { Button } from '../../kit/Button';
 import { cx } from '../../kit/cx';
@@ -71,8 +69,10 @@ import { Menu, MenuItem } from '../../kit/Menu';
 import { Popover } from '../../kit/Popover';
 import { LogStream } from '../../logs/LogStream';
 import { StateGlyph } from '../../kit/StateGlyph';
+import type { BoardFilter } from '../../state/boardParams';
 import { useTimeContext } from '../../state/useTimeContext';
 import { StateEncoding } from '../../theme/stateEncoding';
+import { barAction, type BarAction, type BarContext } from '../../vis/barAction';
 import {
   crossed,
   displayText,
