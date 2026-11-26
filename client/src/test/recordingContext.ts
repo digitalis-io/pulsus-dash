@@ -124,6 +124,8 @@ export function recordingContext(): RecordingContext {
     rect: rec('rect'),
     clip: rec('clip'),
     setLineDash: rec('setLineDash'),
+    rotate: rec('rotate'),
+    translate: rec('translate'),
     save() {
       stack.push({ ...state });
       rec('save')();

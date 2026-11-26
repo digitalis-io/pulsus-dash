@@ -48,6 +48,7 @@ const VIS_LABELS: Readonly<Record<VisKind, MessageId>> = {
   bars: 'editor.vis.bars',
   heatmap: 'editor.vis.heatmap',
   stat: 'editor.vis.stat',
+  barchart: 'editor.vis.barchart',
 };
 
 const LEGENDS: readonly { id: 'table' | 'hidden'; label: MessageId }[] = [

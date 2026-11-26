@@ -15,3 +15,8 @@
   flex-direction: column;
   gap: var(--space-4);
 }
+
+/* A bar chart entry (plan #173 Part 2 §4.5): the chart is `size.chart` high, the meter below it. */
+.barchart {
+  height: calc(var(--size-chart) + var(--size-control));
+}

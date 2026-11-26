@@ -15,9 +15,9 @@ import { truncated } from './text';
 /** The most threshold lines a frame draws, in spec order (ADR-0022). */
 const MAX_THRESHOLDS = 8;
 
-/** The threshold lines of a line or bars spec that are drawn: the first 8, in spec order. */
+/** The threshold lines of a line, bars or barchart spec that are drawn: the first 8, in order. */
 export function thresholdsOf(spec: VisSpec): readonly ThresholdLine[] {
-  return spec.kind === 'line' || spec.kind === 'bars'
+  return spec.kind === 'line' || spec.kind === 'bars' || spec.kind === 'barchart'
     ? (spec.thresholds ?? []).slice(0, MAX_THRESHOLDS)
     : [];
 }

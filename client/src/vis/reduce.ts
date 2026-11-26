@@ -493,6 +493,20 @@ function geoParts(g: Coverage['geo']): string[] {
   return parts;
 }
 
+/**
+ * The map area parts (T22-006, T24-098), after every other part, zeros omitted:
+ * `k outside the map area`, `k without a location`, `map area not applied to k (locations
+ * unavailable)`.
+ */
+function areaParts(a: Coverage['area']): string[] {
+  if (a === undefined) return [];
+  const parts: string[] = [];
+  if (a.outside > 0) parts.push(t('coverage.area.outside', { n: count(a.outside) }));
+  if (a.unlocated > 0) parts.push(t('coverage.area.unlocated', { n: count(a.unlocated) }));
+  if (a.unapplied > 0) parts.push(t('coverage.area.unapplied', { n: count(a.unapplied) }));
+  return parts;
+}
+
 /** The cap text (T22-006 (4)): `showing X of N`, `; kept …` and `; J <state> not shown`. */
 function capText(c: Coverage): string {
   let text = t('coverage.showing', { x: count(c.drawn), n: count(c.total) });
@@ -545,6 +559,7 @@ export function coverageText(c: Coverage, timeZone: string = browserTimeZone()):
   if (c.staleAtMs !== undefined && c.staleAtMs !== null) {
     parts.push(t('coverage.stale', { time: clockText(c.staleAtMs, timeZone) }));
   }
+  parts.push(...areaParts(c.area));
   return parts.length === 0 ? t('coverage.complete') : parts.join(' · ');
 }
 
