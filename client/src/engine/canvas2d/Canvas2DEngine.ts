@@ -14,8 +14,9 @@
  * Event markers (ADR-0023, `setEvents`) are drawn with the layer, through the drawn view, so they
  * follow the preview; their labels' boxes go out in the `a11y` summary (`eventLabels`).
  *
- * A bar chart (ADR-0028) has no camera: its pointer events go to `BarInput` (`mark`, `pick`), and
- * its wheel, gestures, double click, context menu and keys are ignored.
+ * A bar chart (ADR-0028, ADR-0029) has no camera: its pointer events and its key target's keys go
+ * to `BarInput` (`mark`, `pick`, the focus mark and the brush band in the overlay), and its wheel,
+ * gestures, double click and context menu are ignored.
  */
 import type {
   ChartEngine,
@@ -34,7 +35,7 @@ import type {
   VisSpec,
 } from '../api';
 import { BarInput } from './barInput';
-import type { BarPick } from './barchart';
+import { drawBarOverlay, type BarPick } from './barchart';
 import { fx, fy, panBy, timeLimits, toWindow, valueLimits, zoomAbout, type Span } from './camera';
 import { brushSnapUnit } from './columns';
 import type { Ctx2D } from './ctx';
@@ -206,8 +207,10 @@ class Canvas2DFrame implements ChartFrame {
   private lastHover: HoverEvent | null = null;
   private listening = false;
   private readonly listeners = new Map<keyof FrameEvents, Set<Listener>>();
-  /** The bar chart's `mark` and `pick` (ADR-0028). */
-  private readonly bar = new BarInput(this.emit.bind(this));
+  /** The bar chart's `mark` and `pick` (ADR-0028, ADR-0029); its overlay redraws only. */
+  private readonly bar = new BarInput(this.emit.bind(this), () => {
+    this.schedule();
+  });
   private readonly canvasHandlers: readonly Handler[];
   private readonly keyHandlers: readonly Handler[];
 
@@ -240,6 +243,7 @@ class Canvas2DFrame implements ChartFrame {
     ];
     this.keyHandlers = [
       listen('keydown', this.onKeyDown.bind(this)),
+      listen('focus', this.onFocus.bind(this)),
       listen('focusout', this.onFocusOut.bind(this)),
     ];
     for (const f of [AXIS_FONT, STAT_FONT]) {
@@ -274,6 +278,7 @@ class Canvas2DFrame implements ChartFrame {
   setData(data: FrameData): void {
     if (this.disposed) return;
     this.data = data;
+    this.bar.newData();
     this.changed();
   }
 
@@ -462,6 +467,7 @@ class Canvas2DFrame implements ChartFrame {
           this.emit('a11y', this.model.summary);
         }
       }
+      if (this.isBar()) this.bar.laidOut(this.barPick());
     }
     let hover = this.lastHover;
     if (this.hoverDirty) {
@@ -514,7 +520,10 @@ class Canvas2DFrame implements ChartFrame {
     ctx.drawImage(this.layer, 0, 0, this.cssW, this.cssH);
     const g = this.gesture;
     const box = g?.kind === 'press' && g.press === 'box' && g.moved ? { x0: g.x0, x: g.x } : null;
-    if (this.model !== null) drawOverlay(ctx, this.model, themeColours(this.theme), hover, box);
+    if (this.model === null) return;
+    const bar = this.barPick();
+    if (bar !== null) drawBarOverlay(ctx, bar, themeColours(this.theme), this.bar.overlay());
+    else drawOverlay(ctx, this.model, themeColours(this.theme), hover, box);
   }
 
   private currentHover(): HoverEvent | null {
@@ -813,7 +822,7 @@ class Canvas2DFrame implements ChartFrame {
 
   private onPointerDown(e: PointerEvent): void {
     if (this.isBar()) {
-      this.bar.down(e, this.local(e));
+      if (this.bar.down(e, this.local(e), this.barPick())) this.capture(e.pointerId);
       return;
     }
     this.clearRightPress();
@@ -828,13 +837,7 @@ class Canvas2DFrame implements ChartFrame {
     // A pending wheel move commits before the press starts.
     if (this.gesture?.kind === 'wheel') this.endWheel();
     e.preventDefault();
-    // Not every environment implements pointer capture (jsdom does not).
-    const target: { setPointerCapture?: (id: number) => void } = this.canvas;
-    try {
-      target.setPointerCapture?.(e.pointerId);
-    } catch {
-      // Capture is best effort: a drag that leaves the canvas still ends on pointerup or cancel.
-    }
+    this.capture(e.pointerId);
     this.gesture = {
       kind: 'press',
       press,
@@ -885,6 +888,16 @@ class Canvas2DFrame implements ChartFrame {
       return;
     }
     this.commit(g.changed, g.zone === 'plot' ? 'pan' : 'axis');
+  }
+
+  private capture(pointerId: number): void {
+    // Not every environment implements pointer capture (jsdom does not).
+    const target: { setPointerCapture?: (id: number) => void } = this.canvas;
+    try {
+      target.setPointerCapture?.(pointerId);
+    } catch {
+      // Capture is best effort: a drag that leaves the canvas still ends on pointerup or cancel.
+    }
   }
 
   /** The box zoom: the dragged span, snapped as the brush always was (≥ 1 s). */
@@ -962,7 +975,11 @@ class Canvas2DFrame implements ChartFrame {
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    if (this.isBar() || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (this.isBar()) {
+      this.bar.key(e, this.barPick());
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     const n = this.model?.pick?.ref.length ?? 0;
     const i = this.keyIndex;
     let next: number | null | undefined;
@@ -1005,7 +1022,15 @@ class Canvas2DFrame implements ChartFrame {
     this.hoverChanged();
   }
 
+  private onFocus(): void {
+    if (this.isBar()) this.bar.focusIn(this.barPick());
+  }
+
   private onFocusOut(): void {
+    if (this.isBar()) {
+      this.bar.blur();
+      return;
+    }
     if (this.keyIndex === null) return;
     this.keyIndex = null;
     this.hoverChanged();

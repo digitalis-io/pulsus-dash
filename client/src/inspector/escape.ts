@@ -7,11 +7,21 @@ import type { InspectRequest } from './types';
 /** Where a kind's own Esc wins: dialogs, menus, list boxes and CodeMirror. */
 const OWNED = '[role=dialog], [role=menu], [role=listbox], .cm-editor';
 
-/** True when the ladder must not act on `e`. */
+/**
+ * True when the ladder must not act on `e`. An owner marked `data-escape-ladder` (a bar chart's
+ * mirror listbox, ADR-0029) leaves Escape to the ladder.
+ */
 export function ladderSkips(e: KeyboardEvent, doc: Document): boolean {
   if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return true;
   const target = e.target instanceof Element ? e.target : null;
-  if (target?.closest(OWNED) != null) return true;
+  // Every owner around the target counts: a marked listbox inside a dialog is the dialog's.
+  for (
+    let o = target?.closest(OWNED) ?? null;
+    o !== null;
+    o = o.parentElement?.closest(OWNED) ?? null
+  ) {
+    if (!o.hasAttribute('data-escape-ladder')) return true;
+  }
   if (
     target !== null &&
     (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') &&

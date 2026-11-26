@@ -1,25 +1,37 @@
 /**
- * A bar chart in a measured cell (plan #173 Part 2 §4.1, §4.4; ADR-0028). The cell's size (whole CSS
- * px; the caller's `sizeMemo` first, so a re-mounted chart fits at once) goes through
- * `fitBarchart` with an offscreen measure in the axis font. The fit mounts a `ChartFrame`, or shows
- * the `tooSmall` notice in place of the plot. Under the cell, one line holds the coverage meter and,
- * when names or value labels are hidden, the note saying so; the line never changes the cell's
- * height. A resize that keeps the cap and the fit stage keeps the fit, so the frame gets the same
- * spec and data and does not redraw for it; a 0 × 0 size keeps the last fit.
+ * A bar chart in a measured cell (plan #173 Part 2 §4.1, §4.4, Part 3a §3.5, §3.6; ADR-0028,
+ * ADR-0029). The cell's size (whole CSS px; the caller's `sizeMemo` first, so a re-mounted chart
+ * fits at once) goes through `fitBarchart` with an offscreen measure in the axis font. The fit
+ * mounts a `ChartFrame`, or shows the focusable `tooSmall` notice in place of the plot. Under the
+ * cell, one line holds the coverage meter and, when names or value labels are hidden or the baseline
+ * run failed, the note saying so; the line never changes the cell's height. A resize that keeps the
+ * cap and the fit stage keeps the fit, so the frame gets the same spec and data and does not redraw
+ * for it; a 0 × 0 size keeps the last fit. The ghost and anomaly flags are set on the spec, with no
+ * refit.
+ *
+ * The table view (T22-013): Shift+T anywhere in the chart (not in a text field) asks the caller to
+ * flip `table`; with it on, the cell keeps its size and holds a `PanelTable` over `fit.rows`.
+ * Opening focuses the grid; closing focuses the listbox when a frame is mounted, else the notice.
  */
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
 import type { BarchartSpec, CategoryRow, PickEvent, TimeWindow } from '../engine/api';
 import type { BarContext } from '../vis/barAction';
 import { barLayout } from '../engine/canvas2d/barLayout';
 import { AXIS_FONT } from '../engine/canvas2d/layout';
 import type { Measure } from '../engine/canvas2d/text';
+import { formatHourMinute, formatValue } from '../i18n/format';
 import { t } from '../i18n/t';
+import { useSelection } from '../inspector/host';
 import { cx } from '../kit/cx';
+import { useTimeZone } from '../state/timeZone';
+import { useTimeContext } from '../state/useTimeContext';
 import { font } from '../styles/tokens';
+import { barHint } from '../vis/barAction';
 import { fitBarchart, type BarchartFit, type BarchartModel } from '../vis/barchart';
 import styles from './CategoryChart.module.css';
 import { ChartFrame, type FrameSize } from './ChartFrame';
 import { CoverageMeter } from './CoverageMeter';
+import { PanelTable } from './PanelTable';
 
 /** The offscreen context of `axisMeasure`; null without 2D canvas support. */
 let measureCtx: CanvasRenderingContext2D | null | undefined;
@@ -59,21 +71,61 @@ function noteText(names: boolean, values: boolean): string | null {
   return values ? t('chart.bar.valuesHidden') : null;
 }
 
-/** The bar tooltip's lines (plan #173 Part 3a §3.5). Stub (tests first). */
+/** The baseline run's incompleteness as a tooltip line (T22-006); null for a complete run. */
+function baselineGap(m: BarchartModel): string | null {
+  const b = m.baseline;
+  if (b === null) return null;
+  if (b.truncated) return t('coverage.baselineTruncated');
+  const n = b.warnings.length;
+  if (n === 0) return null;
+  return n === 1 ? t('coverage.baselineLimitedOne', { n }) : t('coverage.baselineLimited', { n });
+}
+
+/**
+ * The bar tooltip's lines after the name, value and state (plan #173 Part 3a §3.5), in order: with
+ * the ghost on, `baseline <v>`, or what the baseline run lacks in its place (truncated, limited);
+ * `barHint` (with a `context` only); the window the values are reduced over (T22-011: there is no
+ * crosshair); and, with anomaly on, the note that this query has no scores.
+ */
 export function markLines(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   row: CategoryRow,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   o: {
     readonly model: BarchartModel;
     readonly ghost: boolean;
     readonly anomaly: boolean;
     readonly context?: Omit<BarContext, 'model'>;
+    /** Used without a `context`. */
     readonly window: TimeWindow;
     readonly timeZone: string;
   },
 ): string[] {
-  return [];
+  const out: string[] = [];
+  if (o.ghost) {
+    const gap = baselineGap(o.model);
+    if (gap !== null) out.push(gap);
+    else if (row.baseline !== null && Number.isFinite(row.baseline)) {
+      out.push(t('chart.bar.baseline', { value: formatValue(row.baseline, o.model.spec.unit) }));
+    }
+  }
+  if (o.context !== undefined) {
+    const hint = barHint(row, { model: o.model, surface: o.context.surface });
+    if (hint !== null) out.push(hint);
+  }
+  const w = o.context?.window ?? o.window;
+  out.push(
+    t('bar.reducedOver', {
+      range: `${formatHourMinute(w.fromMs, o.timeZone)} – ${formatHourMinute(w.toMs, o.timeZone)}`,
+    }),
+  );
+  if (o.anomaly && row.anomaly === null) out.push(t('bar.noAnomaly'));
+  return out;
+}
+
+/** True for a key typed into a text field, where Shift+T is a capital T. */
+function inTextField(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (target.closest('input, textarea, select') !== null) return true;
+  return target.closest('[contenteditable]:not([contenteditable="false"])') !== null;
 }
 
 export function CategoryChart({
@@ -82,20 +134,33 @@ export function CategoryChart({
   onNarrow,
   sizeMemo,
   onPick,
+  context,
+  ghost = false,
+  anomaly = false,
+  table = false,
+  onTable,
+  baselineFailed = false,
 }: {
   model: BarchartModel;
   title: string;
   onNarrow: () => void;
   sizeMemo?: { current: FrameSize | null };
   onPick?: (e: PickEvent, returnFocus: HTMLElement | null) => void;
+  /** For `markLines` and the pick decision; absent: no filter hint. */
   context?: Omit<BarContext, 'model'>;
   ghost?: boolean;
   anomaly?: boolean;
   table?: boolean;
   onTable?: (on: boolean) => void;
+  /** The shifted query failed: the under-line note `panel.baselineFailed`. */
   baselineFailed?: boolean;
 }): JSX.Element {
+  const rootRef = useRef<HTMLDivElement>(null);
   const cellRef = useRef<HTMLDivElement>(null);
+  const { window: ctxWindow } = useTimeContext();
+  const timeZone = useTimeZone();
+  const selection = useSelection();
+  const selected = useMemo(() => new Set(selection?.keys ?? []), [selection]);
   const own = useRef<FrameSize | null>(null);
   const memo = sizeMemo ?? own;
   const [state, setState] = useState<Fitted>(() => refit(model, null, null));
@@ -135,9 +200,62 @@ export function CategoryChart({
   }, [memo]);
   const { fit, size } = current;
   const spec = useMemo<BarchartSpec | null>(
-    () => (fit?.notice === null ? { ...fit.spec, title } : null),
-    [fit, title],
+    () => (fit?.notice === null ? { ...fit.spec, title, ghost, anomaly } : null),
+    [fit, title, ghost, anomaly],
   );
+  const lines = useMemo(
+    () =>
+      (row: CategoryRow): readonly string[] =>
+        markLines(row, {
+          model,
+          ghost,
+          anomaly,
+          ...(context === undefined ? {} : { context }),
+          window: ctxWindow,
+          timeZone,
+        }),
+    [model, ghost, anomaly, context, ctxWindow, timeZone],
+  );
+
+  // Shift+T flips the table (native listener: the root is no control of its own).
+  const tableRef = useRef({ table, onTable });
+  useLayoutEffect(() => {
+    tableRef.current = { table, onTable };
+  });
+  useEffect(() => {
+    const root = rootRef.current;
+    if (root === null) return;
+    const onKey = (e: KeyboardEvent): void => {
+      const cur = tableRef.current;
+      if (cur.onTable === undefined || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key !== 'T' && e.key !== 't') return;
+      if (inTextField(e.target)) return;
+      e.preventDefault();
+      cur.onTable(!cur.table);
+    };
+    root.addEventListener('keydown', onKey);
+    return () => {
+      root.removeEventListener('keydown', onKey);
+    };
+  }, []);
+  // Focus follows the swap: the grid when it opens, the listbox (else the notice) when it closes.
+  const shown = useRef(table);
+  useEffect(() => {
+    if (shown.current === table) return;
+    shown.current = table;
+    const root = rootRef.current;
+    const to = table
+      ? root?.querySelector<HTMLElement>('[role=grid]')
+      : (root?.querySelector<HTMLElement>('[data-bar-list]') ??
+        root?.querySelector<HTMLElement>('[data-too-small]'));
+    to?.focus();
+  }, [table]);
+  const onRow =
+    onPick === undefined
+      ? undefined
+      : (key: string, source: 'pointer' | 'keyboard', el: HTMLElement): void => {
+          onPick({ keys: [key], gesture: 'click', source }, el);
+        };
   const note = useMemo(() => {
     if (fit === null || fit.notice !== null || size === null) return null;
     // Names the layout itself hides (no distinct fit) count as hidden too (T22-004).
@@ -146,19 +264,37 @@ export function CategoryChart({
     return noteText(names, fit.hidden === 'namesValues' || fit.hidden === 'values');
   }, [fit, size]);
   return (
-    <div className={cx(styles['root'])} data-category-chart="">
+    <div ref={rootRef} className={cx(styles['root'])} data-category-chart="">
       <div ref={cellRef} className={cx(styles['cell'])} data-category-cell="">
-        {fit?.notice === null && spec !== null && (
+        {table && fit !== null && (
+          <PanelTable
+            rows={fit.rows}
+            title={title}
+            selected={selected}
+            {...(onRow === undefined ? {} : { onRow })}
+            onClose={() => onTable?.(false)}
+          />
+        )}
+        {!table && fit?.notice === null && spec !== null && (
           <ChartFrame
             spec={spec}
             data={fit.data}
             fill
             sizeMemo={memo}
+            markLines={lines}
             {...(onPick === undefined ? {} : { onPick })}
           />
         )}
-        {fit?.notice === 'tooSmall' && (
-          <p className={cx(styles['tooSmall'])} data-too-small="">
+        {!table && fit?.notice === 'tooSmall' && (
+          <p
+            className={cx(styles['tooSmall'])}
+            role="group"
+            // The table is one Shift+T away (T22-013): the notice is the chart's focus target.
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+            tabIndex={0}
+            aria-label={t('chart.bar.tooSmallLabel', { title })}
+            data-too-small=""
+          >
             {fit.text}
           </p>
         )}
@@ -168,6 +304,11 @@ export function CategoryChart({
         {note !== null && (
           <p className={cx(styles['note'])} data-hidden-note="">
             {note}
+          </p>
+        )}
+        {baselineFailed && (
+          <p className={cx(styles['note'])} data-baseline-failed="">
+            {t('panel.baselineFailed')}
           </p>
         )}
       </div>

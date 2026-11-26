@@ -1,0 +1,106 @@
+/* A panel's table view (T22-013, plan #173 Part 3a §3.7): the bar, then the grid filling the cell. */
+.root {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.bar {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+}
+
+.caption {
+  flex: 1;
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The scroller: a sticky header row, then the virtual rows placed by `translateY`. */
+.grid {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  font-size: var(--font-size-sm);
+}
+
+.grid:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: var(--size-focus-offset);
+}
+
+.head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+.body {
+  position: relative;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(5, minmax(0, 1fr));
+  height: var(--size-table-row);
+  align-items: center;
+  border-bottom: var(--border-hairline) solid var(--hairline);
+}
+
+.bodyRow {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+}
+
+.bodyRow[aria-selected='true'] {
+  background: var(--selection);
+}
+
+.bodyRow[data-active] {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: calc(var(--size-focus-ring) * -1);
+}
+
+.cell {
+  overflow: hidden;
+  padding: 0 var(--space-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.name {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.name:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: var(--size-focus-offset);
+}

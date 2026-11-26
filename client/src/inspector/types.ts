@@ -36,7 +36,7 @@ export interface InspectTarget {
   readonly query: { readonly lang: 'promql' | 'logql'; readonly text: string } | null;
 }
 
-/** I1's targets and #173's `mark`; #170 adds `stateRun`, #177 `flame`. */
+/** I1's targets and #173's `mark` (T25 §5); #170 adds `stateRun`, #177 `flame`. */
 export type InspectorTarget =
   | {
       readonly type: 'point';

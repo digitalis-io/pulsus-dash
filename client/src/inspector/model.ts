@@ -129,16 +129,37 @@ function body(req: InspectRequest, tz: string): Body {
         copyValue: String(target.value),
       };
     }
-    case 'mark':
+    case 'mark': {
+      // A bar is reduced over the window: no instant, its value in the target's unit (T25-002).
+      const { mark, unit: u, window: w } = target.target;
+      const primary = Number.isFinite(mark.value)
+        ? formatValue(mark.value, u)
+        : t('chart.bar.noData');
+      const facts: InspectorFact[] = [
+        { label: t('inspector.fact.raw'), value: String(mark.value) },
+      ];
+      if (mark.baseline !== null && Number.isFinite(mark.baseline)) {
+        facts.push({ label: t('inspector.fact.baseline'), value: formatValue(mark.baseline, u) });
+      }
+      if (mark.state !== null) {
+        facts.push({ label: t('inspector.fact.state'), value: t(StateEncoding[mark.state].label) });
+      }
+      facts.push({ label: t('inspector.fact.seriesKey'), value: mark.key });
+      facts.push({
+        label: t('inspector.fact.reducedOver'),
+        value: `${formatClockMs(w.fromMs, tz)} – ${formatClockMs(w.toMs, tz)}`,
+      });
       return {
         ...base,
         subheading: '',
-        primary: '',
-        facts: [],
-        labels: [],
-        announce: '',
-        copyValue: '',
+        primary,
+        primaryState: mark.state !== null && CROSSED.includes(mark.state) ? mark.state : null,
+        facts,
+        labels: byKey(mark.labels),
+        announce: announce(primary, null),
+        copyValue: String(mark.value),
       };
+    }
     case 'logLine': {
       const ms = Number(target.tsNs / 1_000_000n);
       const level = t(LEVEL_NAME[target.level]);
@@ -183,8 +204,9 @@ function visOf(target: InspectorTarget): VisKind | 'auto' {
     case 'value':
       return 'stat';
     case 'logLine':
-    case 'mark':
       return 'auto';
+    case 'mark':
+      return 'barchart';
   }
 }
 

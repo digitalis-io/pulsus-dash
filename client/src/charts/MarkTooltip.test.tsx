@@ -2,6 +2,7 @@
 import { render } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { CategoryRow, MarkEvent } from '../engine/api';
+import { formatValue } from '../i18n/format';
 import { byVersion, COMPLETE } from '../test/categoryFixtures';
 import type { ExploreResult } from '../vis/autovis';
 import { barchartModel, type BarchartModel } from '../vis/barchart';
@@ -35,8 +36,7 @@ function half(q = COMPLETE): ExploreResult {
 }
 
 function tip(m: BarchartModel, lines: readonly string[]): string[] {
-  const row: CategoryRow | undefined = m.all.find((r) => r.name === '2.31');
-  if (row === undefined) throw new Error('no 2.31');
+  const row = rowOf(m);
   const mark: MarkEvent = {
     source: 'pointer',
     key: row.key,
@@ -53,8 +53,9 @@ function tip(m: BarchartModel, lines: readonly string[]): string[] {
   return out;
 }
 
+/** The 2.31 row (value 120), whatever its name under the model's category label. */
 const rowOf = (m: BarchartModel): CategoryRow => {
-  const r = m.all.find((x) => x.name === '2.31');
+  const r = m.all.find((x) => x.value === 120);
   if (r === undefined) throw new Error('no 2.31');
   return r;
 };
@@ -65,7 +66,7 @@ describe('unit:mark-tooltip', () => {
   it('ghost on: the baseline, or what the incomplete baseline run lacks', () => {
     const complete = model(half());
     expect(tip(complete, markLines(rowOf(complete), { ...base, model: complete }))).toEqual([
-      'baseline 60/s',
+      `baseline ${formatValue(60, RATE)}`,
       'Values are reduced over 12:00 – 13:00',
     ]);
     const truncated = model(half({ ...COMPLETE, truncated: true }));

@@ -186,7 +186,8 @@ describe('unit:barchart-plan', () => {
 });
 
 describe('unit:barchart-plan (base)', () => {
-  const half = BY_VERSION.map((s) => ({ ...s, value: s.value / 2 }));
+  // Keyed as `byVersion` (by index), so a filtered list keeps each series' key.
+  const half = BY_VERSION.map((s, i) => ({ ...s, key: fkey(i + 1), value: s.value / 2 }));
   const LIMITED = { ...COMPLETE, warnings: ['w1'] };
   const withBase = (r: Result, base: Result | null) =>
     barchartModel(r, {

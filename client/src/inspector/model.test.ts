@@ -307,18 +307,18 @@ describe('unit:inspector-model (mark)', () => {
   it('a bar: value, baseline, state, key and the reduced window; no instant', () => {
     const m = inspectorModel(pRequest({ origin, target }), pEnv());
     expect(m.subheading).toBe('');
-    expect(m.primary).toBe('120/s');
+    expect(m.primary).toBe(formatValue(120, RATE));
     expect(m.primaryState).toBe('failing');
     expect(factLines(m)).toEqual([
       'Raw 120',
-      'Baseline 60/s',
+      `Baseline ${formatValue(60, RATE)}`,
       'State Failing',
       `Series key ${K}`,
       'Reduced over 12:00:00.000 – 13:00:00.000',
     ]);
     expect(m.labels).toEqual([['version', '2.31']]);
     expect(m.members).toBeNull();
-    expect(m.announce).toBe('Inspector: Requests by version, 120/s');
+    expect(m.announce).toBe(`Inspector: Requests by version, ${formatValue(120, RATE)}`);
     expect(m.copyValue).toBe('120');
     expect(selectionOf(target)).toEqual({ keys: [K], fromMs: null, toMs: null });
     expect(pivot(m.pivots, 'explore')?.href).toContain('vis=barchart');

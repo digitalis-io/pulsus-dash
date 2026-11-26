@@ -473,9 +473,11 @@ describe('unit:barchart-keys', () => {
     expect(ctrl.defaultPrevented).toBe(false);
     expect(h.mark).toHaveLength(marks);
     expect(h.pick).toHaveLength(picks);
+    h.visible().clearOps();
     div.dispatchEvent(new FocusEvent('focusout'));
     h.flush();
     expect(h.mark.at(-1)).toBeNull();
+    expect(h.visible().calls('drawImage')).toHaveLength(1);
     expect(focusStrokes(h)).toHaveLength(0);
 
     // New data with 2 rows while the focus is on band 4: the focus moves to band 1.

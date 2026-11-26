@@ -1,8 +1,11 @@
 /**
- * The bar chart's tooltip (DOM, not canvas; plan #173 Part 2 §4.4): the full name of the bar under
- * the pointer, its value in the unit (`no data` when not finite), its state glyph and label, and
- * `baseline <v>` when the ghost is on and the baseline is finite. Hidden from assistive technology:
- * the table view (#173 Part 3) reads the same rows. `ChartFrame` places it beside the mark.
+ * The bar chart's tooltip (DOM, not canvas; plan #173 Part 2 §4.4, Part 3a §3.5): the full name of
+ * the bar under the pointer or the keyboard focus, its value in the unit (`no data` when not
+ * finite), its state glyph and label, then either `baseline <v>` (the ghost on and a finite
+ * baseline) or, when the caller gives them, its `lines` (`CategoryChart.markLines`: the baseline or
+ * what the baseline run lacks, the filter hint, the reduced window and the anomaly note), each a
+ * `data-line`. Hidden from assistive technology: the listbox and the table view read the same
+ * rows. `ChartFrame` places it beside the mark.
  */
 import type { JSX, Ref } from 'react';
 import type { CategoryRow, MarkEvent, Unit } from '../engine/api';
@@ -17,6 +20,7 @@ export function MarkTooltip({
   row,
   unit,
   ghost,
+  lines,
   ref,
 }: {
   mark: MarkEvent | null;
@@ -48,11 +52,19 @@ export function MarkTooltip({
               {`${StateEncoding[row.state].glyph} ${t(StateEncoding[row.state].label)}`}
             </div>
           )}
-          {ghost && row.baseline !== null && Number.isFinite(row.baseline) && (
-            <div data-baseline="">
-              {t('chart.bar.baseline', { value: formatValue(row.baseline, unit) })}
+          {lines === undefined &&
+            ghost &&
+            row.baseline !== null &&
+            Number.isFinite(row.baseline) && (
+              <div data-baseline="">
+                {t('chart.bar.baseline', { value: formatValue(row.baseline, unit) })}
+              </div>
+            )}
+          {lines?.map((l) => (
+            <div key={l} data-line="">
+              {l}
             </div>
-          )}
+          ))}
         </>
       )}
     </div>

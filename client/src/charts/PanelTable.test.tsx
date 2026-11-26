@@ -99,7 +99,13 @@ describe('unit:panel-table', () => {
     t.key('End');
     const last = t.mounted().find((r) => r.getAttribute('aria-rowindex') === '251');
     expect(last).toBeDefined();
-    expect(last).toHaveAttribute('data-drawn', 'no');
+    // The cap keeps the minimum (value 1), so the last row is drawn; every mounted row says so.
+    expect(last).toHaveAttribute('data-drawn', 'yes');
+    for (const r of t.mounted()) {
+      const i = Number(r.getAttribute('aria-rowindex')) - 2;
+      expect(r).toHaveAttribute('data-drawn', t.rows.rows[i]?.drawn === true ? 'yes' : 'no');
+    }
+    expect(t.rows.rows.filter((r) => !r.drawn)).toHaveLength(208);
     const lastKey = t.rows.rows[249]?.mark.key;
     expect(last).toHaveAttribute('data-row-key', lastKey);
     t.key('Enter');

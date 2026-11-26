@@ -1,11 +1,11 @@
 /**
  * The chart gallery (development and stub builds only; plan #58 §4.5): every interim chart kind on
  * seeded synthetic data for the Context window, then the bar charts through `CategoryChart`
- * (plan #173 Part 2 §4.5). The corpus of `golden:interim-gallery` and `golden:greyscale`.
+ * (plan #173 Part 2 §4.5), each with its own table flag for Shift+T (Part 3a). The corpus of `golden:interim-gallery` and `golden:greyscale`.
  * `&bench=categories` shows only `barchart-cap`, 600 px wide with a 2 800 px category extent (200
  * bars), for `bench:frame-interim-categories`.
  */
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import { CategoryChart } from '../charts/CategoryChart';
 import { ChartFrame } from '../charts/ChartFrame';
@@ -36,10 +36,17 @@ function BarchartCard({ e, bench }: { e: BarchartGalleryEntry; bench: boolean })
     el.style.width = `${String(BENCH_W)}px`;
     el.style.height = `${String(BENCH_H)}px`;
   }, [bench]);
+  const [table, setTable] = useState(false);
   return (
     <Card title={e.model.spec.title}>
       <div ref={ref} data-gallery-id={e.id} className={cx(styles['barchart'])}>
-        <CategoryChart model={e.model} title={e.model.spec.title} onNarrow={NARROW} />
+        <CategoryChart
+          model={e.model}
+          title={e.model.spec.title}
+          onNarrow={NARROW}
+          table={table}
+          onTable={setTable}
+        />
       </div>
     </Card>
   );

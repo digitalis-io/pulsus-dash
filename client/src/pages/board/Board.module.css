@@ -695,3 +695,21 @@
   color: var(--text);
   font-size: var(--font-size-sm);
 }
+
+/* The bar chart's options (T22 §6.1, #173 Part 3a §3.9): two fields a row. */
+.options {
+  grid-column: 1 / -1;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+  align-items: end;
+}
+
+.optionsError {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
