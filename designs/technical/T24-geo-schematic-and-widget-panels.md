@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-25 |
+| **Version** | 1.7-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -481,7 +481,7 @@ the truncation and `tagsStale` in one statement (§6). A stale row is returned w
 
 **Old server** (no `applied` in the answer): `unknown`; `truncated` is not trusted; search filters the
 titles client-side; tag mode shows "Filtering by tag needs a newer server", with no rows and no chips.
-Old binaries cannot move a v5 head (`ErrSchemaTooNew`). A 400 `board.json.unknownKey` at `/tags` on a
+Old binaries cannot move a head saved at the tags version or later (`ErrSchemaTooNew`). A 400 `board.json.unknownKey` at `/tags` on a
 save shows "This server does not accept board tags yet".
 
 #### T24-030 — Feed source
@@ -1366,9 +1366,17 @@ no notes. Otherwise one parse:
 
 ### 5.5 Board spec v5 (part B1; OpenAPI, Go, TS)
 
-Spec v5 is the next version after part A's v4 (#198), or the next free version, with an identity
-upcaster (T11-016). `BoardSpec` gains `tags` (T24-029), and `Vis.kind` adds `boardList` with the
-options below. Go decides validity; TS = Go on the fixtures `v5-board-list.json` and `invalid.json`.
+Part B1 adds two things to the board spec, each at the next free spec version when it is coded,
+with an identity upcaster (T11-016):
+
+- **Tags**, in I1 (#215), Go and the client's validator together: `BoardSpec` gains `tags`
+  (T24-029). The tags version is the version after the current one when I1 is coded (v4 if it lands
+  before #198's v4, else v5); the client accepts and keeps `tags` (no editor yet). Fixtures:
+  `v‹N›-board-tags.json` and the tag rows of `invalid.json`, TS = Go.
+- **`Vis.kind` `boardList`** with the options below, Go and TS, in I2 (#216) after #198 (a
+  `boardList` panel has no `query`, and "query optional" is #198's version). Go decides validity;
+  TS = Go on the fixtures `v‹N›-board-list.json` and `invalid.json`.
+
 Other keys → `board.json.unknownKey`. Errors are `board.options.‹…›`.
 
 | Key | Type / bounds | Default | Error |
@@ -1784,7 +1792,7 @@ Board spec v4 (§5.1) is stored as the board document is today; the v3 → v4 up
 (T11-016). There is no new table, route or storage: widgets fetch nothing and make only safe GETs
 (links and `local` images).
 
-**Part B1.** Board spec v5 (§5.5) is stored the same way, with an identity upcaster. Migration 4 adds
+**Part B1.** The tags version of the board spec (§5.5) is stored the same way, with an identity upcaster. Migration 4 adds
 the `boards.tags` cache ([T11](T11-postgres-schema.md) §4.3); it is metadata-only and keeps the N+1
 window (T11-012, T11-013). The repair and the list (T24-029) run as two transactions:
 
@@ -1955,7 +1963,7 @@ coordinates; the EU area; 20 warm-up and 200 timed runs) reports `applyArea`'s p
 | Tenancy; spec versions | No fetch or storage; safe GETs; the next spec version |
 | Ticks; zones | The due-time scheduler (T24-011); Go decides zone validity; a bad zone → one row (T24-010) |
 | Tenancy (part B1) | `OrgTx` under RLS; org B in the itests |
-| Rolling upgrade | One migration (N+1); an old binary's head move leaves the row stale → `unknown` until repaired; old binaries cannot move a v5 head (`ErrSchemaTooNew`); an old server answers without `applied` (T24-029) |
+| Rolling upgrade | One migration (N+1); an old binary's head move leaves the row stale → `unknown` until repaired; old binaries cannot move a head saved at the tags version or later (`ErrSchemaTooNew`); an old server answers without `applied` (T24-029) |
 | A GET that writes | A separate short transaction, ≤ 200 rows, `SKIP LOCKED`, 2 s, on the primary; a failure leaves rows stale and never fails the list |
 | A failed refetch; a late answer | The snapshot is kept with `staleAtMs`; an answer for an old key never renders (T24-024) |
 | Scope (part B2) | RLS and `P` in one statement per path; an unset scope or `b: []` → 403 before any SQL |
@@ -2057,12 +2065,13 @@ Written first in I1 and I2 (§11); all fail today: nothing exists yet.
 **Fixture B:** 12 starred refs in server order: Checkout (`ck-1`), Checkout (`ck-2`), Edge, Gateway,
 Inventory, NOC overview, Orders, Payments (`pay`), PSP API, Search, Shipping, Web; `truncated: false`.
 **Fixture S:** org A: "Checkout overview" `[team:payments]`, "CHECKOUT latency", "Zürich edge",
-"ZÜRICH core", "payments" `[payments]`, and 1 002 "bulk-n" (distinct `created_at`); org B:
+"ZÜRICH core", "payments" `[payments]`, "Ledger" `[finance, team:payments]`, and 1 002 "bulk-n"
+(distinct `created_at`, older than the named boards, which are in this order); org B:
 "checkout b".
 
 | Test | File | Setup | Expected | Covers |
 |---|---|---|---|---|
-| `unit:board-spec-board-list` | boards/spec.test.ts, validate_test.go | `{}`; tag mode, no tag; starred + tag; 101-char query; `query:'a\tb'` (`\t` = U+0009 TAB); recent + query; limit 0/51/2.5; `sort:'care'`; `depth:1`; board tags ×17/`['A']`/`['a','a']` | Defaults `{starred,'',null,10,default}`; `tag.invalid` ×2, `query.invalid` ×3, `limit.invalid` ×3, `sort.invalid`, `board.json.unknownKey`, `board.tags.invalid` ×2, `.duplicate`; TS = Go; v4 upcasts; the editor shows the Cc text for `a\tb` (U+0009) and sends nothing | T24-029, T24-021, VIZ-031 |
+| `unit:board-spec-board-list` | boards/spec.test.ts, validate_test.go; the board-tag cases in I1 (#215), the rest in I2 | `{}`; tag mode, no tag; starred + tag; 101-char query; `query:'a\tb'` (`\t` = U+0009 TAB); recent + query; limit 0/51/2.5; `sort:'care'`; `depth:1`; board tags ×17/`['A']`/`['a','a']` | Defaults `{starred,'',null,10,default}`; `tag.invalid` ×2, `query.invalid` ×3, `limit.invalid` ×3, `sort.invalid`, `board.json.unknownKey`, `board.tags.invalid` ×2, `.duplicate`; TS = Go; v4 upcasts; the editor shows the Cc text for `a\tb` (U+0009) and sends nothing | T24-029, T24-021, VIZ-031 |
 | `unit:board-list-source` | widgets/boardList/source.test.tsx | Stub Api, fake timers | T24-021 calls and keys; `'  Checkout '` → `{q:'Checkout'}`; `''` → no `q`; keys at 0/100/200 ms → one key change and request at 450 ms, the previous rows shown until then | T24-021 |
 | `unit:board-list-rows` | widgets/boardList/rows.test.ts | B, current `pay` | `Checkout · ck-1`, `Checkout · ck-2`, the rest plain; `pay` "this board"; `incidents` → B order + the caption | T24-022, T24-023 |
 | `unit:list-coverage` | widgets/lists/snapshot.test.ts | `listCoverage` → `coverageText`; `unknown` via `boardSnapshot` (no `applied`; `tagsStale` 1, 3) | (12,10) `showing 10 of 12`; (12,12) `100 %`; (1000,10,trunc) `truncated · showing 10 of 1,000`; (0,0) `100 %`; (3,3,oldServer) `coverage unknown`; (3,3,tagsStale 1) `tags not yet known for 1 board`, 3 → `tags not yet known for 3 boards`; stale 12:31:05 `stale (12:31:05)`; Narrow in search only | T24-024, VIZ-027 |
@@ -2072,10 +2081,10 @@ Inventory, NOC overview, Orders, Payments (`pay`), PSP API, Search, Shipping, We
 | `unit:list-keyboard` | widgets/lists/keyboard.test.tsx | B, limit 10, focus on row 4 (Gateway) | ↓×3 from 1 → 4; End → 10; Home → 1; PageDown → 10; Show more, Enter → 11 focused. A refetch without Gateway → Inventory (row 4) focused, "Gateway is no longer listed"; focus outside the list stays; empty → the empty text; error → Retry; Esc clears the search, the next Esc reaches the T25 ladder | T24-025 |
 | `unit:list-table-csv` | widgets/lists/table.test.ts | Titles `=SUM(1)`, `+1`, `-prod`, `@x`, `\tx`, `\rx` (`\t` = U+0009 TAB, `\r` = U+000D CR), `a,b`, `say "hi"`, `ok`; B; S | `'=SUM(1)`, `+1` (a number, unchanged since #184 step 1b), `'-prod`, `'@x`, `'\tx`, `"'\rx"`, `"a,b"`, `"say ""hi"""`, `ok`; B rows: empty tags, `updated_at`; S `Checkout overview` tags `team:payments`; a `tags: null` row → `unknown`, and the row shows "tags unknown"; facts `{'12 boards','Starred'}`, S `1,000+ boards`; amended by #184 step 1b: the §10.5 guard block, each result | T24-026, VIZ-066, VIZ-068 |
 | `unit:import-board-list` | import/boardList.test.ts | I1–I9 (below) | Options (`sort:'default'`) and notes exactly as listed | T24-028, VIZ-060 |
-| `itest:board-find` | store/boards_itest_test.go | S | `q=` checkout → 2 org-A rows, updated desc; zürich → Zürich edge; ZÜRICH → ZÜRICH core; payments → payments; `%` → none; bulk → the 1 000 newest in `created_at DESC, uid` order, truncated, the 2 oldest absent; `tag=team:payments` → Checkout overview; 101 chars, `Bad Tag` → the §5.6 400s; org B sees only "checkout b" | T24-021, tenancy |
-| `itest:board-tags` | same | Org A saves `tags:['a','b']`, then none, then v1's spec again. Org B saves and lists | `[a,b]`, `[]`, `[a,b]`; B's save of A's uid → 404; B's repair touches 0 A rows; `tag=a` in B → none | T24-029, tenancy |
-| `itest:board-list-snapshot` | same; two connections, barriers; a labelled fault injection sets `tags_version` 0 on X (head `[a]`, title "X checkout") | (1) Conn 2 row-locks X; conn 1 lists `tag=a`; release; conn 2 lists; conn 1 lists. (2) Between conn 1's repair and read, conn 2 commits a schema-3 head move on Z. (3) `tag=zzz`. (4) X locked: an unfiltered list; `q=checkout`. (5) A repair error (tracer), a timeout (`pg_sleep`). (6) A cancel during the repair | (1) X absent, `tagsStale` 1; then present, 0. (2) Z counted, never `100 %`. (3) the sentinel only: `[]`, stale 1. (4) X returned with `tags: null`, `tagsStale` 1, both times. (5) 200, stale counted, the log without titles. (6) both roll back. One SELECT per list | T24-029 |
-| `itest:board-tags-old-binary` | CI job in I1 | 10 000 boards in 2 orgs at schema 3, a looping reader; migration 4; the base-commit binary beside N. The old service creates Y, saves Z; N saves X `[a]`; the old service saves X | No rewrite (`relfilenode`), the reader waits ≤ 1 s, 17 tags fail; the old binary starts (4 = 3 + 1) and passes `itest:board-crud`; `tag=a`: `tagsStale` 2 (Y, Z); the old save of X → `ErrSchemaTooNew`, nothing written; the next N list: Y, Z `{}`, `tag=a` → X, 0 | T11-012, T11-013, T11-015 |
+| `itest:board-find` | boards/list_itest_test.go; the 400s over HTTP in cmd/pulsus-dash/boards_itest_test.go | S | `q=` checkout → 2 org-A rows, updated desc; zürich → Zürich edge; ZÜRICH → ZÜRICH core; payments → payments; finance and FINANCE → Ledger (an exact tag), fin → none; `%` → none; bulk → the 1 000 newest in `created_at DESC, uid` order, truncated, the 2 oldest absent; `tag=team:payments` → Ledger, Checkout overview; `q=checkout&tag=team:payments` → Checkout overview; `q=ledger&tag=payments` → none; 101 chars, `Bad Tag` → the §5.6 400s; org B sees only "checkout b" | T24-021, tenancy |
+| `itest:board-tags` | boards/list_itest_test.go | Org A saves `tags:['a','b']`, then none, then v1's spec again. Org B saves and lists | `[a,b]`, `[]`, `[a,b]`; B's save of A's uid → 404; B's repair touches 0 A rows; `tag=a` in B → none | T24-029, tenancy |
+| `itest:board-list-snapshot` | boards/list_itest_test.go (one SELECT per list: store/boards_itest_test.go); two connections, barriers; a labelled fault injection sets `tags_version` 0 on X (head `[a]`, title "X checkout") | (1) Conn 2 row-locks X; conn 1 lists `tag=a`; release; conn 2 lists; conn 1 lists. (2) Between conn 1's repair and read, conn 2 commits a schema-3 head move on Z. (3) `tag=zzz`. (4) X locked: an unfiltered list; `q=checkout`. (5) A repair error (tracer), a timeout (`pg_sleep`). (6) A cancel during the repair | (1) X absent, `tagsStale` 1; then present, 0. (2) Z counted, never `100 %`. (3) the sentinel only: `[]`, stale 1. (4) X returned with `tags: null`, `tagsStale` 1, both times. (5) 200, stale counted, the log without titles. (6) both roll back. One SELECT per list | T24-029 |
+| `itest:board-tags-old-binary` | cmd/pulsus-dash/boards_old_binary_itest_test.go, run by `make itest-old-binary` in I1 (local, required for every change to the board schema or spec; hosted CI is not a gate) | 10 000 boards in 2 orgs at schema 3, a looping reader; migration 4; the base-commit binary beside N. The old service creates Y, saves Z; N saves X `[a]`; the old service saves X | No rewrite (`relfilenode`), the reader waits ≤ 1 s, 17 tags fail; the old binary starts (4 = 3 + 1) and passes `itest:board-crud`; `tag=a`: `tagsStale` 2 (Y, Z); the old save of X → `ErrSchemaTooNew`, nothing written; the next N list: Y, Z `{}`, `tag=a` → X, 0 | T11-012, T11-013, T11-015 |
 | `itest:board-tags-validate` (I4) | same | Schema 4 with all rows ≤ 16 tags; apply the I4 migration | `pg_constraint.convalidated` true; an UPDATE to 17 tags fails | T11-013 |
 | `itest:board-prefs` (amended) | existing | 201 starred; 200; 51 views, limit 50 | `truncated` true, false, true | T24-021 |
 | `e2e:widget-board-list` | e2e/widgets.spec.ts | Stub BFF; B; search over S | 10 rows + Show more; "check" → one request 250 ms after the last key, 2 rows, "2 boards" announced once; hrefs carry `from`/`to`; ⌘-click → a new tab | VIZ-053, T24-021–023 |
@@ -2686,8 +2695,8 @@ Part B1 implementation issues, filed after this design merges:
 
 | Issue | Scope | Depends on | Covers |
 |---|---|---|---|
-| I1 — BFF: board tags, `/boards` search, `applied`, `truncated` | §5.6, §6, migration 4, the itests, `docs/server/boards-api.md`, `docs/server/database.md` | #198 | T24-021, T24-029 |
-| I2 — Board list widget, list modules, editor tags field | §5.5, §5.7, the unit, e2e and golden tests, gallery `widget-board-list`, `widget-board-list-search`, `widget-board-list-states`; `docs/client/widgets.md`, `docs/user/boards.md` | I1, #198, #173 | T24-020–028 |
+| I1 — BFF: board tags, `/boards` search, `applied`, `truncated` (#215) | §5.5 tags (Go and the client's validator, at the next free spec version), §5.6, §6, migration 4, the itests, `make itest-old-binary`, `docs/server/boards-api.md`, `docs/server/database.md` | — | T24-021, T24-029 |
+| I2 — Board list widget, list modules, editor tags field (#216) | §5.5 `boardList` kind and options (Go and TS), §5.7, the unit, e2e and golden tests, gallery `widget-board-list`, `widget-board-list-search`, `widget-board-list-states`; `docs/client/widgets.md`, `docs/user/boards.md` | I1, #198, #173 | T24-020–028 |
 | I3 — Incident-use ranking (needs design) | SRF-026 "used during incidents" | IA-007 | T24-023 |
 | I4 — Validate `boards_tags_max` (next release) | §6 `VALIDATE CONSTRAINT`, `itest:board-tags-validate` | I1 released | T24-029 |
 
@@ -2810,3 +2819,4 @@ None.
 | 1.4-rc | 2026-11-25 | #184 part E step 1b (geomap frame and interaction): the intro, §1, §2 (goals, non-goals; the part map marks step 1b) and §3; rules T24-088 to T24-095 (host and plan, rows, identity, camera and picking, selection and Inspector, mark list and keys, table, CSV and facts, states); T24-026 amended (the `csvCell` numeric exemption; `unit:list-table-csv` amended); §4.11 orders and coverage, §4.12 states, §4.13 Inspector targets, §4.14 columns; §5.14 the seam and host, §5.15 rows and board spec v7, §5.16 targets, mark list and rows; §6–§9; §10.4 and §10.5 tests and fixtures (code review r1: `unit:geo-inertia`); §11 issue E2; §12. [ADR-0027](../adr/0027-geomap-frame-seam.md); [T22-004](T22-value-categorical-and-table-panels.md#t22-004--colour-and-identity) (grouped spatial marks, JSON quoting, spatial overflow), [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) (`Coverage.geo`) and [T22-007](T22-value-categorical-and-table-panels.md#t22-007--click-selects-inspects-filters) amended; [T25](T25-inspector-and-pivots.md) gains the `geo` target and the in-request navigation stack |
 | 1.5-rc | 2026-11-25 | #173 Part 1 ([T22](T22-value-categorical-and-table-panels.md) I1): §5.7 `csvCell` is defined in `client/src/data/csv.ts`, shared by the panel tables, and re-exported by `widgets/lists/snapshot.ts` |
 | 1.6-rc | 2026-11-25 | #184 part E step 2 (2a: URL state, camera history, view sync and the map area; 2b: auto-vis row 8 and import): the intro, §1, §2 (goals, non-goals; the part map marks step 2) and §3; rules T24-096 to T24-099 (view state and history, sync, the map area, auto-vis row 8 and import); T24-088 amended (the input view of a non-local map is its URL entry); §4.15 the map area per result, §4.16 the writer per state, §4.17 sync and saved views, §4.18 the board URL store, budget and reads, §4.19 the geomap import; §5.15 board spec v8 (`sync`, `boundsFilter`, `legacyAuto`); §5.17 the URL store, codecs, area, roles, `hasGeoFields` and `importGeomap`; §6–§9; §10.6 tests and fixtures; §11 issues E3a and E3b; §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains `Coverage.area`; [T25-010](T25-inspector-and-pivots.md#t25-010--pivot-context) the map-area disclosure |
+| 1.7-rc | 2026-11-26 | #215 (part B1, I1): §5.5 splits the spec change: tags at the next free spec version in I1 (#215), with the client's validator; the `boardList` kind and options, Go and TS, in I2 (#216) after #198. T24-029 and §9: old binaries cannot move "a head saved at the tags version or later" (was "a v5 head"); §6 likewise. §10.1: fixture S adds "Ledger" `[finance, team:payments]`, `itest:board-find` adds the exact-tag and `q`+`tag` cases, the board-tag cases of `unit:board-spec-board-list` are in I1, the itest files are named, and `itest:board-tags-old-binary` runs by `make itest-old-binary` (local). §11: the I1 and I2 rows |
