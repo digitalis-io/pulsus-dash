@@ -226,6 +226,26 @@ pub fn render_page(
     render_list(ctx, &mut r, &list)
 }
 
+/// The overlay of a native render (plan #68 C2b): a pointer hover and a box band, CSS px.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct OverlayAt {
+    pub hover: Option<(f64, f64)>,
+    pub box_x: Option<(f64, f64)>,
+}
+
+/// Stub (plan #68 C2b): `render_page` without the overlay.
+pub fn render_page_overlay(
+    ctx: &GpuContext,
+    page: GalleryLine,
+    theme: Theme,
+    css: Size64,
+    dpr: f32,
+    value_range: Option<ValueRange>,
+    _o: OverlayAt,
+) -> Image {
+    render_page(ctx, page, theme, css, dpr, value_range)
+}
+
 pub const WHITE: Rgba8 = Rgba8([255, 255, 255, 255]);
 pub const BLACK: Rgba8 = Rgba8([0, 0, 0, 255]);
 

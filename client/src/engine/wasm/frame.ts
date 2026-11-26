@@ -50,6 +50,15 @@ export interface StageModel {
   readonly pickCount: number;
 }
 
+/** What an Overlay record carries (plan #68 C2b §3.4): the hover and the box band, CSS px. */
+export interface OverlayState {
+  readonly hover:
+    | { readonly kind: 'none' }
+    | { readonly kind: 'pointer'; readonly x: number; readonly y: number }
+    | { readonly kind: 'key'; readonly index: number };
+  readonly box: { readonly x0: number; readonly x: number } | null;
+}
+
 /** An engine frame (plan #68 C2a2 §3.2): `ControlledFrame` drives its camera. */
 export interface EngineFrame {
   setSpec(s: VisSpec): void;
@@ -59,11 +68,18 @@ export interface EngineFrame {
   setSelection(s: FrameSelection | null): void;
   resize(cssW: number, cssH: number, dpr: number): void;
   setCamera(c: CameraState): void;
+  /** The hover and the box band (plan #68 C2b §4.2). */
+  setOverlay(o: OverlayState): void;
+  /** A click at CSS px (x, y): answered with `select` against the presentation on screen. */
+  select(x: number, y: number): void;
   /** The last completed presentation's stage; null before the first, when withdrawn, at size 0. */
   stage(): StageModel | null;
   /** Called on every change of `stage()`; returns the unsubscribe. */
   onStage(cb: (s: StageModel | null) => void): () => void;
-  on<E extends 'a11y' | 'drawn'>(e: E, cb: (ev: FrameEvents[E]) => void): () => void;
+  on<E extends 'a11y' | 'drawn' | 'hover' | 'select'>(
+    e: E,
+    cb: (ev: FrameEvents[E]) => void,
+  ): () => void;
   dispose(): void;
 }
 
@@ -71,6 +87,8 @@ export interface EngineFrame {
 export interface FrameRing {
   camera(frame: number, c: CameraState): void;
   resize(frame: number, cssW: number, cssH: number, dpr: number): void;
+  overlay(frame: number, o: OverlayState): void;
+  select(frame: number, x: number, y: number): void;
   onPublish(frame: number, cb: (kind: number, seq: number) => void): void;
   unpublished(frame: number): number;
   drop(frame: number): void;
@@ -185,6 +203,18 @@ export class WasmFrame implements EngineFrame {
     this.post({ t: 'theme', id: this.id, theme: theme === 'light' ? 1 : 0 });
   }
 
+  /** Stub (plan #68 C2b): not sent yet. */
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- test-first stub */
+  setOverlay(_o: OverlayState): void {
+    // Not sent until C2b.
+  }
+
+  /** Stub (plan #68 C2b): not sent yet. */
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- test-first stub */
+  select(_x: number, _y: number): void {
+    // Not sent until C2b.
+  }
+
   /** Kept by the routing frame; drawn from C2 on. */
   setEvents(): void {
     // Not sent until C2.
@@ -258,6 +288,11 @@ export class WasmFrame implements EngineFrame {
       if (this.resizes.size <= KEEP_RESIZES) break;
       this.resizes.delete(k);
     }
+  }
+
+  /** The highest presentation seq reported `drawn` (53-bit; the probe's `frozen`). */
+  drawnSeqNow(): number {
+    return this.drawnSeq;
   }
 
   /**

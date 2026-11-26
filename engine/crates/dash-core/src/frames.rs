@@ -26,7 +26,7 @@ use std::sync::Arc;
 use dash_marks::{DrawList, MarkItem};
 use dash_scene::{
     Band, Camera, PlotCamera, Range64, Size64, StageInfo, Theme, Viewport, VisKind, VisSpec,
-    YRange, build_stage,
+    YRange, build_stage, hover::PickSnap,
 };
 use dash_wire::{Chunk, ChunkBuilder, ChunkError, IdAlloc, IdSpace, SeriesMeta};
 use serde_json::{Value, json};
@@ -82,6 +82,8 @@ pub struct Presented {
     pub series: u32,
     /// The stage of the list (plan #68 C2a2 §3.3): None = no plot.
     pub stage: Option<StageInfo>,
+    /// What picking reads of the list (plan #68 C2b §3.2): Some exactly when `stage` is.
+    pub pick: Option<Arc<PickSnap>>,
 }
 
 /// A Resize as applied: CSS px, DPR and device px.
@@ -173,7 +175,7 @@ pub fn series_of(list: &DrawList) -> u32 {
         .iter()
         .map(|i| match i {
             MarkItem::Line { series, .. } => series.end.saturating_sub(series.start),
-            MarkItem::Guides { .. } => 0,
+            MarkItem::Guides { .. } | MarkItem::Overlay { .. } => 0,
         })
         .sum()
 }
@@ -267,12 +269,24 @@ impl Frames {
                     }
                 }
             }
+            // Stub (plan #68 C2b): not applied yet.
+            Record::Overlay { .. } | Record::Select { .. } => None,
         }
     }
 
     /// Camera records rejected by `apply` so far.
     pub fn bad(&self) -> u32 {
         self.bad
+    }
+
+    /// Stub (plan #68 C2b): the `select` events, in apply order.
+    pub fn take_events(&mut self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Stub (plan #68 C2b): `build_frame` calls so far.
+    pub fn layer_builds(&self) -> u64 {
+        0
     }
 
     /// The state of the list being drawn: call it when the frame's draw list is submitted.
@@ -286,6 +300,7 @@ impl Frames {
             dpr,
             series: f.series,
             stage: f.stage.clone(),
+            pick: None,
         })
     }
 
@@ -455,7 +470,8 @@ impl Frames {
 
     /// The draw list of frame `id` and its `a11y` summary JSON when it changed since the last
     /// build; `None` for an unknown frame.
-    pub fn build(&mut self, id: u32) -> Option<(DrawList, Option<String>)> {
+    #[allow(clippy::type_complexity)]
+    pub fn build(&mut self, id: u32) -> Option<(DrawList, Option<String>, Option<String>)> {
         let f = self.frames.get_mut(&id)?;
         let ((w, h), dpr, _) = f.size.unwrap_or(((0.0, 0.0), 1.0, (0, 0)));
         let css = Size64 {
@@ -513,6 +529,6 @@ impl Frames {
             }
             _ => None,
         };
-        Some((list, changed))
+        Some((list, changed, None))
     }
 }

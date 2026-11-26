@@ -47,7 +47,7 @@ export class ControlledFrame implements ChartFrame {
     canvas: HTMLCanvasElement,
     init: FrameInit,
     private readonly inner: EngineFrame,
-    deps: Partial<Omit<ControllerDeps, 'emit'>> = {},
+    deps: Partial<Omit<ControllerDeps, 'emit'>> & { defer?: (cb: () => void) => void } = {},
   ) {
     const stage: Stage = {
       model: () => inner.stage(),
@@ -91,6 +91,11 @@ export class ControlledFrame implements ChartFrame {
         this.emit('drawn', ev);
       }),
     );
+  }
+
+  /** Stub (plan #68 C2b): writes the batched camera, then the overlay. */
+  flush(): void {
+    // Not batched until C2b.
   }
 
   setSpec(spec: VisSpec): void {

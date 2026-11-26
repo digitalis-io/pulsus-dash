@@ -51,6 +51,29 @@ pub struct StageInfo {
     pub plot: PlotRect,
     pub domain: Option<Range64>,
     pub band_w: f64,
+    /// Samples of series 0 when a series is shown, else 0: the keyboard crosshair's range.
+    pub pick_count: u32,
+}
+
+/// One build of a viewport (plan #68 C2b §3.2): the draw list, summary, stage and what picking
+/// reads; `pick` is Some exactly when `stage` is.
+#[derive(Clone, Debug)]
+pub struct Built {
+    pub list: DrawList,
+    pub summary: Option<FrameSummary>,
+    pub stage: Option<StageInfo>,
+    pub pick: Option<std::sync::Arc<crate::hover::PickSnap>>,
+}
+
+/// Stub (plan #68 C2b): `build_stage` without the pick.
+pub fn build_frame(v: &Viewport) -> Built {
+    let (list, summary, stage) = build_stage(v);
+    Built {
+        list,
+        summary,
+        stage,
+        pick: None,
+    }
 }
 
 /// The draw list of `v` and its summary. No data, no window, an unsupported kind or an empty plot
@@ -167,6 +190,7 @@ pub fn build_stage(v: &Viewport) -> (DrawList, Option<FrameSummary>, Option<Stag
         plot,
         domain: Some(axis.domain),
         band_w: axis.band_w,
+        pick_count: 0,
     };
     (list, Some(summary), Some(stage))
 }

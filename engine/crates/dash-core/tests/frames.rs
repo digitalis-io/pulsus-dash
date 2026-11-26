@@ -113,7 +113,7 @@ const NAN2: (f64, f64) = (f64::NAN, f64::NAN);
 
 fn a11y_of(f: &mut Frames, id: u32) -> Value {
     f.build(id)
-        .and_then(|(_, a)| a)
+        .and_then(|(_, a, _)| a)
         .map_or(Value::Null, |a| parse(&a))
 }
 
@@ -130,7 +130,7 @@ fn a_line_frame_reports_a11y_once_per_change() {
     let mut f = Frames::new();
     line_frame(&mut f, 3, &json);
     f.set_chunk(3, Some(Arc::new(chunk)));
-    let Some((list, a11y)) = f.build(3) else {
+    let Some((list, a11y, _)) = f.build(3) else {
         panic!("no build")
     };
     assert!(
@@ -148,9 +148,9 @@ fn a_line_frame_reports_a11y_once_per_change() {
     assert_eq!(a11y["seriesShown"], serde_json::json!(50));
     assert_eq!(a11y["thresholdLabels"], serde_json::json!([]));
     // Unchanged: no a11y; a theme change redraws but the summary is the same.
-    assert!(matches!(f.build(3), Some((_, None))));
+    assert!(matches!(f.build(3), Some((_, None, _))));
     f.set_theme(3, Theme::Light);
-    let Some((light, again)) = f.build(3) else {
+    let Some((light, again, _)) = f.build(3) else {
         panic!("no build after set_theme")
     };
     assert_eq!(again, None);
@@ -166,7 +166,7 @@ fn series_data_builds_a_local_chunk() {
     let mut direct = Frames::new();
     line_frame(&mut direct, 1, &json);
     direct.set_chunk(1, Some(Arc::new(chunk.clone())));
-    let want = direct.build(1).and_then(|(_, a)| a);
+    let want = direct.build(1).and_then(|(_, a, _)| a);
     let mut f = Frames::new();
     line_frame(&mut f, 1, &json);
     f.data_begin(1);
@@ -178,7 +178,7 @@ fn series_data_builds_a_local_chunk() {
         assert!(f.data_series(1, &key, names, vals, &t, values).is_ok());
     }
     assert!(f.data_end(1).is_ok());
-    let Some((list, got)) = f.build(1) else {
+    let Some((list, got, _)) = f.build(1) else {
         panic!("no build")
     };
     assert_eq!(
@@ -187,11 +187,11 @@ fn series_data_builds_a_local_chunk() {
     );
     let id = list.items.iter().find_map(|i| match i {
         MarkItem::Line { chunk, .. } => Some(chunk.id.0),
-        MarkItem::Guides { .. } => None,
+        _ => None,
     });
     assert!(id.is_some_and(|id| id >= 1 << 63), "local id space: {id:?}");
     f.data_clear(1);
-    assert!(matches!(f.build(1), Some((ref l, _)) if l.items.is_empty()));
+    assert!(matches!(f.build(1), Some((ref l, _, _)) if l.items.is_empty()));
 }
 
 #[test]
@@ -202,7 +202,7 @@ fn an_unsupported_kind_clears_and_reports_an_empty_summary() {
     assert!(f.set_spec(4, bars).is_ok());
     f.set_camera(4, window());
     f.resize(4, (300.0, 150.0), 1.0, (300, 150), 1);
-    let Some((list, a11y)) = f.build(4) else {
+    let Some((list, a11y, _)) = f.build(4) else {
         panic!("no build")
     };
     assert!(list.items.is_empty());
@@ -241,7 +241,7 @@ fn data_and_spec_errors_carry_their_codes() {
     );
     assert_eq!(e.err().map(|e| e.to_string()).as_deref(), Some("length"));
     assert!(f.set_spec(2, r#"{"kind":"pie"}"#).is_err());
-    assert!(matches!(f.build(2), Some((ref l, None)) if l.items.is_empty()));
+    assert!(matches!(f.build(2), Some((ref l, None, _)) if l.items.is_empty()));
 }
 
 #[test]
@@ -258,6 +258,7 @@ fn events_have_the_ts_shapes() {
         dpr: 1.0,
         series: 50,
         stage: None,
+        pick: None,
     };
     let d = parse(&events::drawn(3, &p, 10.5, 12.0));
     assert_eq!(
@@ -292,7 +293,7 @@ fn frames_apply() {
     f.set_chunk(1, Some(Arc::new(chunk)));
     assert_eq!(f.apply(&resize_rec(1, 1, 1118.0, 240.0, 1.0)), Some(1));
     // No camera yet: the frame is cleared and reports nothing.
-    let Some((list, a11y)) = f.build(1) else {
+    let Some((list, a11y, _)) = f.build(1) else {
         panic!("no build")
     };
     assert!(list.items.is_empty());
@@ -506,7 +507,7 @@ fn a_rejected_camera_still_presents() {
         "the frame presents again"
     );
     assert_eq!(f.bad(), 1);
-    let Some((_, a11y)) = f.build(1) else {
+    let Some((_, a11y, _)) = f.build(1) else {
         panic!("no build")
     };
     assert_eq!(a11y, None, "the camera is unchanged");
@@ -532,7 +533,7 @@ fn events_of(events: &[String]) -> Vec<Value> {
 
 /// Builds and submits frame `id`: the presentation, its list's CSS size and its summary.
 fn present(f: &mut Frames, id: u32) -> (Presented, (f64, f64), Value) {
-    let Some((list, a11y)) = f.build(id) else {
+    let Some((list, a11y, _)) = f.build(id) else {
         panic!("no build")
     };
     let Some(p) = f.submit(id) else {
@@ -682,7 +683,7 @@ fn stage_zero_size() {
     // An r1 submission in flight; then Resize 0×240 (r2): the worker presents nothing at r2.
     let (late, _, _) = present(&mut f, 1);
     assert_eq!(f.apply(&resize_rec(1, 3, 0.0, 240.0, 1.0)), Some(1));
-    let Some((list, _)) = f.build(1) else {
+    let Some((list, _, _)) = f.build(1) else {
         panic!("no build")
     };
     assert_eq!(list.css.0, 0.0, "no presentation at size 0");
@@ -696,5 +697,319 @@ fn stage_zero_size() {
         assert_eq!(s.len(), 1, "rseq {seq}");
         assert_eq!(s[0]["rseq"].as_u64(), Some(u64::from(seq)));
         assert_eq!(s[0]["stage"], stage1);
+    }
+}
+
+// Plan #68 C2b §5: hover, select and the overlay on engine frames.
+
+/// C2a2 §5's `lineData`: 61 samples over 12:00–13:00, value `30·i/60`, key `…a1`.
+const T0: f64 = GALLERY_WINDOW.0;
+const W0: (f64, f64) = (GALLERY_WINDOW.0, GALLERY_WINDOW.0 + 3_600_000.0);
+
+fn line_data(f: &mut Frames, id: u32, n: usize) {
+    let t: Vec<f64> = (0..n).map(|i| T0 + 60_000.0 * i as f64).collect();
+    let v: Vec<f64> = (0..n).map(|i| 30.0 * i as f64 / 60.0).collect();
+    f.data_begin(id);
+    if n > 0 {
+        let r = f.data_series(id, "00000000000000a1", Vec::new(), Vec::new(), &t, &v);
+        assert!(r.is_ok(), "{r:?}");
+    }
+    assert!(f.data_end(id).is_ok());
+}
+
+const LINE: &str = r#"{"kind":"line","title":"T","unit":{"kind":"none"}}"#;
+
+fn overlay_rec(frame: u32, seq: u32, hover: u8, x: f64, y: f64, key: u32) -> Decoded {
+    Decoded {
+        seq,
+        t_ms: 0.0,
+        rec: Record::Overlay {
+            frame,
+            hover,
+            boxed: 0,
+            x,
+            y,
+            key,
+            box_x0: 0.0,
+            box_x: 0.0,
+        },
+    }
+}
+
+fn select_rec(frame: u32, seq: u32, x: f64, y: f64) -> Decoded {
+    Decoded {
+        seq,
+        t_ms: 0.0,
+        rec: Record::Select { frame, x, y },
+    }
+}
+
+/// A presented line frame (Resize s1 800×240, Camera s2 at `view`), completed: its presentation.
+fn presented(f: &mut Frames, data: impl FnOnce(&mut Frames), view: (f64, f64)) -> Presented {
+    assert!(f.create(1, None));
+    assert!(f.set_spec(1, LINE).is_ok());
+    data(f);
+    assert_eq!(f.apply(&resize_rec(1, 1, 800.0, 240.0, 1.0)), Some(1));
+    assert_eq!(f.apply(&camera_rec(1, 2, view, NAN2, f64::NAN)), Some(1));
+    let (p, _, _) = present(f, 1);
+    let _ = f.complete(1, &p, 1.0, 2.0);
+    let _ = f.take_applied();
+    p
+}
+
+fn plot_of(p: &Presented) -> dash_axes::PlotRect {
+    match &p.stage {
+        Some(s) => s.plot,
+        None => panic!("no stage"),
+    }
+}
+
+/// The overlay item of a list.
+fn overlay_of(list: &dash_marks::DrawList) -> Vec<dash_marks::OverlayShape> {
+    let items: Vec<_> = list
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            MarkItem::Overlay { shapes } => Some(shapes.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(items.len(), 1, "one overlay item: {:?}", list.items.len());
+    assert!(
+        matches!(list.items.last(), Some(MarkItem::Overlay { .. })),
+        "the overlay is last"
+    );
+    items.into_iter().next().unwrap_or_default()
+}
+
+/// Builds frame `id`: its list and its `hover` event (parsed).
+fn build_hover(f: &mut Frames, id: u32) -> (dash_marks::DrawList, Value) {
+    let Some((list, _, hover)) = f.build(id) else {
+        panic!("no build")
+    };
+    (list, hover.map_or(Value::Null, |h| parse(&h)))
+}
+
+/// Plan #68 C2b §5 `overlay_order` (r1 #1, T02-024): the list drawn in a tick carries the hover
+/// that tick emits.
+#[test]
+fn overlay_order() {
+    let (chunk, json) = line50();
+    let mut f = Frames::new();
+    assert!(f.create(1, None));
+    assert!(f.set_spec(1, &json).is_ok());
+    f.set_chunk(1, Some(Arc::new(chunk)));
+    assert_eq!(f.apply(&resize_rec(1, 1, 1118.0, 240.0, 1.0)), Some(1));
+    assert_eq!(
+        f.apply(&camera_rec(1, 2, GALLERY_WINDOW, NAN2, f64::NAN)),
+        Some(1)
+    );
+    let (p, _, _) = present(&mut f, 1);
+    let _ = f.complete(1, &p, 1.0, 2.0);
+    let plot = plot_of(&p);
+    let mid = plot.y + plot.height / 2.0;
+    let mut seen = Vec::new();
+    for (seq, frac) in [(3u32, 0.3), (4, 0.6)] {
+        let x = plot.x + frac * plot.width;
+        assert_eq!(f.apply(&overlay_rec(1, seq, 1, x, mid, 0)), Some(1));
+        let (list, h) = build_hover(&mut f, 1);
+        assert_eq!(h["oseq"].as_u64(), Some(u64::from(seq)), "{h}");
+        let x_css = h["ev"]["xCss"].as_f64().unwrap_or(f64::NAN);
+        assert!(x_css.is_finite(), "a hover at {frac}: {h}");
+        let shapes = overlay_of(&list);
+        let Some(dash_marks::OverlayShape::Rect { css, .. }) = shapes.first() else {
+            panic!("no crosshair: {shapes:?}")
+        };
+        assert_eq!(css[0], dash_scene::camera::js_round(x_css) as f32, "{frac}");
+        seen.push(css[0]);
+    }
+    assert_ne!(seen[0], seen[1]);
+    assert_eq!(f.apply(&overlay_rec(1, 5, 0, 0.0, 0.0, 0)), Some(1));
+    let (list, h) = build_hover(&mut f, 1);
+    assert_eq!(h["oseq"].as_u64(), Some(5));
+    assert!(h["ev"].is_null(), "{h}");
+    assert!(overlay_of(&list).is_empty(), "no crosshair and no dot");
+}
+
+/// Plan #68 C2b §5 `frames_overlay` (T02-024): one `hover` per applied Overlay, from the build
+/// after it; an Overlay does not rebuild the layer, a Camera does; a bad Overlay is counted.
+#[test]
+fn frames_overlay() {
+    let (chunk, json) = line50();
+    let mut f = Frames::new();
+    assert!(f.create(1, None));
+    assert!(f.set_spec(1, &json).is_ok());
+    f.set_chunk(1, Some(Arc::new(chunk)));
+    assert_eq!(f.apply(&resize_rec(1, 1, 1118.0, 240.0, 1.0)), Some(1));
+    assert_eq!(
+        f.apply(&camera_rec(1, 2, GALLERY_WINDOW, NAN2, f64::NAN)),
+        Some(1)
+    );
+    let (p, _, _) = present(&mut f, 1);
+    let _ = f.complete(1, &p, 1.0, 2.0);
+    let Some(pick) = p.pick.clone() else {
+        panic!("the presentation has no pick")
+    };
+    let plot = plot_of(&p);
+    let (x, y) = (plot.x + 0.3 * plot.width, plot.y + 20.0);
+    let builds = f.layer_builds();
+    assert_eq!(f.apply(&overlay_rec(1, 5, 1, x, y, 0)), Some(1));
+    let (_, h) = build_hover(&mut f, 1);
+    let want = dash_scene::hover::hover_at(&pick, dash_scene::hover::HoverAt::Pointer { x, y });
+    assert!(want.is_some(), "precondition: a hover there");
+    assert_eq!(
+        norm(&h),
+        norm(&serde_json::json!({"t": "hover", "id": 1, "oseq": 5, "ev": want}))
+    );
+    // The next build emits nothing: no Overlay since.
+    let (_, h) = build_hover(&mut f, 1);
+    assert!(h.is_null(), "{h}");
+    assert_eq!(f.apply(&overlay_rec(1, 6, 0, 0.0, 0.0, 0)), Some(1));
+    let (_, h) = build_hover(&mut f, 1);
+    assert_eq!(
+        norm(&h),
+        norm(&serde_json::json!({"t": "hover", "id": 1, "oseq": 6, "ev": null}))
+    );
+    assert_eq!(
+        f.layer_builds(),
+        builds,
+        "an Overlay does not rebuild the layer"
+    );
+    // hover 3: rejected, counted, acked.
+    let bad = f.bad();
+    assert_eq!(f.apply(&overlay_rec(1, 7, 3, x, y, 0)), Some(1));
+    assert_eq!(f.bad(), bad + 1);
+    assert_eq!(
+        events_of(&f.take_applied()),
+        [serde_json::json!({"t": "applied", "id": 1, "seq": 7})]
+    );
+    let (_, h) = build_hover(&mut f, 1);
+    assert!(h.is_null(), "a bad Overlay emits no hover: {h}");
+    // Non-finite pointer and box coordinates are rejected too.
+    for d in [
+        overlay_rec(1, 8, 1, f64::NAN, y, 0),
+        Decoded {
+            seq: 9,
+            t_ms: 0.0,
+            rec: Record::Overlay {
+                frame: 1,
+                hover: 0,
+                boxed: 1,
+                x: 0.0,
+                y: 0.0,
+                key: 0,
+                box_x0: 10.0,
+                box_x: f64::INFINITY,
+            },
+        },
+        Decoded {
+            seq: 10,
+            t_ms: 0.0,
+            rec: Record::Overlay {
+                frame: 1,
+                hover: 0,
+                boxed: 2,
+                x: 0.0,
+                y: 0.0,
+                key: 0,
+                box_x0: 0.0,
+                box_x: 0.0,
+            },
+        },
+    ] {
+        let before = f.bad();
+        assert_eq!(f.apply(&d), Some(1));
+        assert_eq!(f.bad(), before + 1, "{d:?}");
+    }
+    // A Camera rebuilds the layer and emits no hover.
+    let before = f.layer_builds();
+    assert_eq!(
+        f.apply(&camera_rec(
+            1,
+            11,
+            (GALLERY_WINDOW.0, GALLERY_WINDOW.1 + 1.0),
+            NAN2,
+            f64::NAN
+        )),
+        Some(1)
+    );
+    let (_, h) = build_hover(&mut f, 1);
+    assert!(h.is_null(), "{h}");
+    assert_eq!(f.layer_builds(), before + 1);
+}
+
+/// Plan #68 C2b §5 `frames_select` (ADR-0025, T25-005): a click picks on the presentation on
+/// screen, never a newer state; nothing without one.
+#[test]
+fn frames_select() {
+    // (a) No completion yet: no event, but the frame is dirtied and the record acked.
+    let mut f = Frames::new();
+    assert!(f.create(1, None));
+    assert!(f.set_spec(1, LINE).is_ok());
+    line_data(&mut f, 1, 61);
+    assert_eq!(f.apply(&resize_rec(1, 1, 800.0, 240.0, 1.0)), Some(1));
+    assert_eq!(f.apply(&camera_rec(1, 2, W0, NAN2, f64::NAN)), Some(1));
+    assert_eq!(f.apply(&select_rec(1, 3, 300.0, 100.0)), Some(1));
+    assert!(f.take_events().is_empty());
+    assert_eq!(
+        events_of(&f.take_applied()),
+        [serde_json::json!({"t": "applied", "id": 1, "seq": 3})]
+    );
+
+    // (b) p1 (W0) completed; Camera W1 applied and p2 submitted, not completed: W0's pick.
+    let mut f = Frames::new();
+    let p1 = presented(&mut f, |f| line_data(f, 1, 61), W0);
+    let plot = plot_of(&p1);
+    let w1 = (W0.0 + 1_800_000.0, W0.1 + 1_800_000.0);
+    assert_eq!(f.apply(&camera_rec(1, 3, w1, NAN2, f64::NAN)), Some(1));
+    let (_p2, _, _) = present(&mut f, 1);
+    let x = plot.x + 0.3 * plot.width;
+    let Some(s) = p1.pick.as_ref() else {
+        panic!("p1 has no pick")
+    };
+    let y = s.axis.y(9.0);
+    assert_eq!(f.apply(&select_rec(1, 4, x, y)), Some(1));
+    let ev = events_of(&f.take_events());
+    assert_eq!(
+        norm(&serde_json::Value::Array(ev)),
+        norm(&serde_json::json!([{"t": "select", "id": 1, "item": {
+            "kind": "point", "key": "00000000000000a1", "tMs": T0 + 18.0 * 60_000.0, "value": 9.0
+        }}]))
+    );
+
+    // (c) A zero-size presentation completed: nothing is on screen.
+    assert_eq!(f.apply(&resize_rec(1, 5, 0.0, 240.0, 1.0)), Some(1));
+    let (p0, css, _) = present(&mut f, 1);
+    assert_eq!(css.0, 0.0);
+    let _ = f.complete(1, &p0, 3.0, 4.0);
+    assert_eq!(f.apply(&select_rec(1, 6, x, y)), Some(1));
+    assert!(f.take_events().is_empty());
+
+    // (d) A non-finite click is rejected.
+    let bad = f.bad();
+    assert_eq!(f.apply(&select_rec(1, 7, f64::NAN, y)), Some(1));
+    assert_eq!(f.bad(), bad + 1);
+    assert!(f.take_events().is_empty());
+}
+
+/// Plan #68 C2b §5 `stage_pick_count`: the stage carries the samples of series 0 (the keyboard
+/// crosshair's range), 0 without a series.
+#[test]
+fn stage_pick_count() {
+    for (n, want) in [(61usize, 61u64), (0, 0)] {
+        let mut f = Frames::new();
+        assert!(f.create(1, None));
+        assert!(f.set_spec(1, LINE).is_ok());
+        line_data(&mut f, 1, n);
+        assert_eq!(f.apply(&resize_rec(1, 1, 800.0, 240.0, 1.0)), Some(1));
+        assert_eq!(f.apply(&camera_rec(1, 2, W0, NAN2, f64::NAN)), Some(1));
+        let (p, _, _) = present(&mut f, 1);
+        let s = stages_of(&events_of(&f.complete(1, &p, 1.0, 2.0)));
+        assert_eq!(s.len(), 1, "{n} samples");
+        assert_eq!(
+            s[0]["stage"]["pickCount"].as_u64(),
+            Some(want),
+            "{n} samples: {s:?}"
+        );
     }
 }

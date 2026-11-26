@@ -62,6 +62,9 @@ function setup() {
     overflow: () => view.overflow(),
     idle: () => view.idle() === 1,
     inputLog: () => Promise.resolve([]),
+    bad: () => 0,
+    freeze: () => undefined,
+    unfreeze: () => undefined,
   };
   const probe = createProbe({ backend: () => Promise.resolve(backend), host: () => host });
   return { ring, view, frames, probe };

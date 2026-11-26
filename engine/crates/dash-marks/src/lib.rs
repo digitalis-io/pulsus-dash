@@ -5,4 +5,4 @@ pub mod desc;
 #[cfg(feature = "gpu")]
 pub mod line;
 
-pub use desc::{DrawList, DrawnEvent, MarkItem};
+pub use desc::{DrawList, DrawnEvent, MarkItem, OverlayShape};

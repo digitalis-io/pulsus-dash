@@ -469,7 +469,7 @@ impl Engine {
             if self.failed.contains(&id) || !self.gpus.contains_key(&id) {
                 continue;
             }
-            let Some((list, a11y)) = self.frames.build(id) else {
+            let Some((list, a11y, _)) = self.frames.build(id) else {
                 continue;
             };
             if let Some(j) = a11y {

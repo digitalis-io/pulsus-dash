@@ -6,8 +6,17 @@
  * seqs are per frame, assigned at publish, consecutive and never 0. The worker's side is
  * `test/ringView.ts`.
  */
-import { describe, expect, it } from 'vitest';
-import { CB, KIND_CAMERA, KIND_RESIZE, memory, RING, RingView } from '../../test/ringView';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  CB,
+  KIND_CAMERA,
+  KIND_OVERLAY,
+  KIND_RESIZE,
+  KIND_SELECT,
+  memory,
+  RING,
+  RingView,
+} from '../../test/ringView';
 import type { CameraState } from './frame';
 import { extendSeq, InputRing } from './ring';
 
@@ -146,6 +155,80 @@ describe('InputRing (T03 §5.4)', () => {
     expect(r.unpublished(200)).toBe(1);
     r.flush();
     expect(v.decode().map((x) => x.frame)).toEqual([132, 133, 134, 135, 136, 137, 138, 139, 200]);
+  });
+});
+
+describe('Overlay and Select (plan #68 C2b §3.1)', () => {
+  it('ring: writes them in the T03 format', () => {
+    const { r, v } = ring();
+    r.overlay(3, { hover: { kind: 'pointer', x: 320.25, y: 108.5 }, box: { x0: 100, x: 40.5 } });
+    const d = v.data;
+    expect([d.getUint8(0), d.getUint8(1), d.getUint16(2, true), d.getUint32(4, true)]).toEqual([
+      KIND_OVERLAY,
+      0,
+      64,
+      1,
+    ]);
+    expect(d.getFloat64(8, true)).toBe(12.5);
+    expect([d.getUint32(16, true), d.getUint8(20), d.getUint8(21), d.getUint16(22, true)]).toEqual([
+      3, 1, 1, 0,
+    ]);
+    expect([d.getFloat64(24, true), d.getFloat64(32, true)]).toEqual([320.25, 108.5]);
+    expect([d.getUint32(40, true), d.getUint32(44, true)]).toEqual([0, 0]);
+    expect([d.getFloat64(48, true), d.getFloat64(56, true)]).toEqual([100, 40.5]);
+    r.overlay(3, { hover: { kind: 'key', index: 60 }, box: null });
+    expect([d.getUint8(64), d.getUint8(64 + 20), d.getUint8(64 + 21)]).toEqual([
+      KIND_OVERLAY,
+      2,
+      0,
+    ]);
+    expect(d.getUint32(64 + 40, true)).toBe(60);
+    expect([24, 32, 48, 56].map((o) => d.getFloat64(64 + o, true))).toEqual([0, 0, 0, 0]);
+    r.overlay(3, { hover: { kind: 'none' }, box: null });
+    expect([d.getUint8(128 + 20), d.getUint8(128 + 21)]).toEqual([0, 0]);
+    r.select(3, 12.5, -3);
+    const at = 192;
+    expect([d.getUint8(at), d.getUint16(at + 2, true), d.getUint32(at + 4, true)]).toEqual([
+      KIND_SELECT,
+      40,
+      4,
+    ]);
+    expect([d.getUint32(at + 16, true), d.getUint32(at + 20, true)]).toEqual([3, 0]);
+    expect([d.getFloat64(at + 24, true), d.getFloat64(at + 32, true)]).toEqual([12.5, -3]);
+    expect(v.head()).toBe(232);
+  });
+
+  it('ring: Selects are never coalesced, Overlays are; at most 8 pending Selects per frame', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const { r, v } = ring();
+      fill(r, 9);
+      const coalesced = r.stats.coalesced;
+      r.select(1, 10, 20);
+      r.select(1, 11, 21);
+      for (let i = 0; i < 3; i++) r.overlay(1, { hover: { kind: 'key', index: i }, box: null });
+      expect(r.unpublished(1)).toBe(3);
+      expect(r.stats.coalesced - coalesced).toBe(2);
+      v.decode();
+      r.flush();
+      const a = v.decode();
+      expect(a.map((x) => x.kind)).toEqual([KIND_SELECT, KIND_SELECT, KIND_OVERLAY]);
+      expect(a.map((x) => x.seq)).toEqual([1, 2, 3]);
+      expect([a[0]?.f[0], a[0]?.f[1], a[1]?.f[0], a[1]?.f[1]]).toEqual([10, 20, 11, 21]);
+      expect(v.data.getUint32((a[2]?.at ?? 0) + 40, true)).toBe(2);
+      // Frame 2: ten Selects while the ring is full; the oldest two go (INPUT_OVERFLOW).
+      fill(r, 9);
+      for (let i = 0; i < 10; i++) r.select(2, i, 0);
+      expect(r.unpublished(2)).toBe(8);
+      expect(v.overflow()).toBe(2);
+      expect(warn).toHaveBeenCalledTimes(1);
+      v.decode();
+      r.flush();
+      expect(v.decode().map((x) => x.f[0])).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
+      expect(r.stats.selects).toBe(10);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

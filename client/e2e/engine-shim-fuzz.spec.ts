@@ -11,6 +11,11 @@
  * gestures are ended (`pointercancel`, then the wheel-idle commit) before the final ops, and each
  * frame's last summary shows its last published Camera's view. `bench:shim-input-cost` (T03-003,
  * report-only from #68 C2a2) prints the main-thread cost of synthetic input on a probe frame.
+ *
+ * Plan #68 C2b (§5): the DOM ops add hover moves, clicks and arrow keys, so the logs carry Overlay
+ * and Select records too; the worker rejects none (`INPUT_BAD` 0), and every Select the ring took is
+ * published or counted dropped (`INPUT_OVERFLOW`, at most 8 pending per frame). Each timed dispatch
+ * of the bench flushes the frame's batched records.
  */
 import { expect, test, type Page } from '@playwright/test';
 import { galleryEntries } from '../src/dev/gallery.ts';
@@ -25,6 +30,8 @@ interface Probe {
   id(n: number): number;
   wheel(n: number, x: number, y: number, init: unknown): boolean;
   pointer(n: number, type: string, x: number, y: number, o?: unknown): void;
+  key(n: number, key: string): boolean;
+  flush(n: number): void;
   call(n: number, m: string, arg: unknown): void;
   settle(n: number): Promise<void>;
   last(n: number): { fromMs: number; toMs: number } | null;
@@ -32,7 +39,14 @@ interface Probe {
   idle(): boolean;
   inputLog(): Promise<unknown[]>;
   producedLog(): unknown[];
-  stats(): { coalesced: number; overflow: number; publishedBytes: number; enqueued: number };
+  stats(): {
+    coalesced: number;
+    overflow: number;
+    publishedBytes: number;
+    enqueued: number;
+    bad: number;
+    selects: number;
+  };
   counters(): { head: number; tail: number };
 }
 
@@ -56,7 +70,9 @@ type Op =
       n: number;
       m: 'pointer';
       arg: { type: string; x: number; y: number; o: Record<string, number | boolean> };
-    };
+    }
+  | { n: number; m: 'click'; arg: { x: number; y: number } }
+  | { n: number; m: 'key'; arg: string };
 
 /** mulberry32. */
 function rng(seed: number): () => number {
@@ -71,11 +87,19 @@ function rng(seed: number): () => number {
 }
 
 const POINTER_TYPES = ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'dblclick'];
+const KEYS = ['ArrowRight', 'ArrowLeft', 'Home', 'End', 'PageUp', 'PageDown', 'Escape'];
 
-/** A DOM event on frame `n`'s 600×300 canvas (plan #68 C2a2 §5). */
+/**
+ * A DOM event on frame `n`'s 600×300 canvas (plan #68 C2a2 §5): a wheel, a pointer event, and from
+ * C2b a hover move (no button), a click (down and up at one point) or a key.
+ */
 function domOp(n: number, r: () => number, int: (lo: number, hi: number) => number): Op {
   const x = r() * 600;
   const y = r() * 300;
+  const c = r();
+  if (c < 0.15) return { n, m: 'pointer', arg: { type: 'pointermove', x, y, o: {} } };
+  if (c < 0.25) return { n, m: 'click', arg: { x, y } };
+  if (c < 0.35) return { n, m: 'key', arg: KEYS[int(0, KEYS.length - 1)] ?? 'ArrowRight' };
   if (r() < 0.5) {
     const mods = int(0, 3);
     return {
@@ -180,6 +204,10 @@ async function run(
       const go = (o: Op): void => {
         if (o.m === 'wheel') p.wheel(o.n, o.arg.x, o.arg.y, o.arg.init);
         else if (o.m === 'pointer') p.pointer(o.n, o.arg.type, o.arg.x, o.arg.y, o.arg.o);
+        else if (o.m === 'click') {
+          p.pointer(o.n, 'pointerdown', o.arg.x, o.arg.y, { button: 0, buttons: 1 });
+          p.pointer(o.n, 'pointerup', o.arg.x, o.arg.y, { button: 0 });
+        } else if (o.m === 'key') p.key(o.n, o.arg);
         else p.call(o.n, o.m, o.arg);
       };
       // The first batch before the worker has created the frames (held), the rest after.
@@ -236,7 +264,14 @@ test.describe('e2e:shim-fuzz', () => {
     expect(r.decoded.length).toBe(r.produced.length);
     expect(r.decoded).toEqual(r.produced);
     expect(r.stats.coalesced).toBeGreaterThan(0);
-    expect(r.stats.overflow).toBe(0);
+    // Plan #68 C2b: Overlay and Select records went through; none was rejected; every Select the
+    // ring took was published or dropped by the per-frame cap (and counted).
+    const kinds = (r.produced as { kind: number }[]).map((x) => x.kind);
+    expect(kinds.filter((k) => k === 0x24).length, 'Overlay records').toBeGreaterThan(0);
+    const selects = kinds.filter((k) => k === 0x25).length;
+    expect(selects, 'Select records').toBeGreaterThan(0);
+    expect(selects + r.stats.overflow).toBe(r.stats.selects);
+    expect(r.stats.bad).toBe(0);
     // More than one ring's worth went through it.
     expect(r.stats.publishedBytes).toBeGreaterThan(0x10000);
     for (const n of [0, 1]) {
@@ -303,7 +338,8 @@ const pct = (xs: number[], q: number): number => {
  * gate's synthetic subset on the gate host, one run. 10⁴ wheels and 10⁴ pointer moves are
  * dispatched on a probe frame's canvas, 16 per animation frame (a 1 kHz device at 60 Hz); each
  * dispatch is timed, and each frame's group (the input work one flush publishes). It asserts only
- * that every prevented wheel enqueued at least one ring record. The trusted-input leg, the median
+ * that every prevented wheel enqueued at least one ring record. Each timed dispatch includes the
+ * frame's flush (plan #68 C2b: records are batched per task). The trusted-input leg, the median
  * of 3 runs and the limits as assertions wait for the reference lab.
  */
 test.describe('bench:shim-input-cost', () => {
@@ -347,6 +383,8 @@ test.describe('bench:shim-input-cost', () => {
               const t0 = performance.now();
               if (kind === 'wheel') {
                 const ok = p.wheel(n, cx, cy, { deltaY: k % 2 === 0 ? -40 : 40 });
+                // Plan #68 C2b: the batched Camera and Overlay go out within the dispatch.
+                p.flush(n);
                 const dt = performance.now() - t0;
                 out.wheel.push(dt);
                 group += dt;
@@ -356,6 +394,7 @@ test.describe('bench:shim-input-cost', () => {
                 }
               } else {
                 p.pointer(n, 'pointermove', cx + (k % 100) - 50, cy);
+                p.flush(n);
                 const dt = performance.now() - t0;
                 out.move.push(dt);
                 group += dt;

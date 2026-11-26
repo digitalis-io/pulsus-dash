@@ -52,6 +52,21 @@ pub enum MarkItem {
         /// A.3.3: CPU decimation with f64 segment clipping, on T1 and T2.
         far: bool,
     },
+    /// The overlay (plan #68 C2b §3.2): crosshair, hover dots and box band, drawn last, unclipped,
+    /// in CSS px.
+    Overlay { shapes: Vec<OverlayShape> },
+}
+
+/// One overlay shape, CSS px.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum OverlayShape {
+    /// x, y, w, h.
+    Rect { css: [f32; 4], colour: Rgba8 },
+    Disc {
+        centre: [f32; 2],
+        r_css: f32,
+        colour: Rgba8,
+    },
 }
 
 /// ADR-0019's `drawn` event.

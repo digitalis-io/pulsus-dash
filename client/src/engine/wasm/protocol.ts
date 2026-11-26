@@ -9,7 +9,7 @@
  * (one per pool thread) and `events` (one JSON array per animation frame). Main → pool: `pool`.
  * The probe build adds `probe-input` both ways (the worker's decoded records, `e2e:shim-fuzz`).
  */
-import type { DrawnEvent, FrameSummary, PlotRect, ValueRange } from '../api';
+import type { DrawnEvent, FrameSummary, HoverEvent, HoverItem, PlotRect, ValueRange } from '../api';
 
 export interface SeriesMessage {
   readonly key: string;
@@ -50,7 +50,10 @@ export type MainToRender =
   /** A record was published while the worker was idle (T03-004 revised). */
   | { readonly t: 'input' }
   /** The probe build: post the decoded input records back. */
-  | { readonly t: 'probe-input' };
+  | { readonly t: 'probe-input' }
+  /** The probe build (plan #68 C2b §3.4): hold the frame after its presentation of `seq`. */
+  | { readonly t: 'probe-freeze'; readonly id: number; readonly seq: number }
+  | { readonly t: 'probe-unfreeze'; readonly id: number };
 
 export type RenderToMain =
   | {
@@ -77,6 +80,8 @@ export interface StageWire {
   readonly plot: PlotRect;
   readonly domain: ValueRange | null;
   readonly labelW: number;
+  /** Samples of series 0 (plan #68 C2b §3.3): the keyboard crosshair's range. */
+  readonly pickCount: number;
 }
 
 export type RenderEvent =
@@ -103,6 +108,18 @@ export type RenderEvent =
       readonly rseq: number;
       readonly stage: StageWire | null;
     }
+  /**
+   * The hover of the frame's last applied Overlay (plan #68 C2b §3.3), from the build of the tick
+   * that applied it; `oseq` is that record's seq.
+   */
+  | {
+      readonly t: 'hover';
+      readonly id: number;
+      readonly oseq: number;
+      readonly ev: HoverEvent | null;
+    }
+  /** A Select record answered against the presentation on screen. */
+  | { readonly t: 'select'; readonly id: number; readonly item: HoverItem | null }
   /** `frame_create` succeeded: the frame's records may be published (plan #68 C2a1 §3.1). */
   | { readonly t: 'created'; readonly id: number }
   /** The last seq of the frame's records applied in one tick (the ack, §3.1). */

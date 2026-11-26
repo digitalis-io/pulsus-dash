@@ -45,6 +45,20 @@ pub enum Record {
         value: (f64, f64),
         band: f64,
     },
+    /// The hover and the box band (plan #68 C2b §3.1): hover 0 none, 1 pointer (x, y CSS px), 2
+    /// key (`key` index); box 0, 1 (`box_x0`, `box_x`). Validated by `Frames::apply`.
+    Overlay {
+        frame: u32,
+        hover: u8,
+        boxed: u8,
+        x: f64,
+        y: f64,
+        key: u32,
+        box_x0: f64,
+        box_x: f64,
+    },
+    /// A click at (x, y) CSS px (plan #68 C2b §3.1).
+    Select { frame: u32, x: f64, y: f64 },
 }
 
 /// One record: its per-frame seq, the adapter's `performance.now()` at enqueue, the payload.
@@ -194,6 +208,21 @@ pub fn log_json(d: &Decoded) -> serde_json::Value {
             frame,
             json!([frame, view.0, view.1, value.0, value.1, band]),
         ),
+        Record::Overlay {
+            frame,
+            hover,
+            boxed,
+            x,
+            y,
+            key,
+            box_x0,
+            box_x,
+        } => (
+            rec::OVERLAY,
+            frame,
+            json!([frame, hover, boxed, x, y, key, box_x0, box_x]),
+        ),
+        Record::Select { frame, x, y } => (rec::SELECT, frame, json!([frame, x, y])),
     };
     json!({"seq": d.seq, "kind": kind, "frame": frame, "tMs": d.t_ms, "f": f})
 }

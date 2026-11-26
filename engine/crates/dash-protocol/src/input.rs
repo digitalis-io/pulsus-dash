@@ -17,10 +17,15 @@ pub mod rec {
     pub const WRAP: u8 = 0x00;
     pub const RESIZE: u8 = 0x20;
     pub const CAMERA: u8 = 0x23;
+    // Test-first stubs (plan #68 C2b §3.1): not wired yet.
+    pub const OVERLAY: u8 = 0x00;
+    pub const SELECT: u8 = 0x00;
 }
 
 pub const RESIZE_BYTES: u32 = 40;
 pub const CAMERA_BYTES: u32 = 64;
+pub const OVERLAY_BYTES: u32 = 0;
+pub const SELECT_BYTES: u32 = 0;
 
 /// Header field offsets.
 pub mod header {
@@ -50,6 +55,25 @@ pub mod camera {
     pub const VALUE_MIN: u32 = 40;
     pub const VALUE_MAX: u32 = 48;
     pub const BAND: u32 = 56;
+}
+
+/// Overlay payload offsets (stub).
+pub mod overlay {
+    pub const FRAME: u32 = 0;
+    pub const HOVER: u32 = 0;
+    pub const BOX: u32 = 0;
+    pub const X: u32 = 0;
+    pub const Y: u32 = 0;
+    pub const KEY: u32 = 0;
+    pub const BOX_X0: u32 = 0;
+    pub const BOX_X: u32 = 0;
+}
+
+/// Select payload offsets (stub).
+pub mod select {
+    pub const FRAME: u32 = 0;
+    pub const X: u32 = 0;
+    pub const Y: u32 = 0;
 }
 
 /// The `layout.gen.ts` constants of this module, in order.

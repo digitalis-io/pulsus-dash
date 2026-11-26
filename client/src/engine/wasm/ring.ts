@@ -16,7 +16,7 @@
  * Nothing is dropped: a record that does not fit waits (only the latest per kind and frame is
  * kept), so `INPUT_OVERFLOW` stays 0 until #94 brings discrete records.
  */
-import type { CameraState } from './frame';
+import type { CameraState, OverlayState } from './frame';
 import {
   CAMERA_BAND,
   CAMERA_FRAME,
@@ -85,7 +85,8 @@ interface Rec {
 const nul = (v: number): number | null => (Number.isNaN(v) ? null : v);
 
 export class InputRing {
-  readonly stats = { coalesced: 0, publishedBytes: 0 };
+  /** `selects`: Select records taken (published, pending or dropped by the cap; plan #68 C2b). */
+  readonly stats = { coalesced: 0, publishedBytes: 0, selects: 0 };
   /** Every published record, in order (`log` only). */
   produced: InputRec[] | null;
   private readonly i32: Int32Array;
@@ -159,6 +160,18 @@ export class InputRing {
       },
       f: [nul(Math.fround(cssW)), nul(Math.fround(cssH)), nul(Math.fround(dpr)), dw, dh, frame],
     });
+  }
+
+  /** Stub (plan #68 C2b). */
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- test-first stub */
+  overlay(_frame: number, _o: OverlayState): void {
+    // Not written until C2b.
+  }
+
+  /** Stub (plan #68 C2b). */
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- test-first stub */
+  select(_frame: number, _x: number, _y: number): void {
+    // Not written until C2b.
   }
 
   /** `cb(kind, P)` after each of the frame's records is published. */

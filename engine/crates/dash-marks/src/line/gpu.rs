@@ -300,7 +300,7 @@ impl<'a> LineRef<'a> {
                 width_css: *width_css,
                 far: *far,
             }),
-            MarkItem::Guides { .. } => None,
+            MarkItem::Guides { .. } | MarkItem::Overlay { .. } => None,
         }
     }
 
@@ -393,7 +393,7 @@ impl Renderer {
                 MarkItem::Line {
                     chunk, encoding, ..
                 } => chunk.id == r.chunk && *encoding == r.enc,
-                MarkItem::Guides { .. } => false,
+                MarkItem::Guides { .. } | MarkItem::Overlay { .. } => false,
             })
         });
     }

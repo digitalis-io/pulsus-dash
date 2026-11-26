@@ -3,15 +3,16 @@
 
 mod build;
 pub mod camera;
+pub mod hover;
 mod spec;
 mod summary;
 
-pub use build::{StageInfo, build, build_stage};
+pub use build::{Built, StageInfo, build, build_frame, build_stage};
 pub use camera::{Camera, PlotCamera, YRange};
 pub use spec::{LineSpec, SpecError, ValueRange, VisSpec};
 pub use summary::{CommitEvent, FrameSummary, Gesture, TimeWindow, ValueAxisSummary, ValueCommit};
 
-pub use dash_axes::{Band, PlotRect, VisKind};
+pub use dash_axes::{Band, PlotRect, ValueAxis, VisKind};
 pub use dash_scales::Range64;
 pub use dash_tokens::Theme;
 
