@@ -15,8 +15,9 @@
  * Event markers (ADR-0023, `setEvents`) are drawn with the layer, through the drawn view, so they
  * follow the preview; their labels' boxes go out in the `a11y` summary (`eventLabels`).
  *
- * A bar chart (ADR-0028) has no camera: its pointer events go to `BarInput` (`mark`, `pick`), and
- * its wheel, gestures, double click, context menu and keys are ignored.
+ * A bar chart (ADR-0028, ADR-0029) has no camera: its pointer events and its key target's keys go
+ * to `BarInput` (`mark`, `pick`, the focus mark and the brush band in the overlay), and its wheel,
+ * gestures, double click and context menu are ignored.
  */
 import type {
   ChartEngine,
@@ -34,7 +35,7 @@ import type {
 import { FrameController } from '../controller/controller';
 import type { BarHooks, Point, Stage, StageModel } from '../controller/stage';
 import { BarInput } from './barInput';
-import type { BarPick } from './barchart';
+import { drawBarOverlay, type BarPick } from './barchart';
 import type { Ctx2D } from './ctx';
 import {
   AXIS_FONT,
@@ -167,7 +168,9 @@ class Canvas2DFrame implements ChartFrame {
   private lastHover: HoverEvent | null = null;
   private readonly listeners = new Map<keyof FrameEvents, Set<Listener>>();
   /** The bar chart's `mark` and `pick` (ADR-0028). */
-  private readonly bar = new BarInput(this.emit.bind(this));
+  private readonly bar = new BarInput(this.emit.bind(this), () => {
+    this.schedule();
+  });
   /** The camera (#93): the shared controller, this frame its stage. */
   private readonly ctl: FrameController;
 
@@ -184,9 +187,7 @@ class Canvas2DFrame implements ChartFrame {
     if (layerCtx === null) throw new ChartUnsupportedError('no 2D context for the layer');
     this.layerCtx = layerCtx;
     const hooks: BarHooks = {
-      down: (e, p) => {
-        this.bar.down(e, p);
-      },
+      down: (e, p) => this.bar.down(e, p, this.barPick()),
       move: (e, p) => {
         this.bar.move(this.barPick(), e.pointerId, p);
       },
@@ -198,6 +199,18 @@ class Canvas2DFrame implements ChartFrame {
       },
       clearMark: () => {
         this.bar.clearMark();
+      },
+      leave: () => {
+        this.bar.hoverEnd(this.barPick());
+      },
+      key: (e) => {
+        this.bar.key(e, this.barPick());
+      },
+      focus: () => {
+        this.bar.focusIn(this.barPick());
+      },
+      blur: () => {
+        this.bar.blur();
       },
       dispose: () => {
         this.bar.dispose();
@@ -260,6 +273,7 @@ class Canvas2DFrame implements ChartFrame {
   setData(data: FrameData): void {
     if (this.disposed) return;
     this.data = data;
+    this.bar.newData();
     this.changed();
   }
 
@@ -416,6 +430,7 @@ class Canvas2DFrame implements ChartFrame {
           this.emit('a11y', this.model.summary);
         }
       }
+      if (this.spec?.kind === 'barchart') this.bar.laidOut(this.barPick());
     }
     let hover = this.lastHover;
     if (this.hoverDirty) {
@@ -479,8 +494,10 @@ class Canvas2DFrame implements ChartFrame {
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.drawImage(this.layer, 0, 0, this.cssW, this.cssH);
-    const box = this.ctl.box();
-    if (this.model !== null) drawOverlay(ctx, this.model, themeColours(this.theme), hover, box);
+    if (this.model === null) return;
+    const bar = this.barPick();
+    if (bar !== null) drawBarOverlay(ctx, bar, themeColours(this.theme), this.bar.overlay());
+    else drawOverlay(ctx, this.model, themeColours(this.theme), hover, this.ctl.box());
   }
 
   private currentHover(): HoverEvent | null {

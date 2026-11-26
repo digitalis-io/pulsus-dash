@@ -36,7 +36,7 @@ export interface BarchartModel {
   readonly duplicates: number;
   readonly conflicts: number;
   readonly query: Completeness;
-  /** Null in Part 2 (no baseline run). */
+  /** The baseline run's completeness; null without a baseline run. */
   readonly baseline: Completeness | null;
   readonly min: number | undefined;
   readonly max: number | undefined;
@@ -70,8 +70,10 @@ export type BarchartFit =
 
 /**
  * The rows of `r` once per result and options (plan §3.4): `barchartOptions`, the unit (`/s` after a
- * rate rewrite), the spec (thresholds as seam lines when the panel has them; no ghost or anomaly
- * until #173 Part 3 and Epic #9), and `categoryRows` with the reducer, label, sort and thresholds.
+ * rate rewrite), the spec (thresholds as seam lines when the panel has them; ghost and anomaly off:
+ * `CategoryChart` sets them, Part 3a §3.6), and `categoryRows` with the reducer, label, sort and
+ * thresholds. `base`, the baseline run's result (Part 3a §3.8), sets each row's baseline by key and
+ * the model's `baseline` completeness.
  */
 export function barchartModel(
   r: Exclude<ExploreResult, { kind: 'string' }>,
@@ -80,6 +82,7 @@ export function barchartModel(
     readonly rateApplied: boolean;
     readonly options: VisOptions | undefined;
     readonly thresholds: Thresholds | null;
+    readonly base?: Exclude<ExploreResult, { kind: 'string' }> | null;
   },
 ): BarchartModel {
   const b = barchartOptions(o.options);
@@ -94,7 +97,8 @@ export function barchartModel(
     ghost: false,
     anomaly: false,
   };
-  const c = categoryRows(r, null, {
+  const base = o.base ?? null;
+  const c = categoryRows(r, base, {
     reducer: b.reducer,
     categoryBy: b.categoryBy,
     sort: b.sort,
@@ -107,7 +111,7 @@ export function barchartModel(
     duplicates: c.duplicates,
     conflicts: c.conflicts,
     query: r.completeness,
-    baseline: null,
+    baseline: base?.completeness ?? null,
     min: b.min,
     max: b.max,
     result: r,

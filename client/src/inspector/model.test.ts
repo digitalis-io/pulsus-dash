@@ -4,7 +4,10 @@ import { exploreHrefFor } from '../boards/exploreLink';
 import { formatValue } from '../i18n/format';
 import { DEFAULT_CONTEXT } from '../state/contextSearch';
 import { K1, P_LABELS, P_ORIGIN, P_TARGET, P_T, pEnv, pRequest } from '../test/inspectorKit';
+import { selectionOf } from '../charts/inspectTarget';
+import { fkey } from '../test/categoryFixtures';
 import { inspectorModel } from './model';
+import { pivotInstant, pivotWindow } from './pivots';
 import type { InspectorTarget, Pivot } from './types';
 
 const S = { kind: 'time', base: 's' } as const;
@@ -271,5 +274,69 @@ describe('unit:pivot-context', () => {
       expect(logs.get(k), k).toBe(v);
     }
     expect(P_LABELS.job).toBe('shop/checkout');
+  });
+});
+
+describe('unit:inspector-model (mark)', () => {
+  const K = fkey(3);
+  const W = { fromMs: Date.UTC(2026, 10, 19, 12), toMs: Date.UTC(2026, 10, 19, 13) };
+  const RATE = { kind: 'suffix', suffix: '/s' } as const;
+  const target: Extract<InspectorTarget, { type: 'mark' }> = {
+    type: 'mark',
+    target: {
+      panelId: 'p1',
+      kind: 'barchart',
+      title: 'Requests by version',
+      mark: {
+        key: K,
+        labels: { version: '2.31' },
+        name: '2.31',
+        value: 120,
+        state: 'failing',
+        baseline: 60,
+        anomaly: null,
+      },
+      members: null,
+      unit: RATE,
+      window: W,
+      query: { lang: 'promql', text: 'sum by (version) (rate(x[5m]))' },
+    },
+  };
+  const origin = { ...P_ORIGIN, title: 'Requests by version', window: W, unit: RATE };
+
+  it('a bar: value, baseline, state, key and the reduced window; no instant', () => {
+    const m = inspectorModel(pRequest({ origin, target }), pEnv());
+    expect(m.subheading).toBe('');
+    expect(m.primary).toBe(formatValue(120, RATE));
+    expect(m.primaryState).toBe('failing');
+    expect(factLines(m)).toEqual([
+      'Raw 120',
+      `Baseline ${formatValue(60, RATE)}`,
+      'State Failing',
+      `Series key ${K}`,
+      'Reduced over 12:00:00.000 – 13:00:00.000',
+    ]);
+    expect(m.labels).toEqual([['version', '2.31']]);
+    expect(m.members).toBeNull();
+    expect(m.announce).toBe(`Inspector: Requests by version, ${formatValue(120, RATE)}`);
+    expect(m.copyValue).toBe('120');
+    expect(selectionOf(target)).toEqual({ keys: [K], fromMs: null, toMs: null });
+    expect(pivot(m.pivots, 'explore')?.href).toContain('vis=barchart');
+    expect(pivotInstant(target)).toBeNull();
+    expect(pivotWindow(target, W)).toEqual(W);
+  });
+
+  it('no baseline fact without a finite baseline; no data for a non-finite value', () => {
+    const bare: InspectorTarget = {
+      type: 'mark',
+      target: {
+        ...target.target,
+        mark: { ...target.target.mark, value: NaN, baseline: null, state: null },
+      },
+    };
+    const m = inspectorModel(pRequest({ origin, target: bare }), pEnv());
+    expect(m.primary).toBe('no data');
+    expect(m.primaryState).toBeNull();
+    expect(m.facts.map((f) => f.label)).toEqual(['Raw', 'Series key', 'Reduced over']);
   });
 });

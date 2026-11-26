@@ -19,9 +19,12 @@
  * 24 × 24 px and kept inside the frame (T08-010), whose tooltip and accessible name list its events
  * with their kind and time; the summary label counts the events in view.
  *
- * Bar chart (ADR-0028, plan #173 Part 2 §4.4): no crosshair slider and no key target; the engine's
- * `mark` shows `MarkTooltip` beside the bar, its `pick` goes to `onPick`, and the summary label
- * counts the bars. The coverage meter (`CategoryChart`) replaces the truncation notice.
+ * Bar chart (ADR-0028, ADR-0029, plan #173 Part 2 §4.4, Part 3a §3.2): no crosshair slider; the key
+ * target is the mirror listbox (`BarList`), whose active option follows a keyboard `mark` and whose
+ * options are selected from the page selection. The engine's `mark` shows `MarkTooltip` beside the
+ * bar, with the caller's `markLines`; its `pick` goes to `onPick` with the listbox as the focus to
+ * return to; the summary label counts the bars. The coverage meter (`CategoryChart`) replaces the
+ * truncation notice.
  *
  * Readiness (#90, ADR-0019): the caller's `pending` shows over the frame until the engine reports,
  * with `drawn`, a complete draw at the size last applied; every resize, kind change and new frame
@@ -44,6 +47,7 @@ import { flushSync } from 'react-dom';
 import { Focusable } from 'react-aria-components';
 import { emptyFrameData, validateFrameData } from '../data/frames';
 import type {
+  CategoryRow,
   ChartFrame as EngineFrame,
   EventMarker,
   FrameData,
@@ -110,8 +114,10 @@ export interface ChartFrameProps {
   ) => void;
   /** A click on the plot with no mark under it: clears the selection (T25 §4.2). */
   readonly onEmptyClick?: () => void;
-  /** Barchart: a click on a bar or on no bar (ADR-0028). */
-  readonly onPick?: (e: PickEvent) => void;
+  /** Barchart: a click on a bar or on no bar, or a brush (ADR-0028, ADR-0029). */
+  readonly onPick?: (e: PickEvent, returnFocus: HTMLElement | null) => void;
+  /** Barchart: the tooltip's lines for a row (plan #173 Part 3a §3.5); absent = none. */
+  readonly markLines?: (row: CategoryRow) => readonly string[];
 }
 
 interface HoverState {
@@ -238,6 +244,7 @@ export function ChartFrame({
   onInspect,
   onEmptyClick,
   onPick,
+  markLines,
 }: ChartFrameProps) {
   const engine = useContext(ChartEngineContext);
   const { window: win, dispatch } = useTimeContext();
@@ -271,6 +278,7 @@ export function ChartFrame({
 
   const hostRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const resetRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<EngineFrame | null>(null);
@@ -311,6 +319,7 @@ export function ChartFrame({
   // The page selection (T25-006): every frame draws it, the source included.
   const selection = useSelection();
   const eventsById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events]);
+  const selectedKeys = useMemo(() => new Set(selection?.keys ?? []), [selection]);
 
   const [summary, setSummary] = useState<FrameSummary | null>(null);
   const [{ hover, selected }, setHoverState] = useState<HoverState>({ hover: null, selected: 0 });
@@ -342,7 +351,7 @@ export function ChartFrame({
     try {
       frame = engine.createFrame(canvas, {
         timeZone: tz,
-        keyTarget: noCrosshair ? null : sliderRef.current,
+        keyTarget: isBar ? listRef.current : isStat ? null : sliderRef.current,
         id,
       });
     } catch (e) {
@@ -390,7 +399,7 @@ export function ChartFrame({
         setMark(m);
       }),
       frame.on('pick', (e) => {
-        latest.current.onPick?.(e);
+        latest.current.onPick?.(e, listRef.current);
       }),
       frame.on('brush', (b) => {
         const d = latest.current.dispatch;
@@ -486,7 +495,7 @@ export function ChartFrame({
       canvasRef.current = null;
       setDrawnTo(false, false);
     };
-  }, [engine, tz, noCrosshair, fill, memo]);
+  }, [engine, tz, noCrosshair, isBar, isStat, fill, memo]);
 
   useEffect(() => {
     // A kind change on a kept frame clears its canvas (the engine), so it is not drawn.
@@ -589,12 +598,17 @@ export function ChartFrame({
   };
 
   const plot = summary?.plot ?? null;
+  const markRow =
+    mark === null || frameData.kind !== 'categories'
+      ? undefined
+      : frameData.categories.find((r) => r.key === mark.key);
   return (
     <div
       ref={hostRef}
       className={cx(
         styles['frame'],
         fill ? styles['fill'] : isStat ? styles['stat'] : styles['chart'],
+        isBar ? styles['barFrame'] : undefined,
       )}
       data-chart-frame=""
       data-frame-ready={summary === null ? 'false' : 'true'}
@@ -630,19 +644,25 @@ export function ChartFrame({
         />
       )}
       {isBar && frameData.kind === 'categories' && (
-        <BarList id={barListId} spec={spec} data={frameData} />
+        <BarList
+          ref={listRef}
+          id={barListId}
+          spec={spec}
+          data={frameData}
+          active={mark?.source === 'keyboard' ? mark.index : null}
+          selected={selectedKeys}
+        />
       )}
       {isBar && (
         <MarkTooltip
           ref={markRef}
           mark={mark}
-          row={
-            mark === null || frameData.kind !== 'categories'
-              ? undefined
-              : frameData.categories.find((r) => r.key === mark.key)
-          }
+          row={markRow}
           unit={spec.unit}
           ghost={spec.ghost}
+          {...(markLines === undefined || markRow === undefined
+            ? {}
+            : { lines: markLines(markRow) })}
         />
       )}
       {!noCrosshair && (

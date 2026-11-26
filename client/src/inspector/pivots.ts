@@ -32,9 +32,10 @@ function identity(t: InspectorTarget): BoardFilter[] {
     return Object.entries(t.labels).map(([key, value]) => ({ key, value }));
   }
   if (t.type === 'bucket') return [];
-  const service = t.labels['service_name'];
+  const labels = t.type === 'mark' ? t.target.mark.labels : t.labels;
+  const service = labels['service_name'];
   if (service !== undefined) return [{ key: 'service_name', value: service }];
-  const job = t.labels['job'];
+  const job = labels['job'];
   if (job === undefined) return [];
   const m = translateFilter({ key: 'job', value: job });
   return m === null ? [] : [m];
@@ -86,6 +87,9 @@ export function pivotInstant(t: InspectorTarget): number | null {
       return t.tMs;
     case 'bucket':
       return t.tMs;
+    case 'mark':
+      // A bar is reduced over the window: the pivot keeps the origin window.
+      return null;
   }
 }
 

@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-25 |
+| **Version** | 1.7-rc · 2026-11-26 |
 | **Milestone** | M-UI2 (host, selection, Esc ladder, pivots on boards and Explore) → M-UI4 (Pin, Create alert, Ask AI) |
-| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
+| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md), [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md) |
 | **Source draft** | plans/164, plans/184 (not tracked) |
 
 This document is the chart **Inspector**, the shared **selection**, the **Esc ladder** and the **pivot
@@ -113,7 +113,9 @@ no camera move.
 **MUST** — The host owns one `document` `keydown` listener (bubble). It skips events that are
 `defaultPrevented` or `isComposing`, events inside `[role=dialog]`, `[role=menu]`, `[role=listbox]` or
 `.cm-editor` (CodeMirror keeps its own Esc), events in an `input`, `textarea` or `select` **not** marked
-`data-escape-ladder`, and any event while `[aria-modal=true]` exists.
+`data-escape-ladder`, and any event while `[aria-modal=true]` exists. An owner (`[role=listbox]` and
+the others) marked `data-escape-ladder` is not skipped, unless another unmarked owner surrounds it
+(amended by #173 Part 3a: a bar chart's mirror listbox, [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md)).
 
 A kind's own search or filter field is marked `data-escape-ladder`. It registers its local Esc as the
 kind's pre step ("clear the field", which applies while the field is non-empty), and focus stays in the
@@ -216,6 +218,7 @@ false until [IA-007](../product/02-information-architecture.md#ia-007--investiga
 | heatmap | The bucket under the pointer | The selected keyboard row | `bucket`: lower = bounds[i−1], null for i = 0; toMs = the next column start, or tMs + the last column width · {[], tMs, toMs} |
 | stat | A transparent `<button>` "Inspect <title>" over the frame | Enter/Space | `value`: the first series' last finite sample, or the scalar (key null); state = the `statState` chip |
 | logs | A row click (not while a text selection is anchored in the row) | Rows `tabIndex=-1`; Enter on the scroller focuses the first visible row; ↑/↓; Enter/Space inspects; if the focused row unmounts, focus goes to the scroller | `logLine` · {[streamKey], tsMs, tsMs + 1} |
+| barchart (#173 Part 3a, [T22](T22-value-categorical-and-table-panels.md) §4.3) | A click on a bar (a press without a modifier released within `chart-brush-min`); a drag across bars brushes them | Enter/Space on the mirror listbox picks the focused bar; Shift+arrow brushes | `mark` · {[key], null, null} (an aggregate: its members' keys); a brush writes `select` with source `brush` · {the brushed keys, null, null} |
 | Change feed ([T24-035](T24-geo-schematic-and-widget-panels.md#t24-035--selection-inspector)) | A row click | Enter/Space on the row button | `change` · {['change:' + id], atMs, (endMs ?? atMs) + 1} |
 | geomap ([T24-092](T24-geo-schematic-and-widget-panels.md#t24-092--selection-and-inspector)) | The last-drawn mark under the pointer (T24-091); `other (n)` in the legend | Enter/Space on a mark-list button or the legend entry | `geo` `marker` · {[key], null, null}; `cluster` · {its keys, null, null}; `aggregate` · {the aggregate's keys, null, null} |
 
@@ -344,7 +347,13 @@ export type InspectorTarget =   // I1; #170 adds {type:'stateRun'; target}, #173
   | { type: 'logLine'; streamKey: string; labels: Labels; tsNs: bigint; level: LogLevel; line: string; metadata: Labels | null; parsed: Labels | null }
   | { type: 'change'; id: string; kind: EventKind; text: string; atMs: number; endMs: number | null; tags: readonly string[];
       entity: Change['entity'] /* T24 §5.10; null = organisation-wide */ }
-  | { type: 'geo'; target: GeoInspectorTarget /* T24 §5.16; #184 */ };
+  | { type: 'geo'; target: GeoInspectorTarget /* T24 §5.16; #184 */ }
+  | { type: 'mark'; target: InspectTarget /* T22 §5.1; #173 Part 3a */ };
+// `mark` cases: selectionOf = {members' keys, or [mark.key] when members is null; null; null};
+// pivotInstant null (the origin window); visOf 'barchart'; inspectorModel: subheading '', primary
+// formatValue(value, unit) (`no data` if not finite), primaryState a crossed state; facts Raw, Baseline
+// (finite only), State (if set), Series key, Reduced over `formatClockMs(from) – formatClockMs(to)`;
+// labels byKey(mark.labels); members null (I3); announceNoTime; copy String(value)
 // a `bin` from a bucket source: header `bucketRangeText`, members are families (T21-067)
 export interface Selection { keys: string[]; fromMs: number | null; toMs: number | null }
 export interface SelectionSource { kind: 'mark' | 'tableRow' | 'brush' | 'member'; panelId: string | null }
@@ -499,3 +508,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 | 1.4-rc | 2026-11-25 | #181 ([T24](T24-geo-schematic-and-widget-panels.md) part B2), per T25-002: §5 `InspectorTarget` gains `{type:'change'; id; kind; text; atMs; endMs; tags; entity}`; §4.2 adds the Change feed row (selection `{['change:' + id], atMs, (endMs ?? atMs) + 1}`); §4.3 t = `atMs` for `change`, no Explore chip, Logs ±1 min from a `service` entity (`identity()` + `change`) or disabled "This change has no service"; §4.7 the `change` model; §10 `unit:change-inspect`, and `unit:pivot-context` C4 uses the canonical `e=` entity set (added by #223) instead of `ent=service:checkout`; §11 delivered by T24's I6 |
 | 1.5-rc | 2026-11-25 | #184 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1b, the geomap), per T25-002: §5 `InspectorTarget` gains `{type:'geo'; target}`, `MemberSection` gains `next`, `InspectorState` gains `nav` (`NavView`) and `InspectorAction` `push` and `pop`; §4.8 the in-request navigation stack and `viewKey` (content key, layers, `h2` focus, live region); §4.9 the `geo` target; T25-007 (Esc pops before it clears), T25-008, T25-011 (entries as buttons with `next`) and T25-012 amended; §4.2 the geomap row, §4.3 `geo` pivots, §4.4 the navigation motion, §4.6 push and pop; §10 `unit:inspector-nav`, `unit:inspector-viewkey`; §11 delivered by T24's E2 |
 | 1.6-rc | 2026-11-25 | #184 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 2): T25-010 gains the map-area disclosure (the filter "map area" while `geo=` is effective, never carried; `unit:pivot-context` C5, C6) |
+| 1.7-rc | 2026-11-26 | #173 Part 3a (T22 I1), per T25-002: §5 `InspectorTarget` gains `{type:'mark'; target: InspectTarget}` with its `selectionOf`, `pivotInstant`, `visOf` and `inspectorModel` cases; T25-007: an owner marked `data-escape-ladder` (the bar chart's mirror listbox, [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md)) is not skipped; §4.2 gains the barchart row (click, Enter/Space, brush → `select` source `brush`) |

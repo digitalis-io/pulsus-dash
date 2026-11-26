@@ -162,6 +162,7 @@ pub mod size {
     pub const PAGE_PADDING: f32 = 24.0;
     pub const SIDEBAR_COLLAPSED: f32 = 56.0;
     pub const SIDEBAR_EXPANDED: f32 = 240.0;
+    pub const TABLE_ROW: f32 = 28.0;
     pub const TARGET_MIN: f32 = 24.0;
     pub const TENANT_BADGE: f32 = 32.0;
 }

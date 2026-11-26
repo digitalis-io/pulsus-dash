@@ -143,6 +143,25 @@ describe('unit:escape-ladder', () => {
   });
 });
 
+describe('unit:escape-ladder (mirror listbox)', () => {
+  it('a listbox marked data-escape-ladder is not skipped; an unmarked one is', () => {
+    const h = renderHost(
+      <div data-panel-id="p1" tabIndex={-1}>
+        <div role="listbox" tabIndex={0} aria-label="bars" data-escape-ladder="" />
+        <div role="listbox" tabIndex={0} aria-label="plain list" />
+      </div>,
+    );
+    h.inspect(pRequest());
+    const want = `${K1}|null|null`;
+    const plain = esc(screen.getByRole('listbox', { name: 'plain list' }));
+    expect(plain.defaultPrevented).toBe(false);
+    expect(h.selection()).toBe(want);
+    const marked = esc(screen.getByRole('listbox', { name: 'bars' }));
+    expect(marked.defaultPrevented).toBe(true);
+    expect(h.selection()).toBe('null');
+  });
+});
+
 describe('unit:escape-skips', () => {
   it('dialogs, editors, modals, IME and prevented events take no step', () => {
     const h = renderHost(

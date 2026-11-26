@@ -488,7 +488,8 @@ describe('engine', () => {
     h.frame.dispose();
     expect(h.queued()).toBe(0);
     expect(onCanvas).toHaveBeenCalledTimes(12);
-    expect(onTarget).toHaveBeenCalledTimes(2);
+    // keydown, focus (the bar chart's focus mark, ADR-0029) and focusout.
+    expect(onTarget).toHaveBeenCalledTimes(3);
     expect(h.canvas.width).toBe(0);
     h.layer().clearOps();
     expect(() => {

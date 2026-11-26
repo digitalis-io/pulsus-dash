@@ -174,7 +174,8 @@ kinds `barchart` and `pie` and their `vis.options`, before boards can draw them 
 comes to boards with #173 Part 3, the pie with T22 I3). `PENDING_KINDS` (`boards/options.ts`) lists
 them. #173 Part 2 ships the bar chart's engine seam, drawing, fit and meter
 ([Charts](charts.md#bar-chart-adr-0028), [Categorical panels](panels.md)), shown only in the chart
-gallery: boards keep both kinds pending. Such a panel is blocked before anything is sent, in both languages
+gallery. #173 Part 3a adds the bar chart's keys, brush, pick decision, table view and the
+`BarchartOptionsField` (below), still at unit and component level: boards keep both kinds pending. Such a panel is blocked before anything is sent, in both languages
 (`usePanelRun`/`useLogPanelRun` set `pre` to `kindUnavailable`, ahead of every other check), so it
 makes no request, and shows the message above. Its saved spec, options included, is kept as it
 is. Open in Explore opens such a panel's query on Auto, and a LogQL panel of a pending kind maps to
@@ -183,6 +184,25 @@ disabled option of a panel that stores them. The auto-vis row 11 (bar chart) is 
 `available` set either, so an `auto` panel with a `reducer` over a few range series is still a line
 (`unit:autovis-table`, and the boundary tests in `boards/panelRun.test.ts` and
 `pages/board/PanelEditorKinds.test.tsx`).
+
+#### Bar chart options and a kind change (#173 Part 3a)
+
+`BarchartOptionsField` (`pages/board/BarchartOptionsField.tsx`; Part 3b mounts it in the editor)
+edits a bar chart's `vis.options` (T22 §6.1): Reducer (Last, First, Mean, Min, Max, Sum, Count),
+Category label (a text field, placeholder `Automatic`, trimmed; empty removes the key), Sort
+(Value, descending; Value, ascending; Name; Query order), Orientation (Horizontal, Vertical),
+Value labels (a checkbox), Min and Max (text fields: empty removes the key, a finite number writes
+it, anything else shows `Enter a number` and writes nothing) and Baseline (None, 1 h, 1 d, 7 d,
+28 d; None removes the key). An absent key shows its default; no key left gives `undefined`.
+`errorAt(key)` (the validator's message) shows under its field; `readOnly` disables every field.
+
+A kind change (`withKind`) keeps only the options the new kind allows **with a valid value**:
+`keepOptions(kind, options)` keeps a key when `optionValueValid(kind, key, value)` holds
+(`boards/spec.ts`: the validator's own shape and rules run on a one-panel board holding only that
+key; a `language` is checked as for `mode: code`, a board list's `query` as for `mode: search`
+and its `tag` as for `mode: tag`), then drops `max` when min ≥ max and `textMode`
+when it is `value` with the `grid` layout. So a stat's `orientation: 'auto'` does not survive a
+change to the bar chart (T22 §6.1).
 
 `data-panel-state` on the panel's root is the view kind or the message state, and `data-panel-vis`
 the drawn vis of a frame. The completeness badge (`PanelNotices`: **Partial data** or **Warnings**,

@@ -29,7 +29,8 @@
 | [0025](0025-chart-frame-selection.md) | The chart engine seam carries the selection (`setSelection`, the `select` item) and draws it in the layer pass; amends 0014 §3 | **Accepted** (2026-11-25) |
 | [0026](0026-engine-csp-and-worker-policy.md) | The chart engine's CSP: `'wasm-unsafe-eval'` and the `pulsus-engine` Trusted Types policy for its worker URLs; assets carry COEP; amends 0014 §9 | **Accepted** (2026-11-25) |
 | [0027](0027-geomap-frame-seam.md) | The chart engine seam carries the geomap (`geomap` kind, `geoCommit`, `geoBrush`, `geoMarks`, `setFocusMark`, `cameraKey`) in one Web Mercator world that never repeats across ±180°; amends 0014 §3 | **Accepted** (2026-11-25) |
-| [0028](0028-chart-seam-bar-chart.md) | The chart engine seam carries the bar chart (`barchart`, `categories`, `mark`, `pick`, `coverage`) with one category extent and layout for every engine; amends 0014 §3 | **Accepted** (2026-11-26) |
+| [0028](0028-chart-seam-bar-chart.md) | The chart engine seam carries the bar chart (`barchart`, `categories`, `mark`, `pick`, `coverage`) with one category extent and layout for every engine; amends 0014 §3 | **Accepted** (2026-11-26; amended by 0029) |
+| [0029](0029-bar-chart-keys-and-brush.md) | The bar chart takes keys and brushes (`keyTarget` mirror listbox, `PickEvent.source`, focus mark, brush band); amends 0028 §4 | **Accepted** (2026-11-26) |
 | [0030](0030-engine-camera-controller-on-main.md) | A 2D engine frame's camera controller is the application's (#93's, shared with Canvas 2D), on the main thread; the worker applies the camera, band and value view from the input ring and emits no `commit`; amends 0014 §2 and 0020 decision 4 | **Accepted** (2026-11-26) |
 
 Format: context, decision, consequences. An ADR is immutable once Accepted. It can be changed

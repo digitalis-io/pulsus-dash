@@ -6,13 +6,16 @@ value, a threshold state and a baseline. Everything that is not drawing is a pur
 function of the client (`client/src/vis/reduce.ts`), so it is tested without a canvas and shared by
 every renderer.
 
-**Status (#173 Part 2).** The transforms, the bar chart's model and fit (`client/src/vis/barchart.ts`),
+**Status (#173 Part 3a).** The transforms, the bar chart's model and fit (`client/src/vis/barchart.ts`),
 the Canvas 2D bars ([charts](charts.md#bar-chart-adr-0028)), `CategoryChart` and the coverage
 meter are in place, and the chart gallery draws five bar charts. No board or Explore surface
 offers the bar chart yet: a board panel of kind `barchart` or `pie` is stored (board spec v3) but
 sends no query and shows "This chart type isn't available in this version yet."
 ([pending kinds](boards.md#pending-kinds)), and no auto-vis `available` set holds `barchart`.
-Part 3 adds it to boards with the filters, selection, Inspector, keyboard and the table view.
+Part 3a adds the interactions at unit and component level: the keys and the brush
+([charts](charts.md#bar-chart-adr-0028)), the pick decision `barAction`, the tooltip lines, the
+table view `PanelTable`, the focusable `tooSmall` notice and the baseline helpers; only the
+gallery's bar charts use them. Part 3b opens the bar chart on boards and Explore.
 
 ## The pipeline
 
@@ -40,9 +43,13 @@ anomaly scores exist (Epic #9).
 options, without a size. It reads `barchartOptions`, takes the unit `/s` after a rate rewrite
 (else none), builds the `BarchartSpec` (orientation and value labels from the options; the
 panel's thresholds as seam lines with `thresholdLines`, when the panel has thresholds; `ghost` and
-`anomaly` off), and calls `categoryRows(result, null, { reducer, categoryBy, sort, thresholds })`.
-The model keeps every sorted row (`all`), the label, the merge counts, the run's completeness, no
-baseline (Part 3 runs it), `options.min`/`max`, and the input result for `summaryFacts`.
+`anomaly` off: `CategoryChart` sets them on the spec, with no refit), and calls
+`categoryRows(result, base, { reducer, categoryBy, sort, thresholds })`. `base` is the optional
+baseline run's result (`barchartModel(…, { …, base })`, Part 3a): each row's `baseline` is the base
+run's reduced value for the same key (null when the key is absent; duplicates keep the max), and
+the model's `baseline` is the base run's completeness (null without one). The model keeps every
+sorted row (`all`), the label, the merge counts, the run's completeness, `options.min`/`max`, and
+the input result for `summaryFacts`.
 
 `fitBarchart(model, { width, height }, measure)` fits the model to a cell, `measure` being the
 text width in the axis font:
@@ -216,6 +223,86 @@ only `max` with max ≤ auto min gives min = max − span (span is the auto span
 With auto [0, 120]: (500, absent) → [500, 620]; (absent, −10) → [−130, −10]. The server has
 already refused |v| > 1e15 and min ≥ max.
 
+## Interactions (#173 Part 3a)
+
+### The pick decision (`vis/barAction.ts`)
+
+`barAction(pick, context)` turns an engine `pick` into what a surface does; `context` is
+`{ model, surface: 'board' | 'explore', filters, origin, window }`, `origin` the Inspector origin
+without its window and `window` the window the rows were reduced over.
+
+| `pick` | Action |
+|---|---|
+| `keys` `[]` | `clear`: the selection is cleared |
+| `gesture: 'brush'` | `brush` with the selection `{ keys, fromMs: null, toMs: null }` |
+| a click on a key not in `model.all` | `none` |
+| any other click | `click`: the Inspector `mark` target (the row, its members, `model.spec.unit`, the window, the panel and query of `origin`), `selection = selectionOf(target)` (the row's key, or its members' keys for an aggregate), and `filter` |
+
+`filter` is set only on a board with a filter pair `filterPair(row, model.label)` = {k, v}: `{ key:
+k, value: null }` (remove) when the board's filters already hold {k, v}, else `{ key: k, value: v }`.
+Without a pair, and on Explore, it is null. `barHint(row, { model, surface })` says why a click
+does not filter: on Explore `Filters apply on boards`; on a board without a pair `Can't filter: no
+category label` or `Can't filter: <label> missing on this series`; else null. Part 3b's surfaces
+apply the action.
+
+### Tooltip lines
+
+`CategoryChart` gives `ChartFrame` a `markLines(row)` function; `MarkTooltip` shows its lines, each
+a `data-line`, after the name, value and state. In order: with the ghost on, `baseline <v>` for a
+finite baseline, or in its place `baseline truncated` or `baseline limited (N warnings)` when the
+baseline run is incomplete (T22-006); `barHint(row)` when a `context` is given and the hint is not
+null; `Values are reduced over <from> – <to>` (hours and minutes in the page zone; a bar chart has
+no crosshair, T22-011); and, with anomaly on and no score on the row, `No anomaly scores for this
+query`.
+
+### `CategoryChart` props
+
+Besides the model, title, `onNarrow` and `sizeMemo`: `onPick(pick, returnFocus)` (the listbox is
+the focus to return to; a table row's name button picks its row as a click), `context` (for the
+tooltip's filter hint), `ghost` and `anomaly` (default false; set on the spec), `table` and
+`onTable` (default false and absent; the caller keeps the flag), and `baselineFailed`, which adds
+the note `Baseline unavailable: the shifted query failed.` to the line under the cell.
+
+- **Shift+T** anywhere in the chart, with no Ctrl, Meta or Alt and not in an input, textarea,
+  select or editable element, calls `onTable(!table)` and is prevented. Without `onTable` nothing
+  happens and the key is not prevented.
+- **The `tooSmall` notice** is a focusable `role="group"` named `<title>: panel too small — press
+  Shift+T for the table`, showing the `tooSmall` text, so Shift+T works from it.
+- **The table view:** with `table` on, the cell keeps its size and holds `PanelTable` over
+  `fit.rows` instead of the frame or the notice; the meter stays. Opening focuses the grid; closing
+  focuses the listbox when a frame is mounted, else the notice.
+
+The gallery keeps one table flag per bar chart.
+
+### The table view (`charts/PanelTable.tsx`, T22-013)
+
+`PanelTable({ rows, title, selected, onRow?, onClose })` is a read-only grid over `PanelRows`:
+
+- **Bar:** the caption `<n> rows · <d> drawn`, then the kit buttons `Export CSV` and `Show chart
+  (Shift+T)` (`onClose`).
+- **Grid:** `role="grid"`, named by the title, `aria-rowcount` n + 1, `aria-colcount` the column
+  count, one tab stop, a sticky header row of the columns.
+- **Rows:** virtualised (`useVirtualizer`, 28 px rows (`--size-table-row`), overscan 10). Each row
+  is `role="row"` with the id `<tableId>-r<i>`, `aria-rowindex` i + 2, `data-row-key`,
+  `data-drawn` (`yes` or `no`) and `aria-selected` (its key in `selected`); one `gridcell` per
+  cell, the cells as `panelRows` wrote them. With `onRow`, the name cell is a button whose click
+  calls `onRow(key, 'keyboard' for a keyboard click (detail 0) else 'pointer', button)`.
+- **Keys on the grid** (only when the grid itself has focus; a name button keeps its own Enter and
+  Space): the active row starts empty; the first arrow, Home or End sets it; ↑/↓, Home/End and
+  PageUp/PageDown (⌊viewport / 28⌋ rows) move it, each scrolling it into view; Enter calls
+  `onRow(key, 'keyboard', grid)`. `aria-activedescendant` names the active row; the range
+  extractor keeps that row mounted at its own position when it is scrolled away. New `rows` clear
+  it.
+- **Export:** a `text/csv;charset=utf-8` Blob of `panelCsv(rows)` through an object URL and a
+  detached `<a download="csvFileName(title)">`; the URL is revoked on the next task. An empty table
+  reads `0 rows · 0 drawn` and exports the header.
+
+### Baseline helpers (`boards/baseline.ts`, T22-012)
+
+`baselineOffset(options, ghost)` is `options.baselineOffset`, else `1d` with the ghost on, else
+null (no baseline run). `OFFSET_MS` holds 1 h, 1 d, 7 d and 28 d in ms; `shiftWindow(w, offset)`
+moves both ends of the window back by it. Part 3b runs the shifted query.
+
 ## Baseline delta (T22-012)
 
 `deltaText(v, b)` is `▲`, `▼` or `=`, a space, `formatValue(|d|)` and ` %`, with
@@ -263,6 +350,7 @@ With no finite mark, all four are null.
 - The name search tries at most 2^16 key subsets per row group; past 16 differing keys every
   differing key is used.
 - The transforms allocate per run, not per frame.
+- The table view formats nothing: its cells are the raw `panelRows` strings.
 
 ## Tests
 
@@ -274,6 +362,11 @@ equal conflict count), `client/src/data/csv.test.ts` (`csvCell`), and
 and `client/src/charts/CategoryChart.test.tsx` (`unit:barchart-plan`, `unit:barchart-fit-stages`),
 `client/src/charts/CoverageMeter.test.tsx` (the meter), `client/src/vis/autovis.test.ts` (row 11)
 and the boundary tests in `boards/panelRun.test.ts` and `pages/board/PanelEditorKinds.test.tsx`.
+Part 3a: `client/src/vis/barAction.test.ts` (`unit:bar-action`),
+`client/src/charts/MarkTooltip.test.tsx` (`unit:mark-tooltip`), `client/src/charts/PanelTable.test.tsx`
+(`unit:panel-table`, `-active`, `-button`), `client/src/charts/CategoryChart.test.tsx`
+(`unit:category-chart-table`, `unit:category-tiny` (table)), `client/src/dev/GalleryPage.test.tsx`
+and `client/src/boards/baseline.test.ts` (`unit:baseline-window`).
 The builders `byVersion`, `many`, `threeKeys` and the `barchart-dupes` series are in
 `client/src/dev/categorySynth.ts`, shared with the gallery and re-exported by
 `client/src/test/categoryFixtures.ts`.
@@ -281,8 +374,11 @@ The builders `byVersion`, `many`, `threeKeys` and the `barchart-dupes` series ar
 ## Designs
 
 - [T22](../../designs/technical/T22-value-categorical-and-table-panels.md): T22-003, T22-004
-  (names, visible labels), T22-005, T22-006 (cap, drawn cap, `tooSmall`, meter), T22-013 (rows and
-  CSV), T22-014 (facts), §4.1, §4.5 row 11, §5.1, §5.2, §6.1, §10.3.
+  (names, visible labels), T22-005, T22-006 (cap, drawn cap, `tooSmall`, meter), T22-007 (the
+  filter decision), T22-011 (tooltip lines), T22-012 (the baseline window), T22-013 (rows, CSV and
+  the table view), T22-014 (facts), §4.1, §4.3, §4.5 row 11, §5.1, §5.2, §6.1, §10.3.
+- [ADR-0029](../../designs/adr/0029-bar-chart-keys-and-brush.md) (the keys and the brush).
+- [T25](../../designs/technical/T25-inspector-and-pivots.md) T25-002 (the `mark` target).
 - [ADR-0028](../../designs/adr/0028-chart-seam-bar-chart.md) (the bar chart seam, the extent and
   the layout).
 - [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-026 (`csvCell`).

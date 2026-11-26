@@ -1,13 +1,14 @@
 /**
- * The Canvas 2D bar chart (plan #173 Part 2 §5, ADR-0028): colour, layout, labels, events,
- * selection and the baseline ghost, through a recording context (7 px per character).
+ * The Canvas 2D bar chart (plan #173 Part 2 §5, ADR-0028; Part 3a §5, ADR-0029): colour, layout,
+ * labels, events, keys, the brush, selection and the baseline ghost, through a recording context
+ * (7 px per character).
  */
 import { describe, expect, it } from 'vitest';
 import type { BarchartSpec, CategoryRow, FrameData, FrameSummary } from '../api';
 import { EMPTY_COVERAGE } from '../../data/frames';
 import { colour, opacity, seriesPalette } from '../../styles/tokens';
 import { byVersion, fkey, many, row } from '../../test/categoryFixtures';
-import { harness, pointer, wheel, type Harness } from '../../test/engineHarness';
+import { harness, key, pointer, wheel, type Harness } from '../../test/engineHarness';
 import { barCap, capMarks, categoryCoverage, categoryRows } from '../../vis/reduce';
 import type { Thresholds } from '../../vis/thresholds';
 import { Canvas2DEngine } from './Canvas2DEngine';
@@ -288,12 +289,12 @@ describe('unit:barchart-events', () => {
     pointer(h.canvas, 'pointerdown', x, s.plot.y + s.plot.height + 8);
     pointer(h.canvas, 'pointerup', x, s.plot.y + s.plot.height + 8);
     expect(h.pick).toEqual([
-      { keys: [rows[3]?.key], gesture: 'click' },
-      { keys: [], gesture: 'click' },
+      { keys: [rows[3]?.key], gesture: 'click', source: 'pointer' },
+      { keys: [], gesture: 'click', source: 'pointer' },
     ]);
   });
 
-  it('a drag, a right click and the wheel pick nothing and emit nothing else', () => {
+  it('a 5 px drag brushes one band (ADR-0029); a right click and the wheel emit nothing', () => {
     const h = harness(Canvas2DEngine);
     const rows = versions();
     const s = show(h, spec(), cats(rows));
@@ -309,7 +310,7 @@ describe('unit:barchart-events', () => {
     pointer(h.canvas, 'dblclick', x, y);
     h.advance(1_000);
     h.flush();
-    expect(h.pick).toEqual([]);
+    expect(h.pick).toEqual([{ keys: [rows[0]?.key], gesture: 'brush', source: 'pointer' }]);
     expect(h.commit).toEqual([]);
     expect(h.brush).toEqual([]);
     expect(h.hover.filter((x) => x !== null)).toEqual([]);
@@ -399,5 +400,215 @@ describe('unit:barchart-events (window)', () => {
     h.flush();
     expect(h.layer().calls('setTransform')).toHaveLength(draws);
     expect(h.queued()).toBe(0);
+  });
+});
+
+/** Draw order 2.31, 2.29, 2.33, 2.30, 2.32 on a horizontal 300 px extent, keys on `div`. */
+function keyed() {
+  const div = document.createElement('div');
+  const h = harness(Canvas2DEngine, { keyTarget: div });
+  const rows = versions();
+  const s = show(h, spec(), cats(rows), 600, 300 + 8 + BOTTOM);
+  const band = s.plot.height / rows.length;
+  const k = (name: string, o: { shiftKey?: boolean; ctrlKey?: boolean } = {}): KeyboardEvent => {
+    const e = key(div, name, o);
+    h.flush();
+    return e;
+  };
+  const focus = (): void => {
+    div.dispatchEvent(new FocusEvent('focus'));
+    h.flush();
+  };
+  const keyOf = (i: number): string => rows[i]?.key ?? '';
+  return { div, h, rows, s, band, k, focus, keyOf };
+}
+
+/** The 2 px focus strokes of the visible canvas's last overlay. */
+function focusStrokes(h: Harness) {
+  return h
+    .visible()
+    .calls('strokeRect')
+    .filter((o) => o.strokeStyle === colours.focus && o.lineWidth === 2);
+}
+
+describe('unit:barchart-keys', () => {
+  it('focus, arrows, Home/End, Shift brush, Enter, Escape, modifiers, focusout, new data', () => {
+    const { div, h, rows, s, band, k, focus, keyOf } = keyed();
+    focus();
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 0, key: keyOf(0) });
+    expect(h.mark.at(-1)?.rows[0]?.name).toBe('2.31');
+    k('ArrowRight');
+    k('ArrowRight');
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 2, key: keyOf(2) });
+    expect(h.mark.at(-1)?.rows[0]?.name).toBe('2.33');
+    // The focus mark: from the name band's left edge to the plot's right edge, around band 2.
+    const ring = focusStrokes(h).at(-1);
+    expect(ring).toBeDefined();
+    expect(Number(ring?.args[0])).toBe(0);
+    expect(Number(ring?.args[0]) + Number(ring?.args[2])).toBeCloseTo(s.plot.x + s.plot.width, 6);
+    expect(Number(ring?.args[1])).toBeCloseTo(s.plot.y + 2 * band, 6);
+    expect(Number(ring?.args[3])).toBeCloseTo(band, 6);
+    k('Home');
+    expect(h.mark.at(-1)?.index).toBe(0);
+    k('End');
+    expect(h.mark.at(-1)).toMatchObject({ index: 4, key: keyOf(4) });
+    expect(h.mark.at(-1)?.rows[0]?.name).toBe('2.32');
+    k('Home');
+    expect(h.pick).toEqual([]);
+    const shifted = k('ArrowRight', { shiftKey: true });
+    expect(shifted.defaultPrevented).toBe(true);
+    k('ArrowRight', { shiftKey: true });
+    expect(h.pick).toEqual([
+      { keys: [keyOf(0), keyOf(1)], gesture: 'brush', source: 'keyboard' },
+      { keys: [keyOf(0), keyOf(1), keyOf(2)], gesture: 'brush', source: 'keyboard' },
+    ]);
+    expect(h.mark.at(-1)?.index).toBe(2);
+    k('Enter');
+    expect(h.pick.at(-1)).toEqual({ keys: [keyOf(2)], gesture: 'click', source: 'keyboard' });
+    const marks = h.mark.length;
+    const picks = h.pick.length;
+    const esc = k('Escape');
+    expect(esc.defaultPrevented).toBe(false);
+    const ctrl = k('ArrowRight', { ctrlKey: true });
+    expect(ctrl.defaultPrevented).toBe(false);
+    expect(h.mark).toHaveLength(marks);
+    expect(h.pick).toHaveLength(picks);
+    h.visible().clearOps();
+    div.dispatchEvent(new FocusEvent('focusout'));
+    h.flush();
+    expect(h.mark.at(-1)).toBeNull();
+    expect(h.visible().calls('drawImage')).toHaveLength(1);
+    expect(focusStrokes(h)).toHaveLength(0);
+
+    // New data with 2 rows while the focus is on band 4: the focus moves to band 1.
+    focus();
+    k('End');
+    h.frame.setData(cats(rows.slice(0, 2)));
+    h.flush();
+    k('Enter');
+    expect(h.pick.at(-1)).toEqual({ keys: [keyOf(1)], gesture: 'click', source: 'keyboard' });
+  });
+
+  it('after an Escape a Shift move anchors afresh; with no bars nothing is emitted', () => {
+    const { h, k, focus, keyOf } = keyed();
+    focus();
+    k('ArrowDown', { shiftKey: true });
+    k('Escape');
+    k('ArrowDown', { shiftKey: true });
+    expect(h.pick.map((p) => p.keys)).toEqual([
+      [keyOf(0), keyOf(1)],
+      [keyOf(1), keyOf(2)],
+    ]);
+    k('ArrowUp');
+    k('ArrowUp', { shiftKey: true });
+    expect(h.pick.at(-1)?.keys).toEqual([keyOf(0), keyOf(1)]);
+
+    const empty = keyed();
+    empty.h.frame.setData(cats([]));
+    empty.h.flush();
+    const before = empty.h.mark.length;
+    empty.focus();
+    empty.k('ArrowRight');
+    empty.k('Enter');
+    expect(empty.h.mark).toHaveLength(before);
+    expect(empty.h.pick).toEqual([]);
+  });
+});
+
+describe('unit:barchart-brush', () => {
+  it('a drag fills the bands under it and picks their keys in draw order; cancel picks none', () => {
+    const { h, s, band, keyOf } = keyed();
+    const x = s.plot.x + 10;
+    const yAt = (i: number): number => s.plot.y + (i + 0.5) * band;
+    const fills = () =>
+      h
+        .visible()
+        .calls('fillRect')
+        .filter((o) => o.fillStyle === colours.selection);
+    pointer(h.canvas, 'pointerdown', x, yAt(0));
+    pointer(h.canvas, 'pointermove', x, yAt(2));
+    h.flush();
+    const f = fills().at(-1);
+    expect(f).toBeDefined();
+    expect(Number(f?.args[0])).toBeCloseTo(s.plot.x, 6);
+    expect(Number(f?.args[2])).toBeCloseTo(s.plot.width, 6);
+    expect(Number(f?.args[1])).toBeCloseTo(s.plot.y, 6);
+    expect(Number(f?.args[3])).toBeCloseTo(3 * band, 6);
+    pointer(h.canvas, 'pointerup', x, yAt(2));
+    expect(h.pick).toEqual([
+      { keys: [keyOf(0), keyOf(1), keyOf(2)], gesture: 'brush', source: 'pointer' },
+    ]);
+    h.flush();
+    h.visible().clearOps();
+    h.frame.setSelection({ keys: [fkey(77)], fromMs: null, toMs: null });
+    h.flush();
+    expect(fills()).toEqual([]);
+
+    pointer(h.canvas, 'pointerdown', x, yAt(2));
+    pointer(h.canvas, 'pointermove', x, yAt(0));
+    pointer(h.canvas, 'pointerup', x, yAt(0));
+    expect(h.pick.at(-1)?.keys).toEqual([keyOf(0), keyOf(1), keyOf(2)]);
+
+    pointer(h.canvas, 'pointerdown', x, yAt(2));
+    pointer(h.canvas, 'pointermove', x, s.plot.y + s.plot.height + 20);
+    pointer(h.canvas, 'pointerup', x, s.plot.y + s.plot.height + 20);
+    expect(h.pick.at(-1)?.keys).toEqual([keyOf(2), keyOf(3), keyOf(4)]);
+
+    const n = h.pick.length;
+    pointer(h.canvas, 'pointerdown', x, yAt(0));
+    pointer(h.canvas, 'pointermove', x, yAt(2));
+    pointer(h.canvas, 'pointercancel', x, yAt(2));
+    pointer(h.canvas, 'pointerup', x, yAt(2));
+    h.flush();
+    h.visible().clearOps();
+    h.frame.setSelection(null);
+    h.flush();
+    expect(h.pick).toHaveLength(n);
+    expect(fills()).toEqual([]);
+  });
+});
+
+describe('unit:barchart-keys (review r1)', () => {
+  it('focus before the first layout, and data empty then back: the first bar is marked', () => {
+    const div = document.createElement('div');
+    const h = harness(Canvas2DEngine, { keyTarget: div });
+    const rows = versions();
+    h.frame.setSpec(spec());
+    h.frame.setData(cats(rows));
+    h.frame.setTimeWindow(W);
+    div.dispatchEvent(new FocusEvent('focus'));
+    h.frame.resize(600, 300 + 8 + BOTTOM, 1);
+    h.flush();
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 0, key: rows[0]?.key });
+    key(div, 'Enter');
+    expect(h.pick.at(-1)).toEqual({ keys: [rows[0]?.key], gesture: 'click', source: 'keyboard' });
+
+    h.frame.setData(cats([]));
+    h.flush();
+    expect(h.mark.at(-1)).toBeNull();
+    h.frame.setData(cats(rows));
+    h.flush();
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 0, key: rows[0]?.key });
+  });
+
+  it('pointer hover over a bar then away keeps the keyboard mark', () => {
+    const div = document.createElement('div');
+    const h = harness(Canvas2DEngine, { keyTarget: div });
+    const rows = versions();
+    const s = show(h, spec(), cats(rows), 600, 300 + 8 + BOTTOM);
+    const band = s.plot.height / rows.length;
+    div.dispatchEvent(new FocusEvent('focus'));
+    key(div, 'ArrowDown');
+    h.flush();
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 1 });
+    pointer(h.canvas, 'pointermove', s.plot.x + 10, s.plot.y + 3.5 * band);
+    expect(h.mark.at(-1)).toMatchObject({ source: 'pointer', index: 3 });
+    pointer(h.canvas, 'pointermove', s.plot.x + 10, s.plot.y + s.plot.height + 20);
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 1 });
+    pointer(h.canvas, 'pointermove', s.plot.x + 10, s.plot.y + 0.5 * band);
+    pointer(h.canvas, 'pointerleave', 700, 10);
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 1 });
+    key(div, 'Enter');
+    expect(h.pick.at(-1)).toEqual({ keys: [rows[1]?.key], gesture: 'click', source: 'keyboard' });
   });
 });

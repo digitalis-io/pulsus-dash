@@ -6,8 +6,9 @@ seam of [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §3 (a
 [ADR-0020](../../designs/adr/0020-chart-camera-commit-and-value-range.md),
 [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md),
 [ADR-0023](../../designs/adr/0023-chart-event-markers.md),
-[ADR-0025](../../designs/adr/0025-chart-frame-selection.md) and
-[ADR-0028](../../designs/adr/0028-chart-seam-bar-chart.md)). Until the Rust/WASM
+[ADR-0025](../../designs/adr/0025-chart-frame-selection.md),
+[ADR-0028](../../designs/adr/0028-chart-seam-bar-chart.md) and
+[ADR-0029](../../designs/adr/0029-bar-chart-keys-and-brush.md)). Until the Rust/WASM
 engine lands (#68), the engine is the in-house **interim Canvas 2D renderer** in
 `client/src/engine/canvas2d/` (ADR-0014 §4; no charting library, VIZ-001, T01-002). It draws five
 kinds: line, stacked bars, heatmap, stat and the bar chart ([below](#bar-chart-adr-0028)). This page covers the seam, the frame data and its
@@ -24,9 +25,9 @@ application code.
 | `VisSpec` | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`), `stat` or `barchart` (`BarchartSpec`, below); each has a `title` and a `unit`. Line and bars take an optional `valueRange` (`{ min, max }`, `min < max`, finite): the user's value-axis pin; absent means auto (#93). Line and bars also take an optional `thresholds` (`ThresholdLine[]`: `{ value, state, label }`, `state` `watch`, `degraded` or `failing`; at most 8 drawn, in order; [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)). Data, never code |
 | `BarchartSpec` | `barchart` (ADR-0028): `title`, `unit`, `orientation` (`horizontal` or `vertical`), `valueLabels`, `names?: 'hidden'` (set by the panel's fit), `valueRange?`, `thresholds?`, `ghost` (a dashed bar at each finite baseline) and `anomaly` (nothing drawn until Epic #9) |
 | `FrameData` | `series` (`SeriesFrame[]`), `heatmap` (`HeatmapFrame`), `scalar` (`ScalarFrame`) or `categories` (`CategoryRow[]`, at most 200, in draw order, and the panel's `Coverage`; ADR-0028), from `src/data/frames.ts` |
-| `ChartEngine.createFrame(canvas, { timeZone, keyTarget })` | One frame per canvas. `keyTarget` is the element whose key presses move the crosshair (the slider); `null` for stat and barchart |
+| `ChartEngine.createFrame(canvas, { timeZone, keyTarget })` | One frame per canvas. `keyTarget` is the element whose key presses move the crosshair (the slider); for barchart the mirror listbox ([ADR-0029](../../designs/adr/0029-bar-chart-keys-and-brush.md)); `null` for stat |
 | `ChartFrame` | `setSpec`, `setData`, `setTimeWindow`, `setTheme`, `setEvents(events)` (ADR-0023: replaces the frame's `EventMarker[]`, `{ id, atMs, endMs, kind, title }` with `kind` `deploy`, `config`, `flag` or `annotation`; `[]` = none), `setSelection(sel)` (ADR-0025: the page selection `{ keys, fromMs, toMs }` drawn in the next frame; `null` = none; an equal value redraws nothing), `resize(cssW, cssH, dpr)`, `on(event, cb)` → unsubscribe, `dispose()` |
-| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat, `thresholdLabels`: the threshold label boxes `{ box, text, clipped }` in stack order, `[]` for heatmap and stat, ADR-0022, and `eventLabels`: the event label boxes `{ box, x, ids, text, clipped }` in x order, `[]` for stat, ADR-0023), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (ADR-0025: `{ source, item }` for a click on the plot, `item` the `HoverItem` under it — `point` `{ key, tMs, value }` or `bucket` `{ index, tMs, toMs, count }` — or `null` for an empty click), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below), and for the bar chart `mark` (`MarkEvent` `{ source, key, index, xCss, yCss, rows }` or `null`) and `pick` (`{ keys, gesture }`; `keys` `[]` is an empty click). A bar chart's summary also carries `coverage` (copied from the data), `namesHidden` and `valuesHidden` |
+| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat, `thresholdLabels`: the threshold label boxes `{ box, text, clipped }` in stack order, `[]` for heatmap and stat, ADR-0022, and `eventLabels`: the event label boxes `{ box, x, ids, text, clipped }` in x order, `[]` for stat, ADR-0023), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (ADR-0025: `{ source, item }` for a click on the plot, `item` the `HoverItem` under it — `point` `{ key, tMs, value }` or `bucket` `{ index, tMs, toMs, count }` — or `null` for an empty click), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below), and for the bar chart `mark` (`MarkEvent` `{ source, key, index, xCss, yCss, rows }` or `null`) and `pick` (`{ keys, gesture, source }`: `gesture` `click` or `brush`, `source` `pointer` or `keyboard` (ADR-0029); `keys` `[]` is an empty click). A bar chart's summary also carries `coverage` (copied from the data), `namesHidden` and `valuesHidden` |
 
 `src/engine/index.ts` exports `defaultChartEngine()` (one `Canvas2DEngine` per page) and
 `ChartEngineContext` (React context, default `defaultChartEngine()`). Tests provide a fake engine
@@ -701,21 +702,49 @@ and draws, in the layer pass:
   `dimmed`, and a focus ring inside each selected bar; no selection or a foreign one makes exactly
   the calls of no selection. Intervals and event markers are ignored.
 
-Input: a bar chart has no camera and no crosshair (`keyTarget` is null and there is no slider).
-`engine/canvas2d/barInput.ts` emits `mark` when the band under the pointer changes (the band
-spans the name band and the plot across the category axis) and `null` once on leaving, and `pick`
-`{ keys: [key] or [], gesture: 'click' }` for a left press without a modifier released within
-4 px. Wheel, Safari gestures, double click, the context menu and keys are ignored; `hover`,
-`brush`, `commit` and `select` are never emitted. The brush is #173 Part 3.
+Input ([ADR-0029](../../designs/adr/0029-bar-chart-keys-and-brush.md), #173 Part 3a): a bar chart
+has no camera and no crosshair slider. `engine/canvas2d/barInput.ts` handles its pointer and the
+keys of its key target, the mirror listbox:
 
-`ChartFrame` shows `MarkTooltip` beside the marked bar (full name, value, `■ Failing` for a state,
-`baseline <v>` with the ghost), passes `pick` to `onPick`, labels the canvas `<title>: <n> bars`
-(then the thresholds), describes it (`aria-describedby`) with `BarList`, a visually hidden,
-non-focusable list of every drawn bar in draw order (`<full name>: <value>`, then `, <state>` with
-thresholds) and a last item `k more not shown` for the rows the cap left out, and shows no
-`Showing X of N series` notice: `CategoryChart`'s meter states
-the coverage. Under `engine=wasm` the bar chart stays on Canvas 2D until the engine implements
-ADR-0028.
+- **Pointer:** `mark` when the band under the pointer changes (the band spans the name band and
+  the plot across the category axis) and `null` once on leaving. A left press without a modifier
+  released within 4 px (`DRAG_MIN_PX`) emits `pick` `{ keys: [key] or [], gesture: 'click',
+  source: 'pointer' }`. One that travels further brushes the bands from the press to the pointer,
+  each clamped to the drawn rows: the overlay fills them with `selection` across the plot while
+  dragging, and the release emits `pick` `{ keys (draw order), gesture: 'brush', source:
+  'pointer' }`. `pointercancel` and `lostpointercapture` end the press with no `pick`.
+- **Keys** (f is the focus index, a the brush anchor, n the drawn rows): `focus` sets
+  f = min(f ?? 0, n − 1) and emits a keyboard `mark`; the arrows move f by one (Right and Down
+  forward), Home and End to the ends, each clamped and dropping a; with Shift, a is set to f first
+  and each move also emits `pick` `{ the rows a…f in draw order, 'brush', 'keyboard' }`; Enter and
+  Space emit `pick` `{ [key f], 'click', 'keyboard' }`; Escape drops a and is not prevented, so the
+  Esc ladder clears the selection; `focusout` drops f and a and emits `mark` `null`. Keys with Ctrl,
+  Meta or Alt are ignored and not prevented. With no rows nothing is emitted. New data drops a and,
+  after the next layout, clamps f (null with no rows) and emits the keyboard `mark` again. While
+  the listbox has focus, a layout with rows and no f (focus that came before the first layout, or
+  rows that came back after none) sets f = 0 and marks it; and when the pointer leaves a bar or the
+  chart, the keyboard `mark` of f returns, so the active option and the tooltip stay.
+- **Focus mark:** in the overlay pass, a 2 px `focus` stroke around band f, from the name band's
+  left edge to the plot's right edge (horizontal) or from the plot top to the name band's bottom
+  (vertical). The focus mark and the brush band redraw the overlay only; the layer is kept.
+
+Wheel, Safari gestures, double click and the context menu are ignored; `hover`, `brush`, `commit`
+and `select` are never emitted.
+
+`ChartFrame` renders `BarList`, the mirror listbox, before it creates the frame and passes it as
+`keyTarget`. The listbox is visually hidden, one tab stop (`tabIndex 0`,
+`aria-multiselectable`, `data-escape-ladder`, named `<title>: <n> bars`), with one option per drawn
+bar in draw order (`<full name>: <value>`, then `, <state>` with thresholds; id `<listId>-<i>`).
+Its `aria-activedescendant` names the option of a keyboard `mark` (absent for a pointer `mark`),
+and an option is `aria-selected` while its key is in the page selection. `k more not shown` (the
+rows the cap left out) is a hidden sibling `<listId>-more` that the listbox names with
+`aria-describedby`. The canvas keeps `aria-describedby` = the listbox. While focus is inside a bar
+frame, the frame draws a 2 px `focus` outline (T08-016). `ChartFrame` shows `MarkTooltip` beside
+the marked bar (full name, value, `■ Failing` for a state, then the caller's `markLines`, or
+`baseline <v>` with the ghost when there are none), passes `pick` to `onPick` with the listbox as
+the element to return focus to, labels the canvas `<title>: <n> bars` (then the thresholds), and
+shows no `Showing X of N series` notice: `CategoryChart`'s meter states the coverage. Under
+`engine=wasm` the bar chart stays on Canvas 2D until the engine implements ADR-0028 and ADR-0029.
 
 ## Limits
 
@@ -724,7 +753,8 @@ ADR-0028.
 - Drawing is on the main thread (T01-003 interim exception) with a cached layer; there is no worker,
   GPU decimation or level of detail until #68.
 - No legend inside the frame (board panels draw theirs in the DOM, [Boards](boards.md)), cursor sync,
-  Δ vs baseline or keyboard brushing yet. At most 8 threshold lines.
+  Δ vs baseline or keyboard brushing of time yet (the bar chart brushes its rows, ADR-0029). At
+  most 8 threshold lines.
   Event markers are points on the time axis: a ranged event shows its end in the tooltip only (no
   region), and a click on a marker sets no comparison yet.
 - Camera (#93): no inertia after a flick, no wheel zoom on an axis band (the page scrolls), no value
@@ -789,7 +819,9 @@ Canvas 2D; since Part C2b hover, the keyboard crosshair, the click's `select` an
 too (the same rules, ported), and since Part C2c1 the threshold lines and the event lines with
 the event band. It implements the threshold labels and the stat sparkline (ADR-0022), the event
 labels (ADR-0023, as M9 glyphs), the selection and the `select` item (ADR-0025), and the bar chart (ADR-0028: the
-`categories` data, `categoryExtent` and `barLayout` exactly, `mark`, `pick` and the drawing) before
+`categories` data, `categoryExtent` and `barLayout` exactly, `mark`, `pick` and the drawing; and
+ADR-0029: the mirror listbox as `keyTarget`, the keys, the brush, the focus mark and
+`PickEvent.source`) before
 it replaces `engine/index.ts`. The canvas is already created per frame
 lifetime, so it can be transferred to the render worker, and `keyTarget` lets the adapter forward key
 presses as the Canvas 2D engine does. Frames from the BFF arrive as Arrow (`FrameData` gains that
@@ -805,8 +837,10 @@ form in #68/#62).
 [ADR-0023](../../designs/adr/0023-chart-event-markers.md) (`setEvents`, `eventLabels`, the event
 mark); [ADR-0028](../../designs/adr/0028-chart-seam-bar-chart.md) (the bar chart: `barchart`,
 `categories`, `mark`, `pick`, `coverage`, the extent and the layout);
+[ADR-0029](../../designs/adr/0029-bar-chart-keys-and-brush.md) (the bar chart's keys, brush, focus
+mark and `PickEvent.source`);
 [T22](../../designs/technical/T22-value-categorical-and-table-panels.md) (T22-001, T22-004,
-T22-006, T22-008, §5.1);
+T22-006, T22-008, T22-010, T22-013, §5.1);
 [ADR-0007](../../designs/adr/0007-in-house-vis-engine.md);
 [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) (VIZ-001 library
 clause, VIZ-010 gaps and stacking, VIZ-011 threshold lines and event markers, VIZ-022, VIZ-013, VIZ-067, VIZ-069, Table 5-1

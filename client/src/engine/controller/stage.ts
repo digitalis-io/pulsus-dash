@@ -35,13 +35,22 @@ export interface Stage {
   boxChanged(): void;
 }
 
-/** A bar chart's pointer input (ADR-0028), handed the events the controller does not handle. */
+/**
+ * A bar chart's pointer and key input (ADR-0028, ADR-0029), handed the events the controller does
+ * not handle. `down` is true for a press that may brush: the controller captures its pointer.
+ */
 export interface BarHooks {
-  down(e: PointerEvent, p: Point): void;
+  down(e: PointerEvent, p: Point): boolean;
   move(e: PointerEvent, p: Point): void;
   up(e: PointerEvent, p: Point): void;
   cancel(): void;
   clearMark(): void;
+  /** The pointer left the chart: the keyboard mark returns while the key target is focused. */
+  leave(): void;
+  /** A keydown, `focus` and `focusout` on the key target (the mirror listbox, ADR-0029). */
+  key(e: KeyboardEvent): void;
+  focus(): void;
+  blur(): void;
   dispose(): void;
 }
 
