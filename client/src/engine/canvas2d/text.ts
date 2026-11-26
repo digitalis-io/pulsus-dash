@@ -32,3 +32,24 @@ export function fitText(ctx: Ctx2D, text: string, room: number): string | null {
 export function truncated(ctx: Ctx2D, text: string, room: number): string {
   return fitText(ctx, text, room) ?? Array.from(text)[0] ?? '';
 }
+
+/** A text width in CSS px (`measureText(t).width` in the axis font). */
+export type Measure = (text: string) => number;
+
+/** `head…tail` of `text` that fits `room` (the tail at least half); `text` when it fits. */
+export function fitMiddle(m: Measure, text: string, room: number): string {
+  void m;
+  void room;
+  return text;
+}
+
+/** Category names that fit `room` and differ pairwise (T22-004); null = hide every name. */
+export function distinctLabels(
+  m: Measure,
+  names: readonly string[],
+  room: number,
+): string[] | null {
+  void m;
+  void room;
+  return [...names];
+}

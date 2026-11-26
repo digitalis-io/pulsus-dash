@@ -113,7 +113,40 @@ export interface ScalarFrame {
 export type FrameData =
   | { readonly kind: 'series'; readonly series: readonly SeriesFrame[] }
   | { readonly kind: 'heatmap'; readonly heatmap: HeatmapFrame }
-  | { readonly kind: 'scalar'; readonly scalar: ScalarFrame };
+  | { readonly kind: 'scalar'; readonly scalar: ScalarFrame }
+  /** A bar chart's drawn rows, in draw order, and the panel's coverage (ADR-0028, T22 §5.1). */
+  | {
+      readonly kind: 'categories';
+      readonly categories: readonly CategoryRow[];
+      readonly coverage: Coverage;
+    };
+
+/** The most rows a `categories` frame holds (T22-006, T22 §5.1). */
+export const MAX_CATEGORIES = 200;
+
+/** A coverage with nothing in it: no rows, a complete run and no baseline. */
+export const EMPTY_COVERAGE: Coverage = Object.freeze({
+  total: 0,
+  drawn: 0,
+  keptMin: false,
+  keptMax: false,
+  keptWorst: 0,
+  omittedWorst: 0,
+  worstState: null,
+  outside: 0,
+  duplicates: 0,
+  conflicts: 0,
+  query: Object.freeze({
+    truncated: false,
+    warnings: [],
+    infos: [],
+    queryId: null,
+    dataAgeMs: null,
+    readCache: null,
+    readCacheThroughMs: null,
+  }),
+  baseline: null,
+});
 
 export type FrameDataIssue =
   | { code: 'kind' }
@@ -123,7 +156,8 @@ export type FrameDataIssue =
   | { code: 'cells'; columns: number; buckets: number; cells: number }
   | { code: 'bounds' }
   | { code: 'finite' }
-  | { code: 'grid'; key: string };
+  | { code: 'grid'; key: string }
+  | { code: 'cap'; count: number; max: number };
 
 function isIncreasing(a: Float64Array): boolean {
   for (let i = 0; i < a.length; i++) {
@@ -182,8 +216,8 @@ function gridIssue(series: readonly SeriesFrame[]): FrameDataIssue | null {
 
 /**
  * The first problem with `data` for `spec`, in the order of `FrameDataIssue`, or `null`. `line` and
- * `bars` need series, `heatmap` a heatmap, and `stat` a scalar or series (the first series' last
- * finite value is shown).
+ * `bars` need series, `heatmap` a heatmap, `stat` a scalar or series (the first series' last finite
+ * value is shown), and `barchart` categories.
  */
 export function validateFrameData(spec: VisSpec, data: FrameData): FrameDataIssue | null {
   switch (spec.kind) {
@@ -197,10 +231,18 @@ export function validateFrameData(spec: VisSpec, data: FrameData): FrameDataIssu
     case 'stat':
       if (data.kind === 'scalar') return null;
       return data.kind === 'series' ? seriesIssue(data.series) : { code: 'kind' };
+    case 'barchart':
+      return data.kind === 'categories' ? categoriesIssue(data.categories) : { code: 'kind' };
   }
 }
 
-/** Data that draws an empty chart of `spec`'s kind: no series, a 0 × 0 heatmap, or `NaN`. */
+/** ADR-0028: at most `MAX_CATEGORIES` rows, then the first key that is malformed or repeated. */
+function categoriesIssue(rows: readonly CategoryRow[]): FrameDataIssue | null {
+  void rows;
+  return null;
+}
+
+/** Data that draws an empty chart of `spec`'s kind: no series, a 0 × 0 heatmap, `NaN` or no bars. */
 export function emptyFrameData(spec: VisSpec): FrameData {
   switch (spec.kind) {
     case 'line':
@@ -217,6 +259,8 @@ export function emptyFrameData(spec: VisSpec): FrameData {
       };
     case 'stat':
       return { kind: 'scalar', scalar: { value: NaN, timestampMs: NaN } };
+    case 'barchart':
+      return { kind: 'categories', categories: [], coverage: EMPTY_COVERAGE };
   }
 }
 

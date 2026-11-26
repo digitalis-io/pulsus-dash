@@ -22,6 +22,7 @@ const KIND: Readonly<Record<VisSpec['kind'], MessageId>> = {
   bars: 'chart.kind.bars',
   heatmap: 'chart.kind.heatmap',
   stat: 'chart.kind.stat',
+  barchart: 'chart.kind.barchart',
 };
 
 /**
@@ -170,5 +171,7 @@ export function issueText(i: FrameDataIssue): string {
       return t('chart.issue.finite');
     case 'grid':
       return t('chart.issue.grid', { key: i.key });
+    case 'cap':
+      return t('chart.issue.cap', { count: i.count, max: i.max });
   }
 }

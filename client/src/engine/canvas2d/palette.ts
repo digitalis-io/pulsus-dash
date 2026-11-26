@@ -58,6 +58,8 @@ export interface ThemeColours {
   text: string;
   /** Event lines (ADR-0023): `text-muted`, never a state colour (T02-004). */
   event: string;
+  /** The bar chart's baseline ghost (ADR-0028): `text-muted`. */
+  ghost: string;
   /** The selection underlay and rings (ADR-0025, T25-006). */
   focus: string;
   /** The selection band: `accent` at 16 % (T25-006). */
@@ -81,6 +83,7 @@ export function themeColours(t: ThemeName): ThemeColours {
     chip: c['surface-2'],
     text: c.text,
     event: c['text-muted'],
+    ghost: c['text-muted'],
     focus: c.focus,
     selection: c.selection,
     dimmed: opacity.dimmed,

@@ -44,6 +44,7 @@ import type {
   FrameData,
   FrameSummary,
   HoverEvent,
+  PickEvent,
   PlotRect,
   ValueRange,
   VisSpec,
@@ -100,6 +101,8 @@ export interface ChartFrameProps {
   ) => void;
   /** A click on the plot with no mark under it: clears the selection (T25 §4.2). */
   readonly onEmptyClick?: () => void;
+  /** Barchart: a click on a bar or on no bar (ADR-0028). */
+  readonly onPick?: (e: PickEvent) => void;
 }
 
 interface HoverState {
@@ -225,7 +228,9 @@ export function ChartFrame({
   events = NO_MARKERS,
   onInspect,
   onEmptyClick,
+  onPick,
 }: ChartFrameProps) {
+  void onPick;
   const engine = useContext(ChartEngineContext);
   const { window: win, dispatch } = useTimeContext();
   const tz = useTimeZone();

@@ -51,8 +51,16 @@ export function fromInstant(r: InstantResult): ExploreResult {
 export interface AutoVis {
   readonly vis: VisKind | null;
   /** The Table 5-13 row that chose `vis`. */
-  readonly rule: 5 | 6 | 7 | 14 | null;
+  readonly rule: 5 | 6 | 7 | 11 | 14 | null;
 }
+
+/** The kinds every surface draws today; #173 Part 3 adds `barchart` for boards. */
+export const SHIPPED_VIS: ReadonlySet<VisKind> = new Set<VisKind>([
+  'line',
+  'bars',
+  'heatmap',
+  'stat',
+]);
 
 /**
  * The auto vis of a result. A range result is never a stat (row 7 is "1 series, 1 value"): the
@@ -62,6 +70,10 @@ export function autoVis(i: {
   readonly histogram: boolean;
   readonly rateApplied: boolean;
   readonly result: ExploreResult;
+  /** The panel has an explicit `options.reducer`. */
+  readonly reducer?: boolean;
+  /** Default `SHIPPED_VIS`. */
+  readonly available?: ReadonlySet<VisKind>;
 }): AutoVis {
   const r = i.result;
   if (r.kind === 'string') return { vis: null, rule: null };
