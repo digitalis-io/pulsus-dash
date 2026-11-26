@@ -698,7 +698,10 @@ keys of its key target, the mirror listbox:
   Space emit `pick` `{ [key f], 'click', 'keyboard' }`; Escape drops a and is not prevented, so the
   Esc ladder clears the selection; `focusout` drops f and a and emits `mark` `null`. Keys with Ctrl,
   Meta or Alt are ignored and not prevented. With no rows nothing is emitted. New data drops a and,
-  after the next layout, clamps f (null with no rows) and emits the keyboard `mark` again.
+  after the next layout, clamps f (null with no rows) and emits the keyboard `mark` again. While
+  the listbox has focus, a layout with rows and no f (focus that came before the first layout, or
+  rows that came back after none) sets f = 0 and marks it; and when the pointer leaves a bar or the
+  chart, the keyboard `mark` of f returns, so the active option and the tooltip stay.
 - **Focus mark:** in the overlay pass, a 2 px `focus` stroke around band f, from the name band's
   left edge to the plot's right edge (horizontal) or from the plot top to the name band's bottom
   (vertical). The focus mark and the brush band redraw the overlay only; the layer is kept.

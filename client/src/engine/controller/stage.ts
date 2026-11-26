@@ -45,6 +45,8 @@ export interface BarHooks {
   up(e: PointerEvent, p: Point): void;
   cancel(): void;
   clearMark(): void;
+  /** The pointer left the chart: the keyboard mark returns while the key target is focused. */
+  leave(): void;
   /** A keydown, `focus` and `focusout` on the key target (the mirror listbox, ADR-0029). */
   key(e: KeyboardEvent): void;
   focus(): void;

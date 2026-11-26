@@ -53,6 +53,8 @@ export class BarInput {
   private focus: number | null = null;
   /** The Shift brush anchor a. */
   private anchor: number | null = null;
+  /** The key target has focus (review r1): f follows the drawn rows while it lasts. */
+  private focused = false;
 
   /** `redraw` schedules an overlay-only frame: the focus mark or the brush band moved. */
   constructor(
@@ -81,7 +83,7 @@ export class BarInput {
     }
     const hit = pick === null ? null : barAt(pick, p);
     if (hit === null) {
-      this.clearMark();
+      this.hoverEnd(pick);
       return;
     }
     if (hit.key === this.markKey && this.markSource === 'pointer') return;
@@ -103,6 +105,19 @@ export class BarInput {
     this.markKey = null;
     this.markSource = null;
     this.emit('mark', null);
+  }
+
+  /**
+   * The pointer left every bar or the chart: with the key target focused, the keyboard mark of f
+   * returns (its active option and tooltip); else one null `mark`.
+   */
+  hoverEnd(pick: BarPick | null): void {
+    if (this.markSource !== 'pointer') return;
+    if (this.focused && this.focus !== null && pick !== null) {
+      this.markFocus(pick);
+      return;
+    }
+    this.clearMark();
   }
 
   /** A press: only the left button without a modifier can pick or brush; true when it can. */
@@ -147,6 +162,7 @@ export class BarInput {
 
   /** The key target gained focus: f = min(f ?? 0, n − 1) and a keyboard `mark`. */
   focusIn(pick: BarPick | null): void {
+    this.focused = true;
     const n = pick?.bands.length ?? 0;
     if (pick === null || n === 0) return;
     this.focus = Math.min(this.focus ?? 0, n - 1);
@@ -155,6 +171,7 @@ export class BarInput {
 
   /** The key target lost focus: f and a are dropped and a keyboard `mark` is cleared. */
   blur(): void {
+    this.focused = false;
     const had = this.focus !== null;
     this.focus = null;
     this.anchor = null;
@@ -207,18 +224,20 @@ export class BarInput {
   }
 
   /**
-   * The layer was drawn: f is clamped to the drawn rows (null with none), and a keyboard `mark`
-   * that the layout change cleared is emitted again for the band at f.
+   * The layer was drawn: while the key target is focused, f is clamped to the drawn rows (null
+   * with none; the first bar when it was null), and a keyboard `mark` that the layout change
+   * cleared is emitted again for the band at f.
    */
   laidOut(pick: BarPick | null): void {
-    if (this.focus === null) return;
+    if (!this.focused) return;
     const n = pick?.bands.length ?? 0;
     if (pick === null || n === 0) {
       this.focus = null;
       this.anchor = null;
       return;
     }
-    this.focus = Math.min(this.focus, n - 1);
+    // Focus that came before the first layout, or rows that came back: the first bar.
+    this.focus = Math.min(this.focus ?? 0, n - 1);
     if (this.markKey === null) this.markFocus(pick);
   }
 
@@ -228,6 +247,7 @@ export class BarInput {
     this.press = null;
     this.focus = null;
     this.anchor = null;
+    this.focused = false;
   }
 
   private markFocus(pick: BarPick): void {

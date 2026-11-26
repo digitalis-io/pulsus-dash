@@ -567,3 +567,48 @@ describe('unit:barchart-brush', () => {
     expect(fills()).toEqual([]);
   });
 });
+
+describe('unit:barchart-keys (review r1)', () => {
+  it('focus before the first layout, and data empty then back: the first bar is marked', () => {
+    const div = document.createElement('div');
+    const h = harness(Canvas2DEngine, { keyTarget: div });
+    const rows = versions();
+    h.frame.setSpec(spec());
+    h.frame.setData(cats(rows));
+    h.frame.setTimeWindow(W);
+    div.dispatchEvent(new FocusEvent('focus'));
+    h.frame.resize(600, 300 + 8 + BOTTOM, 1);
+    h.flush();
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 0, key: rows[0]?.key });
+    key(div, 'Enter');
+    expect(h.pick.at(-1)).toEqual({ keys: [rows[0]?.key], gesture: 'click', source: 'keyboard' });
+
+    h.frame.setData(cats([]));
+    h.flush();
+    expect(h.mark.at(-1)).toBeNull();
+    h.frame.setData(cats(rows));
+    h.flush();
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 0, key: rows[0]?.key });
+  });
+
+  it('pointer hover over a bar then away keeps the keyboard mark', () => {
+    const div = document.createElement('div');
+    const h = harness(Canvas2DEngine, { keyTarget: div });
+    const rows = versions();
+    const s = show(h, spec(), cats(rows), 600, 300 + 8 + BOTTOM);
+    const band = s.plot.height / rows.length;
+    div.dispatchEvent(new FocusEvent('focus'));
+    key(div, 'ArrowDown');
+    h.flush();
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 1 });
+    pointer(h.canvas, 'pointermove', s.plot.x + 10, s.plot.y + 3.5 * band);
+    expect(h.mark.at(-1)).toMatchObject({ source: 'pointer', index: 3 });
+    pointer(h.canvas, 'pointermove', s.plot.x + 10, s.plot.y + s.plot.height + 20);
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 1 });
+    pointer(h.canvas, 'pointermove', s.plot.x + 10, s.plot.y + 0.5 * band);
+    pointer(h.canvas, 'pointerleave', 700, 10);
+    expect(h.mark.at(-1)).toMatchObject({ source: 'keyboard', index: 1 });
+    key(div, 'Enter');
+    expect(h.pick.at(-1)).toEqual({ keys: [rows[1]?.key], gesture: 'click', source: 'keyboard' });
+  });
+});

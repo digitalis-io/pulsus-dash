@@ -180,6 +180,28 @@ describe('unit:bar-list', () => {
   });
 });
 
+describe('unit:bar-list (review r1)', () => {
+  it('a pointer mark then the keyboard mark again: the active option returns', () => {
+    const engine = fakeEngine();
+    renderChart(engine, <ChartFrame spec={SPEC} data={DATA} />);
+    act(() => {
+      resizeAll(600, 240);
+    });
+    const f = lastFrame(engine);
+    const list = screen.getByRole('listbox');
+    act(() => {
+      f.emit('mark', markAt(1, 'keyboard'));
+      f.emit('mark', markAt(3, 'pointer'));
+    });
+    expect(list).not.toHaveAttribute('aria-activedescendant');
+    act(() => {
+      f.emit('mark', markAt(1, 'keyboard'));
+    });
+    expect(list).toHaveAttribute('aria-activedescendant', `${list.id}-1`);
+    expect(document.querySelector('[data-mark-tooltip]')).toHaveTextContent('2.29');
+  });
+});
+
 describe('unit:bar-list-selected', () => {
   it('options are selected from the page selection; null selects none', () => {
     const engine = fakeEngine();

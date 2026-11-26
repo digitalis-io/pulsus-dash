@@ -200,6 +200,9 @@ class Canvas2DFrame implements ChartFrame {
       clearMark: () => {
         this.bar.clearMark();
       },
+      leave: () => {
+        this.bar.hoverEnd(this.barPick());
+      },
       key: (e) => {
         this.bar.key(e, this.barPick());
       },

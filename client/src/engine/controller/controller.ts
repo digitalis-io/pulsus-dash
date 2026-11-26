@@ -515,7 +515,7 @@ export class FrameController {
 
   private onPointerLeave(): void {
     if (this.isBar()) {
-      this.bar?.clearMark();
+      this.bar?.leave();
       return;
     }
     this.pointerAt = null;
