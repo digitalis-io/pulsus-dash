@@ -781,3 +781,9 @@ function BoardEditor({
     </BoardRunProvider>
   );
 }
+
+// The widget gallery (dev and stub builds) takes the board's widget modules from this chunk: its
+// own static imports of them would split the stub build's initial chunks (#198 Part 3b).
+export { BoardRunContext } from '../../boards/boardRunContext';
+export { WIDGETS } from '../../widgets/registry';
+export { WidgetBody } from '../../widgets/WidgetBody';

@@ -29,7 +29,11 @@
  * waits n ms before the call is planned (an abort clears the timer and rejects with `AbortError`;
  * read on every call, never consumed); `pulsus-dash.stub.failQuery` fails the call as `failSave`
  * does, after the delay; and every call leaves a `stub:query` performance mark with
- * `{ kind: 'range' | 'instant', query }` (the raw request text).
+ * `{ kind: 'range' | 'instant', query }` (the raw request text). `pulsus-dash.stub.boards`, a JSON
+ * array of `{ uid, title, updatedAt, spec }`, adds those boards to the seed when the stub is made
+ * (plan #198 Part 3b: `bench:text-widget-render`'s board); an entry whose spec fails the save's
+ * rules, or whose uid is taken, is skipped, and anything but an array adds none. HTTP builds compile
+ * this hook out.
  */
 import { checkBoardSpec, canonicalJson } from '../boards/spec';
 import type { Api } from './Api';
@@ -144,6 +148,7 @@ export const STUB_CONFLICT_SAVE_KEY = 'pulsus-dash.stub.conflictSave';
 export const STUB_FAIL_STAR_KEY = 'pulsus-dash.stub.failStar';
 export const STUB_QUERY_DELAY_KEY = 'pulsus-dash.stub.queryDelayMs';
 export const STUB_FAIL_QUERY_KEY = 'pulsus-dash.stub.failQuery';
+export const STUB_BOARDS_KEY = 'pulsus-dash.stub.boards';
 
 /** The most boards `listBoards` and the most starred boards `listStarred` return (as the BFF). */
 const MAX_LISTED_BOARDS = 1000;
@@ -211,6 +216,35 @@ function write(key: string, value: string): void {
   } catch {
     // Storage unavailable: the stub keeps working without persistence.
   }
+}
+
+function isStubBoard(x: unknown): x is StubBoard {
+  if (typeof x !== 'object' || x === null) return false;
+  const b = x as Record<string, unknown>;
+  return (
+    typeof b['uid'] === 'string' &&
+    typeof b['title'] === 'string' &&
+    typeof b['updatedAt'] === 'string' &&
+    typeof b['spec'] === 'object' &&
+    b['spec'] !== null
+  );
+}
+
+/** The valid boards of `pulsus-dash.stub.boards` whose uids `seeded` does not hold. */
+function extraBoards(seeded: readonly StubBoard[]): StubBoard[] {
+  // HTTP builds still make a StubApi (the ApiContext default): the static condition compiles the
+  // hook, and its key, out of them, so production startup never reads stub storage.
+  if (import.meta.env.VITE_API_MODE === 'http') return [];
+  const raw = parseJson(read(STUB_BOARDS_KEY));
+  if (!Array.isArray(raw)) return [];
+  const uids = new Set(seeded.map((b) => b.uid));
+  const out: StubBoard[] = [];
+  for (const x of raw as unknown[]) {
+    if (!isStubBoard(x) || uids.has(x.uid) || checkBoardSpec(x.spec).length > 0) continue;
+    uids.add(x.uid);
+    out.push(x);
+  }
+  return out;
 }
 
 /** The levels of the stub log streams `stub-0`, `stub-1` and `stub-2`. */
@@ -359,6 +393,7 @@ export class StubApi implements Api {
 
   constructor(seed: StubSeed = defaultSeed, now: () => number = Date.now) {
     this.seed = structuredClone(seed);
+    this.seed.boards.push(...extraBoards(this.seed.boards));
     this.now = now;
     this.boards = this.seed.boards.map((b) => ({
       uid: b.uid,

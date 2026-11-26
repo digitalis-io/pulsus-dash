@@ -12,9 +12,10 @@ user's view is [Boards](../user/boards.md#widgets).
 in the widget editor (#198 Part 3a, [below](#text-widget-part-3a)); the other kinds still show
 "This widget isn't available in this version yet." #198 Part 2a added the sanitiser's URL
 classifier, iframe finder and import conversion ([below](#sanitiser-modules-part-2a)) and Part 2b
-the Markdown renderer ([below](#markdown-renderer-part-2b)), which the Text widget now uses. The
-gallery, the browser tests and the render bench follow with #198 Part 3b; the Clock view with A2;
-the Board list view, editor and states with #216 Part 2.
+the Markdown renderer ([below](#markdown-renderer-part-2b)), which the Text widget now uses. Part
+3b added the widget gallery, the browser tests (the whole XSS corpus in three engines) and the
+render bench ([below](#text-browser-tests-part-3b)). The Clock view follows with A2; the Board list
+view, editor and states with #216 Part 2.
 
 | Module | Role |
 |---|---|
@@ -262,7 +263,8 @@ unrelated variable neither changes the renderer's memo key nor renders `TextCont
 
 M0: the options and the variables reach `TextContent` through `useDeferredValue`. An input in the
 editor commits first and the Markdown renders in a transition, while the previous output stays.
-The render's cost is measured, with M1 and M2, in Part 3b.
+The render's cost is measured by `bench:text-widget-render`, with the M1 and M2 rungs
+([below](#render-measures-and-the-bench)).
 
 ### Look (T24-015)
 
@@ -317,6 +319,204 @@ To add a kind (the Board list in #216 Part 2): write its editor body against
 `WidgetEditorBodyProps`, add a def with its label, title, size and `newVis`, and append it to
 `WIDGETS.defs`. No reducer or page change is needed. A test can provide another registry through
 the context, as `unit:widget-registry-generic` does with a test-only kind.
+
+## Text: browser tests (Part 3b)
+
+#198 Part 3b runs the Text widget in Chromium, Firefox and WebKit: the T24 §10 rows, the whole XSS
+corpus on real boards under the production CSP and Trusted Types, the gallery goldens and the
+render bench.
+
+| Module | Role |
+|---|---|
+| `src/dev/WidgetGalleryPage.tsx`, `widgetGallery.ts` | the widget gallery, `/t/<tenant>/dev/widgets?page=…` (dev and stub builds only) |
+| `e2e/widgets.spec.ts` | `e2e:widget-text`, `e2e:widget-text-xss` (a, b, c), `e2e:widget-a11y` (Text) |
+| `e2e/widget-gallery.spec.ts` | `golden:widget-gallery` (the Text pages) |
+| `e2e/perf-text-render.spec.ts` | `bench:text-widget-render` |
+| `e2e/loadWatch.ts` | the request and violation watch of a browser context |
+| `e2e/xssCases.ts`, `scripts/gen-xss-e2e-cases.ts`, `e2e/fixtures/xss-e2e-cases.json` | the browser run's case list, its generator and the committed list |
+| `e2e/fixtures/board-load-baseline.{chromium,firefox,webkit}.json` | the committed load baselines |
+
+### The widget gallery
+
+`dev/widgets` is routed like the chart gallery: only when `import.meta.env.DEV` or `VITE_API_MODE
+!== 'http'`, so http builds have no route and no chunk. The board variable `env` is `prod`. An
+unknown or missing `page` shows `widget-text`.
+
+| `page` | Shows |
+|---|---|
+| `widget-text` | three Text panels through the board's `WidgetBody`: a 2 KiB runbook in Markdown (`RUNBOOK`: headings, lists, a quote, code, local and `mailto:` links), a PromQL code panel and an empty panel |
+| `widget-text-removals` | the registry's Text editor body (`TextEditorBody`) on content with one removal of each kind: an HTML block, inline HTML, an iframe, a `javascript:` link, an image under `/api` (counted as external, T24-018), `$missing` and a 31-deep quote, so "Not shown in the panel" lists 7 lines |
+
+`TextContent` wraps its output in `<div data-text-content>`, and the removal list carries
+`data-text-removals`; the tests wait for and read these.
+
+The gallery's content has no absolute URL, since the build's origin check
+([supply chain](supply-chain.md)) allows none in app code. The page takes `WidgetBody`, `WIDGETS`
+and `BoardRunContext` from the board route's chunk, which re-exports them, and loads that chunk
+lazily. Importing them statically would make the gallery's chunk one more importer of the board's
+modules: the bundler then splits the stub build's shared initial chunks differently, which added
+about 2.7 KB brotli to its initial JS and broke the 200 KB budget.
+
+### The load watch (`e2e/loadWatch.ts`)
+
+`openWatched(browser, project)` opens a fresh context on the http-mode BFF with
+`serviceWorkers: 'block'`, so the HTTP cache, storage and permissions are new for each case. It
+fixes `Date.now()` at the suite's time (so a time-stamped request keeps one key) and adds:
+
+- an init script that reports every `securitypolicyviolation` (`csp`, with the effective directive
+  and the blocked URI) and replaces `ServiceWorkerContainer.prototype.register` with an `sw`
+  finding and a rejection;
+- a console listener: a message about the Content Security Policy or Trusted Types is a `console`
+  finding; a page error is a `pageerror` finding;
+- a route on every request.
+
+One sequencing rule keeps the counts stable: the board's recent-view write (`PUT
+/api/dash/v1/me/recent-boards/{uid}`) is held until the first recent-boards read has completed
+(at most 5 s). The list is then always read twice, before and after the write; without the rule a
+loaded machine sometimes read it once.
+
+The route runs in one of three modes:
+
+| Mode | Set by | A request |
+|---|---|---|
+| idle | (start) | continues, unjudged |
+| recording | `record()` … `stopRecording()` | continues and counts against its key; `stopRecording()` returns the key → count map |
+| judged | `begin(baseline, images)` | an `image` whose path is in `images` is answered once with a 1×1 PNG (`Cache-Control: no-store`), and a second one is a finding, aborted; any other request continues while its key's count is within `baseline[key]`, and past it is a finding, aborted |
+
+A key is `${method} ${resourceType} ${path}`. The path keeps its query, except a document's. A
+board uid after `board/`, `boards/` or `recent-boards/` becomes `{uid}`, and a built asset's hash
+becomes `{hash}` (`/assets/index-{hash}.js`), so a baseline names chunks, not one build. Preloads
+are ordinary requests. Not judged: `/favicon.ico`, and a browser's own report of a violation that
+is already a `csp` finding (Firefox sends it as `fetch`, WebKit as `ping`). `isBrowserCspReport`
+accepts only a same-origin `POST` to exactly `/api/dash/v1/csp-report` with no query, content type
+`application/csp-report` (a `{"csp-report": {…}}` body, or one `{type: "csp-violation", body: {…}}`
+as WebKit sends it) or `application/reports+json` (a non-empty array of those). Any other request to that path is judged.
+
+| Call | Does |
+|---|---|
+| `consumeTrustedTypesCanary(act)` | runs `act`, waits up to 2 s for its violation, then removes exactly one `require-trusted-types-for` `csp` finding and one Trusted Types `console` finding raised during it; returns false, removing nothing, unless there is exactly one of each |
+| `settle()` | the observation window: it ends after 1 000 ms without a request once 2 000 ms have passed, and at 10 s at the latest; then each image path never requested is an `imageMissing` finding |
+| `closeWatched(w)` | navigates to `about:blank` (the page's `pagehide` and `unload` requests pass the route while it is attached), waits for 500 ms without a request (at most 2 s), closes the page with `runBeforeUnload`, then the context; the watch judges until the context's `close` event |
+| `add(f)`, `findings()`, `assertClean()` | a test's own `setup` finding (a failed board `POST`, a navigation that does not reach `[data-shell-ready]` and `[data-text-content]`); the list; throws with every finding |
+
+### The case list and the baselines
+
+`npm run gen:xss-e2e-cases` writes `e2e/fixtures/xss-e2e-cases.json` from the committed
+`xss-corpus.json`, without the renderer (it never imports `url.ts` or `markdown.tsx`):
+
+- `digest`: SHA-256 of `JSON.stringify([src, vars, entity])`, so an id cannot keep its entry when
+  its input changes;
+- `skip`: `entity` (a board has no entity), `varNotUrlSafe` (a value `checkParamValue` refuses, so
+  no `var-` parameter carries it) or `nul` (a source with U+0000, which the server refuses);
+  otherwise `null`. Today 308 of the 335 cases run (24 `entity`, 3 `nul`);
+- `images`: the request paths of the case's `<img>` elements, from its parse tree under `board`:
+  not in alt text, not in a flat block (the Part 2b costs), `checkImgSrc` true after the case's
+  variables are interpolated (`encodeURIComponent`), then `new URL(dest, origin)`'s pathname and
+  search, deduplicated in document order.
+
+`-- --check` compares and prints the differences by id (`compareCases`); `unit:xss-e2e-cases` runs
+it. After a corpus change, regenerate and review the diff.
+
+The baseline is recorded once per browser from a **twin** board: one Text panel at {0, 0, 12, 8}
+holding `x [x](/b)`, opened with `var-env=prod`. The link is there so the new-tab glyph's icon (a
+kit `Icon` mask image) is in the baseline, as every rendered link loads it. The recorded map must
+equal `e2e/fixtures/board-load-baseline.<project>.json`, key by key and count by count; a change
+fails until reviewed. `BASELINE_UPDATE=1` rewrites the three maps from the twin (run the corpus test
+in each browser), and the diff is reviewed in the PR.
+
+### The corpus run and the canaries
+
+`e2e:widget-text-xss` (b) checks that the committed list is the generated one and has one entry
+per corpus case, that the twin's map is the baseline, then runs every eligible case, four at a
+time, each in its own context on its own one-panel board (deleted afterwards):
+
+```text
+POST board(c.src) → openWatched → begin(baseline, c.images) → open with c's var- params
+→ [data-text-content] → checks → Trusted Types canary → settle → closeWatched → no finding
+```
+
+| Check | Rule |
+|---|---|
+| DOM | `[data-text-content]`'s `innerHTML` through `parse5.parseFragment` passes `checkInvariants(root, 'board')`; the Markdown module's production class names are read from the chunk's stylesheet first, so the flat span and the hidden text are recognised |
+| Images | the rendered `<img>` paths equal the case's `images`, as sets |
+| Elements | no `iframe`, `script`, `object`, `embed`, `frame`, `base`, `link`, `meta` or `form` in `[data-panel]` |
+| Script | `window.__xss` is undefined; `alert`, `confirm` and `prompt` are wrapped to set it |
+| Document | the navigation's `Content-Security-Policy` equals `CSP` from `config/headers.ts` exactly |
+| Trusted Types | `typeof trustedTypes === 'object'` (all three engines have it), an `innerHTML` write of a string throws a `TypeError`, and `consumeTrustedTypesCanary` returns true |
+
+The canaries (c) each give exactly their findings, and `assertClean()` throws:
+
+| # | Board, armed with | Action | Findings |
+|---|---|---|---|
+| c1 | `![a](/l.svg)`, `[]` | — | `request GET image /l.svg` |
+| c2 | `![a](/a.svg) ![b](/l.svg)`, `['/a.svg']` | — | `request GET image /l.svg` |
+| c3 | `![a](/a.svg)`, `['/a.svg']` | a second `new Image().src = '/a.svg'` | `request GET image /a.svg` |
+| c4 | `![a](/a.svg)`, `['/a.svg', '/z.svg']` | — | `imageMissing /z.svg` |
+| c5 | `x`, baseline | `fetch` of the board's own API path | `request GET fetch /api/dash/v1/boards/{uid}` |
+| c6 | same | `fetch('/api/dash/v1/boards')` | that key |
+| c7 | same | a stylesheet link and a `FontFace` load | the stylesheet and font keys |
+| c8 | same (Firefox; report-only) | `sendBeacon('/__beacon')` on `pagehide`, then `closeWatched` | `request POST beacon /__beacon` when Firefox exposes it, recorded as an annotation; no other finding |
+| c9 | same | `fetch('/__late')` 800 ms after ready | `request GET fetch /__late` |
+| c10 | same | `navigator.serviceWorker.register('/sw.js')` | `sw /sw.js` |
+| c11 | same | an external `.test` image | `csp img-src` and its `console` line |
+| c12 | same | two sink writes in one `consumeTrustedTypesCanary` | it returns false; both `csp` and both `console` findings stay |
+| c15 | same | a script `POST` of a well-formed report to `/api/dash/v1/csp-report?leak=1` | `request POST fetch /api/dash/v1/csp-report?leak=1` |
+| c16 | same | a script `POST` of `{"leak":1}` as `application/json` to the report path | `request POST fetch /api/dash/v1/csp-report` |
+
+c13 (a baseline with one count changed) and c14 (a changed source under the same id) are in
+`unit:xss-e2e-cases`, with the report exemption's accepted and refused requests.
+
+**Limit.** Chromium and WebKit send an unload-time beacon outside the page's network stack, so no
+route sees it; c8 runs in Firefox only, and is report-only there: on a loaded machine the beacon
+escaped interception in 3 of 10 runs. A beacon sent while the page lives is seen in all three
+(as `ping` in Chromium, `beacon` in Firefox and WebKit). Proving unload-time requests in Chromium and WebKit
+(a browser-side or server-side observation of the beacon) is a follow-up.
+
+### Render measures and the bench
+
+In stub and dev builds `TextMarkdown` leaves a `markdown:render:<bucket>` measure for each render
+that misses the renderer's memo: `le4k`, `le16k` or `le64k` by the content's UTF-8 bytes. The
+condition is `import.meta.env.VITE_API_MODE !== 'http'`, so http builds compile it away.
+
+`bench:text-widget-render` (Chromium, the production stub build) seeds board P into the stub
+through `localStorage['pulsus-dash.stub.boards']` ([the stub hooks](../../client/src/api/StubApi.ts)):
+4 copies of `RUNBOOK`, a 16 KiB and a 64 KiB `benchInput` (64 bytes short of each, so the typed
+characters keep them in their buckets and within the content limit), each with an `Env $env` line.
+
+| Step | Action |
+|---|---|
+| `open` | a new context, the board, until the 6 panels show content |
+| `var` | 5 filter-bar changes of `env`, each to a new value, so every render misses |
+| `type16`, `type64` | 10 characters in the 16 KiB panel's editor, 5 in the 64 KiB one's |
+
+Per step it reports the render p50, p95 and max per bucket, the main-thread tasks over 16 ms (wall
+and thread) between the step's marks, and the click or keydown `EventLatency` p95, on stdout and in
+`test-results/text-render.json`. It is report-only; `LONG_TASK_GATE=enforce` fails when `le4k` or
+`le16k` renders have a p95 over 16 ms, when a step without a 64 KiB render has a task over 16 ms,
+or when `le64k` renders have a p95 over 16 ms.
+
+Measured on #198 Part 3b (ms; Chromium in the pinned e2e container on a shared 16-core
+workstation at a load average of 7 to 11, not the reference lab). The four runbook copies share
+one memo entry, so `open` measures one `le4k` render:
+
+| Step | `le4k` p50 / p95 (n) | `le16k` p50 / p95 (n) | `le64k` p50 / p95 (n) | Tasks over 16 ms (worst) | Event latency p95 |
+|---|---|---|---|---|---|
+| `open` | 6.8 / 6.8 (1) | 11.5 / 11.5 (1) | 19.0 / 19.0 (1) | 9 (104.4 ms) | — |
+| `var` | 0.6 / 2.2 (5) | 4.0 / 13.9 (5) | 16.4 / 18.4 (5) | 64 (67.1 ms) | 111.4 ms (click) |
+| `type16` | — | 2.8 / 9.5 (10) | — | 43 (78.5 ms) | 81.0 ms (keydown) |
+| `type64` | — | — | 10.8 / 35.6 (5) | 41 (117.0 ms) | 70.3 ms (keydown) |
+
+Both triggers fire: the `le64k` render p95 is over 16 ms in every step (M1), and `type16` has
+tasks up to 78.5 ms while its `le16k` render p95 is 9.5 ms (M2). The bench is report-only, so
+these are follow-up issues, not failures.
+
+If the bench misses, a follow-up issue takes the rung:
+
+| Rung | Trigger | Design |
+|---|---|---|
+| M0 (Part 3a, shipped) | — | deferred values, the narrowed variables key, one memoised `TextContent` per panel |
+| M1 | `le64k` or `le16k` render p95 > 16 ms | content over 8 KiB is parsed and walked in a module worker inside the Markdown chunk; `renderMarkdown` splits into `planMarkdown` (serialisable records and removals) and `planToReact`; the key is unchanged and the previous output stays until the result arrives |
+| M2 | a commit task over 16 ms while the render p95 is within 16 ms | the top-level blocks commit in slices of at most 200 elements per frame, in a transition |
 
 ## Sanitiser modules (Part 2a)
 
@@ -641,6 +841,13 @@ violations of a rendered tree:
 | `unit:xss-corpus-current` | `scripts/gen-xss-corpus.test.ts`: the committed corpus equals a fresh generation; one changed expectation gives exit 1; the CLI's `--check` exits 0 |
 | `fuzz:markdown-nodes` | `src/security/sanitise/markdown.fuzz.test.ts`: 10 000 seeded inputs (mulberry32, seed 20261125) of 1–40 tokens, through `renderToStaticMarkup` and `parse5.parseFragment`, under both policies, then the import inverse, the imported result's invariants and its UTF-8 size against an independent calculation from the T24 §5.4 steps (a `sizeLimit` only above 65 536 bytes; f6 checked on both sides of the limit) |
 | `bench:markdown-render` (report-only) | `src/security/sanitise/markdown.bench.test.ts`: 50 distinct 64 KiB inputs, every lookup a memo miss; prints the uncached p95 against the 16 ms budget. Under vitest it measures React's development build, which creates elements several times slower than production |
+| `e2e:widget-text` | `e2e/widgets.spec.ts` (three engines, the http-mode BFF): the T24 §10 input through the boards API with `var-env=prod`: `h4` "R", the new-tab link with the three `rel` values, "Env prod", then "Env dev" through the filter bar with no query at the fake; the region named by the title; Add widget → Text → `# Added` → Done → Save → reload shows `h4` "Added" |
+| `e2e:widget-text-xss` (a), (b), (c) | same: the T24 row input watched, then its editor removal lines; the corpus run; the canaries ([above](#the-corpus-run-and-the-canaries)) |
+| `e2e:widget-a11y` (Text) | same: an overflowing Text with two links and a short one: axe clean on the board and in the editor in Chromium and WebKit (Firefox runs neither axe scan: its content process crashed during or soon after axe on this board in 5 of 6 runs, never without it; every other step runs in Firefox), panel menu → region → link 1 → link 2, the short region not tabbable; in the editor the region "Preview: Note" and, for a 65 537-byte content, the "Preview unavailable" status that describes it |
+| `golden:widget-gallery` (Text) | `e2e/widget-gallery.spec.ts` (Chromium, 1440 × 1400): `widget-text` and `widget-text-removals` in dark, light and greyscale (CSSOM `grayscale(1)` on dark); a reload gives the same pixels; 6 baselines under `e2e/__screenshots__/widget-gallery.spec.ts/` |
+| `unit:xss-e2e-cases` | `scripts/gen-xss-e2e-cases.test.ts`: `--check` in-process and through the CLI, one changed expectation gives 1; c13 and c14; the image extraction rows; one case per skip reason |
+| `unit:widget-gallery-route` | `src/app/router.test.tsx`: 3 `[data-text-body]` on `widget-text`, 1 `[data-text-removals]` of 7 lines on `widget-text-removals`, no route in the http build |
+| `bench:text-widget-render` (report-only) | `e2e/perf-text-render.spec.ts` ([above](#render-measures-and-the-bench)) |
 
 ## Designs
 
@@ -654,16 +861,21 @@ violations of a rendered tree:
   §4.2 (the node table and the walk), §7 (the bench), §10 (the tests); Part 3a: T24-001, T24-002,
   T24-004, T24-007, T24-008 (text variables), T24-009 (the region), T24-014 (validate first, the
   preview), T24-015 (the Compact metrics), T24-017 (the tab stop), §5.2a (the view, the registry
-  and the actions).
+  and the actions); Part 3b: T24-009, T24-014, T24-017 and T24-018 in the browser, §7 (the render
+  bench and M0 to M2), §10 (the e2e, golden and unit rows), §11.
 - [T05](../../designs/technical/T05-testing-and-performance.md) §7.1: the gate catalogue rows.
 - [T18](../../designs/technical/T18-security.md): T18-011 (URL scheme allowlist); Part 2b: T18-005
-  (no HTML sink), T18-013, T18-014 (interim: no external image).
+  (no HTML sink), T18-013, T18-014 (interim: no external image); Part 3b: T18-013 under the
+  production CSP and Trusted Types.
+- [ADR-0026](../../designs/adr/0026-engine-csp-and-worker-policy.md) (the CSP the
+  corpus run checks exactly).
 - [T08](../../designs/technical/T08-dom-component-kit.md): T08-009 (`ci:no-iframe`), T08-011 (HTML
   is dropped).
 - [ADR-0024](../../designs/adr/0024-markdown-runtime-dependencies.md) (the Markdown dependencies).
 - [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md): VIZ-053
-  (the Text row, unit level), VIZ-057, VIZ-027, VIZ-060, VIZ-065, VIZ-066, VIZ-056 (import, unit
-  level), VIZ-054 (the renderer, unit level), VIZ-086.
+  (the Text row; in the browser from Part 3b), VIZ-057, VIZ-027, VIZ-060, VIZ-065, VIZ-066,
+  VIZ-056 (import, unit level; in the browser from Part 3b), VIZ-054 (the renderer; in the browser
+  from Part 3b), VIZ-067 and VIZ-069 (the gallery goldens, Part 3b), VIZ-086.
 - [T11](../../designs/technical/T11-postgres-schema.md): T11-015, T11-016 (the v4 → v5 and v5 → v6
   identity upcasts).
 - [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md),

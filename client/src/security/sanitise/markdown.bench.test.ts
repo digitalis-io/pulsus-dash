@@ -1,40 +1,18 @@
 /**
  * bench:markdown-render (report-only; plan #198 Part 2b §5; T24 §7): 50 distinct seeded 64 KiB
- * inputs, each prefixed with its index so that every LRU lookup misses. Prints the uncached p95
+ * inputs (`benchInputs.ts`), each prefixed with its index so that every LRU lookup misses. Prints the uncached p95
  * against the 16 ms budget and asserts that no lookup hit the memo. The time is not asserted.
  */
 import { describe, expect, it } from 'vitest';
+import { benchInput } from './benchInputs';
 import { memoStats, renderMarkdown } from './markdown';
 
 const RUNS = 50;
-const SIZE = 64 * 1024;
 const BUDGET_MS = 16;
-
-const PIECES = [
-  '# Service $env overview\n\n',
-  'Requests are **steady** and *latency* is fine; see [the board](/boards/b1?x=1) or ',
-  '[runbook](https://x.test/runbook). ',
-  'Use `rate(http_requests_total[5m])` for the rate.\n\n',
-  '- item one with [a link](/b)\n- item two\n- item three ![chart](/l.svg)\n\n',
-  '> A quote with <b>html</b> and a [bad](javascript:x) link.\n\n',
-  '```promql\nsum by (job) (up)\n```\n\n',
-  '1. first\n2. second\n\n',
-  'Plain text line that goes on for a while to make up a paragraph of ordinary prose.\n',
-];
-
-function input(i: number): string {
-  let s = `Run ${String(i)}\n\n`;
-  let k = i;
-  while (s.length < SIZE) {
-    s += PIECES[k % PIECES.length] ?? '';
-    k += 7;
-  }
-  return s.slice(0, SIZE);
-}
 
 describe('bench:markdown-render', () => {
   it('reports the uncached p95 of a 64 KiB render', () => {
-    const inputs = Array.from({ length: RUNS }, (_, i) => input(i));
+    const inputs = Array.from({ length: RUNS }, (_, i) => benchInput(i));
     const env = { vars: new Map([['env', 'prod']]), entity: null };
     const opts = { policy: 'board' as const, appOrigin: 'https://dash.test' };
     const before = memoStats();

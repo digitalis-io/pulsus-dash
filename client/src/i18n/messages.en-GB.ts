@@ -520,6 +520,9 @@ export const messages = {
   'gallery.intro':
     'Interim Canvas 2D charts on seeded synthetic data (seed {seed}). Development and stub builds only.',
   'gallery.line1': 'Request rate, 1 series',
+  'widgetGallery.title': 'Widget gallery',
+  'widgetGallery.intro':
+    'Text widgets on fixed content, with the board variable env = prod. Development and stub builds only.',
   'gallery.line50': 'Request latency, 50 series × 1 440 points',
   'gallery.gaps': 'Queue depth with gaps, 3 series',
   'gallery.line600': 'Pod memory, 600 series',
