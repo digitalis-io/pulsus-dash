@@ -8,9 +8,10 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import { galleryEntries } from '../src/dev/gallery.ts';
-import { GALLERY_FROM, GALLERY_TO, open } from './helpers.ts';
+import { GALLERY_FROM, GALLERY_TO, GALLERY_URL, open } from './helpers.ts';
 
-const PROBE_URL = '/t/demo/admin?engine=wasm&mode=t2&probe=1';
+/** The gallery loads the chart engine module (and so the probe); its own frames stay idle. */
+const PROBE_URL = `${GALLERY_URL}&engine=wasm&mode=t2&probe=1`;
 const HOUR = 3_600_000;
 
 interface Probe {
@@ -94,7 +95,10 @@ async function probeReady(page: Page, query = ''): Promise<void> {
   await page.waitForFunction(() => '__dashProbe' in window);
 }
 
-/** Runs the batches in the page: frames 0 and 1 are made first, the first batch at once. */
+/**
+ * Runs the batches in the page: frames 0 and 1 are made first and the first batch goes at once,
+ * before the worker reports them created; the rest follow their first summary.
+ */
 async function run(
   page: Page,
   batches: { batch: Op[]; wait: boolean }[],
@@ -113,12 +117,15 @@ async function run(
       const made = [0, 1].map(() =>
         p.frame({ spec, series, w: { fromMs: from, toMs: to }, size: [600, 300], dpr: 1 }),
       );
-      for (const { batch, wait } of batches) {
+      // The first batch before the worker has created the frames (held), the rest after.
+      const [first, ...rest] = batches;
+      for (const o of first?.batch ?? []) p.call(o.n, o.m, o.arg);
+      await Promise.all(made);
+      for (const { batch, wait } of rest) {
         for (const o of batch) p.call(o.n, o.m, o.arg);
         if (wait) await raf();
       }
       for (const o of final) p.call(o.n, o.m, o.arg);
-      await Promise.all(made);
       await Promise.all([p.settle(0), p.settle(1)]);
     },
     { batches, final, series, spec: SPEC, from: GALLERY_FROM, to: GALLERY_TO },
@@ -159,6 +166,8 @@ test.describe('e2e:shim-fuzz', () => {
     expect(r.decoded).toEqual(r.produced);
     expect(r.stats.coalesced).toBeGreaterThan(0);
     expect(r.stats.overflow).toBe(0);
+    // More than one ring's worth went through it.
+    expect(r.stats.publishedBytes).toBeGreaterThan(0x10000);
     for (const n of [0, 1]) {
       expect(r.last[n]).toMatchObject({ fromMs: GALLERY_FROM + n * 1000, toMs: GALLERY_TO });
       expect(r.drawn[n]).toEqual({ cssWidth: 640 + n, cssHeight: 320, dpr: 1 });

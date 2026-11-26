@@ -759,7 +759,8 @@ Without storage the flag lasts for the page only; a reload tries the engine agai
   (`__pulsus_engine_fault__:route|boot|worker`), and `ci:probe-absent` fails a release build that
   holds any of them.
 - The engine probe (`client/src/dev/engineProbe.ts`): a fault build opened with `?probe=1` (and
-  `?engine=wasm`) sets `window.__dashProbe`, which makes probe frames on canvases at (0, 0)
+  `?engine=wasm`) on a page that loads the chart engine (any page with a chart; `e2e:shim-fuzz`
+  uses the gallery) sets `window.__dashProbe`, which makes probe frames on canvases at (0, 0)
   (`frame`, numbered 0, 1, … in call order), drives them (`call(n, 'setSpec' | 'setData' |
   'setTimeWindow' | 'resize', arg)`), waits until a frame has nothing held or waiting and the
   worker applied and, at a non-zero size, presented its last record (`settle`), and reads the
@@ -808,9 +809,10 @@ Chromium projects of the engine web image:
 - `e2e:mode-matrix`, `e2e:engine-recovery` and the engine leg of `e2e:csp-violations`.
 - `e2e:shim-fuzz` (project `probe`: lavapipe, the probe build's BFF on port 4175, this spec only):
   two probe frames with the gallery's `line-50` data take 10⁴ seeded ops (resize, time window,
-  spec; batches of 1–2 000, the first before the frames are created); the worker's decoded log
-  must equal the adapter's produced log record for record, records must have been coalesced, none
-  dropped, and the last window and `drawn` must be the last calls'. Two more cases cross 2³²
+  spec; batches of 1–2 000, the first before the frames are created, the rest after their first
+  summary); the worker's decoded log must equal the adapter's produced log record for record, more
+  than one ring's worth must have passed, records must have been coalesced, none dropped, and the
+  last window and `drawn` must be the last calls'. Two more cases cross 2³²
   (`ringStart` 0xFFFF_F000) and wake an idle worker with one record (settled within 1 s).
 - `make engine-gpu-smoke` prints the adapter each project sees and whether it renders.
 
