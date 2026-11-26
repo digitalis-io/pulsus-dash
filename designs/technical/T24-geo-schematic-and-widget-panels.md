@@ -1269,7 +1269,7 @@ their Cc characters removed and are cut to 40 code points.
 ### 5.0 Board spec version order
 
 Each change below takes the **next free** board spec version when it is coded, with an upcaster
-from the version before it (the identity unless noted; [T11-016](T11-postgres-schema.md#t11-016--document-upcasters-are-golden-tested)).
+from the immediately preceding version (the identity unless noted; [T11-016](T11-postgres-schema.md#t11-016--document-upcasters-are-golden-tested)).
 This document names the versions by their change; the numbers in the last column hold only if the
 changes land in the order of the table. A fixture is named `v‹N›-‹change›.json` with its real
 number, and a gate ID keeps the label it was given (`unit:board-spec-geomap-v8` is the map-sync
@@ -1301,7 +1301,7 @@ below (errors are `board.options.‹…›`):
 | seconds, date | bool | `false`, `true` | clock | — |
 | countdown | absent or `{to: RFC 3339 with offset, label 1–64, after: 'countUp'\|'hide'}` | absent | clock | `countdown.invalid` |
 
-Go decides validity; the upcaster from the version before (the tags version if #215 lands first) is the identity
+Go decides validity; the upcaster from the immediately preceding version (the tags version, v4, now that #215 landed first) is the identity
 ([T11-016](T11-postgres-schema.md#t11-016--document-upcasters-are-golden-tested)); the fixtures are
 `v‹N›-widgets.json` (`v5-widgets.json` after the tags version) and `invalid.json`.
 
@@ -1457,7 +1457,7 @@ export function boardSnapshot(key: readonly unknown[], r: BoardPage | RefPage,
 
 ### 5.8 Board spec: the change-feed version (part B2; OpenAPI, Go, TS)
 
-The change-feed version is the next free version after the board-list version (§5.0, §5.5), with an identity upcaster (T11-016). `Vis.kind`
+The change-feed version is the next free version when it is coded (§5.0), with an identity upcaster from the immediately preceding version (T11-016); it depends on no other B1 version. `Vis.kind`
 adds `changeFeed` with the options below. Go decides validity; TS = Go on the fixtures
 `v‹N›-change-feed.json` and `invalid.json`. Other keys (`fieldConfig`, `thresholds`, `depth`, …) →
 `board.json.unknownKey`. Errors are `board.options.‹key›.…`.
@@ -1683,7 +1683,7 @@ export function validateGeoRows(s: GeoRowSet, th: boolean): FrameDataIssue | nul
 export function geoFrame(s: GeoRowSet, b: Basemap, seq: number): GeoFrame;
 ```
 
-**The geomap version** of the board spec is the next free version after the change-feed version (§5.0, §5.8), with an identity upcaster (T11-016).
+**The geomap version** of the board spec is the next free version when it is coded (§5.0), with an identity upcaster from the immediately preceding version (T11-016); it depends on no widget or list version.
 `Vis.kind` adds `geomap` with the options below. Go decides validity; TS = Go on the fixtures
 `v‹N›-geomap.json` and `invalid.json`. Errors are `board.options.‹key›.invalid` unless noted.
 `depth`, `tilt`, `projection`, `perspective`, `shadow` and `3d` → `board.json.unknownKey`
@@ -1704,7 +1704,7 @@ cannot move a head saved at the geomap version or later (`ErrSchemaTooNew`,
 | cluster, wheelZoom | bool | `true` | `board.json.type` |
 | view | null \| `GeoView` (ADR-0027 bounds) | null | `view.invalid` |
 
-**The map-sync version** (part E step 2) is the next free version after the geomap version (T11-016). Go decides validity;
+**The map-sync version** (part E step 2) is the next free version when it is coded, and depends on the geomap version (it extends the geomap options; §5.0, T11-016). Go decides validity;
 TS = Go on the fixture `v‹N›-geomap-sync.json`. The geomap options gain:
 
 | Key | Type / bounds | Default | Error |
@@ -1713,8 +1713,8 @@ TS = Go on the fixture `v‹N›-geomap-sync.json`. The geomap options gain:
 | boundsFilter | bool | `false` | `board.json.type` |
 
 `Vis` gains `legacyAuto?: true`, valid only with `kind: 'auto'` (else `board.vis.legacyAuto.invalid`;
-its use is T24-099). The upcaster from the geomap version to the map-sync version sets `legacyAuto: true` on every `auto` panel and changes
-nothing else. A map-sync save to a geomap-version server → 400, shown as "This server does not support map sync yet"
+its use is T24-099). Its upcaster from the immediately preceding version (whichever that is) sets `legacyAuto: true` on every `auto` panel and changes
+nothing else. A map-sync save to an older server → 400, shown as "This server does not support map sync yet"
 (`ErrSchemaTooNew`, as for the geomap version).
 
 ### 5.16 Geomap targets, mark list and rows (part E step 1b; `vis/geo/targets.ts`, `charts/geo/`, `vis/geo/rows.ts`)
@@ -1808,7 +1808,7 @@ export function importGeomap(src: unknown /* the panel's `options` */, hasThresh
 
 ## 6. Data & storage
 
-The widgets version of the board spec (§5.1) is stored as the board document is today; its upcaster from the version before is the identity
+The widgets version of the board spec (§5.1) is stored as the board document is today; its upcaster from the immediately preceding version is the identity
 (T11-016). There is no new table, route or storage: widgets fetch nothing and make only safe GETs
 (links and `local` images).
 
@@ -2004,7 +2004,7 @@ coordinates; the EU area; 20 warm-up and 200 timed runs) reports `applyArea`'s p
 | Link length (part E step 2) | Map pairs are evicted first; removals always succeed; other writers behave as today; a refused map write stays local, with a notice (§4.18, T24-096) |
 | A silent vis switch (part E step 2) | Stored `auto` panels are `legacyAuto` and keep their vis; only an edited-and-saved or new panel gets row 8, previewed first (T24-099) |
 | Generic `region` labels (part E step 2) | Rule 7 of §4.10 can pick a map for non-geographic regions; the unknown codes are disclosed and the user can pick another vis (persisted, VIZ-065) |
-| Spec versions (part E step 2) | the map-sync version; a geomap-version server's 400 → "This server does not support map sync yet" (§5.15) |
+| Spec versions (part E step 2) | the map-sync version; an older server's 400 → "This server does not support map sync yet" (§5.15) |
 
 ## 10. Testing
 
@@ -2654,7 +2654,7 @@ results  heatmap {cloud_region=eu-west-1|us-east-1} × le 0.1, +Inf → eu-west-
 | `unit:geo-area-consumers` | pages/board/BoardGeoArea.test.tsx | BD, P1 at EU; a logs panel, a text widget | P1, P2 unfiltered; P3, L filtered; logs "Map area not applied to log lines yet"; the widget unchanged; the chip's remove → `geo` gone (push); Clear map area → restored, focus: the filter bar; `geoData` loading → L `loading` | VIZ-047 |
 | `unit:geo-area-scope` | same, a stub BFF | a scoped response with k01 only | L shows k01 and counts only the returned rows; no request has `geo` or `map` | T12-018 |
 | `unit:pivot-context` (amended) | inspector/pivots.test.ts | C5: `f=env=prod`, `geo` effective; C6: its scope not a writer, then a writer again | C5: Explore "Filters not applied in Explore yet: env, map area"; logs "Not carried to logs: map area"; no `geo` in the href; C6: no map-area disclosure, then C5's lines back | T25-010 |
-| `unit:board-spec-geomap-v8` | boards/spec.test.ts, validate_test.go | `{}`; `sync: 'yes'`; `boundsFilter: 1`; `legacyAuto` on `line`; a geomap-version doc with `auto` and `line`; a map-sync save to a geomap-version stub | false defaults; `board.json.type`; `board.vis.legacyAuto.invalid`; the upcast marks only `auto`; 400 with the message; TS = Go | T24-096 |
+| `unit:board-spec-geomap-v8` | boards/spec.test.ts, validate_test.go | `{}`; `sync: 'yes'`; `boundsFilter: 1`; `legacyAuto` on `line`; a doc at the version before map-sync with `auto` and `line`; a map-sync save to a stub of the version before | false defaults; `board.json.type`; `board.vis.legacyAuto.invalid`; the upcast marks only `auto`; 400 with the message; TS = Go | T24-096 |
 | `e2e:geomap-sync` | e2e/geomap.spec.ts (Chromium) | a stub BFF; BD | drag P1 → P2 follows; EU → L 5 series; 3 moves, then real keys `page.keyboard.press('Alt+ArrowLeft')` ×3 and `('Alt+ArrowRight')` ×3: after each press the expected distinct URL and camera, the history index ±1 exactly, no second navigation; reload → the same views and area; axe clean | VIZ-047, INT-006 |
 | `bench:geo-area` | vis/geo/area.bench.ts | 5 000 series (4 000 `cloud_region` cycling gazetteer ids, 1 000 coordinates); EU; 20 warm-up, 200 timed | the p95 of `applyArea` (§7) | T05 §7.1 |
 
@@ -2687,12 +2687,12 @@ row8   A1 → geomap (8) · A2 → line (14) · A3 → geomap · A4 → geomap (
 | Test | File | Setup | Expected | Covers |
 |---|---|---|---|---|
 | `unit:autovis-table` (amended) | vis/autovis.test.ts | the row8 block | each vis and rule | VIZ-065 |
-| `unit:autovis-legacy` | boards/panelRun.test.ts, pages/board/PanelEditor.test.tsx | a geomap-version board: an `auto` panel over A1 | board: line (14); editor opened: preview "Auto (Map)", geomap; saved: `legacyAuto` gone, board geomap (8); a save of another panel or of the layout keeps it a line | VIZ-065, T24-099 |
-| `unit:autovis-logql` | boards/panelRun.test.ts, pages/board/PanelEditor.test.tsx | a LogQL `auto` panel, `sum by (cloud_region) (count_over_time({job="x"}[5m]))` answering a range result of 3 series eu-west-1, eu-west-2, us-east-1 (today's stream path); the same stored at the geomap version; a log-line answer | map-sync version: board geomap (8), label "Auto (Map)", preview geomap; geomap version (3 series): board line, label Line; editor preview geomap, "Auto (Map)"; cancel → line; save → geomap; log lines: today's stream view | T24-099 |
+| `unit:autovis-legacy` | boards/panelRun.test.ts, pages/board/PanelEditor.test.tsx | a board stored before the map-sync version: an `auto` panel over A1 | board: line (14); editor opened: preview "Auto (Map)", geomap; saved: `legacyAuto` gone, board geomap (8); a save of another panel or of the layout keeps it a line | VIZ-065, T24-099 |
+| `unit:autovis-logql` | boards/panelRun.test.ts, pages/board/PanelEditor.test.tsx | a LogQL `auto` panel, `sum by (cloud_region) (count_over_time({job="x"}[5m]))` answering a range result of 3 series eu-west-1, eu-west-2, us-east-1 (today's stream path); the same stored before the map-sync version; a log-line answer | at the map-sync version or later: board geomap (8), label "Auto (Map)", preview geomap; stored before map-sync (3 series): board line, label Line; editor preview geomap, "Auto (Map)"; cancel → line; save → geomap; log lines: today's stream view | T24-099 |
 | `unit:autovis-explore` | pages/explore/MetricsPage.test.tsx | A1 on Explore | line (14) | T24-099 |
 | `unit:import-geomap` | import/geomap.test.ts | M1–M14 | options and notes exactly; every output passes `validateBoardSpec` (TS) and `validate.go` | VIZ-060 |
 | `unit:import-geomap-fuzz` | same; tools/fixtures/geomap-fuzz.ts; validate_test.go | seed 184 (mulberry32); 500 documents; the §4.19 leaf paths sorted (UTF-16), each independently absent (p ½) or drawn uniformly from {null, true, false, 0, −1, 1.5, 100, 1e300, "", "x", "Value", "img/icons/marker/square.svg", [], {}, [1], {"a": 1}}; a drawn leaf creates its absent parents as objects (`layers[0]` as a one-element array); the generator writes `api/fixtures/import/geomap-fuzz.json` ([{src, options, notes}]) | TS: never throws, regenerating equals the committed file; TS and Go: every `options` valid; a hand-written TS case feeds `Infinity`, `-Infinity` and `NaN` at each numeric path (not representable in JSON), once in each mode: where the mode consumes the path, its malformed note and default; where the mode ignores it (size `min`/`max` in fixed mode, `fixed` in value mode, `view.lat`/`lon` outside `coords`, `view.zoom` outside `zero`/`coords`), no note | VIZ-060 |
-| `unit:editor-preview-legacy` | pages/board/PanelEditor.test.tsx | the geomap-version board's `auto` panel over A1, the editor open | the preview renders a geomap frame and the label "Auto (Map)"; the board panel behind still renders a line; cancel → no change; save → board geomap | T24-099 |
+| `unit:editor-preview-legacy` | pages/board/PanelEditor.test.tsx | the pre-map-sync board's `auto` panel over A1, the editor open | the preview renders a geomap frame and the label "Auto (Map)"; the board panel behind still renders a line; cancel → no change; save → board geomap | T24-099 |
 
 Every gate is in [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
 
@@ -2839,4 +2839,4 @@ None.
 | 1.4-rc | 2026-11-25 | #184 part E step 1b (geomap frame and interaction): the intro, §1, §2 (goals, non-goals; the part map marks step 1b) and §3; rules T24-088 to T24-095 (host and plan, rows, identity, camera and picking, selection and Inspector, mark list and keys, table, CSV and facts, states); T24-026 amended (the `csvCell` numeric exemption; `unit:list-table-csv` amended); §4.11 orders and coverage, §4.12 states, §4.13 Inspector targets, §4.14 columns; §5.14 the seam and host, §5.15 rows and board spec v7, §5.16 targets, mark list and rows; §6–§9; §10.4 and §10.5 tests and fixtures (code review r1: `unit:geo-inertia`); §11 issue E2; §12. [ADR-0027](../adr/0027-geomap-frame-seam.md); [T22-004](T22-value-categorical-and-table-panels.md#t22-004--colour-and-identity) (grouped spatial marks, JSON quoting, spatial overflow), [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) (`Coverage.geo`) and [T22-007](T22-value-categorical-and-table-panels.md#t22-007--click-selects-inspects-filters) amended; [T25](T25-inspector-and-pivots.md) gains the `geo` target and the in-request navigation stack |
 | 1.5-rc | 2026-11-25 | #173 Part 1 ([T22](T22-value-categorical-and-table-panels.md) I1): §5.7 `csvCell` is defined in `client/src/data/csv.ts`, shared by the panel tables, and re-exported by `widgets/lists/snapshot.ts` |
 | 1.6-rc | 2026-11-25 | #184 part E step 2 (2a: URL state, camera history, view sync and the map area; 2b: auto-vis row 8 and import): the intro, §1, §2 (goals, non-goals; the part map marks step 2) and §3; rules T24-096 to T24-099 (view state and history, sync, the map area, auto-vis row 8 and import); T24-088 amended (the input view of a non-local map is its URL entry); §4.15 the map area per result, §4.16 the writer per state, §4.17 sync and saved views, §4.18 the board URL store, budget and reads, §4.19 the geomap import; §5.15 board spec v8 (`sync`, `boundsFilter`, `legacyAuto`); §5.17 the URL store, codecs, area, roles, `hasGeoFields` and `importGeomap`; §6–§9; §10.6 tests and fixtures; §11 issues E3a and E3b; §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains `Coverage.area`; [T25-010](T25-inspector-and-pivots.md#t25-010--pivot-context) the map-area disclosure |
-| 1.7-rc | 2026-11-26 | #215 (part B1, I1): §5.5 splits the spec change: tags at the next free spec version in I1 (#215), with the client's validator; the `boardList` kind and options, Go and TS, in I2 (#216) after #198. T24-029 and §9: old binaries cannot move "a head saved at the tags version or later" (was "a v5 head"); §6 likewise. §10.1: fixture S adds "Ledger" `[finance, team:payments]`, `itest:board-find` adds the exact-tag and `q`+`tag` cases, the board-tag cases of `unit:board-spec-board-list` are in I1, the itest files are named, and `itest:board-tags-old-binary` runs by `make itest-old-binary` (local). §11: the I1 and I2 rows. New §5.0 (board spec version order): every spec change takes the next free version, with an upcaster from the version before; the versions are named by change (tags, widgets, board-list, change-feed, geomap, map-sync), with v4–v9 if they land in that order (tags v4 landed, so #198's widgets version is v5); §1, §3, §4, §5.1, §5.8, §5.15, §6, §9, §10 and §11 use the names, fixtures are `v‹N›-‹change›.json`, and gate IDs keep their labels |
+| 1.7-rc | 2026-11-26 | #215 (part B1, I1): §5.5 splits the spec change: tags at the next free spec version in I1 (#215), with the client's validator; the `boardList` kind and options, Go and TS, in I2 (#216) after #198. T24-029 and §9: old binaries cannot move "a head saved at the tags version or later" (was "a v5 head"); §6 likewise. §10.1: fixture S adds "Ledger" `[finance, team:payments]`, `itest:board-find` adds the exact-tag and `q`+`tag` cases, the board-tag cases of `unit:board-spec-board-list` are in I1, the itest files are named, and `itest:board-tags-old-binary` runs by `make itest-old-binary` (local). §11: the I1 and I2 rows. New §5.0 (board spec version order): every spec change takes the next free version, with an upcaster from the version before; the versions are named by change (tags, widgets, board-list, change-feed, geomap, map-sync), with v4–v9 if they land in that order (tags v4 landed, so #198's widgets version is v5); §1, §3, §4, §5.1, §5.8, §5.15, §6, §9, §10 and §11 use the names, fixtures are `v‹N›-‹change›.json`, and gate IDs keep their labels; every upcast is from the immediately preceding version, the change-feed and geomap versions depend on no other version and map-sync depends only on geomap, and the auto-vis tests and the import name "before the map-sync version" and "the map-sync version or later" |
