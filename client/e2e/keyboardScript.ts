@@ -209,12 +209,31 @@ export function script(page: Page, h: KeyboardHarness) {
       await press('Tab');
       if ((await h.focusName()) === 'link "Skip to main content"') await press('Enter');
     }
+    // A radio that is not its group's tab stop (a segmented control, #198 Part 3a): Tab reaches the
+    // group, and the arrow keys move within it.
+    const target = resolve(scope, key);
+    const inItsGroup = async (): Promise<boolean> =>
+      key.startsWith('radio ') &&
+      (await target.count()) > 0 &&
+      target.evaluate((t) => {
+        const group = t.closest('[role="radiogroup"]');
+        const a = document.activeElement;
+        return group !== null && a !== null && a !== t && group.contains(a);
+      });
     for (const [back, n] of [
       [false, 90],
       [true, 180],
     ] as const) {
       for (let i = 0; i <= n; i++) {
         if (await at()) return;
+        if (await inItsGroup()) {
+          for (const arrow of ['ArrowRight', 'ArrowLeft']) {
+            for (let j = 0; j < 8; j++) {
+              await press(arrow);
+              if (await at()) return;
+            }
+          }
+        }
         await press(back ? 'Shift+Tab' : 'Tab');
       }
     }
