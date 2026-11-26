@@ -1278,7 +1278,7 @@ gate whatever its number).
 | Name | Change | Issue | Number if landed in this order |
 |---|---|---|---|
 | tags version | `BoardSpec.tags` (§5.5) | #215 (I1), landed | v4 |
-| widgets version | `query` optional, `text`, `clock` (§5.1) | #198 (A1) | v5 (the next free version after tags) |
+| widgets version | `query` optional, `text`, `clock` (§5.1) | #198 (A1) | v5 if no other spec change lands first |
 | board-list version | `boardList` (§5.5) | #216 (I2), after #198 | v6 |
 | change-feed version | `changeFeed` (§5.8) | part B2 | v7 |
 | geomap version | `geomap` (§5.15) | part E step 1b | v8 |
@@ -1301,9 +1301,9 @@ below (errors are `board.options.‹…›`):
 | seconds, date | bool | `false`, `true` | clock | — |
 | countdown | absent or `{to: RFC 3339 with offset, label 1–64, after: 'countUp'\|'hide'}` | absent | clock | `countdown.invalid` |
 
-Go decides validity; the upcaster from the immediately preceding version (the tags version, v4, now that #215 landed first) is the identity
+Go decides validity; the upcaster from the immediately preceding version (the tags version, v4, unless another spec change lands first) is the identity
 ([T11-016](T11-postgres-schema.md#t11-016--document-upcasters-are-golden-tested)); the fixtures are
-`v‹N›-widgets.json` (`v5-widgets.json` after the tags version) and `invalid.json`.
+`v‹N›-widgets.json` (`v5-widgets.json` if no other spec change lands first) and `invalid.json`.
 
 `isWidgetPanel(p)` narrows `PanelSpec` and guards every `panel.query` read; `textOptions` and
 `clockOptions` fill the defaults; `PanelFrame` branches first to `<WidgetBody>`.
@@ -1391,7 +1391,7 @@ with an identity upcaster (T11-016):
 
 - **Tags**, in I1 (#215), Go and the client's validator together: `BoardSpec` gains `tags`
   (T24-029). The tags version is the version after the current one when I1 is coded (v4: it landed
-  before #198, whose widgets version is therefore v5); the client accepts and keeps `tags` (no editor yet). Fixtures:
+  before #198, whose widgets version is v5 if no other spec change lands first); the client accepts and keeps `tags` (no editor yet). Fixtures:
   `v‹N›-board-tags.json` and the tag rows of `invalid.json`, TS = Go.
 - **`Vis.kind` `boardList`** with the options below, Go and TS, in I2 (#216) after #198 (a
   `boardList` panel has no `query`, and "query optional" is #198's version). Go decides validity;
@@ -2706,7 +2706,7 @@ Implementation issues, filed after this design merges:
 | A2 — Clock | §5.3, editor, gallery `widget-clock-1`, `widget-clock-4`, `widget-clock-countdown` | A1 | T24-010–015, T24-017 |
 | A3 — Image proxy | T18-014 route, rewrite | T18 §4.9 egress guard | T18-014 |
 
-A1 needs #173 (board spec v3) and ships the widgets version, the next free version (v5 after #215's tags version). The implementation writes
+A1 needs #173 (board spec v3) and ships the widgets version, the next free version (v5 if no other spec change lands first after #215's tags version). The implementation writes
 `docs/client/widgets.md` (behaviour, Markdown, URLs, import, Clock) and updates
 `docs/client/boards.md`, `docs/user/boards.md`, `docs/server/boards-api.md` and
 `docs/client/supply-chain.md` (widget panels, the widgets-version keys, the `markdown` dependencies).
@@ -2839,4 +2839,4 @@ None.
 | 1.4-rc | 2026-11-25 | #184 part E step 1b (geomap frame and interaction): the intro, §1, §2 (goals, non-goals; the part map marks step 1b) and §3; rules T24-088 to T24-095 (host and plan, rows, identity, camera and picking, selection and Inspector, mark list and keys, table, CSV and facts, states); T24-026 amended (the `csvCell` numeric exemption; `unit:list-table-csv` amended); §4.11 orders and coverage, §4.12 states, §4.13 Inspector targets, §4.14 columns; §5.14 the seam and host, §5.15 rows and board spec v7, §5.16 targets, mark list and rows; §6–§9; §10.4 and §10.5 tests and fixtures (code review r1: `unit:geo-inertia`); §11 issue E2; §12. [ADR-0027](../adr/0027-geomap-frame-seam.md); [T22-004](T22-value-categorical-and-table-panels.md#t22-004--colour-and-identity) (grouped spatial marks, JSON quoting, spatial overflow), [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) (`Coverage.geo`) and [T22-007](T22-value-categorical-and-table-panels.md#t22-007--click-selects-inspects-filters) amended; [T25](T25-inspector-and-pivots.md) gains the `geo` target and the in-request navigation stack |
 | 1.5-rc | 2026-11-25 | #173 Part 1 ([T22](T22-value-categorical-and-table-panels.md) I1): §5.7 `csvCell` is defined in `client/src/data/csv.ts`, shared by the panel tables, and re-exported by `widgets/lists/snapshot.ts` |
 | 1.6-rc | 2026-11-25 | #184 part E step 2 (2a: URL state, camera history, view sync and the map area; 2b: auto-vis row 8 and import): the intro, §1, §2 (goals, non-goals; the part map marks step 2) and §3; rules T24-096 to T24-099 (view state and history, sync, the map area, auto-vis row 8 and import); T24-088 amended (the input view of a non-local map is its URL entry); §4.15 the map area per result, §4.16 the writer per state, §4.17 sync and saved views, §4.18 the board URL store, budget and reads, §4.19 the geomap import; §5.15 board spec v8 (`sync`, `boundsFilter`, `legacyAuto`); §5.17 the URL store, codecs, area, roles, `hasGeoFields` and `importGeomap`; §6–§9; §10.6 tests and fixtures; §11 issues E3a and E3b; §12. [T22-006](T22-value-categorical-and-table-panels.md#t22-006--caps-keep-the-signal) gains `Coverage.area`; [T25-010](T25-inspector-and-pivots.md#t25-010--pivot-context) the map-area disclosure |
-| 1.7-rc | 2026-11-26 | #215 (part B1, I1): §5.5 splits the spec change: tags at the next free spec version in I1 (#215), with the client's validator; the `boardList` kind and options, Go and TS, in I2 (#216) after #198. T24-029 and §9: old binaries cannot move "a head saved at the tags version or later" (was "a v5 head"); §6 likewise. §10.1: fixture S adds "Ledger" `[finance, team:payments]`, `itest:board-find` adds the exact-tag and `q`+`tag` cases, the board-tag cases of `unit:board-spec-board-list` are in I1, the itest files are named, and `itest:board-tags-old-binary` runs by `make itest-old-binary` (local). §11: the I1 and I2 rows. New §5.0 (board spec version order): every spec change takes the next free version, with an upcaster from the version before; the versions are named by change (tags, widgets, board-list, change-feed, geomap, map-sync), with v4–v9 if they land in that order (tags v4 landed, so #198's widgets version is v5); §1, §3, §4, §5.1, §5.8, §5.15, §6, §9, §10 and §11 use the names, fixtures are `v‹N›-‹change›.json`, and gate IDs keep their labels; every upcast is from the immediately preceding version, the change-feed and geomap versions depend on no other version and map-sync depends only on geomap, and the auto-vis tests and the import name "before the map-sync version" and "the map-sync version or later" |
+| 1.7-rc | 2026-11-26 | #215 (part B1, I1): §5.5 splits the spec change: tags at the next free spec version in I1 (#215), with the client's validator; the `boardList` kind and options, Go and TS, in I2 (#216) after #198. T24-029 and §9: old binaries cannot move "a head saved at the tags version or later" (was "a v5 head"); §6 likewise. §10.1: fixture S adds "Ledger" `[finance, team:payments]`, `itest:board-find` adds the exact-tag and `q`+`tag` cases, the board-tag cases of `unit:board-spec-board-list` are in I1, the itest files are named, and `itest:board-tags-old-binary` runs by `make itest-old-binary` (local). §11: the I1 and I2 rows. New §5.0 (board spec version order): every spec change takes the next free version, with an upcaster from the version before; the versions are named by change (tags, widgets, board-list, change-feed, geomap, map-sync), with v4–v9 if they land in that order (tags v4 landed, so #198's widgets version is v5); §1, §3, §4, §5.1, §5.8, §5.15, §6, §9, §10 and §11 use the names, fixtures are `v‹N›-‹change›.json`, and gate IDs keep their labels; every upcast is from the immediately preceding version, the change-feed and geomap versions depend on no other version and map-sync depends only on geomap, and the auto-vis tests and the import name "before the map-sync version" and "the map-sync version or later"; the widgets version is v5 only if no other spec change lands first |
