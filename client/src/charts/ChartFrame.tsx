@@ -19,6 +19,10 @@
  * 24 × 24 px and kept inside the frame (T08-010), whose tooltip and accessible name list its events
  * with their kind and time; the summary label counts the events in view.
  *
+ * Bar chart (ADR-0028, plan #173 Part 2 §4.4): no crosshair slider and no key target; the engine's
+ * `mark` shows `MarkTooltip` beside the bar, its `pick` goes to `onPick`, and the summary label
+ * counts the bars. The coverage meter (`CategoryChart`) replaces the truncation notice.
+ *
  * Readiness (#90, ADR-0019): the caller's `pending` shows over the frame until the engine reports,
  * with `drawn`, a complete draw at the size last applied; every resize, kind change and new frame
  * resets it. A new `fill` frame is sized at once from the caller's `sizeMemo` (the host's last
@@ -44,6 +48,7 @@ import type {
   FrameData,
   FrameSummary,
   HoverEvent,
+  MarkEvent,
   PickEvent,
   PlotRect,
   ValueRange,
@@ -64,12 +69,14 @@ import { size, space } from '../styles/tokens';
 import { useResolvedTheme } from '../theme/useResolvedTheme';
 import styles from './ChartFrame.module.css';
 import { ChartTooltip } from './ChartTooltip';
+import { MarkTooltip } from './MarkTooltip';
 import {
   crosshairText,
   eventText,
   issueText,
   sortedRows,
   summaryLabel,
+  tooltipLeft,
   valueUnit,
 } from './chartText';
 import { hoverItemOf, statTarget, targetOf } from './inspectTarget';
@@ -230,7 +237,6 @@ export function ChartFrame({
   onEmptyClick,
   onPick,
 }: ChartFrameProps) {
-  void onPick;
   const engine = useContext(ChartEngineContext);
   const { window: win, dispatch } = useTimeContext();
   const tz = useTimeZone();
@@ -242,6 +248,9 @@ export function ChartFrame({
   );
   const { fromMs, toMs } = win;
   const isStat = spec.kind === 'stat';
+  // A bar chart has no crosshair: its bars report `mark` and `pick` (ADR-0028).
+  const isBar = spec.kind === 'barchart';
+  const noCrosshair = isStat || isBar;
 
   // The value-axis pin (#93): a kind or unit change drops it. Clearing it during render (React's
   // "adjust state during render") re-runs the render with no pin before any effect or paint, so a
@@ -278,6 +287,7 @@ export function ChartFrame({
     events,
     onInspect,
     onEmptyClick,
+    onPick,
   });
   useLayoutEffect(() => {
     latest.current = {
@@ -293,6 +303,7 @@ export function ChartFrame({
       events,
       onInspect,
       onEmptyClick,
+      onPick,
     };
   });
   // The page selection (T25-006): every frame draws it, the source included.
@@ -301,6 +312,8 @@ export function ChartFrame({
 
   const [summary, setSummary] = useState<FrameSummary | null>(null);
   const [{ hover, selected }, setHoverState] = useState<HoverState>({ hover: null, selected: 0 });
+  const [mark, setMark] = useState<MarkEvent | null>(null);
+  const markRef = useRef<HTMLDivElement>(null);
   const [unsupported, setUnsupported] = useState(false);
   const ownSize = useRef<FrameSize | null>(null);
   const memo = sizeMemo ?? ownSize;
@@ -326,7 +339,7 @@ export function ChartFrame({
     try {
       frame = engine.createFrame(canvas, {
         timeZone: tz,
-        keyTarget: isStat ? null : sliderRef.current,
+        keyTarget: noCrosshair ? null : sliderRef.current,
         id,
       });
     } catch (e) {
@@ -369,6 +382,12 @@ export function ChartFrame({
       }),
       frame.on('hover', (h) => {
         setHoverState({ hover: h, selected: 0 });
+      }),
+      frame.on('mark', (m) => {
+        setMark(m);
+      }),
+      frame.on('pick', (e) => {
+        latest.current.onPick?.(e);
       }),
       frame.on('brush', (b) => {
         const d = latest.current.dispatch;
@@ -464,7 +483,7 @@ export function ChartFrame({
       canvasRef.current = null;
       setDrawnTo(false, false);
     };
-  }, [engine, tz, isStat, fill, memo]);
+  }, [engine, tz, noCrosshair, fill, memo]);
 
   useEffect(() => {
     // A kind change on a kept frame clears its canvas (the engine), so it is not drawn.
@@ -506,11 +525,18 @@ export function ChartFrame({
     const tip = tooltipRef.current;
     const host = hostRef.current;
     if (tip === null || host === null || hover === null) return;
-    const width = tip.offsetWidth;
-    let left = hover.xCss + space['3'];
-    if (left + width > host.clientWidth) left = hover.xCss - space['3'] - width;
+    const left = tooltipLeft(hover.xCss, tip.offsetWidth, host.clientWidth);
     tip.style.translate = `${px(left)} ${px(summary?.plot.y ?? 0)}`;
   }, [hover, summary, selected]);
+
+  // The bar chart's tooltip beside the marked bar, centred on its band (CSSOM, T18-004).
+  useLayoutEffect(() => {
+    const tip = markRef.current;
+    const host = hostRef.current;
+    if (tip === null || host === null || mark === null) return;
+    const left = tooltipLeft(mark.xCss, tip.offsetWidth, host.clientWidth);
+    tip.style.translate = `${px(left)} ${px(Math.max(0, mark.yCss - tip.offsetHeight / 2))}`;
+  }, [mark]);
 
   // The crosshair slider covers the plot; pointer input passes through to the canvas.
   useLayoutEffect(() => {
@@ -569,7 +595,7 @@ export function ChartFrame({
       data-selection-keys={selection === null ? '' : selection.keys.join(',')}
       data-plot={plot === null ? undefined : [plot.x, plot.y, plot.width, plot.height].join(',')}
     >
-      {!isStat && (
+      {!noCrosshair && (
         <div
           ref={sliderRef}
           role="slider"
@@ -597,7 +623,20 @@ export function ChartFrame({
           }}
         />
       )}
-      {!isStat && (
+      {isBar && (
+        <MarkTooltip
+          ref={markRef}
+          mark={mark}
+          row={
+            mark === null || frameData.kind !== 'categories'
+              ? undefined
+              : frameData.categories.find((r) => r.key === mark.key)
+          }
+          unit={spec.unit}
+          ghost={spec.ghost}
+        />
+      )}
+      {!noCrosshair && (
         <ChartTooltip
           ref={tooltipRef}
           hover={hover}
@@ -638,7 +677,7 @@ export function ChartFrame({
           </Button>
         </div>
       )}
-      {summary !== null && summary.seriesShown < summary.seriesTotal && (
+      {!isBar && summary !== null && summary.seriesShown < summary.seriesTotal && (
         <p className={cx(styles['notice'])} role="status">
           {t('chart.truncated', { shown: summary.seriesShown, total: summary.seriesTotal })}
         </p>

@@ -46,7 +46,7 @@ describe('meter', () => {
     const onNarrow = vi.fn();
     render(<CoverageMeter coverage={cov(run({ truncated: true }))} onNarrow={onNarrow} />);
     await user.click(screen.getByRole('button', { name: 'Coverage: truncated' }));
-    await user.click(await screen.findByRole('button', { name: 'Narrow' }));
+    await user.click(await screen.findByRole('button', { name: 'Narrow the time range' }));
     expect(onNarrow).toHaveBeenCalledTimes(1);
   });
 
@@ -57,7 +57,7 @@ describe('meter', () => {
     await user.click(screen.getByRole('button', { name: 'Coverage: baseline truncated' }));
     expect(await screen.findByText('Baseline (shifted window)')).toBeInTheDocument();
     expect(screen.queryByText('This query')).toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Narrow' }));
+    await user.click(screen.getByRole('button', { name: 'Narrow the time range' }));
     expect(onNarrow).toHaveBeenCalledTimes(1);
   });
 

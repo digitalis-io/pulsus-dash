@@ -1,0 +1,79 @@
+/* A bar chart in a measured cell (plan #173 Part 2 §4.1): the cell, the notes and the meter. */
+.root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+.cell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.tooSmall,
+.note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-tight);
+}
+
+.tooSmall {
+  padding: var(--space-2);
+}
+
+/* One line under the cell: the meter, then the hidden-labels note; never taller than a control. */
+.under {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  align-items: center;
+  height: var(--size-control);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.meter {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+}
+
+.note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meterText {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meterButton {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meterPopover {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.meterHeading {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}

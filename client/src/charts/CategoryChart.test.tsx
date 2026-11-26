@@ -109,7 +109,7 @@ describe('unit:barchart-plan (CategoryChart)', () => {
     const f = lastFrame(engine);
     const before = f.calls.filter((c) => c.method === 'setData').length;
     const data = f.last('setData')?.[0];
-    size(610, 245);
+    size(610, 241);
     expect(f.calls.filter((c) => c.method === 'setData')).toHaveLength(before);
     expect(f.last('setData')?.[0]).toBe(data);
     expect(f.last('setSpec')?.[0]).toMatchObject({ kind: 'barchart', title: 'Versions' });
