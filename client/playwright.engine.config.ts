@@ -10,7 +10,9 @@
  * `e2e:engine-camera` (plan #68 C2a2) runs on `lavapipe` (gated) and `swiftshader` (report-only
  * with the WebGPU leg) against the fault build with `?probe=1`; `bench:shim-input-cost` runs with
  * `e2e:shim-fuzz` in `probe`, report-only. `e2e:engine-layer` (plan #68 C2c1) runs as
- * `e2e:engine-camera` does.
+ * `e2e:engine-camera` does. `e2e:engine-selection` (plan #68 C2c2) too, its S11 in `probe`; the
+ * engine leg of `e2e:selection-sources` (`inspector.spec.ts`) runs on `lavapipe` against the
+ * http-mode BFF (port 4174).
  */
 import { defineConfig, devices } from '@playwright/test';
 
@@ -40,8 +42,10 @@ export default defineConfig({
     'engine-camera.spec.ts',
     'engine-hover.spec.ts',
     'engine-layer.spec.ts',
+    'engine-selection.spec.ts',
+    'inspector.spec.ts',
   ],
-  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera|e2e:engine-hover|e2e:engine-layer/,
+  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera|e2e:engine-hover|e2e:engine-layer|e2e:engine-selection|selection-sources \(engine\)/,
   retries: 0,
   workers: 2,
   reporter: [['list'], ['./e2e/engineLegsReporter.ts']],
@@ -80,7 +84,7 @@ export default defineConfig({
     // gated tier.
     {
       name: 'probe',
-      testMatch: ['engine-shim-fuzz.spec.ts', 'engine-hover.spec.ts'],
+      testMatch: ['engine-shim-fuzz.spec.ts', 'engine-hover.spec.ts', 'engine-selection.spec.ts'],
       use: {
         ...devices['Desktop Chrome'],
         viewport,
@@ -102,6 +106,13 @@ export default defineConfig({
       command: 'tools/e2e/serve.sh stub 4173',
       cwd: '..',
       url: 'http://localhost:4173/healthz',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command: 'tools/e2e/serve.sh http 4174',
+      cwd: '..',
+      url: 'http://localhost:4174/healthz',
       reuseExistingServer: false,
       timeout: 120_000,
     },

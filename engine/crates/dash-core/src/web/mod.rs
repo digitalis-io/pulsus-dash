@@ -228,6 +228,17 @@ pub fn frame_set_events(id: u32, at_ms: Vec<f64>) {
     });
 }
 
+/// The page selection (plan #68 C2c2 §3.1): its keys (only 16 lower-case hex digits can match a
+/// series key), and its interval; a layer input, so the frame is rebuilt.
+#[wasm_bindgen]
+pub fn frame_set_selection(
+    _id: u32,
+    _keys: Vec<String>,
+    _from_ms: Option<f64>,
+    _to_ms: Option<f64>,
+) {
+}
+
 #[wasm_bindgen]
 pub fn frame_data_begin(id: u32) {
     with(|e| e.frames.data_begin(id));
@@ -358,6 +369,21 @@ pub fn engine_probe_unfreeze(id: u32) {
     with(|e| {
         if e.freeze.remove(&id).is_some() && e.gpus.contains_key(&id) {
             e.dirty.insert(id);
+        }
+    });
+}
+
+/// The probe build (plan #68 C2c2 S11): every frame's renderer and surface configuration are
+/// dropped and the frames redrawn, as the same-tier restore after a device loss does, so each
+/// renderer (and its dim layer) is made again.
+#[cfg(feature = "probe")]
+#[wasm_bindgen]
+pub fn engine_probe_renew() {
+    with(|e| {
+        for (id, fg) in e.gpus.iter_mut() {
+            fg.renderer = None;
+            fg.config = None;
+            e.dirty.insert(*id);
         }
     });
 }

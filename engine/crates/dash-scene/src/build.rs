@@ -182,6 +182,7 @@ pub fn build_frame(v: &Viewport) -> Built {
             axis: (m.ku as f32, m.ou as f32),
             colour_slots,
             lanes: None,
+            emphasis: None,
             width_css: dash_tokens::size::CHART_LINE,
             far: is_far(&enc, chunk.finite),
         });

@@ -147,6 +147,9 @@ class Canvas2DFrame implements ChartFrame {
   private readonly ctx: Ctx2D;
   private readonly layer: HTMLCanvasElement;
   private readonly layerCtx: Ctx2D;
+  /** The dim layer's scratch canvas (plan #68 C2c2 §1, ADR-0032): 0×0 unless a selection dims. */
+  private readonly scratch: HTMLCanvasElement;
+  private readonly scratchCtx: Ctx2D;
   private spec: VisSpec | null = null;
   private data: FrameData | null = null;
   /** The last `setEvents` (ADR-0023); [] = none. */
@@ -186,6 +189,12 @@ class Canvas2DFrame implements ChartFrame {
     const layerCtx = r.contextOf(this.layer);
     if (layerCtx === null) throw new ChartUnsupportedError('no 2D context for the layer');
     this.layerCtx = layerCtx;
+    this.scratch = r.createCanvas();
+    const scratchCtx = r.contextOf(this.scratch);
+    if (scratchCtx === null) throw new ChartUnsupportedError('no 2D context for the dim layer');
+    this.scratchCtx = scratchCtx;
+    this.scratch.width = 0;
+    this.scratch.height = 0;
     const hooks: BarHooks = {
       down: (e, p) => this.bar.down(e, p, this.barPick()),
       move: (e, p) => {
@@ -346,7 +355,7 @@ class Canvas2DFrame implements ChartFrame {
     // No commit after dispose: the controller drops the gesture and its timers.
     this.ctl.dispose();
     this.listeners.clear();
-    for (const c of [this.canvas, this.layer]) {
+    for (const c of [this.canvas, this.layer, this.scratch]) {
       c.width = 0;
       c.height = 0;
     }

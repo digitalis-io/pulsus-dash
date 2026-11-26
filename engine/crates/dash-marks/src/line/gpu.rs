@@ -293,6 +293,7 @@ impl<'a> LineRef<'a> {
                 lanes,
                 width_css,
                 far,
+                emphasis: _,
             } => Some(Self {
                 chunk,
                 series,

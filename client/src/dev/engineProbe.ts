@@ -7,7 +7,8 @@
  * | Member | What |
  * |---|---|
  * | `frame(o)` | a probe frame on a canvas at (0, 0): spec, data, window and size; resolves with its number (0, 1, … in call order) at its first `a11y`. Calls before the frame exists wait in order |
- * | `call(n, m, arg)` | `setSpec`, `setData` (probe series), `setTimeWindow`, `resize` (`[w, h, dpr]`) or `setEvents` (event markers, plan #68 C2c1) |
+ * | `call(n, m, arg)` | `setSpec`, `setData` (probe series), `setTimeWindow`, `resize` (`[w, h, dpr]`), `setEvents` (event markers, plan #68 C2c1) or `setSelection` (a `FrameSelection` or `null`, plan #68 C2c2) |
+ * | `frame2d(o)` | the same inputs on a Canvas 2D frame (`Canvas2DEngine`, plan #68 C2c2 S10), its number in the same list; `settle` waits two animation frames for it |
  * | `settle(n)` | resolves when nothing is held or unpublished, the worker applied every published record and, at a non-zero size, presented the last one (`WasmFrame.settled`) |
  * | `last(n)`, `drawn(n)` | the last `a11y` summary; the `drawn` events (the last 100) |
  * | `idle()`, `counters()`, `stats()` | the worker's idle word; head and tail (`>>> 0`); coalesced, `INPUT_OVERFLOW`, bytes published |
@@ -21,7 +22,10 @@
  * | `key(n, key)` | a `keydown` on the frame's canvas, its own key target (`tabindex=0`); returns `defaultPrevented` |
  * | `flush(n)` | `ControlledFrame.flush()`: the batched Camera and Overlay go out now |
  * | `freeze(n, seq)`, `frozen(n)`, `unfreeze(n)` | the probe build: after its first completed presentation with seq ≥ `seq` the worker presents nothing for the frame; `frozen` resolves with that presentation's `drawn` and seq |
+ * | `renew()` | the probe build: every frame's renderer and surface made again, the frames redrawn (plan #68 C2c2 S11, the same-tier restore after a device loss) |
  * | `stats().bad`, `stats().selects` | `INPUT_BAD`; Select records the ring took |
+ *
+ * A frame's canvas is at (0, `o.top ?? 0`) CSS px.
  *
  * Probe frames are `ControlledFrame`s: the camera controller runs on them as on the page's engine
  * frames (ADR-0030), so the calls' `setTimeWindow` goes through it.
@@ -30,14 +34,17 @@ import type {
   BrushEvent,
   CommitEvent,
   DrawnEvent,
+  ChartFrame,
   EventMarker,
   FrameData,
+  FrameSelection,
   FrameSummary,
   HoverEvent,
   SelectEvent,
   TimeWindow,
   VisSpec,
 } from '../engine/api';
+import { Canvas2DEngine } from '../engine/canvas2d/Canvas2DEngine';
 import { ControlledFrame } from '../engine/controlled';
 import type { Backend, EngineProbe, ProbeHost } from '../engine/wasm/engine';
 import { WasmFrame } from '../engine/wasm/frame';
@@ -55,9 +62,12 @@ export interface ProbeFrame {
   readonly w: TimeWindow;
   readonly size: readonly [number, number];
   readonly dpr?: number;
+  /** The canvas's top, CSS px (default 0). */
+  readonly top?: number;
 }
 
-export type ProbeCall = 'setSpec' | 'setData' | 'setTimeWindow' | 'resize' | 'setEvents';
+export type ProbeCall =
+  'setSpec' | 'setData' | 'setTimeWindow' | 'resize' | 'setEvents' | 'setSelection';
 
 /** A wheel as `test/engineHarness.ts` builds it. */
 export interface ProbeWheel {
@@ -81,6 +91,8 @@ export interface ProbePointer {
 
 export interface DashProbe {
   frame(o: ProbeFrame): Promise<number>;
+  /** The same inputs on a Canvas 2D frame (plan #68 C2c2 S10): its number at its first `a11y`. */
+  frame2d(o: ProbeFrame): Promise<number>;
   call(n: number, m: ProbeCall, arg: unknown): void;
   settle(n: number): Promise<void>;
   last(n: number): FrameSummary | null;
@@ -122,11 +134,15 @@ export interface DashProbe {
   /** That presentation's `drawn` and seq. */
   frozen(n: number): Promise<DrawnEvent & { seq: number }>;
   unfreeze(n: number): void;
+  /** The probe build (plan #68 C2c2 S11): every frame's renderer made again, as after a loss. */
+  renew(): void;
 }
 
 interface Entry {
   /** The controlled frame the calls and DOM events drive, and its engine frame. */
   frame: ControlledFrame | null;
+  /** A Canvas 2D frame (`frame2d`) instead. */
+  chart: ChartFrame | null;
   inner: WasmFrame | null;
   canvas: HTMLCanvasElement | null;
   readonly queue: [ProbeCall, unknown][];
@@ -159,7 +175,7 @@ function data(series: readonly ProbeSeries[]): FrameData {
   };
 }
 
-function apply(f: ControlledFrame, m: ProbeCall, arg: unknown): void {
+function apply(f: ChartFrame, m: ProbeCall, arg: unknown): void {
   switch (m) {
     case 'setSpec':
       f.setSpec(arg as VisSpec);
@@ -178,8 +194,21 @@ function apply(f: ControlledFrame, m: ProbeCall, arg: unknown): void {
     case 'setEvents':
       f.setEvents(arg as readonly EventMarker[]);
       return;
+    case 'setSelection':
+      f.setSelection(arg as FrameSelection | null);
+      return;
   }
 }
+
+/** Two animation frames: a Canvas 2D frame has drawn what it was given. */
+const frames2 = (): Promise<void> =>
+  new Promise((r) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        r();
+      });
+    });
+  });
 
 export function createProbe(o: {
   readonly backend: () => Promise<Backend>;
@@ -233,7 +262,7 @@ export function createProbe(o: {
   ): void => {
     const [w, h] = f.size;
     const canvas = document.createElement('canvas');
-    canvas.style.cssText = `position:fixed;left:0;top:0;width:${String(w)}px;height:${String(h)}px;z-index:2147483647`;
+    canvas.style.cssText = `position:fixed;left:0;top:${String(f.top ?? 0)}px;width:${String(w)}px;height:${String(h)}px;z-index:2147483647`;
     // Its own key target (plan #68 C2b §3.4): `key(n, …)` drives the keyboard crosshair.
     canvas.tabIndex = 0;
     document.body.append(canvas);
@@ -273,6 +302,7 @@ export function createProbe(o: {
   };
   const blank = (): Entry => ({
     frame: null,
+    chart: null,
     inner: null,
     canvas: null,
     queue: [],
@@ -306,6 +336,38 @@ export function createProbe(o: {
           }),
       );
     },
+    frame2d(f) {
+      const n = entries.length;
+      const e = blank();
+      entries.push(e);
+      const [w, h] = f.size;
+      const canvas = document.createElement('canvas');
+      canvas.style.cssText = `position:fixed;left:0;top:${String(f.top ?? 0)}px;width:${String(w)}px;height:${String(h)}px;z-index:2147483647`;
+      document.body.append(canvas);
+      const chart = new Canvas2DEngine().createFrame(canvas, {
+        timeZone: 'UTC',
+        keyTarget: canvas,
+        id: `probe-2d-${String(n)}`,
+      });
+      e.chart = chart;
+      e.canvas = canvas;
+      chart.on('hover', (x) => e.hovers.push(x));
+      chart.on('drawn', (d) => {
+        e.drawn.push(d);
+        if (e.drawn.length > KEEP_DRAWN) e.drawn.shift();
+      });
+      return new Promise<number>((resolve) => {
+        chart.on('a11y', (s) => {
+          const first = e.last === null;
+          e.last = s;
+          if (first) resolve(n);
+        });
+        chart.setSpec(f.spec);
+        chart.setData(data(f.series));
+        chart.setTimeWindow(f.w);
+        chart.resize(w, h, f.dpr ?? 1);
+      });
+    },
     fresh(f) {
       const e = blank();
       return o.backend().then(
@@ -321,11 +383,13 @@ export function createProbe(o: {
     },
     call(n, m, arg) {
       const e = entry(n);
-      if (e.frame === null) e.queue.push([m, arg]);
+      if (e.chart !== null) apply(e.chart, m, arg);
+      else if (e.frame === null) e.queue.push([m, arg]);
       else apply(e.frame, m, arg);
     },
     settle(n) {
       const e = entry(n);
+      if (e.chart !== null) return frames2();
       // The batched Camera and Overlay of this task go out first (plan #68 C2b §4.1).
       e.frame?.flush();
       const t0 = performance.now();
@@ -452,6 +516,9 @@ export function createProbe(o: {
         };
         poll();
       });
+    },
+    renew() {
+      o.host()?.renew();
     },
     unfreeze(n) {
       const e = entry(n);

@@ -150,6 +150,8 @@ export class WasmFrame implements EngineFrame {
   private kind: VisSpec['kind'] = 'line';
   /** The last `setEvents` array (plan #68 C2c1 §3.3): a new array is sent, the same one is not. */
   private events: readonly EventMarker[] | null = null;
+  /** The last selection posted (plan #68 C2c2 §3.1); `undefined` before the first call. */
+  private selection: FrameSelection | null | undefined = undefined;
   /** The last completed presentation's stage, and its listeners (plan #68 C2a2 §3.3). */
   private stageNow: StageModel | null = null;
   private readonly stageCbs = new Set<(s: StageModel | null) => void>();
@@ -241,8 +243,9 @@ export class WasmFrame implements EngineFrame {
   }
 
   /** Kept by the routing frame; drawn from C2 on. */
-  setSelection(): void {
-    // Not sent until C2.
+  setSelection(sel: FrameSelection | null): void {
+    // Kept, not sent yet (plan #68 C2c2 test-first stub).
+    this.selection = sel;
   }
 
   resize(cssWidth: number, cssHeight: number, dpr: number): void {

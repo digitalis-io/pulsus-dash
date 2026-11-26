@@ -393,3 +393,237 @@ export function layerRows(
     frames: c.sizes.map(([w, h, dpr]) => frameOf(s, c, win, w, h, dpr)),
   }));
 }
+
+/** What the `selection.json` rows use of the client (plan #68 C2c2 §5). */
+interface SelectionSources {
+  matchedKeys: (sel: unknown, own: readonly string[]) => ReadonlySet<string> | null;
+  size: Record<string, number>;
+}
+
+interface Sel {
+  keys: string[];
+  fromMs: number | null;
+  toMs: number | null;
+}
+
+/**
+ * A recording context for the selection rows: the `selection`-coloured `fillRect`s (the band) and
+ * every stroke with its colour, width, alpha, first point and canvas (`layer` or `scratch`).
+ */
+function selectionCtx(
+  where: string,
+  log: { where: string; colour: string; width: number; alpha: number; y0: number }[],
+  bands: number[][],
+  selectionColour: string,
+): Record<string, unknown> {
+  const nop = (): void => undefined;
+  let first: number | null = null;
+  const ctx: Record<string, unknown> = {
+    setTransform: nop,
+    clearRect: nop,
+    arc: nop,
+    fill: nop,
+    drawImage: nop,
+    rect: nop,
+    clip: nop,
+    save: nop,
+    restore: nop,
+    setLineDash: nop,
+    getLineDash: () => [],
+    fillText: nop,
+    measureText: (t: string) => ({ width: 7 * Array.from(t).length }),
+    fillRect: (x: number, y: number, w: number, h: number) => {
+      if (ctx.fillStyle === selectionColour) bands.push([x, y, w, h]);
+    },
+    beginPath: () => {
+      first = null;
+    },
+    moveTo: (_x: number, y: number) => {
+      first ??= y;
+    },
+    lineTo: (_x: number, y: number) => {
+      first ??= y;
+    },
+    stroke: () => {
+      log.push({
+        where,
+        colour: ctx.strokeStyle as string,
+        width: ctx.lineWidth as number,
+        alpha: ctx.globalAlpha as number,
+        y0: first ?? NaN,
+      });
+    },
+    fillStyle: '',
+    strokeStyle: '',
+    globalAlpha: 1,
+    lineWidth: 1,
+    lineDashOffset: 0,
+    lineJoin: 'miter',
+    lineCap: 'butt',
+    font: '',
+    textAlign: 'start',
+    textBaseline: 'alphabetic',
+  };
+  return ctx;
+}
+
+/**
+ * Every `selection.json` row (plan #68 C2c2 §5 `selection_parity`, `selection_passes` (e)): TS
+ * `matchedKeys` over a frame's shown keys; the `drawSelectionBand` rect of `drawLayer`'s own call
+ * (and the plot it was drawn on); and, for the crossing case (`S3`'s keys a1 and a2), the Canvas 2D
+ * series strokes in call order as `[key, 'dimmed' | 'underlay' | 'line']`.
+ */
+export function selectionRows(
+  s: Sources,
+  win: Window,
+  seriesOf: (
+    key: string,
+    labels: Record<string, string>,
+    n: number,
+    step: number,
+    f: (i: number) => number,
+  ) => Series,
+): unknown[] {
+  const x = s as unknown as Sources & SelectionSources;
+  const colours = s.themeColours('dark') as { selection: string; focus: string };
+  const key = (i: number): string => i.toString(16).padStart(16, '0');
+  const rows: unknown[] = [];
+  // Matching (relevance): keys inside the shown set, beyond it, foreign, non-hex, empty, and a key
+  // that differs from a shown one by case only.
+  const own = (n: number): string[] => Array.from({ length: n }, (_, i) => key(0xa0 + i));
+  const matching: [string, number, string[]][] = [
+    ['inside', 3, [key(0xa1)]],
+    ['inside-two', 3, [key(0xa2), key(0xa0)]],
+    ['beyond-shown', 520, [key(0xa0 + 500)]],
+    ['beyond-and-inside', 520, [key(0xa0 + 501), key(0xa0 + 499)]],
+    ['foreign', 3, [key(0xff)]],
+    ['non-hex', 3, ['x', 'a1', `${key(0xa1)} `]],
+    ['empty', 3, []],
+    ['case-only', 3, ['00000000000000A2']],
+  ];
+  for (const [id, n, keys] of matching) {
+    const all = own(n);
+    const shown = all.slice(0, s.MAX_SERIES);
+    const hit = x.matchedKeys({ keys, fromMs: null, toMs: null }, shown);
+    rows.push({
+      case: id,
+      kind: 'match',
+      series: all,
+      keys,
+      matched: hit === null ? null : shown.filter((k) => hit.has(k)),
+    });
+  }
+  // Bands: through `drawLayer` on C2a2's probe data, so the plot is the layout's.
+  const probe = [seriesOf(key(0xa1), {}, 61, 60_000, (i) => (30 * i) / 60)];
+  const { fromMs, toMs } = win;
+  const min = 60_000;
+  const bands: [string, Sel, number, { min: number; max: number } | null][] = [
+    ['inside', { keys: [], fromMs: fromMs + 10 * min, toMs: fromMs + 20 * min }, 1, null],
+    ['cut-left', { keys: [], fromMs: fromMs - 10 * min, toMs: fromMs + 5 * min }, 1, null],
+    ['cut-right', { keys: [], fromMs: toMs - 5 * min, toMs: toMs + 10 * min }, 1, null],
+    ['outside-left', { keys: [], fromMs: fromMs - 20 * min, toMs: fromMs - 10 * min }, 1, null],
+    ['outside-right', { keys: [], fromMs: toMs + 10 * min, toMs: toMs + 20 * min }, 1, null],
+    ['to-null', { keys: [], fromMs: fromMs + 30 * min, toMs: null }, 1, null],
+    ['from-null', { keys: [], fromMs: null, toMs: fromMs + 30 * min }, 1, null],
+    ['from-eq-to', { keys: [], fromMs: fromMs + 30 * min, toMs: fromMs + 30 * min }, 1, null],
+    ['from-eq-to-dpr2', { keys: [], fromMs: fromMs + 30 * min, toMs: fromMs + 30 * min }, 2, null],
+    ['inside-dpr2', { keys: [], fromMs: fromMs + 10 * min, toMs: fromMs + 20 * min }, 2, null],
+    ['right-edge', { keys: [], fromMs: toMs, toMs }, 1, null],
+    [
+      'keys-and-interval',
+      { keys: [key(0xa1)], fromMs: fromMs + 10 * min, toMs: fromMs + 20 * min },
+      1,
+      null,
+    ],
+    [
+      'pinned',
+      { keys: [], fromMs: fromMs + 10 * min, toMs: fromMs + 20 * min },
+      1,
+      { min: 0, max: 10 },
+    ],
+  ];
+  for (const [id, sel, dpr, valueRange] of bands) {
+    const rects: number[][] = [];
+    const ctx = selectionCtx('layer', [], rects, colours.selection);
+    const scratch = selectionCtx('scratch', [], [], colours.selection);
+    const spec = {
+      kind: 'line',
+      title: 'T',
+      unit: { kind: 'none' },
+      ...(valueRange === null ? {} : { valueRange }),
+    };
+    const m = s.drawLayer({
+      ctx,
+      scratch: { canvas: { width: 0, height: 0 }, ctx: scratch },
+      spec,
+      data: { kind: 'series', series: probe },
+      window: win,
+      cssW: 800,
+      cssH: 240,
+      timeZone: 'UTC',
+      colours,
+      valueRange,
+      band: null,
+      minBand: 0,
+      selection: sel,
+      dpr,
+    });
+    if (rects.length > 1) throw new Error(`selection ${id}: ${String(rects.length)} bands`);
+    rows.push({
+      case: id,
+      kind: 'band',
+      spec: JSON.stringify(spec),
+      window: win,
+      w: 800,
+      h: 240,
+      dpr,
+      selection: sel,
+      plot: m.summary.plot,
+      rect: rects[0] ?? null,
+    });
+  }
+  // The crossing case: `S3`'s series (a1 0→30, a2 30→0, a3 10), keys a1 and a2.
+  const s3 = [
+    seriesOf(key(0xa1), {}, 61, 60_000, (i) => (30 * i) / 60),
+    seriesOf(key(0xa2), {}, 61, 60_000, (i) => 30 - (30 * i) / 60),
+    seriesOf(key(0xa3), {}, 61, 60_000, () => 10),
+  ];
+  const log: { where: string; colour: string; width: number; alpha: number; y0: number }[] = [];
+  const ctx = selectionCtx('layer', log, [], colours.selection);
+  const scratch = selectionCtx('scratch', log, [], colours.selection);
+  const sel = { keys: [key(0xa1), key(0xa2)], fromMs: null, toMs: null };
+  const m = s.drawLayer({
+    ctx,
+    scratch: { canvas: { width: 0, height: 0 }, ctx: scratch },
+    spec: { kind: 'line', title: 'T', unit: { kind: 'none' } },
+    data: { kind: 'series', series: s3 },
+    window: win,
+    cssW: 800,
+    cssH: 240,
+    timeZone: 'UTC',
+    colours,
+    valueRange: null,
+    band: null,
+    minBand: 0,
+    selection: sel,
+    dpr: 1,
+  });
+  const pick = m['pick'] as { y: (v: number) => number };
+  const starts = s3.map((x) => ({ key: x.key, y: pick.y(x.values[0] ?? NaN) }));
+  const keyOf = (y0: number): string =>
+    starts.reduce((a, b) => (Math.abs(b.y - y0) < Math.abs(a.y - y0) ? b : a)).key;
+  const line = x.size['chart-line'] ?? 0;
+  const order = log
+    .filter((k) => k.width === line || k.width === line + 4)
+    .map((k) => {
+      const role =
+        k.where === 'scratch' || k.alpha < 1
+          ? 'dimmed'
+          : k.colour === colours.focus && k.width === line + 4
+            ? 'underlay'
+            : 'line';
+      return [keyOf(k.y0), role];
+    });
+  rows.push({ case: 'crossing', kind: 'order', keys: sel.keys, order });
+  return rows;
+}

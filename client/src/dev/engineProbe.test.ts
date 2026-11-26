@@ -65,6 +65,7 @@ function setup() {
     bad: () => 0,
     freeze: () => undefined,
     unfreeze: () => undefined,
+    renew: () => undefined,
   };
   const probe = createProbe({ backend: () => Promise.resolve(backend), host: () => host });
   return { ring, view, frames, probe };

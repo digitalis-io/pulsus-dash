@@ -37,8 +37,8 @@ use std::sync::Arc;
 use dash_marks::{DrawList, MarkItem};
 use dash_scene::hover::{HoverAt, HoverOut, PickSnap, hover_at, key_on, overlay_item, pick_item};
 use dash_scene::{
-    Band, Camera, PlotCamera, Range64, Size64, StageInfo, Theme, Viewport, VisKind, VisSpec,
-    YRange, build_frame,
+    Band, Camera, PlotCamera, Range64, SelectionIn, Size64, StageInfo, Theme, Viewport, VisKind,
+    VisSpec, YRange, build_frame,
 };
 use dash_wire::{Chunk, ChunkBuilder, ChunkError, IdAlloc, IdSpace, SeriesMeta};
 use serde_json::{Value, json};
@@ -534,6 +534,9 @@ impl Frames {
         }
     }
 
+    /// The frame's selection (plan #68 C2c2 §3.2): a layer input.
+    pub fn set_selection(&mut self, _id: u32, _s: SelectionIn) {}
+
     /// Starts a chunk from TS series in the local id space.
     pub fn data_begin(&mut self, id: u32) {
         let next = self.ids.next();
@@ -649,6 +652,7 @@ impl Frames {
                     .and_then(|c| c.band)
                     .map_or(Band::Measure, Band::Fixed),
                 events: f.events.clone(),
+                selection: Default::default(),
             };
             let built = build_frame(&v);
             self.layer_builds += 1;

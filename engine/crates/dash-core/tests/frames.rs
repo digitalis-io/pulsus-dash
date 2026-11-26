@@ -1102,3 +1102,79 @@ fn frames_events() {
     assert_eq!(s2.len(), 1);
     assert_eq!(s2[0]["stage"]["plot"]["y"].as_f64(), Some(plot0.y));
 }
+
+/// Plan #68 C2c2 §5 `frames_selection`: the selection is a layer input. Setting it rebuilds the
+/// layer once (the Line item gains its emphasis, the band its rect); an Overlay alone reuses it.
+#[test]
+fn frames_selection() {
+    let (chunk, json) = line50();
+    let key3 = format!("{:016x}", chunk.series[3].key_hash);
+    let mut f = Frames::new();
+    assert!(f.create(1, None));
+    assert!(f.set_spec(1, &json).is_ok());
+    f.set_chunk(1, Some(Arc::new(chunk)));
+    assert_eq!(f.apply(&resize_rec(1, 1, 1118.0, 240.0, 1.0)), Some(1));
+    assert_eq!(
+        f.apply(&camera_rec(1, 2, GALLERY_WINDOW, NAN2, f64::NAN)),
+        Some(1)
+    );
+    let (p0, _, _) = present(&mut f, 1);
+    let _ = f.complete(1, &p0, 1.0, 2.0);
+    let builds = f.layer_builds();
+    let t0 = GALLERY_WINDOW.0;
+    f.set_selection(
+        1,
+        dash_scene::SelectionIn::new(
+            [key3.as_str()],
+            Some(t0 + 600_000.0),
+            Some(t0 + 1_200_000.0),
+        ),
+    );
+    let Some((list, _, _)) = f.build(1) else {
+        panic!("no build")
+    };
+    assert_eq!(
+        f.layer_builds(),
+        builds + 1,
+        "a selection rebuilds the layer"
+    );
+    let matched = list.items.iter().find_map(|i| match i {
+        MarkItem::Line { emphasis, .. } => emphasis.as_ref().map(|e| e.matched.clone()),
+        _ => None,
+    });
+    let want: Vec<bool> = (0..50).map(|i| i == 3).collect();
+    assert_eq!(matched, Some(want), "the Line item's emphasis");
+    let band = colour(Theme::Dark, ColourRole::Selection);
+    let band_drawn = list.items.iter().any(|i| match i {
+        MarkItem::Overlay { shapes } => shapes
+            .iter()
+            .any(|s| matches!(s, dash_marks::OverlayShape::Rect { colour, .. } if *colour == band)),
+        _ => false,
+    });
+    assert!(band_drawn, "the band");
+    let builds = f.layer_builds();
+    let Some(stage) = p0.stage.as_ref() else {
+        panic!("no stage")
+    };
+    let x = stage.plot.x + 0.3 * stage.plot.width;
+    assert_eq!(
+        f.apply(&overlay_rec(1, 3, 1, x, stage.plot.y + 20.0, 0)),
+        Some(1)
+    );
+    let (list, _) = build_hover(&mut f, 1);
+    assert_eq!(
+        f.layer_builds(),
+        builds,
+        "an Overlay does not rebuild the layer"
+    );
+    assert!(
+        list.items.iter().any(|i| matches!(
+            i,
+            MarkItem::Line {
+                emphasis: Some(_),
+                ..
+            }
+        )),
+        "the reused layer keeps the emphasis"
+    );
+}

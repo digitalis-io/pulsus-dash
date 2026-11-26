@@ -49,6 +49,14 @@ export type MainToRender =
   | { readonly t: 'theme'; readonly id: number; readonly theme: 0 | 1 }
   /** Plan #68 C2c1: every `EventMarker.atMs` of a `setEvents`, in call order (NaN kept). */
   | { readonly t: 'events'; readonly id: number; readonly atMs: Float64Array }
+  /** Plan #68 C2c2: the page selection's keys and interval (`null` → no keys, no interval). */
+  | {
+      readonly t: 'selection';
+      readonly id: number;
+      readonly keys: readonly string[];
+      readonly fromMs: number | null;
+      readonly toMs: number | null;
+    }
   | { readonly t: 'dispose'; readonly id: number }
   /** A record was published while the worker was idle (T03-004 revised). */
   | { readonly t: 'input' }
@@ -56,7 +64,9 @@ export type MainToRender =
   | { readonly t: 'probe-input' }
   /** The probe build (plan #68 C2b §3.4): hold the frame after its presentation of `seq`. */
   | { readonly t: 'probe-freeze'; readonly id: number; readonly seq: number }
-  | { readonly t: 'probe-unfreeze'; readonly id: number };
+  | { readonly t: 'probe-unfreeze'; readonly id: number }
+  /** The probe build (plan #68 C2c2 S11): drop every renderer and redraw, as after a device loss. */
+  | { readonly t: 'probe-renew' };
 
 export type RenderToMain =
   | {
