@@ -17,7 +17,8 @@
       "src/widgets/text/TextMarkdown.tsx"
     ],
     "fonts": ["inter-latin-wght-normal", "jetbrains-mono-latin-wght-normal"],
-    "initialCss": true
+    "initialCss": true,
+    "geoAssets": true
   },
   "budgets": {
     "initialJs": 200000,
@@ -26,7 +27,9 @@
     "editorChunk": 175000,
     "fonts": 150000,
     "totalExceptEngine": 1000000,
-    "engine": 1900000
+    "engine": 1900000,
+    "geoBasemap": 40000,
+    "geoGazetteer": 104000
   },
   "editorModules": [
     "src/editor/editor.ts",
