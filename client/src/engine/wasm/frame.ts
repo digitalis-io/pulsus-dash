@@ -5,13 +5,15 @@
  * `created` and then enqueued in the order of their calls; the worker's events come back through
  * `handle`. The camera comes only from `setCamera`: `ControlledFrame` runs the camera controller
  * on the main thread and sends it. Series data is cloned (the caller keeps its arrays); heatmap and
- * scalar data are not drawn by the engine yet and go as `null`. Events (markers) and the selection
- * are kept by the routing frame and not sent (C2c). Nothing is sent or emitted after `dispose`.
+ * scalar data are not drawn by the engine yet and go as `null`. Event markers go as their times
+ * (`events`, plan #68 C2c1); the selection is kept by the routing frame and not sent (C2c2).
+ * Nothing is sent or emitted after `dispose`.
  *
  * | Call or event | Behaviour |
  * |---|---|
  * | `setCamera(c)` | a Camera record (view, value: null = auto, band: null = measured) |
  * | `setSpec(s)` | a message |
+ * | `setEvents(e)` (C2c1) | an `events` message of every `atMs`, for an array new by identity |
  * | `stage` | `stage()` is the last completed presentation's: only an event of the latest `resize()` call counts (none while a Resize is held or unpublished, and only for that call's seq); every `resize()` blocks it until then; a zero size makes it null at once. `onStage` on every change |
  * | Camera, Resize before `created` | held, the latest per kind; on `created` enqueued in call order |
  * | `drawn` | only for the latest `resize()` call: none while a Resize is held or unpublished, and only when the event's `rseq` is that call's seq; reported with the caller's values, never at 0, with its `chart-draw` measure |
@@ -146,6 +148,8 @@ export class WasmFrame implements EngineFrame {
   private readonly listeners = new Map<keyof FrameEvents, Set<Listener>>();
   private disposed = false;
   private kind: VisSpec['kind'] = 'line';
+  /** The last `setEvents` array (plan #68 C2c1 §3.3): a new array is sent, the same one is not. */
+  private events: readonly EventMarker[] | null = null;
   /** The last completed presentation's stage, and its listeners (plan #68 C2a2 §3.3). */
   private stageNow: StageModel | null = null;
   private readonly stageCbs = new Set<(s: StageModel | null) => void>();
@@ -226,9 +230,14 @@ export class WasmFrame implements EngineFrame {
     this.ring.select(this.id, x, y);
   }
 
-  /** Kept by the routing frame; drawn from C2 on. */
+  /**
+   * The event markers (plan #68 C2c1 §3.3): an `events` message with every `atMs`, in call order
+   * (NaN kept), for each array that differs by identity from the last one.
+   */
   setEvents(events: readonly EventMarker[]): void {
-    if (events.length < 0) this.post({ t: 'events', id: this.id, atMs: new Float64Array() });
+    if (this.disposed || events === this.events) return;
+    this.events = events;
+    this.post({ t: 'events', id: this.id, atMs: Float64Array.from(events, (e) => e.atMs) });
   }
 
   /** Kept by the routing frame; drawn from C2 on. */

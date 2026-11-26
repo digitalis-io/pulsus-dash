@@ -151,7 +151,8 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
     f.setData(SERIES);
     f.setCamera({ view: { lo: 0, hi: 10 }, value: null, band: null });
     f.setTheme('dark');
-    // Through the seam's signatures: kept by the routing frame, not sent (C2).
+    // Through the seam's signatures: the events go as their times (plan #68 C2c1); the selection
+    // is kept by the routing frame, not sent (C2c2).
     const seam: EngineFrame = f;
     seam.setEvents([]);
     seam.setSelection(null);
@@ -187,6 +188,7 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
         series: [{ key: '00000000000000aa', names: ['job'], values: ['api'], t: T, v: V }],
       },
       { t: 'theme', id: 1, theme: 0 },
+      { t: 'events', id: 1, atMs: new Float64Array([]) },
       { t: 'data', id: 1, series: null },
       { t: 'dispose', id: 1 },
     ]);
