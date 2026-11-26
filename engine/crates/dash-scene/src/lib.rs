@@ -5,11 +5,13 @@ mod build;
 pub mod camera;
 pub mod hover;
 pub mod layer;
+pub mod selection;
 mod spec;
 mod summary;
 
 pub use build::{Built, StageInfo, build, build_frame};
 pub use camera::{Camera, PlotCamera, YRange};
+pub use selection::{SelectionIn, emphasis, matched, selection_band};
 pub use spec::{
     LineSpec, MAX_THRESHOLDS, SpecError, ThresholdLine, ThresholdState, ValueRange, VisSpec,
 };
@@ -48,6 +50,8 @@ pub struct Viewport {
     /// The event markers' times, ms (`EventMarker.atMs`, plan #68 C2c1): every event the frame
     /// holds, in call order; NaN kept (not drawn).
     pub events: Arc<[f64]>,
+    /// The page selection (plan #68 C2c2 §3.2): a layer input; the default is none.
+    pub selection: Arc<SelectionIn>,
 }
 
 /// All viewports of a page (T02-020).

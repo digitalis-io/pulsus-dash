@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.17-rc · 2026-11-26 |
+| **Version** | 1.18-rc · 2026-11-26 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
-| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md) |
+| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md), [ADR-0032](../adr/0032-selection-dims-as-one-layer.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 (2026-11-19)
@@ -215,6 +215,14 @@ Cross-cutting mark features, implemented once in L0/L1:
   the interim renderer does ([ADR-0025](../adr/0025-chart-frame-selection.md)): a time crosshair
   snaps to a sample and does not hit-test a pixel. The ID buffer is for marks without a time
   axis.
+- **Emphasis** *(#68 C2c2)*. The shared selection (T02-025) on the engine line mark: the build
+  tags the line item with the matched series, the series is decimated once, and its instances are
+  drawn in lane passes, each with its own view uniform: the guides; the unmatched series (lane 0)
+  at full alpha into one dim layer, composited once at `dimmed`
+  ([ADR-0032](../adr/0032-selection-dims-as-one-layer.md)); then, per matched series in shown
+  order, its `focus` underlay 4 px wider and its line, as Canvas 2D draws them
+  ([ADR-0025](../adr/0025-chart-frame-selection.md) decision 4). A pass skips the other lanes'
+  instances as degenerate quads. The interval band is a rectangle of the layer overlay.
 - **Clipping and scissoring** per viewport and per stacked lane.
 - **Transitions.** Tweening between two instance buffers for the 250 ms morphs and the 150 ms data
   crossfade, done on the GPU by interpolating attributes.
@@ -849,3 +857,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.15-rc | 2026-11-26 | #68 Part C2b: §4.2 Picking: 2D time charts pick by inverting the time axis over the f64 originals of the presentation on screen (ADR-0025); the ID buffer is for marks without a time axis. §4.6 Tooltips: until the core → ui ring, the `hover` event is the `TooltipAnchor` |
 | 1.16-rc | 2026-11-26 | #68 Part C2c1: §4.5 Overlays row: engine line frames draw the threshold lines and the event lines (with the event label band), as Canvas 2D strokes them; their labels with the engine's text mark (#69) |
 | 1.17-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md)): §0 line frames are drawn by the engine by default; Canvas 2D draws the other kinds until #69 and every fallback |
+| 1.18-rc | 2026-11-26 | #68 Part C2c2: §4.2 cross-cutting **Emphasis**: the selection on the engine line mark, one decimation drawn in lane passes in Canvas 2D's per-series order (ADR-0025 decision 4), the unmatched series through one dim layer composited once at `dimmed` ([ADR-0032](../adr/0032-selection-dims-as-one-layer.md)); the interval band in the layer overlay |

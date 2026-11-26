@@ -45,6 +45,7 @@ fn summaries_match_ts() {
             data: Some(Arc::new(chunk)),
             band: Band::Measure,
             events: std::sync::Arc::from([]),
+            selection: Default::default(),
         };
         let got = build(&v)
             .1

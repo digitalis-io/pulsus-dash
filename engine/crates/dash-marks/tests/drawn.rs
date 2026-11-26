@@ -29,6 +29,7 @@ fn drawn_only_for_complete_frames() {
         data: Some(Arc::new(chunk)),
         band: Band::Measure,
         events: std::sync::Arc::from([]),
+        selection: Default::default(),
     };
     let mut r = Renderer::new(
         &ctx,

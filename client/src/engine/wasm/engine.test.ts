@@ -170,8 +170,8 @@ async function restarted(p: Page): Promise<FakeWorker> {
   w2.status();
   await flush();
   const after = w2.sent.slice(1);
-  // Plan #68 C2c1: the replayed events (none) go too.
-  expect(after.map((m) => m.t)).toEqual(['create', 'spec', 'data', 'theme', 'events']);
+  // Plan #68 C2c1: the replayed events (none) go too; C2c2: and the replayed selection (none).
+  expect(after.map((m) => m.t)).toEqual(['create', 'spec', 'data', 'theme', 'events', 'selection']);
   expect(after[0]).toMatchObject({ t: 'create', id: 1, frameId: 'f1' });
   expect(after[0]?.['canvas']).toBe(transferred[1]);
   expect(transferred[1]).not.toBe(transferred[0]);

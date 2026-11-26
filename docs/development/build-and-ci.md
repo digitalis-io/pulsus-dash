@@ -668,10 +668,10 @@ preview` with `VITE_ENGINE=canvas2d`, no database); the `bff-*` and `dev-proxy` 
 **Engine-only specs.** The specs that need an engine tier run only in the engine suite
 (`playwright.engine.config.ts`, [below](#the-engine-in-the-browser-part-c1)). Their list is
 `client/config/engineSpecs.ts`: `ENGINE_ONLY_SPECS` (`engine-mode-matrix`, `golden-engine-line`,
-`engine-recovery`, `engine-shim-fuzz`, `engine-camera`, `engine-hover`, `engine-layer`), which
-`playwright.config.ts` ignores in every project through `engineOnlyPattern`, and
-`ENGINE_SHARED_SPECS` (`csp-violations`), which runs in both suites and whose engine leg skips
-outside the engine projects. The engine config selects both lists, then its `grep`. A new spec that
+`engine-recovery`, `engine-shim-fuzz`, `engine-camera`, `engine-hover`, `engine-layer`,
+`engine-selection`), which `playwright.config.ts` ignores in every project through
+`engineOnlyPattern`, and `ENGINE_SHARED_SPECS` (`csp-violations`, `inspector`), which run in both
+suites and whose engine legs skip outside the engine projects. The engine config selects both lists, then its `grep`. A new spec that
 calls `tierOf` or `leg` (`e2e/engine.ts`) must be added to one of them: `unit:engine-spec-split`
 fails otherwise. `engine-pin.spec.ts` imports `e2e/engine.ts` but calls neither, so it stays in the
 main suite, where it proves the Canvas 2D pin. `npx playwright test --list --project=<engine>`
@@ -936,7 +936,7 @@ repository at `/w`, git's common directory mounted where a worktree's `.git` fil
 | `make e2e-build-release` | `make build API_MODE=stub VERSION=0.1.0-e2e CLIENT_OUT=dist-release` with no `VITE_ENGINE` and no faults into `client/dist-release` and `build/e2e-release/pulsus-dash` (served by `tools/e2e/serve.sh release PORT`), then `probe-absent.ts client/dist-release`: the unflagged signed-asset build of the default legs (plan #256) | `ci:probe-absent` |
 | `make e2e-build-probe` | after `make engine-wasm-probe`: `VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1 make build API_MODE=stub CLIENT_OUT=dist-probe` (Vite resolves `virtual:dash-engine` to `gen-probe/`) into `client/dist-probe` and `build/e2e-probe/pulsus-dash`, then `probe-absent.ts --expect-faults --expect-probe client/dist-probe` | `ci:probe-absent` (probe tree) |
 | `make engine-gpu-smoke` | per engine e2e project, the adapter headless Chromium sees and whether it renders | — |
-| `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` on each, `check-bundle-modules.ts` on both, and `probe-absent.ts` on each; `make e2e-build-probe`; `make e2e-build-release`; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine), `e2e:shim-fuzz`, `e2e:engine-camera`, `e2e:engine-hover`, `e2e:engine-layer`, `bench:shim-input-cost` (report-only) |
+| `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` on each, `check-bundle-modules.ts` on both, and `probe-absent.ts` on each; `make e2e-build-probe`; `make e2e-build-release`; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine), `e2e:shim-fuzz`, `e2e:engine-camera`, `e2e:engine-hover`, `e2e:engine-layer`, `e2e:engine-selection`, `e2e:selection-sources` (engine leg), `bench:shim-input-cost` (report-only) |
 
 **Projects.** `lavapipe` (gated): `--use-angle=vulkan --enable-features=Vulkan --use-vulkan=native
 --ignore-gpu-blocklist --disable-vulkan-surface`, WebGL2 through ANGLE on lavapipe.
@@ -952,6 +952,10 @@ BFF (`tools/e2e/serve.sh probe 4175`), `e2e/engine-shim-fuzz.spec.ts` and `e2e:e
 skip the fuzz and H1b, and every other spec and golden runs on the fault build (release wasm).
 `e2e:engine-hover` H1–H6 and `e2e:engine-layer` L1–L5 (plan #68 C2c1: threshold lines and event
 lines on probe frames) run like `e2e:engine-camera`: `lavapipe` gated, `swiftshader` report-only.
+So does `e2e:engine-selection` (plan #68 C2c2: the selection on probe frames, with `frame2d`
+Canvas 2D frames for S10 and S1c), except S11, which needs the probe build's `renew()` and runs in
+`probe`. The engine leg of `e2e:selection-sources` (`inspector.spec.ts`) runs on `lavapipe` against
+the http-mode BFF, which the engine config starts too (`tools/e2e/serve.sh http 4174`).
 
 **Default legs (plan #256).** The engine is the default renderer
 ([ADR-0031](../../designs/adr/0031-gpu-engine-default-renderer.md)); the fault build (4173) is
@@ -979,7 +983,13 @@ light at 1118 × 240 against `goldens/line-50-{dark,light}-overlay.png`, T1 vs T
 0.001. Since plan #68 C2c1 both add the layer pages `line-thresholds` and `line-events` (dark and
 light; `goldens/line-{thresholds,events}-{dark,light}.png`): `dash-golden render --page
 line-thresholds` draws the `engine/fixtures/layer.json` case of that id (its spec JSON, series and
-event times), without `--value-range`, `--hover` or `--box`. `canvas2d
+event times), without `--value-range`, `--hover` or `--box`. Since plan #68 C2c2,
+`dash-golden render --select-keys K,… --select-interval A,B` draws a gallery page with the page
+selection (16-hex series keys; the interval in ms): `golden:engine-overlay` adds
+`goldens/line-50-selection-{dark,light}.png` (series 3 selected, 12:10–12:20), and
+`e2e:engine-selection` S7 compares a probe frame of `line-50`'s series with it. The `dash-marks` GPU
+tests (`selection_passes`, `tier_parity`, …) need `--features gpu`: `cargo nextest run -p
+dash-marks --features gpu` in the engine image (`make engine-test` does not enable it). `canvas2d
 parity` is sampled geometric parity with Canvas 2D (equal plot rects, a sampled line mask); the two
 renderers anti-alias differently by design.
 

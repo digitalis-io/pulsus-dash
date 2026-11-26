@@ -31,6 +31,7 @@ fn batched_draws_equal_one_draw() {
             data: Some(Arc::new(fx.chunk.clone())),
             band: Band::Measure,
             events: std::sync::Arc::from([]),
+            selection: Default::default(),
         };
         let (list, _) = dash_scene::build(&v);
         let mut one = Renderer::new(

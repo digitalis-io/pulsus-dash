@@ -81,6 +81,7 @@ fn viewport_of(r: &Value, f: &Value) -> Viewport {
         data: Some(Arc::new(chunk_of(&r["series"]))),
         band: Band::Measure,
         events: Arc::from(fixture::nums(&r["events"])),
+        selection: Default::default(),
     }
 }
 
@@ -248,6 +249,7 @@ fn build_layer_items() {
             data: Some(chunk.clone()),
             band: Band::Measure,
             events: Arc::from(events),
+            selection: Default::default(),
         }
     };
     let plain = build_frame(&viewport(spec.clone(), Vec::new()));

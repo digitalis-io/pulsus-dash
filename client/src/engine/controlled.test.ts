@@ -58,8 +58,11 @@ class FakeInner implements EngineFrame {
     this.calls.push('setEvents');
     this.order.push('setEvents');
   }
-  setSelection(): void {
+  readonly selections: unknown[] = [];
+  setSelection(sel: unknown): void {
     this.calls.push('setSelection');
+    this.order.push('setSelection');
+    this.selections.push(sel);
   }
   /** As `WasmFrame`: a zero size withdraws the stage at once. */
   resize(w: number, h: number): void {
@@ -510,5 +513,33 @@ describe('ControlledFrame events (plan #68 C2c1 §4.1)', () => {
     f.setEvents([]);
     expect(hovers).toEqual([H, null, H, null]);
     expect(before(inner.order), inner.order.join()).toBe(true);
+  });
+});
+
+describe('ControlledFrame selection (plan #68 C2c2 §4.1)', () => {
+  const S61: StageModel = { ...S1, pickCount: 61 };
+  const H: NonNullable<FrameEvents['hover']> = {
+    source: 'pointer',
+    tMs: T0,
+    xCss: 320,
+    yCss: 108,
+    rows: [{ key: '00000000000000a1', name: '{}', colourIndex: 1, value: 9 }],
+  };
+
+  it('controlled selection: forwarded; no layout change, no hover change, no Overlay or Camera', () => {
+    const { canvas, inner, f, hovers } = setup({ stage: S61 });
+    pointer(canvas, 'pointermove', 320, 108);
+    inner.fire('hover', H);
+    f.flush();
+    inner.order.length = 0;
+    const sel = { keys: ['00000000000000a1'], fromMs: T0, toMs: T0 + 60_000 };
+    f.setSelection(sel);
+    expect(inner.order).toEqual(['setSelection']);
+    expect(inner.selections).toEqual([sel]);
+    expect(hovers).toEqual([H]);
+    f.setSelection(null);
+    expect(inner.order).toEqual(['setSelection', 'setSelection']);
+    expect(inner.selections.at(-1)).toBeNull();
+    expect(hovers).toEqual([H]);
   });
 });

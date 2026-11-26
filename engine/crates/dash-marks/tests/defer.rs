@@ -31,6 +31,7 @@ fn list(line: GalleryLine) -> DrawList {
         data: Some(Arc::new(chunk)),
         band: Band::Measure,
         events: std::sync::Arc::from([]),
+        selection: Default::default(),
     };
     build(&v).0
 }

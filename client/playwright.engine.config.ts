@@ -13,6 +13,9 @@
  * `e2e:engine-camera` does. The default legs of `e2e:mode-matrix` (plan #256 §5) use three more
  * servers: the unflagged release BFF (`make e2e-build-release`, port 4176), `vite preview` of
  * `dist-release-stub` with its computed manifest (4177) and the dev server (5175).
+ * `e2e:engine-selection` (plan #68 C2c2) runs as `e2e:engine-camera` does, its S11 in `probe`; the
+ * engine leg of `e2e:selection-sources` (`inspector.spec.ts`) runs on `lavapipe` against the
+ * http-mode BFF (port 4174).
  */
 import { defineConfig, devices } from '@playwright/test';
 import { ENGINE_ONLY_SPECS, ENGINE_SHARED_SPECS } from './config/engineSpecs.ts';
@@ -36,7 +39,7 @@ export default defineConfig({
   testDir: 'e2e',
   // config/engineSpecs.ts (plan #263): the engine-only specs and the shared ones.
   testMatch: [...ENGINE_ONLY_SPECS, ...ENGINE_SHARED_SPECS],
-  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera|e2e:engine-hover|e2e:engine-layer/,
+  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera|e2e:engine-hover|e2e:engine-layer|e2e:engine-selection|selection-sources \(engine\)/,
   retries: 0,
   workers: 2,
   reporter: [['list'], ['./e2e/engineLegsReporter.ts']],
@@ -75,7 +78,7 @@ export default defineConfig({
     // gated tier.
     {
       name: 'probe',
-      testMatch: ['engine-shim-fuzz.spec.ts', 'engine-hover.spec.ts'],
+      testMatch: ['engine-shim-fuzz.spec.ts', 'engine-hover.spec.ts', 'engine-selection.spec.ts'],
       use: {
         ...devices['Desktop Chrome'],
         viewport,
@@ -97,6 +100,13 @@ export default defineConfig({
       command: 'tools/e2e/serve.sh stub 4173',
       cwd: '..',
       url: 'http://localhost:4173/healthz',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command: 'tools/e2e/serve.sh http 4174',
+      cwd: '..',
+      url: 'http://localhost:4174/healthz',
       reuseExistingServer: false,
       timeout: 120_000,
     },

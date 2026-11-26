@@ -6,7 +6,9 @@
  * "inspector logs" on 12:00–15:00 (two series, two log streams, a heatmap in 30 s columns).
  */
 import { expect, test, type Page } from '@playwright/test';
+import { colour } from '../src/styles/tokens.ts';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
+import { decodePng } from './png.ts';
 import { fakeRequests } from './fake.ts';
 import {
   KINDS,
@@ -386,6 +388,71 @@ test.describe('e2e:inspector (fake)', () => {
           () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
         );
         if (browserName === 'chromium') await expect(b).toHaveScreenshot('selection-none.png');
+      },
+    );
+  });
+
+  // Plan #68 C2c2 S8: the same source on engine line frames (`playwright.engine.config.ts`,
+  // lavapipe; the engine is the default by ADR-0031, `mode=t2` picks WebGL2): every panel holding
+  // the key highlights it on the next frame (its pixels change and show `focus`), "none" restores
+  // each panel exactly.
+  test('e2e:selection-sources (engine)', async ({ page, request }, info) => {
+    test.skip(info.project.name !== 'lavapipe', 'the engine leg runs on lavapipe');
+    test.setTimeout(120_000);
+    await withBoard(
+      page,
+      request,
+      'inspector selection engine',
+      SELECTION,
+      (u) => boardUrl(u, S_FROM, S_TO, '&engine=wasm&mode=t2'),
+      async () => {
+        const frames = ['a', 'b'].map((id) => panel(page, id).locator('[data-chart-frame]'));
+        for (const id of ['a', 'b']) {
+          await expect(panel(page, id).locator('[data-frame-ready="true"]')).toHaveCount(1);
+          await expect(panel(page, id).locator('canvas:not([data-retired])')).toHaveAttribute(
+            'data-engine',
+            'wasm-webgl2',
+          );
+        }
+        const settle = () => page.evaluate(() => new Promise((r) => setTimeout(r, 500)));
+        await settle();
+        const none = await Promise.all(frames.map((f) => f.screenshot()));
+        const toggle = panel(page, 'a').getByRole('button', {
+          name: /^Select inspector_two\{series="k1"\}/,
+        });
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        const focus = [1, 3, 5].map((i) => parseInt(colour.dark.focus.slice(i, i + 2), 16));
+        for (const [k, f] of frames.entries()) {
+          await expect
+            .poll(
+              async () => {
+                const shot = await f.screenshot();
+                if (shot.equals(none[k] ?? Buffer.alloc(0))) return 'unchanged';
+                const img = decodePng(shot);
+                let n = 0;
+                for (let i = 0; i < img.px.length; i += 4) {
+                  const d = Math.max(
+                    ...[0, 1, 2].map((c) => Math.abs((img.px[i + c] ?? 0) - (focus[c] ?? 0))),
+                  );
+                  if (d <= 8) n++;
+                }
+                return n >= 50 ? 'focused' : `focus pixels ${String(n)}`;
+              },
+              { message: `panel ${String(k)}`, timeout: 10_000 },
+            )
+            .toBe('focused');
+        }
+        await toggle.click();
+        await expect(frames[1] ?? page.locator('none')).toHaveAttribute('data-selection-keys', '');
+        for (const [k, f] of frames.entries()) {
+          await expect
+            .poll(async () => (await f.screenshot()).equals(none[k] ?? Buffer.alloc(0)), {
+              message: `panel ${String(k)} restored`,
+              timeout: 10_000,
+            })
+            .toBe(true);
+        }
       },
     );
   });

@@ -4,7 +4,7 @@
  *
  * Main → render: `boot`, then per frame `create` (the canvas transferred), `spec`, `data` (series
  * cloned; heatmap and scalar data `null`), `theme` (0 dark, 1 light), `events` (the markers'
- * times, plan #68 C2c1) and `dispose`; `input` wakes
+ * times, plan #68 C2c1), `selection` (keys and interval, C2c2) and `dispose`; `input` wakes
  * an idle worker after a publish to the input ring (the camera and the size travel there,
  * `ring.ts`). Render → main: `status` (after `engine_start`, with the shared memory), `spawn-pool`
  * (one per pool thread) and `events` (one JSON array per animation frame). Main → pool: `pool`.
@@ -49,6 +49,14 @@ export type MainToRender =
   | { readonly t: 'theme'; readonly id: number; readonly theme: 0 | 1 }
   /** Plan #68 C2c1: every `EventMarker.atMs` of a `setEvents`, in call order (NaN kept). */
   | { readonly t: 'events'; readonly id: number; readonly atMs: Float64Array }
+  /** Plan #68 C2c2: the page selection's keys and interval (`null` → no keys, no interval). */
+  | {
+      readonly t: 'selection';
+      readonly id: number;
+      readonly keys: readonly string[];
+      readonly fromMs: number | null;
+      readonly toMs: number | null;
+    }
   | { readonly t: 'dispose'; readonly id: number }
   /** A record was published while the worker was idle (T03-004 revised). */
   | { readonly t: 'input' }
@@ -56,7 +64,9 @@ export type MainToRender =
   | { readonly t: 'probe-input' }
   /** The probe build (plan #68 C2b §3.4): hold the frame after its presentation of `seq`. */
   | { readonly t: 'probe-freeze'; readonly id: number; readonly seq: number }
-  | { readonly t: 'probe-unfreeze'; readonly id: number };
+  | { readonly t: 'probe-unfreeze'; readonly id: number }
+  /** The probe build (plan #68 C2c2 S11): drop every renderer and redraw, as after a device loss. */
+  | { readonly t: 'probe-renew' };
 
 export type RenderToMain =
   | {

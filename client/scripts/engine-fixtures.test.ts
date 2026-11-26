@@ -15,6 +15,7 @@ describe('unit:engine-fixtures', () => {
       'layout.json',
       'palette.json',
       'pow.json',
+      'selection.json',
       'summary.json',
       'synth.json',
       'ticks-extreme.json',

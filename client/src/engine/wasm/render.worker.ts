@@ -24,6 +24,7 @@ import init, {
   frame_dispose,
   frame_set_spec,
   frame_set_events,
+  frame_set_selection,
   frame_set_theme,
   pool_start,
 } from 'virtual:dash-engine';
@@ -43,6 +44,7 @@ interface ProbeExports {
   /** Plan #68 C2b §3.4. */
   engine_probe_freeze?(id: number, seq: number): void;
   engine_probe_unfreeze?(id: number): void;
+  engine_probe_renew?(): void;
 }
 
 interface Faults {
@@ -97,6 +99,9 @@ function apply(m: MainToRender): void {
     case 'probe-unfreeze':
       if (import.meta.env.VITE_ENGINE_PROBE === '1') void probeFreeze(m);
       return;
+    case 'probe-renew':
+      if (import.meta.env.VITE_ENGINE_PROBE === '1') void probeRenew();
+      return;
     case 'create':
       if (faults?.failCreate(m.id) === true) {
         scope.postMessage({
@@ -144,6 +149,9 @@ function apply(m: MainToRender): void {
     case 'events':
       frame_set_events(m.id, m.atMs);
       break;
+    case 'selection':
+      frame_set_selection(m.id, [...m.keys], m.fromMs, m.toMs);
+      break;
     case 'dispose':
       frame_dispose(m.id);
       return;
@@ -158,6 +166,13 @@ async function probeFreeze(
   const p = (await import('virtual:dash-engine')) as unknown as ProbeExports;
   if (m.t === 'probe-freeze') p.engine_probe_freeze?.(m.id, m.seq >>> 0);
   else p.engine_probe_unfreeze?.(m.id);
+  schedule();
+}
+
+/** The probe build (plan #68 C2c2 S11): every renderer made again, then a frame loop tick. */
+async function probeRenew(): Promise<void> {
+  const p = (await import('virtual:dash-engine')) as unknown as ProbeExports;
+  p.engine_probe_renew?.();
   schedule();
 }
 

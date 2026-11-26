@@ -10,7 +10,13 @@ use super::gpu::INSTANCE_BYTES;
 pub(super) struct Pipelines {
     pub(super) view_bgl: wgpu::BindGroupLayout,
     pub(super) line: wgpu::RenderPipeline,
+    /// The line into the dim layer (plan #68 C2c2 §3.3): `Rgba8Unorm`, premultiplied (colour
+    /// `SrcAlpha, OneMinusSrcAlpha`; alpha `One, OneMinusSrcAlpha`).
+    pub(super) line_dim: wgpu::RenderPipeline,
 }
+
+/// The dim layer's format (plan #68 C2c2 §3.3).
+pub(super) const DIM_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// The T1 decimation passes P1–P5 (never created on T2, which has no compute).
 #[derive(Debug)]
@@ -123,34 +129,54 @@ pub(super) fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipeli
         immediate_size: 0,
     });
     let attributes = wgpu::vertex_attr_array![0 => Uint32, 1 => Float32, 2 => Float32, 3 => Uint32];
-    let line = d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("line"),
-        layout: Some(&render_layout),
-        vertex: wgpu::VertexState {
-            module: &line_m,
-            entry_point: Some("vs"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            buffers: &[Some(wgpu::VertexBufferLayout {
-                array_stride: INSTANCE_BYTES,
-                step_mode: wgpu::VertexStepMode::Instance,
-                attributes: &attributes,
-            })],
+    let make = |label: &str, format: wgpu::TextureFormat, blend: wgpu::BlendState| {
+        d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(label),
+            layout: Some(&render_layout),
+            vertex: wgpu::VertexState {
+                module: &line_m,
+                entry_point: Some("vs"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[Some(wgpu::VertexBufferLayout {
+                    array_stride: INSTANCE_BYTES,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &attributes,
+                })],
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &line_m,
+                entry_point: Some("fs"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(blend),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        })
+    };
+    let line = make("line", format, wgpu::BlendState::ALPHA_BLENDING);
+    let premultiplied = wgpu::BlendState {
+        color: wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::SrcAlpha,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
         },
-        primitive: wgpu::PrimitiveState::default(),
-        depth_stencil: None,
-        multisample: wgpu::MultisampleState::default(),
-        fragment: Some(wgpu::FragmentState {
-            module: &line_m,
-            entry_point: Some("fs"),
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                format,
-                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        multiview_mask: None,
-        cache: None,
-    });
-    Pipelines { line, view_bgl }
+        alpha: wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+            operation: wgpu::BlendOperation::Add,
+        },
+    };
+    let line_dim = make("line dim", DIM_FORMAT, premultiplied);
+    Pipelines {
+        line,
+        line_dim,
+        view_bgl,
+    }
 }

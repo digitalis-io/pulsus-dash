@@ -30,6 +30,8 @@
 //!
 //! Part C2c1 (§4.2): the event markers' times ([`Frames::set_events`]) are a layer input; the
 //! layer list carries the threshold and event lines as an `Overlay` item before the hover's.
+//! Part C2c2 (§4.2): the page selection ([`Frames::set_selection`]) is a layer input too: the Line
+//! item's emphasis and the band, first in that `Overlay` item.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -37,8 +39,8 @@ use std::sync::Arc;
 use dash_marks::{DrawList, MarkItem};
 use dash_scene::hover::{HoverAt, HoverOut, PickSnap, hover_at, key_on, overlay_item, pick_item};
 use dash_scene::{
-    Band, Camera, PlotCamera, Range64, Size64, StageInfo, Theme, Viewport, VisKind, VisSpec,
-    YRange, build_frame,
+    Band, Camera, PlotCamera, Range64, SelectionIn, Size64, StageInfo, Theme, Viewport, VisKind,
+    VisSpec, YRange, build_frame,
 };
 use dash_wire::{Chunk, ChunkBuilder, ChunkError, IdAlloc, IdSpace, SeriesMeta};
 use serde_json::{Value, json};
@@ -164,6 +166,8 @@ struct Frame {
     data: Option<Arc<Chunk>>,
     /// The event markers' times, ms (plan #68 C2c1 §3.1): a layer input.
     events: Arc<[f64]>,
+    /// The page selection (plan #68 C2c2 §3.2): a layer input.
+    selection: Arc<SelectionIn>,
     building: Option<Building>,
     /// The summary JSON reported last.
     last_a11y: Option<String>,
@@ -202,6 +206,7 @@ impl Frame {
             size: None,
             data: None,
             events: Arc::from([]),
+            selection: Arc::default(),
             building: None,
             last_a11y: None,
             seq: 0,
@@ -534,6 +539,14 @@ impl Frames {
         }
     }
 
+    /// The frame's selection (plan #68 C2c2 §3.2): a layer input.
+    pub fn set_selection(&mut self, id: u32, s: SelectionIn) {
+        if let Some(f) = self.frames.get_mut(&id) {
+            f.selection = Arc::new(s);
+            f.layer_dirty = true;
+        }
+    }
+
     /// Starts a chunk from TS series in the local id space.
     pub fn data_begin(&mut self, id: u32) {
         let next = self.ids.next();
@@ -649,6 +662,7 @@ impl Frames {
                     .and_then(|c| c.band)
                     .map_or(Band::Measure, Band::Fixed),
                 events: f.events.clone(),
+                selection: f.selection.clone(),
             };
             let built = build_frame(&v);
             self.layer_builds += 1;

@@ -14,10 +14,11 @@ export const ENGINE_ONLY_SPECS = [
   'engine-camera.spec.ts',
   'engine-hover.spec.ts',
   'engine-layer.spec.ts',
+  'engine-selection.spec.ts',
 ] as const;
 
 /** Specs in both suites; their engine legs skip outside the engine projects. */
-export const ENGINE_SHARED_SPECS = ['csp-violations.spec.ts'] as const;
+export const ENGINE_SHARED_SPECS = ['csp-violations.spec.ts', 'inspector.spec.ts'] as const;
 
 const escaped = ENGINE_ONLY_SPECS.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
