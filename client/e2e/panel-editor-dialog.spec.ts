@@ -136,7 +136,8 @@ function installProbe(): void {
   }).observe({ type: 'mark' });
 }
 
-const KINDS = ['Auto', 'Line', 'Bars', 'Heatmap', 'Stat', 'Logs'] as const;
+// The Visualisation options in order; Bar chart follows Stat (#173 Part 3b).
+const KINDS = ['Auto', 'Line', 'Bars', 'Heatmap', 'Stat', 'Bar chart', 'Logs'] as const;
 type Kind = (typeof KINDS)[number];
 const LOGS = 'A metric query has no log lines. Choose Auto or a chart.';
 

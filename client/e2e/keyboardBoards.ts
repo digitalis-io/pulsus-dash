@@ -636,10 +636,11 @@ export function boardSteps(s: Script) {
         await press('Escape');
         await expect(editor.getByRole('button', { name: 'Run query' })).toBeFocused();
         await expect(editor).toBeVisible();
-        const kinds = ['Auto', 'Line', 'Bars', 'Heatmap', 'Stat', 'Logs'];
+        // Bar chart follows Stat (#173 Part 3b).
+        const kinds = ['Auto', 'Line', 'Bars', 'Heatmap', 'Stat', 'Bar chart', 'Logs'];
         // Auto reads "Auto (<vis>)" once the panel has a result (plan #64 §3.8).
         for (const [i, kind] of kinds.entries()) {
-          await s.on(/^button "\w+( \(\w+\))? Visualisation"$/);
+          await s.on(/^button "\w+( chart)?( \(\w+\))? Visualisation"$/);
           await expect(page.getByRole('listbox')).toBeVisible();
           await press('Home');
           for (let k = 0; k < i; k++) await press('ArrowDown');
