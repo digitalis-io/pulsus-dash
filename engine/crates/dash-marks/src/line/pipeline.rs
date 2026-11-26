@@ -1,5 +1,5 @@
-//! The line mark's pipelines: P1–P5 compute (`decimate.wgsl`, `link.wgsl`, `scan.wgsl`) and the
-//! capsule render pipeline (`line.wgsl`): triangle list, 6 vertices per instance, `LineInstance` as
+//! The line mark's pipelines: P1–P5 compute (`decimate.wgsl`, `link.wgsl`, `scan.wgsl`; T1 only)
+//! and the capsule render pipeline (`line.wgsl`): triangle list, 6 vertices per instance, `LineInstance` as
 //! an instance vertex buffer, `src-alpha, one-minus-src-alpha` blending, no depth, no MSAA.
 
 use dash_gpu::GpuContext;
@@ -8,15 +8,25 @@ use super::gpu::INSTANCE_BYTES;
 
 #[derive(Debug)]
 pub(super) struct Pipelines {
+    pub(super) view_bgl: wgpu::BindGroupLayout,
+    pub(super) line: wgpu::RenderPipeline,
+}
+
+/// The T1 decimation passes P1–P5 (never created on T2, which has no compute).
+#[derive(Debug)]
+pub(super) struct ComputePipelines {
     pub(super) pass_bgl: wgpu::BindGroupLayout,
     pub(super) data_bgl: wgpu::BindGroupLayout,
-    pub(super) view_bgl: wgpu::BindGroupLayout,
     pub(super) reduce: wgpu::ComputePipeline,
     pub(super) count: wgpu::ComputePipeline,
     pub(super) scan: wgpu::ComputePipeline,
     pub(super) emit: wgpu::ComputePipeline,
     pub(super) spill: wgpu::ComputePipeline,
-    pub(super) line: wgpu::RenderPipeline,
+}
+
+impl ComputePipelines {
+    /// The number of compute pipelines.
+    pub(super) const COUNT: u32 = 5;
 }
 
 fn storage_entry(binding: u32, read_only: bool) -> wgpu::BindGroupLayoutEntry {
@@ -45,20 +55,21 @@ fn uniform_entry(visibility: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
     }
 }
 
-/// The decimation compute pipelines (explicit layouts: one uniform group, one data group of eight
-/// storage buffers) and the line render pipeline.
-pub(super) fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipelines {
-    let d = &ctx.device;
-    let module = |label: &str, src: &str| {
-        d.create_shader_module(wgpu::ShaderModuleDescriptor {
+fn module(ctx: &GpuContext, label: &str, src: &str) -> wgpu::ShaderModule {
+    ctx.device
+        .create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(label),
             source: wgpu::ShaderSource::Wgsl(src.into()),
         })
-    };
-    let decimate_m = module("decimate.wgsl", include_str!("decimate.wgsl"));
-    let link_m = module("link.wgsl", include_str!("link.wgsl"));
-    let scan_m = module("scan.wgsl", include_str!("scan.wgsl"));
-    let line_m = module("line.wgsl", include_str!("line.wgsl"));
+}
+
+/// The decimation compute pipelines (explicit layouts: one uniform group, one data group of eight
+/// storage buffers).
+pub(super) fn compute_pipelines(ctx: &GpuContext) -> ComputePipelines {
+    let d = &ctx.device;
+    let decimate_m = module(ctx, "decimate.wgsl", include_str!("decimate.wgsl"));
+    let link_m = module(ctx, "link.wgsl", include_str!("link.wgsl"));
+    let scan_m = module(ctx, "scan.wgsl", include_str!("scan.wgsl"));
     let pass_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("pass"),
         entries: &[uniform_entry(wgpu::ShaderStages::COMPUTE)],
@@ -69,12 +80,6 @@ pub(super) fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipeli
     let data_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("data"),
         entries: &entries,
-    });
-    let view_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("view"),
-        entries: &[uniform_entry(
-            wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-        )],
     });
     let compute_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("decimation"),
@@ -91,6 +96,27 @@ pub(super) fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipeli
             cache: None,
         })
     };
+    ComputePipelines {
+        reduce: compute(&decimate_m, "reduce"),
+        spill: compute(&decimate_m, "spill"),
+        count: compute(&link_m, "count"),
+        emit: compute(&link_m, "emit"),
+        scan: compute(&scan_m, "scan"),
+        pass_bgl,
+        data_bgl,
+    }
+}
+
+/// The capsule render pipeline (both tiers).
+pub(super) fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipelines {
+    let d = &ctx.device;
+    let line_m = module(ctx, "line.wgsl", include_str!("line.wgsl"));
+    let view_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("view"),
+        entries: &[uniform_entry(
+            wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+        )],
+    });
     let render_layout = d.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("line"),
         bind_group_layouts: &[Some(&view_bgl)],
@@ -126,15 +152,5 @@ pub(super) fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipeli
         multiview_mask: None,
         cache: None,
     });
-    Pipelines {
-        reduce: compute(&decimate_m, "reduce"),
-        spill: compute(&decimate_m, "spill"),
-        count: compute(&link_m, "count"),
-        emit: compute(&link_m, "emit"),
-        scan: compute(&scan_m, "scan"),
-        line,
-        pass_bgl,
-        data_bgl,
-        view_bgl,
-    }
+    Pipelines { line, view_bgl }
 }

@@ -123,6 +123,7 @@ interface Sources {
   layoutPlot: (kind: string, w: number, h: number, labelW: number) => Plot;
   LABEL_HEIGHT: number;
   drawLayer: (i: Record<string, unknown>) => { summary: Summary };
+  minValueBand: (ctx: Record<string, unknown>, unit: Unit) => number;
   MAX_SERIES: number;
   lineStats: (s: readonly Series[]) => { min: number | null; max: number | null };
   lineColumns: (ts: Float64Array, vs: Float64Array, w: Window, plot: Plot) => (Column | null)[];
@@ -450,8 +451,9 @@ function lineLayout(
   unit: Unit,
 ): Layout {
   const labels: string[] = [];
+  const ctx = fakeCtx(s, labels);
   const { summary } = s.drawLayer({
-    ctx: fakeCtx(s, labels),
+    ctx,
     spec: { kind: 'line', title: '', unit },
     data: { kind: 'series', series },
     window: GALLERY_WINDOW,
@@ -459,11 +461,11 @@ function lineLayout(
     cssH: h,
     timeZone: 'UTC',
     colours: s.themeColours('dark'),
-    // Auto axis, no camera hold, and no minimum value band: the Rust layout (`dash-axes`) draws no
-    // text until #69, and T02-011's minimum compact band (#93) applies to it when #69 adds labels.
+    // Auto axis, no camera hold, and T02-011's minimum compact band (#93), as the page draws it:
+    // the engine's plot must equal Canvas 2D's (plan #68 C1, `golden:engine-line`).
     valueRange: null,
     band: null,
-    minBand: 0,
+    minBand: s.minValueBand(ctx, unit),
   });
   const stats = s.lineStats(series.slice(0, s.MAX_SERIES));
   const [min, max] = [stats.min ?? 0, stats.max ?? 0];

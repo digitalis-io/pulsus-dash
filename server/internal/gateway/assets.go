@@ -11,12 +11,12 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/static"
 )
 
-// documentCSP is ADR-0014 §9 verbatim; it is byte-identical to CSP in client/config/headers.ts
-// (e2e:bff-headers compares them in the browser).
-const documentCSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; " +
+// documentCSP is ADR-0026 (ADR-0014 §9 amended for the engine) verbatim; it is byte-identical to
+// CSP in client/config/headers.ts (e2e:bff-headers compares them in the browser).
+const documentCSP = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; " +
 	"font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; " +
 	"form-action 'self'; object-src 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; " +
-	"trusted-types pulsus-sanitised; report-to csp"
+	"trusted-types pulsus-sanitised pulsus-engine; report-to csp"
 
 // documentHeaders are set on every HTML document, in this order (T18-002, T03-022).
 var documentHeaders = [][2]string{
@@ -97,11 +97,13 @@ func notFound(w http.ResponseWriter, _ *http.Request) {
 	WriteError(w, http.StatusNotFound, api.NotFound, "not found")
 }
 
-// assetHeaders are the headers of every non-document file (T18-002: CORP and nosniff only).
+// assetHeaders are the headers of every non-document file (T18-002: CORP and nosniff; T03-022,
+// ADR-0026: COEP, so the engine's worker scripts run cross-origin isolated).
 func assetHeaders(h http.Header, contentType, cache string) {
 	h.Set("Content-Type", contentType)
 	h.Set("Cache-Control", cache)
 	h.Set("Cross-Origin-Resource-Policy", "same-origin")
+	h.Set("Cross-Origin-Embedder-Policy", "require-corp")
 	h.Set("X-Content-Type-Options", "nosniff")
 }
 

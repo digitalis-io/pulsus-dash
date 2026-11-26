@@ -26,6 +26,10 @@ rustc-ice-*.txt
 node_modules/
 client/dist/
 client/dist-http/
+client/dist-release-stub/
+client/dist-release-http/
+# The engine build (cargo xtask build-wasm, plan #68 C1); only its .d.ts and layout are committed.
+client/src/engine/wasm/gen/
 test-results/
 playwright-report/
 blob-report/

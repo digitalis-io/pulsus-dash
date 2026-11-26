@@ -1,6 +1,6 @@
-# Chart engine (Rust, native core)
+# Chart engine (Rust)
 
-For developers. The chart engine is the Rust renderer that will draw chart frames behind the
+For developers. The chart engine is the Rust renderer that draws chart frames behind the
 `ChartFrame` seam ([ADR-0014](../../designs/adr/0014-typescript-react-web-client.md) §3), in place
 of the interim Canvas 2D renderer ([Charts](charts.md)). It is built in four parts (issue #68):
 
@@ -8,11 +8,13 @@ of the interim Canvas 2D renderer ([Charts](charts.md)). It is built in four par
 |---|---|---|
 | A | The `engine/` workspace and the native core: tokens, units, colour, scales, value encoding, decimation, plot layout, scene, line mark, headless goldens and the parity fixtures | this page |
 | B | Wire schemas and the Go DSF/Arrow writer (B1, [Arrow wire writer](../server/arrow.md)); the Rust DSF splitter, Arrow IPC reader and decoder into `Chunk` (B2, [below](#wire-decoding-dash-wire)); the shared wire limits (B3, [below](#limits-and-budgets)) | done |
-| C | The browser runtime: WASM builds, workers, the `WasmEngine` adapter, input, CSP | planned |
+| C1 | The engine in the browser: the WASM build, workers, WebGPU/WebGL2, the routing engine with Canvas 2D fallback and recovery, CSP, integrity, the size row ([below](#in-the-browser-part-c1)) | done |
+| C2 | Input: the input ring, the camera controller, hover, selection, `dash-core-st` | planned |
 | D | Arrow responses on the query routes and the data worker's byte pump | planned |
 
-Until Part C the browser still draws every chart with the Canvas 2D renderer; nothing in this part
-is loaded by the client. Axis labels, ticks as text, bars, heatmap and stat are #69.
+The engine is opt-in (`?engine=wasm`) and draws line frames only; Canvas 2D draws everything else
+and every frame of a page without the engine. Axis labels, ticks as text, bars, heatmap and stat
+are #69.
 
 ## Workspace and crate layering
 
@@ -27,7 +29,7 @@ in `engine/xtask/`), edition 2024, toolchain pinned in `engine/rust-toolchain.to
 | `dash-wire` | `Chunk`, `ChunkBuilder`, `ChunkId`; `SharedBytes`, the DSF `FrameSplitter`, its own Arrow IPC reader and `BodyDecoder` | data |
 | `dash-scales` | `value_ticks` (the client's `valueTicks`), value encoding and segment clipping, column ranges, the CPU decimation passes | L2 |
 | `dash-axes` | `layout_plot` (the client's `layoutPlot`), `value_axis` (auto, manual, held band) | L3 |
-| `dash-scene` | `Scene`, `Viewport`, `Camera`, camera primitives, `LineSpec`, `FrameSummary`, `CommitEvent`, `build` | L4/L5 |
+| `dash-scene` | `Scene`, `Viewport`, `Camera`, camera primitives, `LineSpec`, `VisSpec::from_json`, `FrameSummary`, `CommitEvent`, `build` | L4/L5 |
 | `dash-marks` | Mark descriptions (`DrawList`, `MarkItem`, `DrawnEvent`); with feature `gpu`, the line renderer and the WGSL passes | L1 |
 | `dash-gpu` | `GpuContext` (headless lavapipe), `Tier`, `FrameTarget`, `HeadlessTarget` | L0 |
 | `pulsus-synth` | Seeded data: the gallery's line entries and the decimation reference fixtures | test |
@@ -56,6 +58,10 @@ image ([Build, test and CI](../development/build-and-ci.md#engine)); `cargo` com
 | `cargo xtask spec-lint` | The crate-graph, WGSL and image-literal checks; exit 1 with each violation |
 | `cargo test --workspace` | Every test on the host; the GPU tests need a lavapipe (llvmpipe) Vulkan adapter, and `golden_gallery` fails outside the image because it asserts the pinned Mesa |
 | `npm run engine-fixtures -- --write` (in `client/`) | Rewrites `engine/fixtures/*.json` from the TS sources |
+| `make engine-web-image` | Builds the engine web image from `engine/ci/web.Dockerfile` on the lavapipe image |
+| `make engine-wasm`, `make engine-wasm-check` | The browser engine into `client/src/engine/wasm/gen/`; `ci:engine-gen` |
+| `make engine-e2e`, `make engine-gpu-smoke` | The engine e2e suite; the adapters headless Chromium sees |
+| `cargo xtask gen-layout [--check]`, `cargo xtask build-wasm [--out DIR]` | `layout.gen.ts` from `dash-protocol`; the threaded engine build |
 
 ## The line pipeline
 
@@ -282,7 +288,7 @@ twice in a row, and the adapter must be llvmpipe at the Mesa version in `engine/
 
 ```
 dash-golden render  --page line-50 --theme dark --size 1118x240 --dpr 1 --tier t1 [--value-range MIN,MAX] --out a.png
-dash-golden compare a.png b.png [--region x,y,w,h]… [--max 0.005]   # prints the mean ꟻLIP; exit 1 above --max
+dash-golden compare a.png b.png [--region x,y,w,h]… [--max 0.005] [--tile-max V]   # mean ꟻLIP (and the largest 8×8 tile mean); exit 1 above a limit
 ```
 
 Baselines are written only by CI with the `golden-update` label (or `make engine-goldens-update`
@@ -573,6 +579,148 @@ The tests share a test kit (`tests/common/`) that reads and writes the Arrow fla
 and DSF bodies used for the mutations. `dash-wire` is built with `opt-level = 2` in the dev
 profile so that the split-point and fuzz tests stay fast.
 
+## In the browser (Part C1)
+
+Part C1 runs the engine in the page, opt-in: a chart frame uses it only when the engine flag is
+`wasm` (the URL's `?engine=wasm`, else the build's `VITE_ENGINE`) and the page can run it. Axis
+text, bars, heatmap and stat stay with Canvas 2D until #69; Part C2 adds input (the input ring,
+the camera controller, hover and selection); Part D streams Arrow data to a data worker.
+
+### Choosing an engine
+
+`client/src/engine/index.ts` calls `chooseEngine` (`select.ts`, D-SEL) once per page:
+
+| Condition | Engine |
+|---|---|
+| The flag is not `wasm` (default `canvas2d`) | Canvas 2D |
+| The engine failed earlier in this session (`failFlag.ts`) | Canvas 2D |
+| `?mode=st`, `mtr` or `static` (Canvas 2D until `dash-core-st`) | Canvas 2D |
+| Not cross-origin isolated, no `OffscreenCanvas`, neither WebGPU nor WebGL2, or no `Atomics.waitAsync` (the glue's fallback is a blob worker, which the CSP blocks) | Canvas 2D |
+| Otherwise | the routing engine; `?mode=t2` forces WebGL2 |
+
+Every chart canvas carries `data-engine`: `canvas2d`, `wasm-webgpu` or `wasm-webgl2`. With the
+engine, `<html>` carries `data-dash-status` (0 booting, 1 WebGPU, 2 WebGL2, 4 failed),
+`data-dash-mode="mt"` and `data-dash-adapter`.
+
+### The routing engine (`route.ts`)
+
+One routing frame per `ChartFrame`, bound on its first spec:
+
+- **Bind.** A line spec waits for the engine to boot, then transfers the canvas
+  (`transferControlToOffscreen`) to the render worker; any other kind, or an engine that did not
+  boot (status 4, a compile or integrity failure, or no status in 10 s; `console.warn`), goes to
+  Canvas 2D on the same canvas. The engine loads on the first chart frame: `wasm/engine.ts` is a
+  lazy chunk.
+- **State.** The routing frame keeps the latest spec, data, time window, theme, events, selection
+  and size, and its listeners, and replays them, in that order, at every bind.
+- **Kind swap.** An engine frame whose spec changes to another kind moves to Canvas 2D on a fresh
+  canvas, without a notice, and stays there.
+- **Fallback.** A frame the engine cannot draw (`failed`: its surface, or three failed read-backs in
+  a row) moves to Canvas 2D: a fresh `<canvas>` (same class, role and label) goes after the current
+  one, which stays for ChartFrame's reference, retired (`data-retired`, `hidden`,
+  `aria-hidden="true"`, `display: none !important` from CSSOM and from `route.module.css`); a
+  `MutationObserver` copies ChartFrame's label and class to the live canvas; the state is replayed
+  and a notice reads "Recovered from an error: this chart uses the basic renderer." Dispose removes
+  what the routing frame created; ChartFrame removes its own canvas. No component changed.
+
+### Workers and memory
+
+The main thread never instantiates the module (T03-003). It fetches the wasm with the SHA-384 of
+the BFF-verified `/asset-manifest.json` (`fetch(url, {integrity})`, one retry; without a manifest a
+dev server fetches it plainly and a release build has no engine), compiles it
+(`WebAssembly.compileStreaming`) and posts the `Module`:
+
+| Thread | Does |
+|---|---|
+| main | routing frames and their state, the `Module`, the workers, the `pulsus-engine` Trusted Types policy |
+| render (`wasm/render.worker.ts`) | instantiates the engine on a new shared memory (≤ 2 GiB), `engine_start` (control block, GPU), the frame table, one renderer and surface per frame, the frame loop on the worker's animation frames |
+| pool × m (`wasm/pool.worker.ts`) | rayon threads on the same module and memory, started by the main thread when the render worker asks (`spawn-pool{ptr}`); m = `clamp(hwc − 3 − clamp(⌊hwc/4⌋, 1, 3), 1, 6)` |
+
+Messages are in `wasm/protocol.ts` (tag `t`): `boot`, `create` (the canvas transferred), `spec`,
+`data` (series cloned; heatmap and scalar `null`), `window`, `theme`, `resize`, `dispose` to the
+render worker; `status`, `spawn-pool`, `events` (one JSON array per animation frame: `a11y`,
+`drawn`, `failed`, `fatal`) back. Data enters the engine only through `Frames::set_chunk`; the TS
+series become a chunk in the local id space (`IdSpace::Local`, 2⁶³…2⁶⁴), so Part D's decoder ids
+(`IdSpace::Stream`, 0…2⁶³) never collide with them. The control block is `dash-protocol`'s layout
+v1 (T03 §4.3); `client/src/engine/wasm/layout.gen.ts` is generated from it.
+
+### Tiers and the frame loop
+
+`engine_start` asks for a WebGPU adapter and device (T1, status 1; the decimation passes run as
+compute) and, failing that or with `forceT2`, WebGL2 (T2, status 2; decimation on the CPU and the
+rayon pool, no compute pipeline and no storage buffer). On T1 each frame has its own surface on its
+transferred canvas; on T2 every frame draws on one shared GL canvas at its own size and the image
+goes to the frame's `bitmaprenderer`. Surfaces are `round(css × dpr)` px, `Bgra8Unorm` or
+`Rgba8Unorm`, `Fifo`.
+
+The renderer runs with `Sync::Defer`: it never waits. A T1 line item whose total is not known yet
+is drawn within the current capacity and its status header is read back with `map_async`;
+`Renderer::poll` then reports `Complete` (the frame was whole), `Rerun` (under-sized: the next
+render sizes the instance buffer for the total) or, after three failed read-backs in a row,
+`Failed`. `drawn` (ADR-0019) is reported only for a complete frame at the size last applied, never
+at 0, with a `chart-draw` measure (`detail: {kind: 'line', series, frame}`).
+
+### Failures
+
+| Condition | Behaviour |
+|---|---|
+| No WebGPU adapter or device | WebGL2; neither: status 4, every frame on Canvas 2D |
+| `failed` (surface, read-back) | that frame falls back |
+| Device lost (handled at once, also while the loop is idle: the worker wakes itself) | one new device on the same canvases; if it lands on another tier (WebGPU lost, only WebGL2 left), every engine frame moves to Canvas 2D with the notice (`failed{tier}`) and later frames use the new tier; a second loss within 60 s, or no device at all, is fatal |
+| The render worker throws after a `drawn`, the first time on the page | one restart: new render and pool workers from the same `Module`; every engine frame moves to a fresh transferred canvas, replayed, with the notice |
+| A throw before any `drawn`, a second throw, a restart without status 1 or 2 in 10 s, or `fatal` | the session flag is set (`sessionStorage` `pulsus-dash.engine-failed`, and in memory for the page); every engine frame falls back; later frames and pages use Canvas 2D |
+| A data or spec error | the frame's data or spec is cleared; `console.error` once |
+
+Without storage the flag lasts for the page only; a reload tries the engine again.
+
+### Debugging
+
+- `?engine=wasm` (and `&mode=t2` for WebGL2) on any page; `data-engine` on the canvas and the
+  `<html>` attributes show what runs.
+- The console: `pulsus engine unavailable: <reason>` (e.g. `engine_integrity_failed`),
+  `pulsus engine: frame <id> spec|data: <error>`.
+- The fault build (`VITE_ENGINE_FAULTS=1`, e2e only) takes `&fault=`: `surface` (the first line
+  frame fails its surface), `trap` (the render worker throws after its first `drawn`, once),
+  `trap2` (after every `drawn`), `gap` (ten samples of the first frame's first series become NaN),
+  `empty` (every series value NaN) and `noline` (no line drawn, axes unchanged). The faults live
+  in `client/src/engine/faults.ts`; each of its three call sites logs its sentinel
+  (`__pulsus_engine_fault__:route|boot|worker`), and `ci:probe-absent` fails a release build that
+  holds any of them.
+
+### Building
+
+`make engine-wasm` builds the engine with the pinned nightly (`+atomics`, `build-std`), wasm-bindgen
+(`--target web`, no default module path) and `wasm-opt -O3` into the git-ignored
+`client/src/engine/wasm/gen/` (in the engine web image; `make build` needs it). Vite resolves
+`virtual:dash-engine` to that glue, or to `wasm/absent.ts` when there is no build (every frame then
+stays on Canvas 2D and `ci:bundle-size` reports `missing-artefact:engine`). The engine's files are
+`assets/dash-engine-*` (the wasm, its workers and adapter chunks). `make engine-wasm-check`
+(`ci:engine-gen`) builds twice and requires byte-equal output, a committed `dash_core_mt.d.ts`
+equal to the generated one, and `layout.gen.ts` equal to `cargo xtask gen-layout --check`.
+
+### Tests in the browser
+
+`make engine-e2e` runs `client/playwright.engine.config.ts` against the fault build, in two
+Chromium projects of the engine web image:
+
+| Project | Tier | Gated |
+|---|---|---|
+| `lavapipe` | WebGL2 through ANGLE on the pinned Mesa (`&mode=t2`) | everything |
+| `swiftshader` | WebGPU on Dawn's SwiftShader adapter (Dawn lists no lavapipe adapter) | report-only: it cannot render in the image (`onSubmittedWorkDone` and `mapAsync` reject), so `client/e2e/engine-legs.json` makes its failures soft and the run prints `WebGPU leg report-only: <reason>` |
+
+- `golden:engine-line`: the browser engine's canvas (status 2, llvmpipe, `wasm-webgl2`) against
+  the native `dash-golden render` of the same page, theme, CSS size and DPR: equal sizes
+  (`round(css × dpr)`), mean ꟻLIP ≤ 0.001, no 8 × 8 tile above 0.05; a 1 % shifted window and the
+  `gap` fault must fail.
+- `canvas2d parity`: sampled geometric parity with Canvas 2D: the plot rects are equal, and on 32
+  points of Canvas 2D's line mask the engine draws (≥ 28 within ±1 device px), with ≤ 8 of 32
+  background points touched; `noline` must fail. Anti-aliasing differs between the two renderers
+  by design, so pixel identity is checked against the native renderer only.
+- `e2e:mode-matrix`, `e2e:engine-recovery` and the engine leg of `e2e:csp-violations`.
+- `make engine-gpu-smoke` prints the adapter each project sees and whether it renders.
+
+Real-GPU WebGPU runs on a hardware runner later (follow-up).
+
 ## Limits
 
 - 500 series per line while the interim cap holds; at most 65 535 lanes.
@@ -582,8 +730,13 @@ profile so that the split-point and fuzz tests stay fast.
 - Wire decoding: a frame payload of at most 64 MiB (`MAX_PAYLOAD`), a grid of at most 2²² points
   (`MAX_GRID_LEN`), the flatbuffer and IPC work bounds above, and the shared limits and budgets
   ([above](#limits-and-budgets)).
-- The native renderer blocks on the status read after P3; Part C re-runs an under-sized frame
-  instead and never reports it as drawn.
+- The native renderer blocks on the status read after P3; the browser (`Sync::Defer`) draws within
+  the current capacity, reads the header back without waiting and re-runs an under-sized frame,
+  never reporting it as drawn.
+- The value band is at least the widest compact label (`min_value_band`, as Canvas 2D's
+  `minValueBand`), so the engine's plot rect equals Canvas 2D's.
+- In the browser: line frames only; no input until C2; WebGPU is verified only report-only in CI's
+  image (SwiftShader); one restart per page.
 
 ## Design rules and gates
 
@@ -597,7 +750,15 @@ profile so that the split-point and fuzz tests stay fast.
 | T02-030 | seeded data, deterministic passes | `golden:gallery`, `unit:decimation-prop` |
 | T03-008 | no `std::sync::Mutex`/`RwLock` | `ci:engine-lint` |
 | T03-021 | fixed chunking on rayon | `unit:decimation-prop` |
-| T05-004, T05-005 | pinned lavapipe, ꟻLIP | `golden:gallery` |
+| T05-004, T05-005 | pinned lavapipe, ꟻLIP | `golden:gallery`, `golden:engine-line`, `unit:compare-tile-max` |
+| T01-001, T03-001, T03-003 | the adapter imports only the seam; no WASM on main | ESLint, `wasm/engine.test.ts` |
+| T03-005 | control block layout v1, generated TS | `unit:control-block-layout`, `ci:engine-gen` |
+| T03-022, ADR-0026 | CSP, Trusted Types, COEP | `e2e:csp-violations`, `unit:CSP` |
+| T03-024 | no test hook in a release build | `ci:probe-absent` |
+| T03-025 | fallback and recovery | `routing`, `restart policy`, `e2e:engine-recovery`, `e2e:mode-matrix` |
+| T18-006 | integrity-checked engine wasm | `wasm/integrity.test.ts`, `e2e:mode-matrix` (integrity leg) |
+| PRF-009 | the engine row | `ci:bundle-size` |
+| VIZ-001 | the line drawn in the browser | `golden:engine-line`, `canvas2d parity` |
 | T04-001, T04-002, T04-005, T04-012 (subset) | Arrow decode into `Chunk`; exact schemas; coverage rule | `unit:codec-roundtrip`, `unit:coverage-complete` |
 | T04-009, T04-010 | DSF header, splitter and decoder bounds; the shared limits and budgets | `unit:dsf-header`, `unit:fb-reader`, `unit:dsf-bounds`, `unit:dsf-fuzz-smoke`, `unit:limits-json`, `unit:dsf-limits` |
 | T04-015 (as amended) | one decode copy, nothing pinned | `unit:arrow-alignment` |

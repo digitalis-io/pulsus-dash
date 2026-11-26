@@ -14,7 +14,8 @@
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": { "virtual:dash-engine": ["./src/engine/wasm/engine-module.d.ts"] }
   },
   "include": ["src"]
 }

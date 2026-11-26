@@ -367,7 +367,7 @@ Documents (`index.html`) carry, in this order:
 
 | Header | Value |
 |---|---|
-| `Content-Security-Policy` | `default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types pulsus-sanitised; report-to csp` (ADR-0014 §9; identical to `CSP` in `client/config/headers.ts`) |
+| `Content-Security-Policy` | `default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; object-src 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types pulsus-sanitised pulsus-engine; report-to csp` ([ADR-0026](../../designs/adr/0026-engine-csp-and-worker-policy.md), amending ADR-0014 §9: `'wasm-unsafe-eval'` lets the chart engine compile its wasm, `pulsus-engine` is the Trusted Types policy of its worker URLs; identical to `CSP` in `client/config/headers.ts`) |
 | `Reporting-Endpoints` | `csp="/api/dash/v1/csp-report"` |
 | `Cross-Origin-Opener-Policy` | `same-origin` |
 | `Cross-Origin-Embedder-Policy` | `require-corp` |
@@ -379,8 +379,10 @@ Documents (`index.html`) carry, in this order:
 | `Cache-Control` | `no-cache` |
 | `Content-Type` | `text/html; charset=utf-8` |
 
-Other files carry `Cross-Origin-Resource-Policy: same-origin`, `X-Content-Type-Options: nosniff`,
-the content type of their extension, an `ETag`, and `Cache-Control: public, max-age=31536000,
+Other files carry `Cross-Origin-Resource-Policy: same-origin`, `Cross-Origin-Embedder-Policy:
+require-corp` (so the chart engine's worker scripts run cross-origin isolated; T03-022, ADR-0026),
+`X-Content-Type-Options: nosniff`, the content type of their extension (`.wasm` is
+`application/wasm`), an `ETag`, and `Cache-Control: public, max-age=31536000,
 immutable` under `/assets/` (the names are content-hashed) or `no-cache` elsewhere. They carry no
 CSP.
 

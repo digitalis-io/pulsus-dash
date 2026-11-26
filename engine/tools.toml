@@ -17,3 +17,18 @@ rustup = "1.29.3"
 rustup_sha256 = "b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55"
 cargo_nextest = "0.9.152"
 cargo_deny = "0.20.2"
+
+# The engine web image (plan #68 C1 §5.1, engine/ci/web.Dockerfile, built on the image above): the
+# nightly for the threaded wasm build (T03 §5.6), wasm-bindgen (equal to Cargo.lock), binaryen,
+# Node, Go and Playwright's Chromium. The Dockerfile literals must equal these (`cargo xtask
+# spec-lint`).
+[web]
+nightly = "nightly-2026-11-15"
+wasm_bindgen = "0.2.130"
+binaryen = "version_133"
+binaryen_sha256 = "2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489"
+node = "24.22.3"
+node_sha256 = "4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb"
+go = "1.27.4"
+go_sha256 = "7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840"
+playwright = "1.65.0"

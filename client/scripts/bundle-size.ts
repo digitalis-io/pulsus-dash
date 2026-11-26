@@ -2,6 +2,8 @@
  * `ci:bundle-size` (PRF-033, ADR-0014 §8): brotli (quality 11) sizes of `dist/` per chunk class
  * against `bundle-budgets.json` (1 KB = 1 000 bytes), after checking that every required M-UI1
  * artefact exists, so a build that drops a route, the CSS or a font cannot pass by being smaller.
+ * The engine (PRF-009, plan #68 C1) is one row: every `assets/dash-engine-*` file (its wasm, glue,
+ * adapter and workers), required, lazy (never in the initial JS) and outside `totalExceptEngine`.
  *
  * Usage: node scripts/bundle-size.ts [dist] [budgets]
  * Exit: 0 no findings, 1 findings, 2 `dist/` or its manifest unreadable.
@@ -22,7 +24,13 @@ export interface Budgets {
 }
 
 export type BudgetClass =
-  'initialJs' | 'initialCss' | 'lazyChunk' | 'editorChunk' | 'fonts' | 'totalExceptEngine';
+  | 'initialJs'
+  | 'initialCss'
+  | 'lazyChunk'
+  | 'editorChunk'
+  | 'fonts'
+  | 'totalExceptEngine'
+  | 'engine';
 
 interface ManifestChunk {
   file: string;
@@ -99,6 +107,7 @@ export function parseBudgets(v: unknown): Budgets {
       editorChunk: num('editorChunk'),
       fonts: num('fonts'),
       totalExceptEngine: num('totalExceptEngine'),
+      engine: num('engine'),
     },
     editorModules: strs(b['editorModules']),
   };
@@ -110,6 +119,9 @@ function missing(what: string, message: string): Finding {
 
 /** The file name of every chunk holding an editor module (`vite.config.ts` `chunkFileNames`). */
 const EDITOR_FILE = /^assets\/editor-[^/]+\.js$/;
+
+/** Every engine file (`vite.config.ts`: chunks, workers and the wasm are `dash-engine-*`). */
+const ENGINE_FILE = /^assets\/dash-engine-[^/]+\.(js|wasm)$/;
 
 /**
  * The editor closure (plan #63 Part C §3.6): the files of the `editorModules` entries and every
@@ -293,10 +305,39 @@ export function checkBundle(dist: string, budgetsJson: unknown): BundleResult {
       message: `${f} is named as editor code but no editor entry reaches it`,
     });
   }
+  const engine = allFiles.filter((f) => ENGINE_FILE.test(f)).sort();
+  if (!engine.some((f) => f.endsWith('.wasm'))) {
+    findings.push(
+      missing('engine', 'no assets/dash-engine-*.wasm: build the engine (make engine-wasm)'),
+    );
+  }
+  for (const f of engine.filter((x) => initialFileSet.has(x))) {
+    findings.push({
+      rule: 'engine-in-initial',
+      file: f,
+      subject: 'engine',
+      message: `${f} is in the initial JS; the engine loads on the first chart frame`,
+    });
+  }
+  const engineSet = new Set(engine);
+  if (engine.length > 0) {
+    over(
+      'engine',
+      `engine (${String(engine.length)} files)`,
+      engine.reduce((a, f) => a + size(f), 0),
+    );
+  }
   const seen = new Set<string>();
   for (const c of manifest.values()) {
     const f = c.file;
-    if (!f.endsWith('.js') || initialFileSet.has(f) || editor.has(f) || seen.has(f)) continue;
+    if (
+      !f.endsWith('.js') ||
+      initialFileSet.has(f) ||
+      editor.has(f) ||
+      engineSet.has(f) ||
+      seen.has(f)
+    )
+      continue;
     seen.add(f);
     over('lazyChunk', f, size(f));
   }
@@ -309,7 +350,7 @@ export function checkBundle(dist: string, budgetsJson: unknown): BundleResult {
   over(
     'totalExceptEngine',
     'total',
-    allFiles.reduce((a, f) => a + size(f), 0),
+    allFiles.filter((f) => !engineSet.has(f)).reduce((a, f) => a + size(f), 0),
   );
 
   return { findings, rows, exitCode: findings.length > 0 ? 1 : 0 };

@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Workspace tasks: spec-lint"
+description = "Workspace tasks: spec-lint, gen-layout, build-wasm"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,3 +12,4 @@ workspace = true
 
 [dependencies]
 serde_json.workspace = true
+dash-protocol.workspace = true

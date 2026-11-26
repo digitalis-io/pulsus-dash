@@ -64,10 +64,21 @@ pub enum GalleryLine {
     Line50,
     LineGaps,
     Line600,
+    /// `line-extreme`: one series mapped onto [−f64::MAX, f64::MAX] (gallery.ts `nearLimit`).
+    LineExtreme,
 }
 
 impl GalleryLine {
+    /// The pages of the native goldens and parity fixtures (plan #68 Part A).
     pub const ALL: [GalleryLine; 4] = [Self::Line1, Self::Line50, Self::LineGaps, Self::Line600];
+    /// Every line page `dash-golden render` draws (`golden:engine-line`, plan #68 C1).
+    pub const RENDERABLE: [GalleryLine; 5] = [
+        Self::Line1,
+        Self::Line50,
+        Self::LineGaps,
+        Self::Line600,
+        Self::LineExtreme,
+    ];
 
     pub fn id(self) -> &'static str {
         match self {
@@ -75,6 +86,7 @@ impl GalleryLine {
             Self::Line50 => "line-50",
             Self::LineGaps => "line-gaps",
             Self::Line600 => "line-600",
+            Self::LineExtreme => "line-extreme",
         }
     }
 }
@@ -116,6 +128,25 @@ fn entry(which: GalleryLine) -> (u32, u32, u32, &'static str, f64, f64, bool, Un
             false,
             Unit::Bytes,
         ),
+        GalleryLine::LineExtreme => (9, 1, 1440, "near_limit_values", 0.0, 1.0, false, Unit::None),
+    }
+}
+
+/// gallery.ts `nearLimit`: a series' finite values mapped onto [−MAX, MAX] by
+/// q = (v − lo)/(hi − lo), MAX·(2q − 1); NaN stays; hi = lo → 0. The same IEEE operations as TS.
+fn near_limit(values: &mut [f64]) {
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for v in values.iter().filter(|v| v.is_finite()) {
+        lo = lo.min(*v);
+        hi = hi.max(*v);
+    }
+    for v in values.iter_mut().filter(|v| v.is_finite()) {
+        *v = if hi == lo {
+            0.0
+        } else {
+            let q = (*v - lo) / (hi - lo);
+            f64::MAX * (2.0 * q - 1.0)
+        };
     }
 }
 
@@ -136,7 +167,7 @@ pub fn gallery_line(which: GalleryLine, window: (f64, f64)) -> (Chunk, LineSpec)
             ("__name__".to_owned(), name.to_owned()),
             ("pod".to_owned(), format!("pod-{j:03}")),
         ];
-        let values: Vec<f64> = (0..points)
+        let mut values: Vec<f64> = (0..points)
             .map(|k| {
                 let t = window.0 + f64::from(k) * step;
                 if gaps && is_gap(j, k) {
@@ -146,6 +177,9 @@ pub fn gallery_line(which: GalleryLine, window: (f64, f64)) -> (Chunk, LineSpec)
                 }
             })
             .collect();
+        if which == GalleryLine::LineExtreme {
+            near_limit(&mut values);
+        }
         let meta = SeriesMeta {
             key_hash: key_hash(&labels),
             labels: labels.into(),

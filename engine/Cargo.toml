@@ -22,6 +22,11 @@ serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = { version = "=1.0.154", features = ["float_roundtrip"] }
 thiserror = "=2.0.21"
 proptest = "=1.12.0"
+# The browser engine (plan #68 C1 §2): equal to the wasm-bindgen CLI in tools.toml [web].
+wasm-bindgen = "=0.2.130"
+wasm-bindgen-futures = "=0.4.80"
+js-sys = "=0.3.107"
+web-sys = "=0.3.107"
 dash-tokens = { path = "crates/dash-tokens" }
 dash-units = { path = "crates/dash-units" }
 dash-colour = { path = "crates/dash-colour" }
@@ -32,6 +37,7 @@ dash-scene = { path = "crates/dash-scene" }
 dash-gpu = { path = "crates/dash-gpu" }
 dash-marks = { path = "crates/dash-marks" }
 pulsus-synth = { path = "crates/pulsus-synth" }
+dash-protocol = { path = "crates/dash-protocol" }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

@@ -38,6 +38,8 @@ interface Overrides {
   entryCss?: string[];
   /** Extra static imports of the entry `index.html`. */
   entryImports?: string[];
+  /** Extra manifest entries. */
+  manifest?: Record<string, unknown>;
 }
 
 /**
@@ -50,6 +52,8 @@ const E3 = 'assets/editor-e3.js';
 const E4 = 'assets/editor-e4.js';
 const S = 'assets/editor-s.js';
 const R = 'assets/MetricsPage-r.js';
+const ENGINE_WASM = 'assets/dash-engine-a.wasm';
+const ENGINE_WORKER = 'assets/dash-engine-render-a.js';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -105,6 +109,7 @@ function makeDist(o: Overrides = {}): string {
   if (logs !== undefined) {
     logs['dynamicImports'] = ['src/editor/lang/logql/logql.ts', 'src/editor/logqlEditor.ts'];
   }
+  Object.assign(manifest, o.manifest ?? {});
   for (const k of o.dropKeys ?? []) Reflect.deleteProperty(manifest, k);
   const files: Record<string, Buffer | null> = {
     'index.html': Buffer.from(
@@ -123,6 +128,9 @@ function makeDist(o: Overrides = {}): string {
     [E3]: Buffer.from('export const e3 = 1'),
     [E4]: Buffer.from('export const e4 = 1'),
     [S]: Buffer.from('export const s = 1'),
+    // The engine (plan #68 C1): its wasm and a worker entry.
+    [ENGINE_WASM]: Buffer.from('wasm'),
+    [ENGINE_WORKER]: Buffer.from('export {}'),
     ...o.files,
   };
   for (const [path, content] of Object.entries(files)) {
@@ -226,6 +234,47 @@ describe('bundle-size editor closure (PRF-009)', () => {
   it('(k) an editor-* file outside the closure', () => {
     expect(rules(makeDist({ files: { 'assets/editor-x.js': Buffer.from('x') } }))).toEqual([
       'editor-orphan',
+    ]);
+  });
+});
+
+describe('bundle-size engine row (PRF-009, plan #68 C1)', () => {
+  it('the engine files are one row, outside the total', async () => {
+    const { brotliSize } = await import('./bundle-size.ts');
+    const wasm = randomBytes(1_000_000, 3);
+    const worker = Buffer.from('export const w = 1;'.repeat(50));
+    const r = checkBundle(
+      makeDist({ files: { [ENGINE_WASM]: wasm, [ENGINE_WORKER]: worker } }),
+      budgets,
+    );
+    expect(r.findings).toEqual([]);
+    expect(r.exitCode).toBe(0);
+    const engine = r.rows.filter((row) => (row.cls as string) === 'engine');
+    expect(engine).toHaveLength(1);
+    expect(engine[0]?.bytes).toBe(brotliSize(wasm) + brotliSize(worker));
+    expect(engine[0]?.budget).toBe(1_900_000);
+    const total = r.rows.find((row) => row.cls === 'totalExceptEngine');
+    expect(total?.bytes).toBeLessThan(100_000);
+    expect(r.rows.some((row) => row.cls === 'lazyChunk' && row.file.includes('dash-engine'))).toBe(
+      false,
+    );
+  });
+  it('an engine over 1.9 MB', () => {
+    expect(rules(makeDist({ files: { [ENGINE_WASM]: randomBytes(2_000_000, 4) } }))).toEqual([
+      'over-budget:engine',
+    ]);
+  });
+  it('an engine chunk in the initial JS', () => {
+    const dist = makeDist({
+      entryImports: ['_dash-engine-c.js'],
+      manifest: { '_dash-engine-c.js': { file: 'assets/dash-engine-c.js' } },
+      files: { 'assets/dash-engine-c.js': Buffer.from('export const c = 1') },
+    });
+    expect(rules(dist)).toEqual(['engine-in-initial']);
+  });
+  it('no engine wasm', () => {
+    expect(rules(makeDist({ files: { [ENGINE_WASM]: null, [ENGINE_WORKER]: null } }))).toEqual([
+      'missing-artefact:engine',
     ]);
   });
 });

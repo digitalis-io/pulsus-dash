@@ -41,8 +41,8 @@ pub struct Chunk {
     pub finite: Option<(f64, f64)>,
 }
 
-/// Why `ChunkBuilder::push_series` rejected a series.
-#[derive(Debug, PartialEq, thiserror::Error)]
+/// Why `ChunkBuilder::push_series` rejected a series, or an [`IdAlloc`] has no id.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ChunkError {
     #[error("length")]
     Length,
@@ -50,6 +50,69 @@ pub enum ChunkError {
     Order,
     #[error("too many samples")]
     TooLarge,
+    /// An id outside the allocator's [`IdSpace`], or the space is used up.
+    #[error("ids")]
+    Ids,
+}
+
+/// The two chunk-id spaces (plan #68 C1 §3.4): `Stream` ids `0..2⁶³` are the decoder's (Part D's
+/// data workers), `Local` ids `2⁶³..2⁶⁴` the render worker's own chunks, so the two never collide
+/// in a renderer's caches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IdSpace {
+    Stream,
+    Local,
+}
+
+/// Hands out the ids of one [`IdSpace`] in order, and never one outside it.
+#[derive(Clone, Debug)]
+pub struct IdAlloc {
+    next: Option<u64>,
+    last: u64,
+}
+
+/// The first local id, 2⁶³.
+const LOCAL_FIRST: u64 = 1 << 63;
+
+impl IdSpace {
+    /// The first and last id of the space.
+    pub fn bounds(self) -> (u64, u64) {
+        match self {
+            IdSpace::Stream => (0, LOCAL_FIRST - 1),
+            IdSpace::Local => (LOCAL_FIRST, u64::MAX),
+        }
+    }
+}
+
+impl IdAlloc {
+    /// From the first id of `space`.
+    pub fn new(space: IdSpace) -> Self {
+        let (first, last) = space.bounds();
+        Self {
+            next: Some(first),
+            last,
+        }
+    }
+
+    /// From `first`; `Err(Ids)` when `first` is outside `space`.
+    pub fn starting_at(space: IdSpace, first: u64) -> Result<Self, ChunkError> {
+        let (lo, last) = space.bounds();
+        if !(lo..=last).contains(&first) {
+            return Err(ChunkError::Ids);
+        }
+        Ok(Self {
+            next: Some(first),
+            last,
+        })
+    }
+
+    /// The next id; `None` after the last id of the space.
+    #[allow(clippy::should_implement_trait)]
+    pub fn next(&mut self) -> Option<ChunkId> {
+        let id = self.next?;
+        self.next = if id < self.last { Some(id + 1) } else { None };
+        Some(ChunkId(id))
+    }
 }
 
 /// The most samples in one chunk.
