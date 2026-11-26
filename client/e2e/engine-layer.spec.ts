@@ -166,6 +166,12 @@ function dist(img: Rgba, x: number, y: number, c: number[]): number {
 }
 const ink = (img: Rgba, x: number, y: number, c: number[]): boolean => dist(img, x, y, c) <= 40;
 
+/** The RGB of pixel (x, y). */
+function pixel(img: Rgba, x: number, y: number): number[] {
+  const i = (y * img.w + x) * 4;
+  return [img.px[i] ?? 0, img.px[i + 1] ?? 0, img.px[i + 2] ?? 0];
+}
+
 /** The plot's device rows, inside it. */
 function rowsOf(p: Plot): number[] {
   const out: number[] = [];
@@ -355,37 +361,57 @@ test.describe('e2e:engine-layer', () => {
     });
   });
 
-  test('L5 ADR-0023: on an auto axis an event at or rounding to the window end is drawn in the plot', async ({
-    page,
-  }, info) => {
-    test.setTimeout(120_000);
-    await leg(info, async () => {
-      await probePage(page, info);
-      const want = fixture('events-ends-auto');
-      const { n, s: s0 } = await S(page);
-      await call(page, n, 'setEvents', [marker('hi', s0.toMs), marker('near-hi', s0.toMs - 1_000)]);
-      const s = await until(page, n, (x) => x.plot.y !== s0.plot.y, 'the band');
-      expect(s.plot).toEqual(want.plot);
-      // Both round to the right edge: drawn in the plot's last column, no event ink right of it (the
-      // unclipped series' cap may reach one pixel past the plot's top-right corner on an auto axis).
-      const last = Math.ceil((s.plot.x + s.plot.width) * DPR) - 1;
-      await expect
-        .poll(
-          async () => {
-            const img = await shot(page);
-            const outside: string[] = [];
-            for (let x = last + 1; x < img.w; x++) {
-              for (const y of rowsOf(s.plot)) {
-                if (ink(img, x, y, MUTED)) outside.push(`${String(x)},${String(y)}`);
+  for (const [name, offsetMs] of [
+    ['exactly at the window end', 0],
+    ['1 s before the window end (rounds to the edge)', 1_000],
+  ] as const) {
+    test(`L5 ADR-0023: on an auto axis an event ${name} adds a line in the plot's last column only`, async ({
+      page,
+    }, info) => {
+      test.setTimeout(120_000);
+      await leg(info, async () => {
+        await probePage(page, info);
+        const want = fixture('events-ends-auto');
+        const { n, s: s0 } = await S(page);
+        // The band first, with an event out of view, so adding the edge event changes no layout.
+        const away = marker('away', s0.fromMs - 3_600_000);
+        await call(page, n, 'setEvents', [away]);
+        const s = await until(page, n, (x) => x.plot.y !== s0.plot.y, 'the band');
+        expect(s.plot).toEqual(want.plot);
+        const before = await shot(page);
+        await call(page, n, 'setEvents', [away, marker('edge', s0.toMs - offsetMs)]);
+        const last = Math.ceil((s.plot.x + s.plot.width) * DPR) - 1;
+        const rows = rowsOf(s.plot);
+        const [y0, y1] = [Math.floor(s.plot.y * DPR), Math.ceil((s.plot.y + s.plot.height) * DPR)];
+        await expect
+          .poll(
+            async () => {
+              const after = await shot(page);
+              const changed = new Set<number>();
+              const stray: string[] = [];
+              for (let y = 0; y < after.h; y++) {
+                for (let x = 0; x < after.w; x++) {
+                  if (dist(after, x, y, pixel(before, x, y)) === 0) continue;
+                  if (x === last && y >= y0 && y < y1) changed.add(y);
+                  else stray.push(`${String(x)},${String(y)}`);
+                }
               }
-            }
-            return { last: column(img, s.plot, last, MUTED), outside: outside.slice(0, 5) };
-          },
-          { message: 'the window-end events, auto axis', timeout: 10_000 },
-        )
-        .toEqual({ last: true, outside: [] });
+              return {
+                last: changed.size >= 0.9 * rows.length,
+                stray: stray.slice(0, 5),
+              };
+            },
+            { message: `the event ${name}`, timeout: 10_000 },
+          )
+          .toEqual({ last: true, stray: [] });
+        // Report what lies right of the plot at its top row (no event ink: the series' cap).
+        const p = pixel(before, last + 1, y0);
+        console.log(
+          `L5 ${name}: pixel (${String(last + 1)}, ${String(y0)}) = rgb(${p.join(', ')}); muted ${String(ink(before, last + 1, y0, MUTED))}`,
+        );
+      });
     });
-  });
+  }
 
   test('L4 ADR-0023: window-end events under a pinned axis are cut to the plot', async ({
     page,
