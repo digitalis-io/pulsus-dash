@@ -113,12 +113,29 @@ export function hoverRows(
 }
 
 /** Stub (plan #68 C2b): the hover of a layer model at a key index or pointer. */
-/* eslint-disable @typescript-eslint/no-unused-vars -- test-first stub */
+/**
+ * The hover of a drawn layer (plan #68 C2b: moved from `Canvas2DFrame`, unchanged; the source of
+ * `engine/fixtures/hover.json`, which the engine's `dash-scene::hover` port must reproduce): the
+ * keyboard crosshair at reference index `keyIndex` (y = the plot's top), else the pointer's
+ * nearest sample (line) or bucket (bars, heatmap); null without a pick model or a hover.
+ */
 export function hoverAt(
-  _m: LayerModel,
-  _v: Span,
-  _keyIndex: number | null,
-  _p: { readonly x: number; readonly y: number } | null,
+  m: LayerModel,
+  v: Span,
+  keyIndex: number | null,
+  p: { readonly x: number; readonly y: number } | null,
 ): HoverEvent | null {
-  return null;
+  if (m.pick === null) return null;
+  const { plot } = m.summary;
+  const xOf = (t: number): number => plot.x + ((t - v.lo) / (v.hi - v.lo)) * plot.width;
+  if (keyIndex !== null) {
+    const { tMs, rows } = hoverRows(m.pick, keyIndex, 'keyboard', plot.y);
+    return { source: 'keyboard', tMs, xCss: xOf(tMs), yCss: plot.y, rows };
+  }
+  if (p === null) return null;
+  const t = v.lo + ((p.x - plot.x) / plot.width) * (v.hi - v.lo);
+  const i = m.pick.kind === 'line' ? nearestIndex(m.pick.ref, t) : bucketIndex(m.pick.ref, t);
+  if (i < 0) return null;
+  const { tMs, rows } = hoverRows(m.pick, i, 'pointer', p.y);
+  return { source: 'pointer', tMs, xCss: xOf(tMs), yCss: p.y, rows };
 }

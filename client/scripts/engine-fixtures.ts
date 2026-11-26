@@ -770,6 +770,12 @@ const plain = (x: Series) => ({
   v: [...x.values],
 });
 
+/** Every `k`th sample of `x`. */
+function thin(x: Series, k: number): Series {
+  const keep = (a: Float64Array): Float64Array => a.filter((_, i) => i % k === 0);
+  return { ...x, timestamps: keep(x.timestamps), values: keep(x.values) };
+}
+
 /** A series of `n` samples `step` ms apart from the window start, values from `f(i)`. */
 function seriesOf(
   key: string,
@@ -789,7 +795,7 @@ function seriesOf(
 
 /**
  * `hover.json` (plan #68 C2b §5 `hover_parity`): per line case its model's plot, domain, view and
- * series, then `hoverAt` at key indices 0, n − 1 and n, at no hover, and at 200 seeded pointers
+ * series (line-50's 50 series at every 6th sample, to keep the file small), then `hoverAt` at key indices 0, n − 1 and n, at no hover, and at 200 seeded pointers
  * (mulberry32 33, shared round-robin by the cases, ±10 px around the plot's width), and `pickItem`
  * at the same pointers; then `seriesName` of labels with quotes, backslashes, newlines, no
  * `__name__` and keys that sort differently by UTF-16 code unit than by code point.
@@ -821,7 +827,7 @@ function hoverRows(s: Sources, entries: readonly Entry[]): unknown[] {
   ];
   const line = [seriesOf('00000000000000a1', {}, 61, 60_000, (i) => (30 * i) / 60)];
   const cases: [string, Series[], { min: number; max: number } | null][] = [
-    ['line-50', gallery('line-50'), null],
+    ['line-50', gallery('line-50').map((x) => thin(x, 6)), null],
     ['line-gaps', gallery('line-gaps'), null],
     ['line-1', gallery('line-1'), null],
     ['two-steps', two, null],

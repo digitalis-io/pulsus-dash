@@ -1,20 +1,21 @@
 /**
  * The input ring's producer (plan #68 C2a1 §3.1, §3.3, §4.1; T03 §5.4, T03-004 revised, T03-006,
- * T03-020): the main thread writes Resize and Camera records into the control block's ring and the
- * render worker reads them at the start of its next tick. One ring per engine memory (each status
+ * T03-020): the main thread writes Resize, Camera, Overlay and Select records (the last two from
+ * plan #68 C2b §3.1) into the control block's ring and the render worker reads them at the start
+ * of its next tick. One ring per engine memory (each status
  * gets a new one).
  *
  * | Step | Behaviour |
  * |---|---|
  * | counters | free-running `u32` byte counts: occupied = `(head − tail) >>> 0`; the physical offset = `head & (RING − 1)`; loads `>>> 0`, stores `\| 0` |
  * | publish | the size, plus the gap to the end when the record would cross it (a Wrap byte there); too little free → pending; else the payload (`DataView`, little-endian), then `Atomics.store(HEAD)` |
- * | pending | `Map<'kind:frame'>`, no seqs; a replacement deletes, then inserts (to the end): `coalesced` |
+ * | pending | `Map<'kind:frame'>`, no seqs; a replacement deletes, then inserts (to the end): `coalesced`. A Select is discrete: its key is unique, so it is never coalesced; a frame keeps at most 8 waiting, a 9th drops the oldest (`INPUT_OVERFLOW` + 1, one warning per frame) |
  * | order | up to 32 pending are published before a new record; if any remain it joins them; an animation frame publishes up to 256 |
  * | seq | per frame from `firstSeq` (1), assigned at publish; the wire carries `P mod 2³²`, a `P ≡ 0` is skipped; `onPublish` gets `P` (53-bit) |
  * | wake | after each publish `Atomics.compareExchange(IDLE, 1, 0) === 1` → `wake()`: at most one per idle period |
  *
- * Nothing is dropped: a record that does not fit waits (only the latest per kind and frame is
- * kept), so `INPUT_OVERFLOW` stays 0 until #94 brings discrete records.
+ * Nothing else is dropped: a state record that does not fit waits (only the latest per kind and
+ * frame is kept).
  */
 import type { CameraState, OverlayState } from './frame';
 import {
@@ -28,11 +29,24 @@ import {
   OFF_INPUT_DATA,
   OFF_INPUT_HEAD,
   OFF_INPUT_IDLE,
+  OFF_INPUT_OVERFLOW,
   OFF_INPUT_TAIL,
+  OVERLAY_BOX,
+  OVERLAY_BOX_X,
+  OVERLAY_BOX_X0,
+  OVERLAY_FRAME,
+  OVERLAY_HOVER,
+  OVERLAY_KEY,
+  OVERLAY_X,
+  OVERLAY_Y,
   REC_CAMERA,
   REC_CAMERA_BYTES,
+  REC_OVERLAY,
+  REC_OVERLAY_BYTES,
   REC_RESIZE,
   REC_RESIZE_BYTES,
+  REC_SELECT,
+  REC_SELECT_BYTES,
   REC_WRAP,
   RESIZE_CSS_H,
   RESIZE_CSS_W,
@@ -41,6 +55,9 @@ import {
   RESIZE_DPR,
   RESIZE_FRAME,
   RING_BYTES,
+  SELECT_FRAME,
+  SELECT_X,
+  SELECT_Y,
 } from './layout.gen';
 
 /** One record as the probe logs it (and `engine_probe_input` decodes it). */
@@ -71,6 +88,8 @@ const BEFORE_OWN = 32;
 const PER_FLUSH = 256;
 /** The probe log's bound (as the worker's). */
 const MAX_LOG = 20_000;
+/** Waiting Selects kept per frame (plan #68 C2b §3.1). */
+const MAX_SELECTS = 8;
 
 interface Rec {
   readonly kind: number;
@@ -80,6 +99,8 @@ interface Rec {
   /** Writes the payload at `at` (header excluded). */
   readonly write: (d: DataView, at: number) => void;
   readonly f: readonly (number | null)[];
+  /** Discrete (Select): never coalesced, capped per frame. */
+  readonly discrete?: true;
 }
 
 const nul = (v: number): number | null => (Number.isNaN(v) ? null : v);
@@ -98,6 +119,10 @@ export class InputRing {
   private readonly now: () => number;
   private readonly firstSeq: number;
   private readonly wake: () => void;
+  /** Select keys are unique: `select:frame:n`. */
+  private nextSelect = 0;
+  /** Frames already warned about a dropped Select. */
+  private readonly warned = new Set<number>();
   private scheduled = false;
   private closed = false;
 
@@ -162,16 +187,57 @@ export class InputRing {
     });
   }
 
-  /** Stub (plan #68 C2b). */
-  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- test-first stub */
-  overlay(_frame: number, _o: OverlayState): void {
-    // Not written until C2b.
+  /** The hover and the box band (plan #68 C2b §3.1): coalesced per frame like a Camera. */
+  overlay(frame: number, o: OverlayState): void {
+    const h = o.hover;
+    const mode = h.kind === 'none' ? 0 : h.kind === 'pointer' ? 1 : 2;
+    const x = h.kind === 'pointer' ? h.x : 0;
+    const y = h.kind === 'pointer' ? h.y : 0;
+    const key = h.kind === 'key' ? h.index >>> 0 : 0;
+    const boxed = o.box === null ? 0 : 1;
+    const x0 = o.box?.x0 ?? 0;
+    const x1 = o.box?.x ?? 0;
+    this.enqueue({
+      kind: REC_OVERLAY,
+      frame,
+      size: REC_OVERLAY_BYTES,
+      tMs: this.now(),
+      write: (d, at) => {
+        d.setUint32(at + OVERLAY_FRAME, frame, true);
+        d.setUint8(at + OVERLAY_HOVER, mode);
+        d.setUint8(at + OVERLAY_BOX, boxed);
+        d.setUint16(at + OVERLAY_BOX + 1, 0, true);
+        d.setFloat64(at + OVERLAY_X, x, true);
+        d.setFloat64(at + OVERLAY_Y, y, true);
+        d.setUint32(at + OVERLAY_KEY, key, true);
+        d.setUint32(at + OVERLAY_KEY + 4, 0, true);
+        d.setFloat64(at + OVERLAY_BOX_X0, x0, true);
+        d.setFloat64(at + OVERLAY_BOX_X, x1, true);
+      },
+      f: [frame, mode, boxed, nul(x), nul(y), key, nul(x0), nul(x1)],
+    });
   }
 
-  /** Stub (plan #68 C2b). */
-  /* eslint-disable-next-line @typescript-eslint/no-unused-vars -- test-first stub */
-  select(_frame: number, _x: number, _y: number): void {
-    // Not written until C2b.
+  /** A click at CSS px (plan #68 C2b §3.1): discrete, never coalesced, ≤ 8 waiting per frame. */
+  select(frame: number, x: number, y: number): void {
+    this.stats.selects += 1;
+    this.enqueue(
+      {
+        kind: REC_SELECT,
+        frame,
+        size: REC_SELECT_BYTES,
+        tMs: this.now(),
+        write: (d, at) => {
+          d.setUint32(at + SELECT_FRAME, frame, true);
+          d.setUint32(at + SELECT_FRAME + 4, 0, true);
+          d.setFloat64(at + SELECT_X, x, true);
+          d.setFloat64(at + SELECT_Y, y, true);
+        },
+        f: [frame, nul(x), nul(y)],
+        discrete: true,
+      },
+      `select:${String(frame)}:${String(this.nextSelect++)}`,
+    );
   }
 
   /** `cb(kind, P)` after each of the frame's records is published. */
@@ -206,17 +272,37 @@ export class InputRing {
     this.listeners.clear();
   }
 
-  private enqueue(r: Rec): void {
+  private enqueue(r: Rec, key = `${String(r.kind)}:${String(r.frame)}`): void {
     if (this.closed) return;
-    const key = `${String(r.kind)}:${String(r.frame)}`;
-    if (this.pending.delete(key)) {
+    if (r.discrete !== true && this.pending.delete(key)) {
       this.stats.coalesced += 1;
       this.pending.set(key, r);
       return;
     }
     this.publishPending(BEFORE_OWN);
-    if (this.pending.size > 0 || !this.publish(r)) this.pending.set(key, r);
+    if (this.pending.size > 0 || !this.publish(r)) {
+      if (r.discrete === true) this.capSelects(r.frame);
+      this.pending.set(key, r);
+    }
     this.schedule();
+  }
+
+  /** Room for one more waiting Select of `frame`: past 8 the oldest goes, counted and warned. */
+  private capSelects(frame: number): void {
+    let n = 0;
+    let oldest: string | null = null;
+    for (const [k, r] of this.pending) {
+      if (r.kind !== REC_SELECT || r.frame !== frame) continue;
+      oldest ??= k;
+      n++;
+    }
+    if (n < MAX_SELECTS || oldest === null) return;
+    this.pending.delete(oldest);
+    Atomics.add(this.i32, OFF_INPUT_OVERFLOW / 4, 1);
+    if (!this.warned.has(frame)) {
+      this.warned.add(frame);
+      console.warn(`pulsus engine: frame ${String(frame)} dropped a click (ring full)`);
+    }
   }
 
   private publishPending(max: number): void {

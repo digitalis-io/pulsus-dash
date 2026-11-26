@@ -88,20 +88,27 @@ describe('RoutingEngine (D-ROUTE)', () => {
     const inner = b.inner.frames[0];
     if (inner === undefined) throw new Error('not bound');
     // The controller sends the window as the engine camera (plan #68 C2a2 §3.2): on the window,
-    // and again on every later layout input.
+    // and again on every later layout input; each layout input also clears the hover with an
+    // Overlay, flushed before the call (plan #68 C2b §4.1).
     const camera = {
       method: 'setCamera',
       args: [{ view: { lo: 1, hi: 2 }, value: null, band: null }],
     };
+    const none = { method: 'setOverlay', args: [{ hover: { kind: 'none' }, box: null }] };
     expect(inner.calls).toEqual([
+      none,
       { method: 'setSpec', args: [LINE_B] },
+      none,
       { method: 'setData', args: [D] },
       camera,
+      none,
       camera,
+      none,
       { method: 'setTheme', args: ['light'] },
       { method: 'setEvents', args: [[]] },
       { method: 'setSelection', args: [null] },
       camera,
+      none,
       { method: 'resize', args: [300, 150, 1] },
     ]);
     expect(transfers).toBe(1);

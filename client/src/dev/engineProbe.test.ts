@@ -6,7 +6,7 @@
  * frames.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CB, KIND_CAMERA, KIND_RESIZE, memory, RingView } from '../test/ringView';
+import { CB, KIND_CAMERA, KIND_OVERLAY, KIND_RESIZE, memory, RingView } from '../test/ringView';
 import type { FrameInit } from '../engine/api';
 import type { Backend, ProbeHost } from '../engine/wasm/engine';
 import { WasmFrame } from '../engine/wasm/frame';
@@ -125,7 +125,8 @@ describe('__dashProbe settle (plan #68 C2a1 §3.4)', () => {
     expect(frames).toHaveLength(2);
     const [A, B] = frames;
     if (A === undefined || B === undefined) throw new Error('no frames');
-    // A full ring: the frames' held records go pending, A's camera is replaced (coalesced).
+    // A full ring: the frames' held records go pending, A's camera and overlay are replaced
+    // (coalesced; plan #68 C2b: every layout input also writes the frame's Overlay).
     fill(ring);
     A.created(ring);
     B.created(ring);
@@ -133,7 +134,7 @@ describe('__dashProbe settle (plan #68 C2a1 §3.4)', () => {
     B.handle({ t: 'a11y', id: B.id, ev: SUMMARY });
     const [na, nb] = await Promise.all([pa, pb]);
     probe.call(na, 'setTimeWindow', { fromMs: 2, toMs: 8 });
-    expect(probe.stats().coalesced).toBe(1);
+    expect(probe.stats().coalesced).toBe(2);
     expect(await settles(probe, na)).toBe(false);
     view.decode();
     ring.flush();
@@ -141,15 +142,17 @@ describe('__dashProbe settle (plan #68 C2a1 §3.4)', () => {
     expect(recs.map((r) => [r.frame, r.kind, r.seq])).toEqual([
       [A.id, KIND_RESIZE, 1],
       [B.id, KIND_CAMERA, 1],
-      [B.id, KIND_RESIZE, 2],
+      [B.id, KIND_OVERLAY, 2],
+      [B.id, KIND_RESIZE, 3],
       [A.id, KIND_CAMERA, 2],
+      [A.id, KIND_OVERLAY, 3],
     ]);
     // A's camera is the second call's.
-    expect(recs[3]?.f.slice(0, 2)).toEqual([2, 8]);
-    applied(A, 2);
-    drawn(A, 2, 1);
-    applied(B, 2);
-    drawn(B, 2, 2);
+    expect(recs[4]?.f.slice(0, 2)).toEqual([2, 8]);
+    applied(A, 3);
+    drawn(A, 3, 1);
+    applied(B, 3);
+    drawn(B, 3, 3);
     expect(await settles(probe, na)).toBe(true);
     expect(await settles(probe, nb)).toBe(true);
     expect(probe.last(na)).toEqual(SUMMARY);
@@ -160,28 +163,30 @@ describe('__dashProbe settle (plan #68 C2a1 §3.4)', () => {
     fill(ring);
     probe.call(na, 'resize', [400, 150, 1]);
     expect(await settles(probe, na)).toBe(false);
-    drawn(A, 2, 1);
+    drawn(A, 3, 1);
     expect(await settles(probe, na)).toBe(false);
     view.decode();
     ring.flush();
     expect(view.decode().map((r) => [r.frame, r.kind, r.seq])).toEqual([
-      [A.id, KIND_CAMERA, 3],
-      [A.id, KIND_RESIZE, 4],
+      [A.id, KIND_CAMERA, 4],
+      [A.id, KIND_OVERLAY, 5],
+      [A.id, KIND_RESIZE, 6],
     ]);
     // `applied` alone does not settle a frame of non-zero size; with its `drawn` it does.
-    applied(A, 4);
+    applied(A, 6);
     expect(await settles(probe, na)).toBe(false);
-    drawn(A, 4, 4, 400);
+    drawn(A, 6, 6, 400);
     expect(await settles(probe, na)).toBe(true);
     // `drawn` alone does not settle either.
     probe.call(nb, 'resize', [500, 150, 1]);
     expect(view.decode().map((r) => [r.frame, r.seq])).toEqual([
-      [B.id, 3],
       [B.id, 4],
+      [B.id, 5],
+      [B.id, 6],
     ]);
-    drawn(B, 4, 4, 500);
+    drawn(B, 6, 6, 500);
     expect(await settles(probe, nb)).toBe(false);
-    applied(B, 4);
+    applied(B, 6);
     expect(await settles(probe, nb)).toBe(true);
     expect(probe.drawn(nb).at(-1)).toEqual({ cssWidth: 500, cssHeight: 150, dpr: 1 });
     expect(probe.producedLog().length).toBeGreaterThan(1024);
@@ -203,9 +208,9 @@ describe('__dashProbe settle (plan #68 C2a1 §3.4)', () => {
     Z.created(ring);
     Z.handle({ t: 'a11y', id: Z.id, ev: SUMMARY });
     const n = await p;
-    expect(view.decode().map((r) => r.seq)).toEqual([1, 2]);
+    expect(view.decode().map((r) => r.seq)).toEqual([1, 2, 3]);
     expect(await settles(probe, n)).toBe(false);
-    applied(Z, 2);
+    applied(Z, 3);
     expect(await settles(probe, n)).toBe(true);
   });
 
@@ -224,16 +229,16 @@ describe('__dashProbe settle (plan #68 C2a1 §3.4)', () => {
     A.created(ring);
     A.handle({ t: 'a11y', id: A.id, ev: SUMMARY });
     const n = await p;
-    expect(view.decode().map((r) => r.seq)).toEqual([1, 2]);
-    applied(A, 2);
-    drawn(A, 2, 2);
+    expect(view.decode().map((r) => r.seq)).toEqual([1, 2, 3]);
+    applied(A, 3);
+    drawn(A, 3, 3);
     expect(await settles(probe, n)).toBe(true);
     // An empty window: the worker rejects it but presents the unchanged state with its seq.
     probe.call(n, 'setTimeWindow', { fromMs: 5, toMs: 5 });
-    expect(view.decode().map((r) => r.seq)).toEqual([3]);
+    expect(view.decode().map((r) => r.seq)).toEqual([4, 5]);
     expect(await settles(probe, n)).toBe(false);
-    applied(A, 3);
-    drawn(A, 3, 2);
+    applied(A, 5);
+    drawn(A, 5, 3);
     expect(await settles(probe, n)).toBe(true);
     expect(probe.drawn(n).at(-1)).toEqual({ cssWidth: 300, cssHeight: 150, dpr: 1 });
     expect(probe.last(n)).toEqual(SUMMARY);

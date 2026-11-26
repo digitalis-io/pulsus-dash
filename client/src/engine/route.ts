@@ -12,7 +12,8 @@
  * no 2D context, and is committed to its worker): the fresh canvas goes after the current one,
  * which stays for ChartFrame's reference, retired and hidden; its title and class are mirrored
  * to the live canvas. A notice tells the user. Dispose removes what this frame created; ChartFrame
- * removes its own canvas.
+ * removes its own canvas. Unbinding a frame whose last forwarded hover was shown (a restart, a
+ * fallback, the kind swap) emits `hover: null` once (plan #68 C2b §4.4).
  */
 import { t } from '../i18n/t';
 import { faultOf, installFaults, type FaultSite } from './faults';
@@ -131,6 +132,8 @@ class RoutingFrame implements ChartFrame {
   /** Bumped on every (re)bind: callbacks of an older backend frame are ignored. */
   private gen = 0;
   private live: HTMLCanvasElement;
+  /** The last hover forwarded from the bound frame was not null. */
+  private hoverShown = false;
   private readonly created: Element[] = [];
   private observer: MutationObserver | null = null;
 
@@ -228,6 +231,11 @@ class RoutingFrame implements ChartFrame {
     for (const off of this.innerOffs.splice(0)) off();
     this.inner?.dispose();
     this.inner = null;
+    if (this.hoverShown) {
+      this.hoverShown = false;
+      // The frame's hover goes with it, unless the frame itself is going.
+      if (this.mode !== 'disposed') this.emit('hover', null);
+    }
   }
 
   /** Attaches `frame` and replays the state into it, in order. */
@@ -237,6 +245,7 @@ class RoutingFrame implements ChartFrame {
     for (const e of EVENTS) {
       this.innerOffs.push(
         frame.on(e, (ev) => {
+          if (e === 'hover') this.hoverShown = ev !== null;
           this.emit(e, ev);
         }),
       );

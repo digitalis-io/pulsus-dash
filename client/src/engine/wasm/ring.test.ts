@@ -225,7 +225,7 @@ describe('Overlay and Select (plan #68 C2b §3.1)', () => {
       v.decode();
       r.flush();
       expect(v.decode().map((x) => x.f[0])).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
-      expect(r.stats.selects).toBe(10);
+      expect(r.stats.selects).toBe(12);
     } finally {
       warn.mockRestore();
     }
