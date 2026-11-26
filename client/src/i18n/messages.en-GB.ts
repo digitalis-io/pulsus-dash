@@ -736,6 +736,14 @@ export const messages = {
   'hist.line.inOther': '{name} (in {other})',
   'hist.facts.current': 'median {median}; mode {range} ({count} of {drawable})',
 
+  'import.text.iframeToLink': 'Line {line}: the embedded page from {host} became a link.',
+  'import.text.iframeNoLink': "Line {line}: an embedded page without a usable address isn't shown.",
+  'import.text.htmlNotRendered': "HTML isn't shown ({count} elements).",
+  'import.text.tooLarge':
+    'Text panel #{index} (id {id}) is too large to add embedded-page links ({links} links). Shorten or split it in the source and import again.',
+  'import.text.tooLargeNoId':
+    'Text panel #{index} is too large to add embedded-page links ({links} links). Shorten or split it in the source and import again.',
+
   'state.ok': 'OK',
   'state.watch': 'Watch',
   'state.degraded': 'Degraded',

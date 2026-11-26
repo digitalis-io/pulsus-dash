@@ -8,6 +8,8 @@ const g = globalThis as unknown as AxeGlobal;
 /** Makes `html` the whole body (parsed, not assigned to innerHTML: T18-004). */
 function setBody(html: string): void {
   document.body.replaceChildren(
+    // A jsdom-only test fixture of static markup; nothing here reaches the browser (ci:no-iframe).
+    // eslint-disable-next-line security/no-iframe
     ...new DOMParser().parseFromString(html, 'text/html').body.childNodes,
   );
 }

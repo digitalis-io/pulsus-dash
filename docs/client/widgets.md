@@ -9,9 +9,10 @@ and error, is on [the boards API page](../server/boards-api.md#widgets-text-and-
 user's view is [Boards](../user/boards.md#widgets).
 
 **Coming later.** This version reads, shows, moves, duplicates, removes and saves widgets, but
-draws no kind: each shows "This widget isn't available in this version yet." The Markdown
-renderer and the import conversion come with #198 Part 2; the Text view, its editor, adding a
-widget and the gallery with #198 Part 3; the Clock view with A2; the Board list view, editor and
+draws no kind: each shows "This widget isn't available in this version yet." #198 Part 2a adds
+the sanitiser's URL classifier, iframe finder and import conversion
+([below](#sanitiser-modules-part-2a)), which no page uses yet; the Markdown renderer comes with
+Part 2b; the Text view, its editor, adding a widget and the gallery with #198 Part 3; the Clock view with A2; the Board list view, editor and
 states with #216 Part 2. Until then only boards written through the API have widgets.
 
 | Module | Role |
@@ -24,6 +25,9 @@ states with #216 Part 2. Until then only boards written through the API have wid
 | `src/widgets/lists/` | the list widgets' snapshot, focus repair, table and CSV (shared with the change feed) |
 | `src/widgets/boardList/` | the board list's options, rows, facts and test fixtures |
 | `src/import/boardList.ts` | a dashboard list panel's options as a board list |
+| `src/security/sanitise/url.ts` | `classifyUrl`, `URL_FORBIDDEN`, `toWellFormed` (Part 2a) |
+| `src/security/sanitise/findIframes.ts`, `feedback.d.ts` | `findIframes` and the type of the `parse5-sax-parser/feedback` alias (Part 2a) |
+| `src/security/sanitise/importText.ts` | `convertImportedText`, `markdownLink`, the import notes and the size error (Part 2a) |
 
 ## The panel union
 
@@ -173,6 +177,117 @@ used"), the dropped or cut tags and search text, the clamp, "Links keep the time
 **Mixed versions.** A tab of the previous release meets a v6 board as a bad response; a v5 server
 refuses a board list on a write (`board.vis.kind.invalid`). No client writes one before Part 2.
 
+## Sanitiser modules (Part 2a)
+
+Three pure modules under `src/security/sanitise/` that the Markdown renderer (Part 2b), the Text
+view (Part 3) and the importers (#158, #17) build on. None fetches anything, none makes a DNS
+lookup, and none is imported by a page yet, so the shipped build is unchanged. ESLint keeps the
+parsers inside this directory ([below](#lint-rules)).
+
+### URL classes (`url.ts`, T24-005, T18-011)
+
+`classifyUrl(raw, appOrigin)` returns one of four classes and never throws. `raw` first passes
+`toWellFormed`; the steps then run in order and the first match decides:
+
+| # | Condition | Result |
+|---|---|---|
+| 1 | `URL_FORBIDDEN` matches: a C0 control, space, DEL, a C1 control or `\` anywhere | `rejected` |
+| 2 | starts with `/`: parsed as `new URL(raw, appOrigin)` | `local` if it is same-origin and its pathname does not start with `//` (so `/a/../..//x` and `/.//x` are rejected); `href` is path-relative (`pathname + search + hash`), `host` the app's |
+| 3 | starts with `http:`, `https:` or `mailto:` (any case) and parses | `mailto` with the parsed href; `external` with the parsed, normalised href and its host, unless it has a user name or password (then `rejected`) |
+| 4 | anything else: other schemes (`javascript:`, `data:`, `blob:`, `file:`, `vbscript:`), look-alike or non-ASCII schemes, relative paths, `#…`, `''` | `rejected` |
+
+A URL that does not parse is rejected. A host that is not valid (for example one holding U+FFFD) does
+not parse.
+
+**`toWellFormed(s)`** replaces every lone surrogate with U+FFFD and keeps valid pairs; the ES2023
+lib has no `String.prototype.toWellFormed`. A lone surrogate in an accepted path therefore comes out
+as `%EF%BF%BD`, and URL parsing and `encodeURIComponent` never see one.
+
+### Finding iframes (`findIframes.ts`, T24-006)
+
+`findIframes(html)` returns `{offset, line, src}` for each `iframe` start tag in an HTML fragment,
+sorted by offset (the UTF-16 index; `line` is 1-based). `src` is the first `src` attribute decoded
+as the HTML spec does, or `null`. The result is the **union**, de-duplicated by start offset, of:
+
+- the `iframe` start-tag tokens of the spec tokenizer, which `ParserFeedbackSimulator` drives as the
+  tree builder would (namespaces, raw text, RCDATA, CDATA in foreign content);
+- the `iframe` elements of the `parse5.parse` tree, template contents included.
+
+Each covers the other's gap: the tree drops `<select><iframe>`, and the tokenizer alone misses
+`<select><title><select><iframe>`. Both keep the spec's handling of `<script>`, `<style>`,
+`<textarea>`, `<title>`, `<xmp>`, `<plaintext>`, comments, CDATA, processing instructions and
+`</ ` bogus comments, so no iframe is reported inside them. Over-counting only adds a link.
+
+**Why the simulator.** `parse5-sax-parser`'s `SAXParser` extends `Transform` from `node:stream`,
+which browsers lack. Its `ParserFeedbackSimulator` is the part that `SAXParser` wraps; the Vite
+alias `parse5-sax-parser/feedback` (in `vite.config.ts` `resolve.alias`, for the build and vitest)
+points at the package's `dist/parser-feedback-simulator.js`, which imports only `parse5`.
+`feedback.d.ts` declares its type. The package is pinned exactly (8.0.1), and `unit:find-iframes`
+checks on every input that the simulator's tokens equal `SAXParser`'s and that the aliased file
+imports no `node:` module.
+
+### Import conversion (`importText.ts`, T24 §5.4, T24-016, VIZ-056)
+
+`convertImportedText(content, mode, appOrigin)` turns the iframes of an imported Text panel into
+links. With `mode: 'code'` it returns the content unchanged with no notes. Otherwise:
+
+1. One `commonmark` parse (the input is never altered). `findIframes` runs on each `html_block`
+   literal (line = block start + hit line − 1) and once per leaf block (paragraph or heading) on its
+   `html_inline` literals joined in order, so `<script>` + `'<iframe …>'` + `</script>` stays raw
+   text (line = the leaf's start).
+2. Each iframe whose `src` classifies as `local` or `external` gives the link
+   `markdownLink(embeddedLinkLabel(host), href)`, label "Open embedded page (‹host›)", and the note
+   `iframeToLink {line, host}`; any other gives `iframeNoLink {line}`. The notes are sorted by line,
+   then `htmlNotRendered {count}` follows if there was any HTML (count = `html_block` +
+   `html_inline` nodes).
+3. The links of one top-level block (the `document` child holding the iframe) are joined with
+   spaces and inserted just after the line terminator of the block's last line: a blank line, the
+   links, a line end, and one more line end if the next line is not blank; at the end of input
+   without a final terminator, a line end first. Lines split on `\r\n`, `\n` or `\r`, as commonmark
+   does; after a lone `\r` the inserted line ends are `\r`, because a `\n` there would join it as one
+   CRLF terminator and put the links inside the block.
+4. `markdownLink(label, href)` escapes every ASCII punctuation character of the label with `\` and
+   writes the destination as `<…>` with `&` → `&amp;` first, then `<`, `>` and `\` escaped.
+5. If the result is over 65 536 UTF-8 bytes, the result is
+   `{ok: false, reason: 'sizeLimit', links: n}`, with n the number of `iframeToLink` notes.
+
+**Append-only.** The iframe HTML stays (the renderer drops it). The result's `inserted` is
+`[{offset, text}]` in ascending offset order, offsets being UTF-16 indices in the input: removing the
+entries in that order, each at its offset, gives the input back byte for byte.
+
+**Report and errors.** `importNoteMessage(note)` is the report line, holding at most a host:
+
+| Note | Message (en-GB) |
+|---|---|
+| `iframeToLink` | "Line ‹line›: the embedded page from ‹host› became a link." |
+| `iframeNoLink` | "Line ‹line›: an embedded page without a usable address isn't shown." |
+| `htmlNotRendered` | "HTML isn't shown (‹count› elements)." |
+
+On `sizeLimit` the importer leaves that panel out, imports the rest and adds a `TextImportError`
+`{kind: 'textTooLargeForLinks', panelIndex, sourceId?, links}` (`sourceId` only if the source id is
+an integer). `textImportErrorMessage` gives "Text panel #‹index› (id ‹id›) is too large to add
+embedded-page links (‹n› links). Shorten or split it in the source and import again.", without the
+id part when there is none. No content, title or URL is copied into either; the source file is the
+copy.
+
+### Lint rules
+
+The `security` ESLint plugin (`eslint/security-plugin.ts`) runs in `ci:lint-ts`:
+
+| Rule | Files | Reports |
+|---|---|---|
+| `security/no-iframe` (`ci:no-iframe`, T08-009) | `src/**`, `e2e/**` | JSX `iframe`, `frame`, `frameset`, `object`, `embed`; `createElement` of one of those names in any case; JSX `srcDoc`, a `srcdoc` assignment or `setAttribute('srcdoc')`; `new DOMParser`, also member-qualified (`new window.DOMParser`); `.createContextualFragment(`. A static computed key (`document['createElement']('iframe')`) counts as the plain name |
+| `security/no-html-sink` (T18-004) | `src/**`, `e2e/**` | `innerHTML` and `outerHTML` assignments; `insertAdjacentHTML`, `setHTMLUnsafe` and `parseHTMLUnsafe` calls (`el.setHTMLUnsafe(`, `Document.parseHTMLUnsafe(`, bare calls); `Reflect.set(x, k, …)` and `Object.assign(x, {k: …})` with a literal `innerHTML`, `outerHTML` or `srcdoc` key; names and static computed keys (`el['innerHTML'] = …`) alike. The plain assignments are also in `bannedSyntax` |
+| `security/markdown-boundary` (ADR-0024) | `src/**` | `commonmark` outside `src/security/sanitise/`; `parse5` or `parse5-sax-parser/feedback` outside `findIframes.ts` (and its `feedback.d.ts`) and the sanitise tests; commonmark's `HtmlRenderer` or `XmlRenderer`; `minimist`; the bare `parse5-sax-parser` outside `findIframes.test.ts` |
+
+The rule names are the plugin's own, so no `no-restricted-*` block overrides them. These rules are a
+backstop for literal spellings only. Keys or names computed at run time, arbitrary aliasing (a sink
+method stored in a variable, or an element reached through another name) and a detached or bound
+`createContextualFragment` are out of their scope. The primary defence is the renderer's design: it
+builds React elements from the parsed tree and has no HTML string sink (T24-004). The one
+exception in the tree is a reasoned disable in `src/test/labelInName.test.ts`, which parses static
+markup in jsdom.
+
 ## Tests
 
 | Gate | File |
@@ -189,6 +304,11 @@ refuses a board list on a write (`board.vis.kind.invalid`). No client writes one
 | `unit:list-keyboard` (pure) | `src/widgets/lists/focus.test.ts` |
 | `unit:board-list-source`, `unit:board-list-mixed` (API) | `src/api/HttpApiBoardList.test.ts`, `src/api/StubApi.test.ts`: the URLs, the old-server decoding and snapshots, the stub's filter and truncation |
 | `unit:import-board-list` | `src/import/boardList.test.ts`: I1–I12 |
+| `unit:classify-url`, `unit:well-formed` | `src/security/sanitise/url.test.ts`: the T24 §10 strings, other schemes, look-alikes, controls, credentials, lone surrogates in paths and hosts; nothing throws |
+| `unit:find-iframes` | `src/security/sanitise/findIframes.test.ts`: the T24 §10 inputs, `<svg><style>`, upper case; the simulator's tokens equal `SAXParser`'s on every input; the aliased file imports no `node:` module |
+| `unit:import-text-iframe` | `src/security/sanitise/importText.test.ts` with `api/fixtures/import/text-iframe.json`: f1, f3–f10 (T24 §10), f11 (f1 with CRLF and CR line ends), f12 (a list item and a block quote, each followed by a paragraph); exact `inserted` and notes, the inverse, the re-parsed link destinations |
+| `unit:import-size-error` | same: a 65 500-byte panel over the limit; the error and messages hold no content |
+| `unit:security-lint` | `scripts/security-plugin.test.ts`: each rule case, the allowed cases, and the full config applying both rules |
 
 ## Designs
 
@@ -196,9 +316,13 @@ refuses a board list on a write (`board.vis.kind.invalid`). No client writes one
   furniture), T24-003 (widget spec), §5.0 and §5.1 (the widgets version), T24-020 to T24-026 and
   T24-028 (list widgets, the board list's sources, rows, ranking, snapshot and meter, keys, table,
   CSV, facts and import), T24-029 (old servers), §4.6 and §5.5 to §5.7 (the board-list version and
-  modules), §11 (the parts).
+  modules), §11 (the parts); Part 2a: T24-005 (URL classification), T24-006 (`findIframes`),
+  T24-016 and §5.4 (import), §5.2.
+- [T18](../../designs/technical/T18-security.md): T18-011 (URL scheme allowlist).
+- [T08](../../designs/technical/T08-dom-component-kit.md): T08-009 (`ci:no-iframe`).
+- [ADR-0024](../../designs/adr/0024-markdown-runtime-dependencies.md) (the Markdown dependencies).
 - [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md): VIZ-053
-  (staged), VIZ-057, VIZ-027, VIZ-060, VIZ-065, VIZ-066.
+  (staged), VIZ-057, VIZ-027, VIZ-060, VIZ-065, VIZ-066, VIZ-056 (import, unit level).
 - [T11](../../designs/technical/T11-postgres-schema.md): T11-015, T11-016 (the v4 → v5 and v5 → v6
   identity upcasts).
 - [ADR-0014](../../designs/adr/0014-typescript-react-web-client.md),

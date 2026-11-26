@@ -1,0 +1,7 @@
+{
+  "assets/index-a1.js": ["/repo/client/src/main.tsx"],
+  "assets/dash-engine-render.worker-d4.js": [
+    "/repo/client/src/engine/wasm/render.worker.ts",
+    "\u0000__vite-browser-external:node:worker_threads"
+  ]
+}
