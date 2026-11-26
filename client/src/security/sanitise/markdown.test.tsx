@@ -561,4 +561,17 @@ describe('unit:removal-redaction', () => {
     logRemovals('q2', []);
     expect(debug).toHaveBeenCalledTimes(2);
   });
+
+  it('remembers at most 512 panels; an evicted panel logs its unchanged result once more', () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
+    const r = rm(['image', 3]);
+    logRemovals('e0', r);
+    for (let i = 1; i <= 511; i++) logRemovals(`e${String(i)}`, r);
+    logRemovals('e0', r);
+    expect(debug).toHaveBeenCalledTimes(512);
+    for (let i = 512; i <= 600; i++) logRemovals(`e${String(i)}`, r);
+    debug.mockClear();
+    logRemovals('e0', r);
+    expect(debug).toHaveBeenCalledTimes(1);
+  });
 });

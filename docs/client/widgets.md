@@ -383,8 +383,9 @@ URL or a value. Removals come in document order.
 | `unresolved` | each unresolved reference | "Line ‹n›: a variable has no value." |
 | `depth` | a block shown as source lines | "Line ‹n›: deeply nested content is shown as plain text." |
 
-`logRemovals` remembers the last result per panel (at most 512 panels). It logs only when a panel's
-result changes and is not empty.
+`logRemovals` remembers a 64-bit digest of each panel's last result (16 characters, whatever the
+list's length) for at most 512 panels, the oldest evicted first. It logs only when a panel's result
+changes and is not empty. A panel that was evicted logs its unchanged result once more.
 
 ### The walk and the depth limit
 

@@ -629,11 +629,33 @@ export function renderCode(src: string, language: CodeLanguage): ReactNode {
   return createElement('pre', null, createElement('code', { 'data-lang': language }, src));
 }
 
+/**
+ * A 64-bit digest (two 32-bit multiply-xor lanes, as hex) of a serialised removal list: the log
+ * keeps this, not the list, so each remembered panel costs a fixed 16 characters.
+ */
+function digest(s: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+}
+
+/** Panel id → the digest of its last result; at most `LOG_PANELS`, the oldest evicted first. */
 const logged = new Map<string, string>();
 
-/** One `console.debug({panelId, removals})` per distinct non-empty result of a panel (T24-007). */
+/**
+ * One `console.debug({panelId, removals})` per distinct non-empty result of a panel (T24-007). The
+ * last result's digest is kept for at most 512 panels; once a panel is evicted, its unchanged
+ * result is logged once more.
+ */
 export function logRemovals(panelId: string, removals: readonly Removal[]): void {
-  const key = JSON.stringify(removals);
+  const key = digest(JSON.stringify(removals));
   if (logged.get(panelId) === key) return;
   logged.delete(panelId);
   logged.set(panelId, key);
