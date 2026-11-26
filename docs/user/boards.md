@@ -320,6 +320,28 @@ in its time range. There is no way to add or edit a note on the board yet.
   holds more than 500 (zoom in to see the rest), and "Events could not be loaded." means the
   server did not answer; the panels still load.
 
+### Widgets
+
+A board can hold **widgets**: Text panels (notes, runbooks, a code snippet) and Clock panels (the
+time in several zones, with a countdown). A widget has no query, so it never loads data, has no
+chart, and offers no Open in Explore, Copy query or Full screen.
+
+In this version you cannot add a widget or change one from the web client yet, and neither kind is
+drawn: a Text or Clock panel shows **This widget isn't available in this version yet.** under its
+title. Such panels come from boards written through the [Boards API](../server/boards-api.md#widgets-text-and-clock-v5).
+You can still arrange them like any panel:
+
+- **Move and resize** them in Edit mode, with the pointer or with **Move or resize** and the arrow
+  keys ([moving and resizing panels](#moving-and-resizing-panels)).
+- **Duplicate** or **Remove** them from the **Panel menu** (its only two items for a widget). A
+  copy keeps the widget's content and options.
+- **Save** the board as usual: the widgets are kept exactly as they were.
+
+Widgets have no variables: a `$name` in a Text panel's content is not a board variable. A Clock
+zone must be a time zone the server knows when you save a board that adds it; a zone already on the
+board stays valid. If the server refuses a widget's settings, the save lists the problem under the
+status line, as for any panel.
+
 ### Open in Explore
 
 **Open in Explore** (the header tool or the panel menu) opens Explore › Metrics with the board's
@@ -595,4 +617,5 @@ T07-013), [T09 Query editors](../../designs/technical/T09-query-editors.md) (T09
 T09-009, T09-010, T09-014, T09-015), [09 Performance contract](../../designs/product/09-performance-contract.md)
 (PRF-030, PRF-031), [ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) (query planning on the
 server), [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md) (threshold lines
-and the stat sparkline).
+and the stat sparkline). Widgets: [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md)
+(T24-002, T24-003, §5.1) and VIZ-053 (staged).

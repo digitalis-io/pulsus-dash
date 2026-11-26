@@ -236,25 +236,51 @@ COMMITTED`. A stale row is listed with its tags unknown (`null`) and never match
 
 ### Old binaries and `make itest-old-binary`
 
-During a rolling upgrade the previous release (schema 3) runs beside this one on a database at
-migration 4, the N+1 window it accepts. It can list, create, save and delete boards as before; its
-creates and saves leave the cache row stale, and the next list by this release repairs them. It
-cannot move a head this release saved (spec v4): it answers 503 `board saved by a newer server
-version` and writes nothing.
+During a rolling upgrade the previous release runs beside this one on the same database (T11-015).
+It can list, create, save and delete boards as before, but it cannot read or move a head this
+release saved at a newer board spec version: it answers 503 `board saved by a newer server
+version` and writes nothing. Against a previous release at spec 3 (before #215), its creates and
+saves also leave the tags cache row stale, and the next list by this release repairs them.
 
-`make itest-old-binary` proves this with the real previous binary. It builds the merge-base of
-`HEAD` with `OLD_BINARY_REF` (default `origin/main`) in a git worktree under `build/old-binary/`,
-removed on exit, and runs `TestBoardTagsOldBinary`
-(`server/cmd/pulsus-dash/boards_old_binary_itest_test.go`) with `DASH_OLD_BINARY` set to it. The
-test migrates a database to 3, seeds 5 000 schema-3 boards in each of two organisations, applies
-migration 4 while a reader queries `boards` (its longest wait must be at most 1 s, and the table's
-`relfilenode` must not change), starts the old binary as `serve --api-only` on a free loopback
-port beside this release, runs the board round trip on it, and checks that 25 lists repair
-org 1's 5 000 rows 200 at a time (`tagsStale` 4 800, 4 600, … 0) without touching org 2, that the
-old binary's create and save go stale and are repaired, and that it refuses to save over a v4
-head. Through the target the test never skips: a missing or failing binary fails it, and the
-script fails unless the test passes. It needs `DASH_ITEST_PG_URLS`; plain `make itest` skips it.
-It is a required local gate for every change to the board schema or spec.
+`make itest-old-binary` proves this with the real previous binary
+(`server/scripts/itest-old-binary.sh`). It builds the merge-base of `HEAD` with `OLD_BINARY_REF`
+(default `origin/main`) in a git worktree under `build/old-binary/`, removed on exit, reads the
+board spec version of both trees (`BoardSchemaVersion` in `server/internal/spec/board.go`; either
+missing fails the gate), and runs every `Test*OldBinary` test in `server/cmd/pulsus-dash` with:
+
+| Variable | Value |
+|---|---|
+| `DASH_OLD_BINARY` | the previous release's binary |
+| `DASH_OLD_SPEC_VERSION` | its board spec version (a positive integer, else the tests fail) |
+| `DASH_OLD_FIXTURE` | its own fixture of that version: the first, by name, of `api/fixtures/board-spec/v<P>-*.json` in its tree |
+
+The gate passes only when the run exits 0, no test fails, at least one `Test*OldBinary` test
+passes, and `TestBoardSpecOldBinary` passes whenever the previous release's spec version is older
+than this one's. A missing or failing binary fails the tests; plain `make itest` skips them (no
+`DASH_OLD_BINARY`). It needs `DASH_ITEST_PG_URLS`, and is a required local gate for every change to
+the board schema or spec.
+
+- **`TestBoardSpecOldBinary`** (`itest:board-spec-old-binary`,
+  `boards_spec_old_binary_itest_test.go`) skips when the spec version is unchanged. Per Postgres
+  version it migrates a database with this release, starts the previous release as `serve
+  --api-only` on a free loopback port beside this one, and checks: this release creates W from
+  `v5-widgets.json` and reads it back canonical at `schema_version` 5; the previous release gets
+  503 on `GET` and on `PUT` of W (W keeps one version) and still lists it; it refuses W's spec on
+  `POST` (400 `board.json.required` at `/panels/0/query`); it creates V from its own fixture,
+  refuses W's spec saved over V the same way (V's head and version count unchanged); this release
+  reads V canonical at `schema_version` 5 and saves it with a clock; the previous release then gets
+  503 on V; and the board round trip still passes on the previous release.
+- **`TestBoardTagsOldBinary`** (`itest:board-tags-old-binary`,
+  `boards_old_binary_itest_test.go`) checks the tags transition, so it needs a previous release
+  before board spec 4 and skips against a later one ("the tags transition needs a previous release
+  before board spec 4"). Run it with `make itest-old-binary OLD_BINARY_REF=e748875` (the last
+  release at spec 3, before #215). The test migrates a database to 3, seeds 5 000 schema-3 boards
+  in each of two organisations, applies migration 4 while a reader queries `boards` (its longest
+  wait must be at most 1 s, and the table's `relfilenode` must not change), starts the old binary
+  beside this release, runs the board round trip on it, and checks that 25 lists repair org 1's
+  5 000 rows 200 at a time (`tagsStale` 4 800, 4 600, … 0) without touching org 2, that the old
+  binary's create and save go stale and are repaired, and that it refuses to save over a head this
+  release wrote.
 
 ## Row-level security
 
@@ -356,7 +382,12 @@ cover:
   cancelled repair (`itest:board-find`, `itest:board-tags`, `itest:board-list-snapshot` in
   `server/internal/boards/list_itest_test.go`), the one-statement list
   (`server/internal/store/boards_itest_test.go`), and the previous binary beside this one
-  (`itest:board-tags-old-binary`, [above](#old-binaries-and-make-itest-old-binary));
+  (`itest:board-tags-old-binary`, `itest:board-spec-old-binary`,
+  [above](#old-binaries-and-make-itest-old-binary));
+- board spec v5: a widget board created, saved without its data panel and read back at schema 5
+  (`itest:board-crud`, `TestBoardCRUDWidgets`), and a clock zone the head holds kept on saves while
+  a newly introduced unknown one is refused (`itest:board-zones-grandfathered`,
+  `TestBoardZonesGrandfathered`, in `server/internal/boards/boards_itest_test.go`);
 - annotations: the window overlap and newest-first order, the 500 cap and `truncated`, isolation
   between organisations, the `annotation.create` and `annotation.delete` audit events and their
   chain, and the CHECKs for a 32-day range and an unknown kind

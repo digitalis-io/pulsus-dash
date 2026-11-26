@@ -15,12 +15,14 @@ every version, the actor of every audit event, and the owner of the starred and 
 The tables are described in [the database page](database.md#schema-migration-2), and the board
 tags cache in [migration 4](database.md#schema-migration-4).
 
-## Board spec v4
+## Board spec v5
 
-A board is a JSON object, called the spec. The server stores it with `schema_version` 4. Version 2
+A board is a JSON object, called the spec. The server stores it with `schema_version` 5. Version 2
 (#64 Part B) adds the optional `vis.thresholds` and `vis.legend` to version 1; version 3 (#173
 Part 1) adds the optional `vis.options` and the kinds `barchart` and `pie`; version 4 (#215) adds
-the optional `tags`. Each version is otherwise the same as the one before (see
+the optional `tags`; version 5 (#198 Part 1) adds the widgets: `query` becomes optional, and the
+kinds `text` and `clock` come with their options ([widgets](#widgets-text-and-clock-v5)). Each
+version is otherwise the same as the one before (see
 [Versions and the upcaster](#versions-and-the-upcaster)).
 
 ```json
@@ -58,10 +60,10 @@ the optional `tags`. Each version is otherwise the same as the one before (see
 | `panels[].id` | string | `^[a-z0-9-]{1,40}$`, unique in the board (panels and sections share one namespace) |
 | `panels[].title` | string | at most 200 characters |
 | `panels[].grid` | object | `x` 0–11, `w` 1–12, `x + w` ≤ 12, `y` 0–9999, `h` 1–100, all integers. The grid has 12 columns; two panels of the same grid (the top level, or one section) must not overlap |
-| `panels[].query` | object | `lang` `promql` or `logql`; `text` at most 16 384 bytes |
-| `panels[].vis` | object | `kind` `auto`, `line`, `bars`, `heatmap`, `stat`, `logs`, `barchart` or `pie`. The web client does not draw `barchart` and `pie` yet: such a panel sends no query and says so ([the panel runtime](../client/boards.md#pending-kinds)) |
-| `panels[].vis.thresholds` | object, optional | `direction` `above` or `below`, and `steps`: 1 to 8 objects of `value` (a number: 0, or 1e-9 ≤ \|value\| ≤ 1e15; no two equal), `state` (`watch`, `degraded` or `failing`) and `label` (at most 200 characters; `""` shows the value). Valid on every kind; drawn on line, bars and stat |
-| `panels[].vis.legend` | object, optional | `mode` `table` or `hidden`; absent means `table` |
+| `panels[].query` | object; required on a data panel, refused on a widget (v5) | `lang` `promql` or `logql`; `text` at most 16 384 bytes |
+| `panels[].vis` | object | `kind`: a data kind `auto`, `line`, `bars`, `heatmap`, `stat`, `logs`, `barchart` or `pie`, or a widget `text` or `clock` (v5). The web client does not draw `barchart` and `pie` yet: such a panel sends no query and says so ([the panel runtime](../client/boards.md#pending-kinds)); nor `text` and `clock` yet ([widgets](../client/widgets.md)) |
+| `panels[].vis.thresholds` | object, optional | `direction` `above` or `below`, and `steps`: 1 to 8 objects of `value` (a number: 0, or 1e-9 ≤ \|value\| ≤ 1e15; no two equal), `state` (`watch`, `degraded` or `failing`) and `label` (at most 200 characters; `""` shows the value). Valid on every data kind; drawn on line, bars and stat. Refused on a widget |
+| `panels[].vis.legend` | object, optional | `mode` `table` or `hidden`; absent means `table`. Refused on a widget |
 | `panels[].vis.options` | object, optional | the kind's options, every key optional (below). `{}` is valid on every kind; `null` is refused |
 
 #### `vis.options` (v3)
@@ -90,7 +92,52 @@ Which keys a kind allows, their types and their values (T22 §6.1). Any other ke
 `line`, `bars`, `heatmap` and `logs` allow no key. Depth options (`perspective`, `projection`,
 `depth`, `tilt`, `shadow`, `3d`) are never allowed (T22-002). The keys are held in one table on
 each side (`internal/spec/shape.go`, `client/src/boards/options.ts`), and both suites compare it
-with `api/fixtures/board-spec/option-keys.json`.
+with `api/fixtures/board-spec/option-keys.json`: each key's type, the members of the object keys
+(`zones` items, `countdown`) and the keys of each kind.
+
+#### Widgets: `text` and `clock` (v5)
+
+A widget is a panel without a query (T24-002, T24-003): a `text` panel shows Markdown or code, a
+`clock` panel shows the time in up to 12 zones. A widget has no `query` (one is refused with
+`board.panel.query.forbidden`), and every data panel needs one (`board.panel.query.required`).
+`thresholds` and `legend` are refused on a widget (`board.json.unknownKey`). Its `vis.options`
+keys, every one optional (T24 §5.1):
+
+| Key | Type | Values | Default | Kinds |
+|---|---|---|---|---|
+| `mode` | string | `markdown`, `code` | `markdown` | text |
+| `content` | string | at most 65 536 UTF-8 bytes | `""` | text |
+| `language` | string | `plaintext`, `json`, `yaml`, `sql`, `promql`, `logql`, `go`, `shell`; only with `mode` `code` | `plaintext` | text |
+| `zones` | array | 1 to 12 objects `{tz, label}`, both required strings: `tz` `""` (the Context zone) or a zone name ([zones](#clock-zones)), no two the same; `label` at most 64 characters (`""` shows the city) | `[{"tz":"","label":""}]` | clock |
+| `hourCycle` | string | `auto`, `h12`, `h23` | `auto` | clock |
+| `seconds` | boolean | | `false` | clock |
+| `date` | boolean | | `true` | clock |
+| `countdown` | object | `{to, label, after}`, all required strings: `to` an RFC 3339 time with seconds and `Z` or an offset (`2026-11-26T14:00:00+09:00`, fractions up to 9 digits) naming a real time (29 February only in leap years, hour 0–23, minute and second 0–59, offset at most 23:59); `label` 1 to 64 characters; `after` `countUp` or `hide` | absent: no countdown | clock |
+
+The defaults are the client's (`client/src/widgets/spec.ts`): the server stores only the keys that
+are sent. `text` allows only `mode`, `content` and `language`; `clock` only the other five.
+
+#### Clock zones
+
+A zone's `tz` is checked in two steps:
+
+- **Its form, on every read and write.** `""`, or a name of at most 64 bytes matching
+  `^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$` other than `Local`: `UTC`, `Europe/London`,
+  `America/Argentina/Buenos_Aires`, `Etc/GMT+5` and `EST5EDT` have it; `../etc/passwd`,
+  `/etc/localtime` and `Europe/London ` (a trailing space) do not.
+- **That it exists, on writes only.** A create needs every zone to be a zone of this build: one of
+  the names in the `zoneinfo.zip` of the Go toolchain that built the server (the file
+  `time/tzdata` embeds), generated into `internal/spec/zones_gen.go`. The set is fixed by the
+  build, the same on every replica; the host's zone database and the `ZONEINFO` variable are never
+  read. A save checks only the zones the head does not hold already: a zone the head holds (in any
+  panel) is kept even if this build no longer knows it, and a newly introduced one must exist. A
+  read never checks existence, so a stored head is always readable.
+
+After a Go upgrade, regenerate the set with `go generate ./internal/spec` (in `server/`);
+`TestEmbeddedZonesMatchToolchain` fails until the file matches the toolchain. A zone that a newer
+tzdata release removes stays valid in every head that holds it. The web client checks the form
+only; whether a zone exists is the server's answer (`board.options.zones.invalid` on the zone's
+`/tz`).
 
 A board has at most 200 panels in total, counting the panels of every section (SRF-019). No string
 may contain U+0000. The request body, including the spec, is at most 2 MiB (T06-021).
@@ -154,9 +201,12 @@ Only a spec with a clean shape goes on to the rules:
 | a panel or section title over 200 characters | `…/title` | `board.panel.title.tooLong`, `board.section.title.tooLong` |
 | a grid out of bounds | `…/grid` | `board.grid.outOfBounds` |
 | a grid overlapping an earlier panel of the same grid | `…/grid` of the later one | `board.grid.overlap` |
+| a `query` on a widget (its `lang` and `text` are not checked) | `…/query` | `board.panel.query.forbidden` |
+| no `query` on a data panel (a panel whose kind is not a kind at all reports only its kind) | `…/query` | `board.panel.query.required` |
 | `query.lang` not `promql` or `logql` | `…/query/lang` | `board.query.lang.invalid` |
 | `query.text` over 16 384 bytes | `…/query/text` | `board.query.text.tooLong` |
-| `vis.kind` not one of the eight kinds | `…/vis/kind` | `board.vis.kind.invalid` |
+| `vis.kind` not one of the ten kinds | `…/vis/kind` | `board.vis.kind.invalid` |
+| `thresholds` or `legend` on a widget | `…/vis/thresholds`, `…/vis/legend` | `board.json.unknownKey` |
 | `thresholds.direction` not `above` or `below` | `…/vis/thresholds/direction` | `board.thresholds.direction.invalid` |
 | no step, or more than 8 | `…/vis/thresholds/steps` | `board.thresholds.steps.count` |
 | a step value not 0 and smaller than 1e-9 or larger than 1e15 in size (every step is checked) | `…/vis/thresholds/steps/<k>/value` | `board.thresholds.value.range` |
@@ -166,19 +216,37 @@ Only a spec with a clean shape goes on to the rules:
 | `legend.mode` not `table` or `hidden` | `…/vis/legend/mode` | `board.legend.mode.invalid` |
 | an option value outside its values (an enum, a `categoryBy` that is neither `""` nor a label name, a `min` or `max` over 1e15 in size, `orientation` `auto` off stat, `textMode` `value` with `layout` `grid`) | `…/vis/options/<key>` | `board.options.<key>.invalid` |
 | both bounds set and `min` ≥ `max` (only when `min` itself is valid) | `…/vis/options/max` | `board.options.max.invalid` |
+| `mode` not `markdown` or `code` | `…/vis/options/mode` | `board.options.mode.invalid` |
+| `content` over 65 536 bytes | `…/vis/options/content` | `board.options.content.tooLong` |
+| `language` not a listed language, or set while `mode` is not `code` (absent is `markdown`) | `…/vis/options/language` | `board.options.language.invalid` |
+| no zone, or more than 12 | `…/vis/options/zones` | `board.options.zones.invalid` |
+| a `tz` of the wrong form (every zone is checked, even past 12) | `…/zones/<i>/tz` | `board.options.zones.invalid` |
+| else a `tz` equal to an earlier zone's | `…/zones/<i>/tz` of the later one | `board.options.zones.duplicate` |
+| a zone `label` over 64 characters | `…/zones/<i>/label` | `board.options.zones.invalid` |
+| `hourCycle` not `auto`, `h12` or `h23` | `…/vis/options/hourCycle` | `board.options.hourCycle.invalid` |
+| `countdown.to` not an RFC 3339 time with an offset naming a real time | `…/countdown/to` | `board.options.countdown.invalid` |
+| `countdown.label` empty or over 64 characters | `…/countdown/label` | `board.options.countdown.invalid` |
+| `countdown.after` not `countUp` or `hide` | `…/countdown/after` | `board.options.countdown.invalid` |
 | a string containing U+0000 | that string | `board.string.nul` |
 
+On a create and a save, a spec that passes the rules then has its zones checked against the build
+([clock zones](#clock-zones)): a `tz` that does not exist is `board.options.zones.invalid` at its
+`…/zones/<i>/tz`, in document order, and nothing is written.
+
 `…` is `/panels/<i>`, `/sections/<j>/panels/<i>`, or `/sections/<j>` for a section. The tag rules
-come after the time and before the panels. The threshold
+come after the time and before the panels. The `query` rules come after the grid and before
+`vis.kind`. The threshold
 rules come after `vis.kind`, in this order for each step, then the legend, then the options in
-the key order of the table above. The value range keeps a threshold far
+the key order of the tables above (the data keys, then `mode`, `content`, `language`, `zones`,
+`hourCycle`, `countdown`). The value range keeps a threshold far
 inside the range where the value-axis ticks are safe (#97). The shared fixtures
 `api/fixtures/board-spec/` hold a minimal and a full valid board of each version (`v1-*.json`,
 `v2-full.json`, `v2-threshold-bounds.json` with -1e-9, 0 and 1e-9, `v3-full.json` with every
-option key of each kind, and `v4-board-tags.json` with two tags), the option table
-`option-keys.json`, and `invalid.json` with
+option key of each kind, `v4-board-tags.json` with two tags, and `v5-widgets.json` with text and
+clock panels beside one data panel), the option table `option-keys.json`, and `invalid.json` with
 one case per problem and its exact `fields`. The server's tests and the client's tests both run
-them.
+them; a case with `client_fields` (a zone that does not exist, `w-zone-unknown`) expects those on
+the client, which does not check existence.
 
 ### Canonical JSON and the content hash
 
@@ -198,23 +266,30 @@ A save of a spec whose canonical form differs from the head writes version `n + 
 head (T11-006). A save of an identical spec is a no-op: no version, no audit event, the same ETag,
 and `changed: false` in the response. Versions are never updated or deleted.
 
-Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 4 is the current
-version; a version 1, 2 or 3 spec is a subset of it and reads unchanged (the identity upcast). Every
-write stores version 4. The spec itself needs no SQL migration (`schema_version` is an existing
-column); migration 4 adds only the tags cache the list reads. A spec stored by a newer server (a
-rolling upgrade) answers 503 `board saved by a newer server version`, and is never overwritten by
-the older server.
+Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 5 is the current
+version; a version 1 to 4 spec is a subset of it and reads unchanged (the identity upcast: versions
+1 to 5 decode unchanged). Every write stores version 5. The spec itself needs no SQL migration
+(`schema_version` is an existing column); migration 4 adds only the tags cache the list reads. A
+spec stored by a newer server (a rolling upgrade) answers 503 `board saved by a newer server
+version`, and is never overwritten by the older server.
 
-| Server | Reads a v1, v2 or v3 row | Reads a v4 row | Writes |
+| Server | Reads a v1 to v4 row | Reads a v5 row | Writes |
 |---|---|---|---|
-| this release | unchanged | parsed | `schema_version` 4 |
-| the previous release, during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 3 |
+| this release | unchanged | parsed | `schema_version` 5 |
+| the previous release, during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 4 |
+
+During a rolling upgrade (T11-015), the previous release still lists a board this release saved
+with widgets (`GET /boards`), but its `GET` and `PUT` of that board answer 503 and write nothing.
+A widget spec sent to the previous release (`POST`, or `PUT` over a board it can read) is 400
+`board.json.required` at `/panels/<i>/query` of the first widget: it requires `query`, so nothing
+is written. A web client tab of the previous release may fail on a widget board; until the Text
+widget ships (#198 Part 3) only boards written through the API have widgets.
 
 `spec.DecodeBoardUpTo(raw, version, max)` holds the rule (`version > max` is too new);
 `DecodeBoard` calls it with `BoardSchemaVersion`. The itest `TestPreviousServerRefusesNewerRow`
-reads a real v4 row with `max` 3, as the previous release did, and `TestSaveWritesSchemaV4` checks
-what a save stores. `make itest-old-binary` runs the previous release's binary itself beside this
-one ([the database page](database.md#old-binaries-and-make-itest-old-binary)).
+reads a real v5 row with `max` 4, as the previous release did, and `TestSaveWritesCurrentSchema`
+checks what a save stores. `make itest-old-binary` runs the previous release's binary itself beside
+this one ([the database page](database.md#old-binaries-and-make-itest-old-binary)).
 
 ## Concurrency: `ETag` and `If-Match`
 
@@ -434,9 +509,13 @@ guarantee) and ENT-022 (subsets) in
 (`recent_views.viewed_at`) in
 [T11](../../designs/technical/T11-postgres-schema.md); gates `unit:board-spec`, `itest:board-crud`,
 `itest:board-prefs`, `itest:board-find`, `itest:board-tags`, `itest:board-list-snapshot` and
-`itest:board-tags-old-binary` in [T05](../../designs/technical/T05-testing-and-performance.md) §7.1;
-board tags and the board search (T24-021, T24-029, §5.5, §5.6, §6; VIZ-053, SRF-026) in
-[T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md);
+`itest:board-tags-old-binary`, and for board spec v5 `unit:board-spec-widgets`,
+`itest:board-zones-grandfathered` and `itest:board-spec-old-binary`, in
+[T05](../../designs/technical/T05-testing-and-performance.md) §7.1;
+board tags and the board search (T24-021, T24-029, §5.5, §5.6, §6; VIZ-053, SRF-026), and the
+widgets version (T24-002, T24-003, §5.1; VIZ-053 staged, VIZ-031, VIZ-057) in
+[T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md); T11-015 (mixed versions) in
+[T11](../../designs/technical/T11-postgres-schema.md);
 board spec v3 (`vis.options`, T22-002, §6.1; VIZ-031, VIZ-086) in
 [T22](../../designs/technical/T22-value-categorical-and-table-panels.md);
 [ADR-0012](../../designs/adr/0012-derived-state-in-postgres.md),
