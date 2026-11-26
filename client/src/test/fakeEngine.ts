@@ -1,13 +1,18 @@
-/** A `ChartEngine` that records calls and lets a test emit frame events, for component tests. */
+/**
+ * A `ChartEngine` that records calls and lets a test emit frame events, for component tests. Its
+ * frames are also engine frames (plan #68 C2a2 §3.2): `setCamera` is recorded, nothing is on
+ * screen (`stage()` null).
+ */
 import type { ChartEngine, ChartFrame, FrameEvents, FrameInit } from '../engine/api';
 import { ChartUnsupportedError } from '../engine/canvas2d/Canvas2DEngine';
+import type { EngineFrame } from '../engine/wasm/frame';
 
 export interface FakeCall {
   readonly method: string;
   readonly args: readonly unknown[];
 }
 
-export interface FakeFrame extends ChartFrame {
+export interface FakeFrame extends ChartFrame, Omit<EngineFrame, 'on'> {
   readonly canvas: HTMLCanvasElement;
   readonly init: FrameInit;
   readonly calls: FakeCall[];
@@ -54,6 +59,9 @@ export function fakeEngine(o: { unsupported?: boolean } = {}): FakeEngine {
         setEvents: record('setEvents'),
         setSelection: record('setSelection'),
         resize: record('resize'),
+        setCamera: record('setCamera'),
+        stage: () => null,
+        onStage: () => () => undefined,
         on(e, cb) {
           let set = listeners.get(e);
           if (set === undefined) {

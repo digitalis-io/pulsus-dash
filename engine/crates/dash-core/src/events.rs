@@ -5,7 +5,8 @@
 //! and the seqs of a `drawn`'s presentation. `engine_tick` joins them into one JSON array per frame.
 
 use dash_marks::DrawnEvent;
-use serde_json::json;
+use dash_scene::StageInfo;
+use serde_json::{Value, json};
 
 use crate::frames::Presented;
 
@@ -55,6 +56,20 @@ pub fn drawn(id: u32, p: &Presented, start_ms: f64, end_ms: f64) -> String {
         "rseq": p.rseq,
     })
     .to_string()
+}
+
+/// `{"t":"stage","id":…,"rseq":…,"stage":{"plot":{x,y,width,height},"domain":{min,max}|null,
+/// "labelW":…}|null}` (plan #68 C2a2 §3.3): the stage of a completed presentation of Resize `rseq`;
+/// null withdraws it.
+pub fn stage(id: u32, rseq: u32, stage: Option<&StageInfo>) -> String {
+    let st = stage.map_or(Value::Null, |s| {
+        json!({
+            "plot": s.plot,
+            "domain": s.domain.map_or(Value::Null, |d| json!({"min": d.lo, "max": d.hi})),
+            "labelW": s.band_w,
+        })
+    });
+    json!({"t": "stage", "id": id, "rseq": rseq, "stage": st}).to_string()
 }
 
 /// `{"t":"created","id":…}`: `frame_create` took the id.
