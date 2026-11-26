@@ -336,6 +336,7 @@ pub struct OverlayAt {
 /// Renders a gallery page with the overlay the engine draws for `o` (plan #68 C2b): the pointer
 /// hover picked on the page's presentation (`dash-scene::hover`) and the box band; and with the
 /// page `selection` (plan #68 C2c2: the emphasis and the interval band).
+#[allow(clippy::too_many_arguments)]
 pub fn render_page_overlay(
     ctx: &GpuContext,
     page: GalleryLine,

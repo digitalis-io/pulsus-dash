@@ -27,6 +27,9 @@ use dash_scene::{
 use dash_tokens::{ColourRole, Rgba8, colour};
 use dash_wire::{Chunk, ChunkBuilder, ChunkId, SeriesMeta};
 
+/// A value function of a series.
+type ValueFn = fn(f64) -> f64;
+
 const T0: f64 = 1_795_089_600_000.0;
 const T1: f64 = T0 + 3_600_000.0;
 const A1: &str = "00000000000000a1";
@@ -63,7 +66,7 @@ fn spec(json: &str) -> VisSpec {
 /// `S3`: 61 samples over 12:00–13:00; a1 `30·i/60`, a2 `30 − 30·i/60`, a3 10.
 fn s3() -> Arc<Chunk> {
     let t: Vec<f64> = (0..61).map(|i| T0 + f64::from(i) * 60_000.0).collect();
-    let f: [(u64, fn(f64) -> f64); 3] = [
+    let f: [(u64, ValueFn); 3] = [
         (0xa1, |i| 30.0 * i / 60.0),
         (0xa2, |i| 30.0 - 30.0 * i / 60.0),
         (0xa3, |_| 10.0),
@@ -201,7 +204,9 @@ fn full_pixel(
 /// The mean ꟻLIP of `b` against `a` (default pixels per degree).
 fn flip_mean(a: &Image, b: &Image, h: u32) -> f32 {
     let rgb = |i: &Image| -> Vec<u8> {
-        i.px.chunks_exact(4)
+        i.px.as_chunks::<4>()
+            .0
+            .iter()
             .flat_map(|p| [p[0], p[1], p[2]])
             .collect()
     };
@@ -272,14 +277,42 @@ fn selection_passes() {
                 "{tier:?} (a): no focus beside a2 at x {x2}: {got:?}"
             ));
         }
+        // Guides at full `hairline`: every guide-only pixel of each guide row (the row's most
+        // common colour in the plain render) is unchanged.
         let p = plot_of(&plain_b);
-        let gx = (p[0] + 2.0) as u32;
         for i in &plain_b.list.items {
             if let MarkItem::Guides { lines, .. } = i {
                 for y in lines {
                     let gy = y.round() as u32;
-                    if plain.at(gx, gy) != sel.at(gx, gy) {
-                        failures.push(format!("{tier:?} (a): guide row {gy} changed"));
+                    let cols = (p[0].ceil() as u32)..((p[0] + p[2]).floor() as u32);
+                    let mut counts = std::collections::BTreeMap::new();
+                    for x in cols.clone() {
+                        *counts.entry(plain.at(x, gy)).or_insert(0u32) += 1;
+                    }
+                    let Some((guide, _)) = counts.iter().max_by_key(|(_, n)| **n) else {
+                        continue;
+                    };
+                    // A series lying on the row (a3 at 10) is not a guide-only pixel.
+                    if !near(*guide, bg, 30) {
+                        continue;
+                    }
+                    // Off a2's underlay (5.5 px wide, over the guides).
+                    let off_a2 = |x: u32| {
+                        let fx = (f64::from(x) + 0.5 - p[0]) / p[2];
+                        let ya = y_of(&plain_b, 30.0 - 30.0 * fx);
+                        (f64::from(gy) + 0.5 - ya).abs() > 4.0
+                    };
+                    let changed = cols
+                        .filter(|x| {
+                            off_a2(*x)
+                                && plain.at(*x, gy) == *guide
+                                && !near(sel.at(*x, gy), *guide, 2)
+                        })
+                        .count();
+                    if changed > 0 {
+                        failures.push(format!(
+                            "{tier:?} (a): guide row {gy}: {changed} pixels changed"
+                        ));
                     }
                 }
             }
@@ -421,7 +454,7 @@ fn selection_passes() {
 /// column (the first two crossing), and a matched one at 150, above the plot (clipped away).
 fn density() -> Arc<Chunk> {
     let mut b = ChunkBuilder::explicit(ChunkId(0xd1));
-    let series: [(u64, u32, fn(f64) -> f64); 4] = [
+    let series: [(u64, u32, ValueFn); 4] = [
         (0xb1, 1_090, |f| 20.0 + 60.0 * f),
         (0xb2, 5_450, |f| 80.0 - 60.0 * f + 4.0 * (f * 9_000.0).sin()),
         (0xb3, 1_417, |f| 50.0 + 30.0 * (f * 40.0).sin()),

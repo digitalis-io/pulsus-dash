@@ -3,9 +3,9 @@
 //! `selection.ts` `matchedKeys` and `drawSelectionBand`.
 
 use dash_axes::PlotRect;
-use dash_marks::OverlayShape;
+use dash_marks::{Emphasis, OverlayShape};
 use dash_scales::Range64;
-use dash_tokens::Theme;
+use dash_tokens::{ColourRole, Theme, colour, opacity};
 use dash_wire::Chunk;
 
 /// The page selection as the worker holds it (`FrameSelection`): only keys that are exactly 16
@@ -45,17 +45,67 @@ impl SelectionIn {
 
 /// TS `matchedKeys` over the shown series: one flag per shown series, None when no key is among
 /// them (the frame then dims nothing).
-pub fn matched(_chunk: &Chunk, _shown: usize, _sel: &SelectionIn) -> Option<Vec<bool>> {
-    None
+pub fn matched(chunk: &Chunk, shown: usize, sel: &SelectionIn) -> Option<Vec<bool>> {
+    if sel.keys.is_empty() {
+        return None;
+    }
+    let flags: Vec<bool> = chunk
+        .series
+        .iter()
+        .take(shown)
+        .map(|s| sel.keys.contains(&s.key_hash))
+        .collect();
+    flags.iter().any(|m| *m).then_some(flags)
 }
 
-/// TS `drawSelectionBand`: None without an interval or wholly outside the plot.
+/// The Line item's emphasis of a match (plan #68 C2c2 §4.2): `opacity.dimmed`, `focus` and the
+/// underlay 4 px wider than the line (T25-006).
+pub fn emphasis(matched: Vec<bool>, theme: Theme) -> Emphasis {
+    Emphasis {
+        matched,
+        dimmed: opacity::DIMMED,
+        focus: colour(theme, ColourRole::Focus),
+        underlay_extra_css: 4.0,
+    }
+}
+
+/// TS `drawSelectionBand`: `[x(from), max(x(to ?? from) − x(from), 1 device px)]` over the
+/// plot's height, cut to the plot (at least 1 device px wide), in `selection`; None without an
+/// interval (`from_ms` None), with an empty view, or wholly outside the plot. Drawn whatever the
+/// keys: relevance applies to dimming only.
 pub fn selection_band(
-    _plot: &PlotRect,
-    _view: Range64,
-    _sel: &SelectionIn,
-    _dpr: f32,
-    _theme: Theme,
+    plot: &PlotRect,
+    view: Range64,
+    sel: &SelectionIn,
+    dpr: f32,
+    theme: Theme,
 ) -> Option<OverlayShape> {
-    None
+    let from = sel.from_ms?;
+    let span = view.hi - view.lo;
+    // As TS `!(span > 0)`: NaN spans too.
+    let positive = span > 0.0;
+    if !positive {
+        return None;
+    }
+    let x = |t: f64| plot.x + (t - view.lo) / span * plot.width;
+    let x0 = x(from);
+    let x1 = x(sel.to_ms.unwrap_or(from));
+    let min = 1.0 / if dpr > 0.0 { f64::from(dpr) } else { 1.0 };
+    let right0 = x0 + (x1 - x0).max(min);
+    // As TS `!(right0 >= plot.x) || !(x0 <= right)`: a NaN end draws nothing.
+    let inside = right0 >= plot.x && x0 <= plot.x + plot.width;
+    if !inside {
+        return None;
+    }
+    let left = x0.max(plot.x);
+    let right = right0.min(plot.x + plot.width);
+    Some(OverlayShape::Rect {
+        css: [
+            left as f32,
+            plot.y as f32,
+            (right - left).max(min) as f32,
+            plot.height as f32,
+        ],
+        colour: colour(theme, ColourRole::Selection),
+    })
 }

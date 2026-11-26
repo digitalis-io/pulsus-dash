@@ -11,7 +11,7 @@ mod summary;
 
 pub use build::{Built, StageInfo, build, build_frame};
 pub use camera::{Camera, PlotCamera, YRange};
-pub use selection::{SelectionIn, matched, selection_band};
+pub use selection::{SelectionIn, emphasis, matched, selection_band};
 pub use spec::{
     LineSpec, MAX_THRESHOLDS, SpecError, ThresholdLine, ThresholdState, ValueRange, VisSpec,
 };

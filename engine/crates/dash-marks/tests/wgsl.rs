@@ -5,7 +5,13 @@ use naga::valid::{Capabilities, ValidationFlags, Validator};
 fn shaders_validate() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/line");
     let mut seen = 0;
-    for name in ["decimate.wgsl", "link.wgsl", "scan.wgsl", "line.wgsl"] {
+    for name in [
+        "decimate.wgsl",
+        "link.wgsl",
+        "scan.wgsl",
+        "line.wgsl",
+        "dim.wgsl",
+    ] {
         let src = std::fs::read_to_string(dir.join(name)).unwrap_or_default();
         assert!(!src.is_empty(), "{name} missing");
         let module = match naga::front::wgsl::parse_str(&src) {
@@ -16,13 +22,19 @@ fn shaders_validate() {
         assert!(v.is_ok(), "{name}: {v:?}");
         seen += 1;
     }
-    assert_eq!(seen, 4);
+    assert_eq!(seen, 5);
 }
 
 /// T2 draws with `line.wgsl` on WebGL2: it must translate to GLSL ES 3.00 (plan #68 C1 §5).
 #[test]
 fn line_wgsl_translates_to_glsl_es_300() {
     translates_to_glsl_es_300("src/line/line.wgsl");
+}
+
+/// The dim layer's composite is drawn on T2 too (plan #68 C2c2 §3.3).
+#[test]
+fn dim_wgsl_translates_to_glsl_es_300() {
+    translates_to_glsl_es_300("src/line/dim.wgsl");
 }
 
 /// The overlay is drawn on T2 too (plan #68 C2b §3.2).

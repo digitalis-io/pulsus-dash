@@ -231,12 +231,12 @@ pub fn frame_set_events(id: u32, at_ms: Vec<f64>) {
 /// The page selection (plan #68 C2c2 §3.1): its keys (only 16 lower-case hex digits can match a
 /// series key), and its interval; a layer input, so the frame is rebuilt.
 #[wasm_bindgen]
-pub fn frame_set_selection(
-    _id: u32,
-    _keys: Vec<String>,
-    _from_ms: Option<f64>,
-    _to_ms: Option<f64>,
-) {
+pub fn frame_set_selection(id: u32, keys: Vec<String>, from_ms: Option<f64>, to_ms: Option<f64>) {
+    let s = dash_scene::SelectionIn::new(keys.iter().map(String::as_str), from_ms, to_ms);
+    with(|e| {
+        e.dirty.insert(id);
+        e.frames.set_selection(id, s);
+    });
 }
 
 #[wasm_bindgen]

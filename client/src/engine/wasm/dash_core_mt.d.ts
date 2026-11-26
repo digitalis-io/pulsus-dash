@@ -73,7 +73,7 @@ export function frame_set_events(id: number, at_ms: Float64Array | number[]): vo
  * The page selection (plan #68 C2c2 §3.1): its keys (only 16 lower-case hex digits can match a
  * series key), and its interval; a layer input, so the frame is rebuilt.
  */
-export function frame_set_selection(_id: number, _keys: string[], _from_ms?: number | null, _to_ms?: number | null): void;
+export function frame_set_selection(id: number, keys: string[], from_ms?: number | null, to_ms?: number | null): void;
 
 export function frame_set_spec(id: number, json: string): void;
 
