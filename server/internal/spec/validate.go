@@ -26,11 +26,15 @@ const (
 	gridColumns    = 12
 	maxGridRow     = 9999
 	maxGridRowSpan = 100
+	// maxBoardTags bounds a board's tags (T24-029), as AnnotationTag lists.
+	maxBoardTags = 16
 )
 
 var (
 	timePattern = regexp.MustCompile(`^(now|now/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$`)
 	idPattern   = regexp.MustCompile(`^[a-z0-9-]{1,40}$`)
+	// tagPattern is the OpenAPI AnnotationTag (the gateway's tagPattern, the client's TAG_PATTERN).
+	tagPattern  = regexp.MustCompile(`^[a-z0-9][a-z0-9_.:/-]{0,63}$`)
 	queryLangs  = []string{"promql", "logql"}
 	visKinds    = []string{"auto", "line", "bars", "heatmap", "stat", "logs", "barchart", "pie"}
 	directions  = []string{"above", "below"}
@@ -111,7 +115,7 @@ func (v *validator) id(pointer, id string) {
 }
 
 // Validate checks the semantic rules of plan #61 §3.4.3 and returns a *ValidationError, or nil.
-// Errors are in document order: title, time, panels, sections, each panel in field order.
+// Errors are in document order: title, time, tags, panels, sections, each panel in field order.
 func (b Board) Validate() error {
 	v := &validator{ids: map[string]bool{}}
 	v.str("/title", b.Title, func(s string) string {
@@ -130,6 +134,7 @@ func (b Board) Validate() error {
 		v.str("/time/from", b.Time.From, valid)
 		v.str("/time/to", b.Time.To, valid)
 	}
+	v.tags(b.Tags)
 	total := len(b.Panels)
 	for _, s := range b.Sections {
 		total += len(s.Panels)
@@ -151,6 +156,25 @@ func (b Board) Validate() error {
 		return &ValidationError{Fields: v.fields}
 	}
 	return nil
+}
+
+// tags checks a board's tags (T24-029): at most 16 (reported at /tags), then each item, which
+// must match tagPattern and differ from every earlier item.
+func (v *validator) tags(tags []string) {
+	if len(tags) > maxBoardTags {
+		v.add("/tags", "board.tags.invalid")
+	}
+	for i, tag := range tags {
+		v.str("/tags/"+strconv.Itoa(i), tag, func(s string) string {
+			switch {
+			case !tagPattern.MatchString(s):
+				return "board.tags.invalid"
+			case slices.Contains(tags[:i], s):
+				return "board.tags.duplicate"
+			}
+			return ""
+		})
+	}
 }
 
 func inBounds(g Grid) bool {
