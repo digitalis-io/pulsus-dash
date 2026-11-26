@@ -241,7 +241,9 @@ describe('bundle-size editor closure (PRF-009)', () => {
     expect(r.findings).toEqual([]);
   });
   it('(j) an editor entry in the initial JS', () => {
+    // `src/editor/editor.ts` is also a required lazy module (plan #263 `lazy-in-initial`).
     expect(rules(makeDist({ entryImports: ['src/editor/editor.ts'] }))).toEqual([
+      'lazy-in-initial',
       'editor-in-initial',
     ]);
   });
