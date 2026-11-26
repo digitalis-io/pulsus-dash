@@ -20,6 +20,7 @@
     "tokens": "node scripts/gen-tokens.ts",
     "engine-fixtures": "node scripts/engine-fixtures.ts",
     "gen:log-transcripts": "node scripts/logTranscripts.ts",
+    "gen:xss-corpus": "node scripts/gen-xss-corpus.ts",
     "token-lint": "node scripts/token-lint.ts",
     "size": "node scripts/bundle-size.ts",
     "check:lockfile": "node scripts/check-lockfile.ts",
