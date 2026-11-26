@@ -571,7 +571,8 @@ impl Engine {
                 e.restoring = false;
                 let outcome = restored(old, gpu.as_ref().ok().map(|g| g.ctx.tier));
                 let ids = e.frames.ids();
-                e.queued.extend(restore_events(&ids, outcome));
+                let adapter = gpu.as_ref().map(Gpu::adapter_text).unwrap_or_default();
+                e.queued.extend(restore_events(&ids, outcome, &adapter));
                 match (outcome, gpu) {
                     (Restored::Same, Ok(g)) => {
                         e.gpu = g;

@@ -235,15 +235,20 @@ describe('engine restart policy (T03 §9.2)', () => {
     const { markSessionFailed } = await import('../failFlag');
     const p = await page(markSessionFailed);
     const [w1] = p.render;
+    const before = document.documentElement.dataset;
+    expect([before['dashStatus'], before['dashAdapter']]).toEqual(['1', 'swiftshader']);
     // T1 lost, only WebGL2 left: the worker reports the new tier and fails the old frames.
     w1?.message({
       t: 'events',
       json: JSON.stringify([
-        { t: 'tier', tier: 't2' },
+        { t: 'tier', tier: 't2', status: 2, adapter: 'llvmpipe (LLVM 20)' },
         { t: 'failed', id: 1, reason: 'tier' },
       ]),
     });
     await flush();
+    // The page's status follows the tier change (review r2 #1).
+    const html = document.documentElement.dataset;
+    expect([html['dashStatus'], html['dashAdapter']]).toEqual(['2', 'llvmpipe (LLVM 20)']);
     const c2 = canvases(p.host)[1];
     expect(c2?.dataset['engine']).toBe('canvas2d');
     expect(notices(p.host)).toBe(1);

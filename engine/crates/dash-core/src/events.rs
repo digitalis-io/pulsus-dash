@@ -46,13 +46,14 @@ pub fn drawn(id: u32, ev: &DrawnEvent, start_ms: f64, end_ms: f64, series: u32) 
     .to_string()
 }
 
-/// `{"t":"tier","tier":"t1"|"t2"}`: the engine's tier after a device restore changed it.
-pub fn tier(t: dash_gpu::Tier) -> String {
-    let name = match t {
-        dash_gpu::Tier::T1 => "t1",
-        dash_gpu::Tier::T2 => "t2",
+/// `{"t":"tier","tier":"t1"|"t2","status":1|2,"adapter":…}`: the engine's tier, runtime status
+/// (T03 §9.3) and adapter after a device restore changed the tier.
+pub fn tier(t: dash_gpu::Tier, adapter: &str) -> String {
+    let (name, status) = match t {
+        dash_gpu::Tier::T1 => ("t1", 1),
+        dash_gpu::Tier::T2 => ("t2", 2),
     };
-    json!({"t": "tier", "tier": name}).to_string()
+    json!({"t": "tier", "tier": name, "status": status, "adapter": adapter}).to_string()
 }
 
 /// `{"t":"failed","id":…,"reason":"surface"|"readback"|"tier"}`.

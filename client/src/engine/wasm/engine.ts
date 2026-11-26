@@ -167,6 +167,7 @@ class EngineHost implements Backend {
       if (ev.t === 'tier') {
         // Later frames bind on the new tier; the old ones fall back (`failed{tier}`).
         this.tier = ev.tier;
+        showStatus(ev.status, ev.adapter);
         continue;
       }
       if (ev.t === 'drawn') this.drawn = true;

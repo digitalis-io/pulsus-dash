@@ -81,7 +81,13 @@ export type RenderEvent =
     }
   | { readonly t: 'failed'; readonly id: number; readonly reason: 'surface' | 'readback' | 'tier' }
   /** A device restore changed the engine's tier; the frames on the old tier report `failed{tier}`. */
-  | { readonly t: 'tier'; readonly tier: 't1' | 't2' }
+  | {
+      readonly t: 'tier';
+      readonly tier: 't1' | 't2';
+      /** T03 §9.3: 1 WebGPU, 2 WebGL2. */
+      readonly status: number;
+      readonly adapter: string;
+    }
   /** The engine cannot go on (a second device loss within 60 s): as a second trap. */
   | { readonly t: 'fatal'; readonly reason: string };
 

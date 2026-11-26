@@ -57,12 +57,12 @@ pub fn restored(old: Tier, new: Option<Tier>) -> Restored {
 }
 
 /// The events of a restore over the frames `ids`: none when the tier holds; on a tier change the
-/// new tier, then `failed{tier}` for every frame (each moves to Canvas 2D; later frames use the
-/// new tier); `fatal` when no device was found.
-pub fn restore_events(ids: &[u32], outcome: Restored) -> Vec<String> {
+/// new tier with its status and `adapter`, then `failed{tier}` for every frame (each moves to
+/// Canvas 2D; later frames use the new tier); `fatal` when no device was found.
+pub fn restore_events(ids: &[u32], outcome: Restored, adapter: &str) -> Vec<String> {
     match outcome {
         Restored::Same => Vec::new(),
-        Restored::TierChanged(t) => std::iter::once(events::tier(t))
+        Restored::TierChanged(t) => std::iter::once(events::tier(t, adapter))
             .chain(ids.iter().map(|id| events::failed(*id, FailReason::Tier)))
             .collect(),
         Restored::Failed => vec![events::fatal("device-lost")],

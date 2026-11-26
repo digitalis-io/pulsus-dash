@@ -29,7 +29,7 @@ fn a_second_loss_within_60_s_is_fatal() {
 fn a_failed_restore_is_fatal() {
     assert_eq!(restored(Tier::T1, None), Restored::Failed);
     assert_eq!(
-        parse(&restore_events(&[1, 2], Restored::Failed)),
+        parse(&restore_events(&[1, 2], Restored::Failed, "")),
         [json!({"t": "fatal", "reason": "device-lost"})]
     );
 }
@@ -37,7 +37,7 @@ fn a_failed_restore_is_fatal() {
 #[test]
 fn the_same_tier_redraws_in_place() {
     assert_eq!(restored(Tier::T2, Some(Tier::T2)), Restored::Same);
-    assert!(restore_events(&[1, 2], Restored::Same).is_empty());
+    assert!(restore_events(&[1, 2], Restored::Same, "").is_empty());
 }
 
 #[test]
@@ -45,9 +45,9 @@ fn a_t1_loss_with_only_t2_left_moves_the_frames_to_canvas_2d() {
     let r = restored(Tier::T1, Some(Tier::T2));
     assert_eq!(r, Restored::TierChanged(Tier::T2));
     assert_eq!(
-        parse(&restore_events(&[3, 5], r)),
+        parse(&restore_events(&[3, 5], r, "llvmpipe")),
         [
-            json!({"t": "tier", "tier": "t2"}),
+            json!({"t": "tier", "tier": "t2", "status": 2, "adapter": "llvmpipe"}),
             json!({"t": "failed", "id": 3, "reason": "tier"}),
             json!({"t": "failed", "id": 5, "reason": "tier"}),
         ]
