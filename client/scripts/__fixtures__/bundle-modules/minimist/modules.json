@@ -1,0 +1,9 @@
+{
+  "assets/index-a1.js": [
+    "/repo/client/src/main.tsx"
+  ],
+  "assets/text-c3.js": [
+    "/repo/client/node_modules/commonmark/lib/index.js",
+    "/repo/client/node_modules/minimist/index.js"
+  ]
+}
