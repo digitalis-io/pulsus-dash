@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-26 |
+| **Version** | 1.8-rc · 2026-11-26 |
 | **Milestone** | M-UI2 (host, selection, Esc ladder, pivots on boards and Explore) → M-UI4 (Pin, Create alert, Ask AI) |
-| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md), [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md) |
+| **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md), [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md), [ADR-0032](../adr/0032-selection-dims-as-one-layer.md) |
 | **Source draft** | plans/164, plans/184 (not tracked) |
 
 This document is the chart **Inspector**, the shared **selection**, the **Esc ladder** and the **pivot
@@ -92,7 +92,8 @@ no camera move.
 - **Relevance:** a frame dims only if at least one selection key is in its own data. Otherwise (a
   foreign key, such as a log stream key on a line panel) it draws only the interval.
 - **Line:** a matched series is drawn last, its stroke over a `focus` underlay 4 px wider; the others
-  at `dimmed` alpha.
+  are dimmed together: drawn into one layer composited once at `dimmed`
+  ([ADR-0032](../adr/0032-selection-dims-as-one-layer.md)).
 - **Bars:** unmatched segments at `dimmed`; matched ones with a 2 px inner `focus` stroke.
 - **Heatmap and line, with an interval:** a `selection` band over [fromMs, toMs), at least 1 device px
   wide.
@@ -454,7 +455,7 @@ Fixture P: a board origin {p1, "p99 latency", promql `histogram_quantile(0.99, x
 | e2e:pivot-destination | e2e/inspector.spec.ts | Board URL with f=env=prod; P inspected; follow Logs, then Back and follow Explore | the Explore › Logs request (stub) has a query containing `env="prod"` and `service_name="checkout"`, and its results are the stub's env=prod stream only; the Explore › Metrics request q equals the panel's expanded text, with no `f` in the URL; the board showed "Filters not applied in Explore yet: env" under the Explore chip before the click | new | IA-026, INT-035, T25-010 |
 | e2e:inspector-keyboard | same | Tab to the log scroller, Enter, ↓, Enter; then Tab through | row 2 is inspected; Tab order per T25-008; a disabled chip is described by its reason; the live region equals `announce` | new | T25-008 |
 | e2e:a11y-rooms (ext.), golden:inspector, e2e:inspector-motion | a11y-rooms, golden-gallery, inspector specs | open and collapsed; dark, light, forced colours; reduced motion on and off | axe 0, targets ≥ 24 px; screenshots match, forced colours opaque; reduce = final styles on the first frame, normal = a 200 ms opacity transition | new | T25-013, VL-014/016 |
-| unit:selection-draw | engine/canvas2d/Canvas2DEngine.selection.test.ts | Recording context; `setSelection({keys:['k1'], fromMs:null, toMs:null})` on line, bars and stat; `{keys:[], fromMs:1000, toMs:2000}` on heatmap | line: k2 stroked at globalAlpha 0.35, then a focus stroke 4 px wider, then k1; bars: k2 segments at 0.35 and a 2 px focus inner stroke on k1; stat: focus ring; heatmap: a `selection` fill over x(1000)–x(2000); `setSelection(null)` → the same calls as without a selection | no `setSelection` | T02-025, T25-006 |
+| unit:selection-draw | engine/canvas2d/Canvas2DEngine.selection.test.ts | Recording context; `setSelection({keys:['k1'], fromMs:null, toMs:null})` on line, bars and stat; `{keys:[], fromMs:1000, toMs:2000}` on heatmap | line: k2 drawn at full alpha on a scratch layer, which is composited once at `dimmed` (ADR-0032), then a focus stroke 4 px wider, then k1; bars: k2 segments at 0.35 and a 2 px focus inner stroke on k1; stat: focus ring; heatmap: a `selection` fill over x(1000)–x(2000); `setSelection(null)` → the same calls as without a selection | no `setSelection` | T02-025, T25-006 |
 
 Also: the redraw report with a selection and the Inspector open (`bench:inspector-redraw`, p95 ≤ +10 %, MINOR). Every gate is in
 [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
@@ -509,3 +510,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 | 1.5-rc | 2026-11-25 | #184 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1b, the geomap), per T25-002: §5 `InspectorTarget` gains `{type:'geo'; target}`, `MemberSection` gains `next`, `InspectorState` gains `nav` (`NavView`) and `InspectorAction` `push` and `pop`; §4.8 the in-request navigation stack and `viewKey` (content key, layers, `h2` focus, live region); §4.9 the `geo` target; T25-007 (Esc pops before it clears), T25-008, T25-011 (entries as buttons with `next`) and T25-012 amended; §4.2 the geomap row, §4.3 `geo` pivots, §4.4 the navigation motion, §4.6 push and pop; §10 `unit:inspector-nav`, `unit:inspector-viewkey`; §11 delivered by T24's E2 |
 | 1.6-rc | 2026-11-25 | #184 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 2): T25-010 gains the map-area disclosure (the filter "map area" while `geo=` is effective, never carried; `unit:pivot-context` C5, C6) |
 | 1.7-rc | 2026-11-26 | #173 Part 3a (T22 I1), per T25-002: §5 `InspectorTarget` gains `{type:'mark'; target: InspectTarget}` with its `selectionOf`, `pivotInstant`, `visOf` and `inspectorModel` cases; T25-007: an owner marked `data-escape-ladder` (the bar chart's mirror listbox, [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md)) is not skipped; §4.2 gains the barchart row (click, Enter/Space, brush → `select` source `brush`) |
+| 1.8-rc | 2026-11-26 | #68 Part C2c2, per T25-002: T25-006's line rule: the unmatched series are dimmed together, one layer composited once at `dimmed` ([ADR-0032](../adr/0032-selection-dims-as-one-layer.md)); §10 `unit:selection-draw`'s line row likewise (bars unchanged) |
