@@ -50,15 +50,26 @@ func (t *OrgTx) InsertAnnotation(ctx context.Context, a core.Annotation, author 
 	return nil
 }
 
+// ScopeParam is the data scope of a statement: full, or the compiled clauses' JSON.
+type ScopeParam struct {
+	Full bool
+	JSON []byte
+}
+
+// TenantBindingIDBySlug is not implemented yet (#222 tests first).
+func (t *OrgTx) TenantBindingIDBySlug(ctx context.Context, slug string) (uuid.UUID, error) {
+	return uuid.UUID{}, core.ErrNotFound
+}
+
 // ListAnnotations returns at most limit annotations overlapping [from, to], newest first (at,
 // then id, descending), and whether more exist (one more row is read).
-func (t *OrgTx) ListAnnotations(ctx context.Context, from, to time.Time, limit int) ([]core.Annotation, bool, error) {
+func (t *OrgTx) ListAnnotations(ctx context.Context, from, to time.Time, limit int, _ core.AnnotationFilter, _ ScopeParam) (core.AnnotationPage, error) {
 	limit = min(max(limit, 0), 1<<20)
 	rows, err := t.q.ListAnnotations(ctx, dbgen.ListAnnotationsParams{
 		OrgID: pgUUID(t.org), ToAt: stamp(to), FromAt: stamp(from), Lim: int32(limit + 1), //nolint:gosec // clamped above
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("store: list annotations: %w", err)
+		return core.AnnotationPage{}, fmt.Errorf("store: list annotations: %w", err)
 	}
 	truncated := len(rows) > limit
 	if truncated {
@@ -68,11 +79,11 @@ func (t *OrgTx) ListAnnotations(ctx context.Context, from, to time.Time, limit i
 	for _, r := range rows {
 		out = append(out, annotationOf(r.ID, r.At, r.EndAt, r.Kind, r.Text, r.Tags))
 	}
-	return out, truncated, nil
+	return core.AnnotationPage{Items: out}, nil
 }
 
 // DeleteAnnotation deletes an annotation and returns it as it was, or core.ErrNotFound.
-func (t *OrgTx) DeleteAnnotation(ctx context.Context, id uuid.UUID) (core.Annotation, error) {
+func (t *OrgTx) DeleteAnnotation(ctx context.Context, id uuid.UUID, _ ScopeParam) (core.Annotation, error) {
 	r, err := t.q.DeleteAnnotation(ctx, dbgen.DeleteAnnotationParams{OrgID: pgUUID(t.org), ID: pgUUID(id)})
 	if err != nil {
 		return core.Annotation{}, notFound("delete annotation", err)

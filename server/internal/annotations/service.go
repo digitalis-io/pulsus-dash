@@ -20,14 +20,15 @@ const resourceKind = "annotation"
 
 // Service implements core.Annotations over the store.
 type Service struct {
-	db  *store.Db
-	now func() time.Time
+	db    *store.Db
+	now   func() time.Time
+	newID func() (uuid.UUID, error)
 }
 
 var _ core.Annotations = (*Service)(nil)
 
 // New returns the service over db (the pulsus_app pool).
-func New(db *store.Db) *Service { return &Service{db: db, now: time.Now} }
+func New(db *store.Db) *Service { return &Service{db: db, now: time.Now, newID: core.NewID} }
 
 // JSON is the annotation as the API sends it (plan #64 Part C §3.4), the value of its audit diffs:
 // times in ms since the Unix epoch, a point's end_at null, tags never null.
@@ -62,7 +63,7 @@ func utcMs(t time.Time) time.Time { return t.UTC().Truncate(time.Millisecond) }
 // CreateAnnotation stores n under a new id, with an annotation.create audit event whose diff adds
 // it, and returns it as stored.
 func (s *Service) CreateAnnotation(ctx context.Context, rc *core.RequestCtx, n core.NewAnnotation) (core.Annotation, error) {
-	id, err := core.NewID()
+	id, err := s.newID()
 	if err != nil {
 		return core.Annotation{}, fmt.Errorf("annotations: new id: %w", err)
 	}
@@ -93,22 +94,21 @@ func (s *Service) CreateAnnotation(ctx context.Context, rc *core.RequestCtx, n c
 
 // ListAnnotations returns at most limit annotations overlapping [from, to], newest first, and
 // whether more exist.
-func (s *Service) ListAnnotations(ctx context.Context, rc *core.RequestCtx, from, to time.Time, limit int) ([]core.Annotation, bool, error) {
-	var items []core.Annotation
-	var truncated bool
+func (s *Service) ListAnnotations(ctx context.Context, rc *core.RequestCtx, from, to time.Time, limit int, f core.AnnotationFilter) (core.AnnotationPage, error) {
+	var page core.AnnotationPage
 	err := s.db.Tx(ctx, rc.Org, func(ctx context.Context, tx *store.OrgTx) error {
 		var err error
-		items, truncated, err = tx.ListAnnotations(ctx, from, to, limit)
+		page, err = tx.ListAnnotations(ctx, from, to, limit, f, store.ScopeParam{Full: true, JSON: []byte("[]")})
 		return err
 	})
-	return items, truncated, err
+	return page, err
 }
 
 // DeleteAnnotation deletes the annotation with an annotation.delete audit event whose diff tests
 // and removes it. An absent id is core.ErrNotFound and appends no audit event.
 func (s *Service) DeleteAnnotation(ctx context.Context, rc *core.RequestCtx, id uuid.UUID) error {
 	return s.db.Tx(ctx, rc.Org, func(ctx context.Context, tx *store.OrgTx) error {
-		a, err := tx.DeleteAnnotation(ctx, id)
+		a, err := tx.DeleteAnnotation(ctx, id, store.ScopeParam{Full: true, JSON: []byte("[]")})
 		if err != nil {
 			return err
 		}

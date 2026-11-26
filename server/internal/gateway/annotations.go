@@ -146,7 +146,8 @@ func (a *annotationRoutes) list(w http.ResponseWriter, r *http.Request) {
 		writeReqError(w, e)
 		return
 	}
-	items, truncated, err := a.d.Annotations.ListAnnotations(r.Context(), rcFrom(r.Context()), from, to, limit)
+	page, err := a.d.Annotations.ListAnnotations(r.Context(), rcFrom(r.Context()), from, to, limit, core.AnnotationFilter{})
+	items, truncated := page.Items, page.Next != nil
 	if err != nil {
 		a.fail(r.Context(), w, "list", err)
 		return
