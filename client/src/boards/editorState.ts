@@ -3,20 +3,22 @@
  * user edits. The draft is dirty when its canonical JSON differs from the head's. A later read of
  * the board never replaces a dirty draft, and no edit is taken while a save is in flight. Part C
  * (§4.1) adds sections: add, rename, remove and, in Edit mode, collapse (saved with the board); a
- * View-mode collapse is a URL override (`isCollapsed`), not state here.
+ * View-mode collapse is a URL override (`isCollapsed`), not state here. #198 Part 3a (§3.3) adds a
+ * widget (`addWidget`, with the vis and size its registry def gives) and edits one (`updateWidget`).
  */
 import type {
   Board,
   BoardSpec,
   DataPanelSpec,
   FieldError,
+  GridPos,
   PanelSpec,
   SectionSpec,
   TimeRangeSpec,
   WidgetPanelSpec,
 } from '../api/types';
 import type { SectionOverrides } from '../state/boardParams';
-import { isDataPanel } from '../widgets/spec';
+import { isDataPanel, isWidgetKind, isWidgetPanel } from '../widgets/spec';
 import { t } from '../i18n/t';
 import { applyOp, firstFree, fits, type LayoutOp, overlaps } from './layout';
 import { canonicalJson, MAX_PANELS, MAX_SECTIONS, nextPanelId, nextSectionId } from './spec';
@@ -175,7 +177,9 @@ export function blockedText(p: PanelSpec): string {
 
 const EDITS: ReadonlySet<BoardAction['type']> = new Set([
   'addPanel',
+  'addWidget',
   'updatePanel',
+  'updateWidget',
   'removePanel',
   'duplicatePanel',
   'layout',
@@ -205,6 +209,33 @@ export function isCollapsed(
   if (o.collapse.has(section.id)) return true;
   if (o.expand.has(section.id)) return false;
   return section.collapsed;
+}
+
+/**
+ * Adds the panel `make` builds at the first free `size` cell of `grid`, opens the grid's section if
+ * collapsed, and selects it (`addPanel`, `addWidget`; plan #198 Part 3a §3.3). At `MAX_PANELS`, or
+ * with no free cell, it announces why and adds nothing.
+ */
+function addAt(
+  s: BoardPageState,
+  grid: GridRef,
+  size: { w: number; h: number },
+  make: (id: string, at: GridPos) => PanelSpec,
+): BoardPageState {
+  if (allPanels(s.draft).length >= MAX_PANELS) return { ...s, announce: t('board.fullPanels') };
+  if (grid !== 'top' && s.draft.sections[grid] === undefined) return s;
+  const free = firstFree(panelsOf(s.draft, grid), size.w, size.h);
+  if (free === null) return { ...s, announce: t('board.full') };
+  const panel = make(nextPanelId(s.draft), free);
+  let draft = withPanels(s.draft, grid, [...panelsOf(s.draft, grid), panel]);
+  // A panel added to a collapsed section opens it, so the new panel shows.
+  if (grid !== 'top') {
+    draft = {
+      ...draft,
+      sections: draft.sections.map((x, j) => (j === grid ? { ...x, collapsed: false } : x)),
+    };
+  }
+  return { ...edited(s, draft), selected: panel.id, announce: '' };
 }
 
 /**
@@ -241,29 +272,19 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
       return { ...s, mode: 'edit' };
     case 'exitEdit':
       return { ...s, mode: 'view', selected: null };
-    case 'addPanel': {
-      const grid = a.grid ?? 'top';
-      const total = allPanels(s.draft).length;
-      if (total >= MAX_PANELS) return { ...s, announce: t('board.fullPanels') };
-      if (grid !== 'top' && s.draft.sections[grid] === undefined) return s;
-      const free = firstFree(panelsOf(s.draft, grid), NEW_PANEL.w, NEW_PANEL.h);
-      if (free === null) return { ...s, announce: t('board.full') };
-      const panel: PanelSpec = {
-        id: nextPanelId(s.draft),
+    case 'addPanel':
+      return addAt(s, a.grid ?? 'top', NEW_PANEL, (id, grid) => ({
+        id,
         title: '',
-        grid: free,
+        grid,
         query: { lang: 'promql', text: '' },
         vis: { kind: 'auto' },
-      };
-      let draft = withPanels(s.draft, grid, [...panelsOf(s.draft, grid), panel]);
-      // A panel added to a collapsed section opens it, so the new panel shows.
-      if (grid !== 'top') {
-        draft = {
-          ...draft,
-          sections: draft.sections.map((x, j) => (j === grid ? { ...x, collapsed: false } : x)),
-        };
-      }
-      return { ...edited(s, draft), selected: panel.id, announce: '' };
+      }));
+    case 'addWidget': {
+      const vis = a.vis;
+      // A data kind needs a query: only `addPanel` adds one.
+      if (!isWidgetKind(vis.kind)) return s;
+      return addAt(s, a.grid ?? 'top', a.size, (id, grid) => ({ id, title: '', grid, vis }));
     }
     case 'addSection': {
       if (s.draft.sections.length >= MAX_SECTIONS)
@@ -309,9 +330,15 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
       const panels = panelsOf(s.draft, grid).map((p) => (p.id === a.id ? patched(p, a.patch) : p));
       return edited(s, withPanels(s.draft, grid, panels));
     }
-    case 'addWidget':
-    case 'updateWidget':
-      return s;
+    case 'updateWidget': {
+      const grid = gridOf(s.draft, a.id);
+      const p = allPanels(s.draft).find((x) => x.panel.id === a.id)?.panel;
+      if (grid === null || p === undefined || !isWidgetPanel(p)) return s;
+      if (a.patch.vis !== undefined && a.patch.vis.kind !== p.vis.kind) return s;
+      const next: WidgetPanelSpec = { ...p, ...a.patch };
+      const panels = panelsOf(s.draft, grid).map((x) => (x.id === a.id ? next : x));
+      return edited(s, withPanels(s.draft, grid, panels));
+    }
     case 'removePanel': {
       const grid = gridOf(s.draft, a.id);
       if (grid === null) return s;
