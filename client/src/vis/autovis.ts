@@ -63,6 +63,9 @@ export const SHIPPED_VIS: ReadonlySet<VisKind> = new Set<VisKind>([
   'stat',
 ]);
 
+/** Stub (tests first). */
+export const EXPLORE_VIS: ReadonlySet<VisKind> = SHIPPED_VIS;
+
 /**
  * The auto vis of a result. A range result is never a stat (row 7 is "1 series, 1 value"): the
  * BFF grids it, so a series with one sample is a series with gaps. Row 11 (bar chart) needs the

@@ -50,6 +50,8 @@ export interface PanelRunInput {
    * (without a language, the range route). Default false. The LogQL run ignores it.
    */
   readonly degraded?: boolean;
+  /** The bar chart's baseline ghost is on (plan #173 Part 3b §4.2); default false. */
+  readonly ghost?: boolean;
 }
 
 export type { PanelOutcome };
@@ -142,7 +144,15 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const runKey = useMemo(
     () =>
       kind !== null && stepMs !== null
-        ? panelRunKey(tenant, panel.id, { text, vars: varsJson }, kind, stepMs, { fromMs, toMs })
+        ? panelRunKey(
+            tenant,
+            panel.id,
+            { text, vars: varsJson },
+            kind,
+            stepMs,
+            { fromMs, toMs },
+            null,
+          )
         : null,
     [kind, stepMs, tenant, panel.id, text, varsJson, fromMs, toMs],
   );

@@ -9,11 +9,14 @@ import { selectionOf } from '../charts/inspectTarget';
 import type { ChartFrameProps } from '../charts/ChartFrame';
 import { useTimeContext } from '../state/useTimeContext';
 import { useInspector } from './host';
-import type { InspectOrigin } from './types';
+import type { InspectOrigin, Selection, SelectionSource } from './types';
 
-export function useChartInspect(
-  o: Omit<InspectOrigin, 'window'>,
-): Pick<ChartFrameProps, 'onInspect' | 'onEmptyClick'> {
+export function useChartInspect(o: Omit<InspectOrigin, 'window'>): Pick<
+  ChartFrameProps,
+  'onInspect' | 'onEmptyClick'
+> & {
+  readonly onSelect?: (s: Selection | null, kind: SelectionSource['kind']) => void;
+} {
   const api = useInspector();
   const { window: win } = useTimeContext();
   const latest = useRef({ o, win });

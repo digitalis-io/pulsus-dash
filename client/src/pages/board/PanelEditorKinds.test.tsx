@@ -1,12 +1,22 @@
 /**
- * The barchart boundary in the panel editor (#173 Part 2 §5 boundary): the bar chart is offered
- * only as the disabled option of a panel that stores it.
+ * The bar chart in the panel editor (plan #173 Part 3b §4.5; T22 §6.1): Bar chart is an enabled
+ * kind with its options field (no Legend), a reducer edit is in the draft, a kind change keeps only
+ * valid values, a stored pie stays a disabled option, and an `auto` draft previews with the
+ * boards' default set (T22 §4.5, owner).
  */
-import { cleanup, screen, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DataPanelSpec } from '../../api/types';
 import { resetQueryLanguages } from '../../boards/useQueryLanguage';
-import { editorOn, openBoard, ready, settled, show } from '../../test/boardPanelKit';
+import {
+  editorOn,
+  openBoard,
+  preview,
+  ready,
+  settled,
+  show,
+  type Board,
+} from '../../test/boardPanelKit';
 import { panel } from '../../test/boardTestKit';
 import { fakeEditorSource } from '../../test/fakeEditor';
 import {
@@ -15,7 +25,7 @@ import {
 } from '../../test/fakeIntersectionObserver';
 import { F } from '../../test/fakePromSource';
 import { installResizeObserver } from '../../test/fakeResizeObserver';
-import { R_A } from '../../test/rangeFixtures';
+import { R_A, rangeByVersion } from '../../test/rangeFixtures';
 
 vi.mock('../../editor/editor', () => import('../../test/fakeEditor'));
 
@@ -31,27 +41,92 @@ afterEach(() => {
   uninstallIntersectionObserver();
 });
 
-async function options(vis: DataPanelSpec['vis']): Promise<HTMLElement[]> {
-  const t = openBoard([{ ...panel('p-1', 'Requests', 'http_requests_total'), vis }]);
-  t.range.mockResolvedValue(R_A);
-  await ready('Requests');
-  show('Requests');
-  if (vis.kind !== 'barchart') await settled(t, 'Requests');
-  const d = await editorOn(t, 'Requests');
-  await t.user.click(within(d).getByRole('button', { name: /Visualisation$/ }));
-  return screen.findAllByRole('option');
+type Vis = DataPanelSpec['vis'];
+
+interface Editor {
+  readonly t: Board;
+  readonly d: HTMLElement;
+  /** The vis of p-1 in every spec sent to `saveBoard`, in order. */
+  readonly save: () => Vis[];
 }
 
-describe('barchart boundary: editor', () => {
-  it('a line panel offers no bar chart', async () => {
-    const names = (await options({ kind: 'line' })).map((o) => o.textContent);
-    expect(names).not.toContain('Bar chart');
+async function editor(vis: Vis, answer = R_A): Promise<Editor> {
+  const t = openBoard([{ ...panel('p-1', 'Requests', 'http_requests_total'), vis }]);
+  t.range.mockResolvedValue(answer);
+  const spy = vi.spyOn(t.api, 'saveBoard');
+  await ready('Requests');
+  show('Requests');
+  if (vis.kind !== 'barchart' && vis.kind !== 'pie') await settled(t, 'Requests');
+  const d = await editorOn(t, 'Requests');
+  const save = (): Vis[] =>
+    spy.mock.calls.map((c) => c[3].panels[0]?.vis).filter((v): v is Vis => v !== undefined);
+  return { t, d, save };
+}
+
+async function saveNow({ t, save }: Editor, n: number): Promise<void> {
+  await t.user.keyboard('{Control>}s{/Control}');
+  await waitFor(() => {
+    expect(save()).toHaveLength(n);
+  });
+}
+
+const visTrigger = (d: HTMLElement): HTMLElement =>
+  within(d).getByRole('button', { name: /Visualisation$/ });
+
+async function choose(t: Board, trigger: HTMLElement, option: string): Promise<void> {
+  await t.user.click(trigger);
+  const found = (await screen.findAllByRole('option')).find((o) => o.textContent === option);
+  expect(found, option).toBeDefined();
+  if (found !== undefined) await t.user.click(found);
+}
+
+describe('editor: the bar chart kind (#173 Part 3b §4.5)', () => {
+  it('Bar chart is enabled; choosing it shows its options and no Legend', async () => {
+    const e = await editor({ kind: 'line' });
+    await e.t.user.click(visTrigger(e.d));
+    const bar = (await screen.findAllByRole('option')).find((o) => o.textContent === 'Bar chart');
+    expect(bar).toBeDefined();
+    expect(bar).not.toHaveAttribute('aria-disabled', 'true');
+    if (bar !== undefined) await e.t.user.click(bar);
+    await waitFor(() => {
+      expect(e.d.querySelector('[data-barchart-options]')).not.toBeNull();
+    });
+    expect(within(e.d).queryByRole('button', { name: /Legend$/ })).toBeNull();
   });
 
-  it('a stored bar chart shows as a disabled option', async () => {
-    const opts = await options({ kind: 'barchart' });
-    const bar = opts.find((o) => o.textContent === 'Bar chart');
-    expect(bar).toBeDefined();
-    expect(bar).toHaveAttribute('aria-disabled', 'true');
+  it('Reducer Sum is in the draft', async () => {
+    const e = await editor({ kind: 'barchart' });
+    await waitFor(() => {
+      expect(e.d.querySelector('[data-barchart-options]')).not.toBeNull();
+    });
+    await choose(e.t, within(e.d).getByRole('button', { name: /Reducer$/ }), 'Sum');
+    await saveNow(e, 1);
+    expect(e.save()[0]).toEqual({ kind: 'barchart', options: { reducer: 'sum' } });
+  });
+
+  it('stat {orientation: auto} → barchart drops the orientation', async () => {
+    const e = await editor({ kind: 'stat', options: { orientation: 'auto' } });
+    await choose(e.t, visTrigger(e.d), 'Bar chart');
+    await saveNow(e, 1);
+    expect(e.save()[0]).toEqual({ kind: 'barchart' });
+  });
+
+  it('a stored pie shows as a disabled option', async () => {
+    const e = await editor({ kind: 'pie' });
+    await e.t.user.click(visTrigger(e.d));
+    const pie = (await screen.findAllByRole('option')).find((o) => o.textContent === 'Pie');
+    expect(pie).toBeDefined();
+    expect(pie).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+describe('draft preview (T22 §4.5, owner)', () => {
+  it('an auto draft with a reducer previews a row-11 answer as a line', async () => {
+    const e = await editor({ kind: 'auto', options: { reducer: 'max' } }, rangeByVersion());
+    const p = preview(e.d);
+    await waitFor(() => {
+      expect(p).toHaveAttribute('data-panel-vis', 'line');
+    });
+    expect(visTrigger(e.d)).toHaveTextContent('Auto (Line)');
   });
 });

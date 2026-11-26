@@ -56,3 +56,23 @@ export const R_A: RangeResult = result(facts(G, 22, false), [
 export const R_B: RangeResult = result(facts(G, 22, false), [
   series({ __name__: G, instance: 'a' }, [10, 20, 30]),
 ]);
+
+/** The bar chart tests' query (#173 Part 3b). */
+export const BY_VERSION_Q = 'sum by (version) (app_version)';
+
+/**
+ * `byVersion` (T22 §10.2) as a range answer on the 12:00 grid: `{version=2.29…2.33}` = 40, 7, 120,
+ * 3, 15 at every step, times `scale` (0.5 is the baseline stub).
+ */
+export function rangeByVersion(scale = 1, query = BY_VERSION_Q): RangeResult {
+  const values = [40, 7, 120, 3, 15];
+  return result(
+    facts(query, query.length, false),
+    ['2.29', '2.30', '2.31', '2.32', '2.33'].map((version, i) =>
+      series(
+        { version },
+        [0, 1, 2].map(() => (values[i] ?? 0) * scale),
+      ),
+    ),
+  );
+}

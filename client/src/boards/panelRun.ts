@@ -17,6 +17,7 @@ import { seriesRows, type SeriesRow } from '../explore/seriesRows';
 import { errorView, refusalText } from '../explore/statusText';
 import { t } from '../i18n/t';
 import { autoVis, chooseVis, fromRange, type ExploreResult } from '../vis/autovis';
+import type { BarchartModel } from '../vis/barchart';
 import { framePlan, type FramePlan } from '../vis/framePlan';
 import { thresholdLines, type Thresholds } from '../vis/thresholds';
 import type { LogPager, LogPagerState } from '../logs/logPager';
@@ -37,6 +38,8 @@ export interface PanelOutcome {
   readonly logKind?: 'streams' | 'series';
   /** `bars` on a log query. */
   readonly volume?: VolumeResult;
+  /** The baseline run's result, or `'failed'`; absent: no baseline run (T22-012). */
+  readonly baseline?: ExploreResult | 'failed';
 }
 
 /** A LogQL stream panel's pager and its unsaved controls (plan #67 §3.1). */
@@ -82,6 +85,14 @@ export type PanelView =
       readonly legend: 'table' | 'hidden';
       /** The log volume by level (a LogQL Bars panel on a log query, plan #67 §3.4). */
       readonly volume?: true;
+    }
+  | {
+      /** A saved bar chart (plan #173 Part 3b §4.1): `data-panel-state` `frame`. */
+      readonly kind: 'category';
+      readonly model: BarchartModel;
+      /** The baseline run failed: the bars draw without a ghost, with the note. */
+      readonly baselineFailed: boolean;
+      readonly lang: 'promql' | 'logql';
     };
 
 /** The most rows a panel legend shows (plan #64 Part B §4.5). */
@@ -112,6 +123,8 @@ export function panelRunKey(
   kind: PanelRunKind,
   stepMs: number,
   w: { readonly fromMs: number; readonly toMs: number },
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- stub (tests first)
+  _baselineMs: number | null,
 ): readonly unknown[] {
   return ['data', 'panel', tenant, id, r.text, r.vars, kind, stepMs, w.fromMs, w.toMs];
 }
@@ -286,6 +299,22 @@ function streamView(s: PanelStream, panelVis: DataPanelSpec['vis'], title: strin
   }
   return { kind: 'loading' };
 }
+
+/** Stub (tests first). */
+/* eslint-disable @typescript-eslint/no-unused-vars -- stub (tests first) */
+export function categoryView(
+  _r: Exclude<ExploreResult, { kind: 'string' }>,
+  _o: {
+    readonly title: string;
+    readonly rateApplied: boolean;
+    readonly panelVis: DataPanelSpec['vis'];
+    readonly lang: 'promql' | 'logql';
+    readonly baseline: ExploreResult | 'failed' | undefined;
+  },
+): PanelView {
+  return { kind: 'loading' };
+}
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
 /**
  * Pure: §4.2's table, first match. `panelVis` is the panel's `vis` (its kind, thresholds and

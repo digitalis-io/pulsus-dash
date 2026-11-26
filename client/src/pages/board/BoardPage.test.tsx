@@ -1,12 +1,13 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { createElement } from 'react';
 import type { GridLayoutProps, LayoutItem } from 'react-grid-layout';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../../api/StubApi';
 import {
   ApiError,
   BoardConflictError,
   type Board,
+  type DataPanelSpec,
   type RangeRequest,
   type SaveResult,
 } from '../../api/types';
@@ -22,10 +23,17 @@ import {
   gridOf,
   httpApi,
   json,
+  panel,
   panelOf,
   panelTitles,
   stubBoard,
 } from '../../test/boardTestKit';
+import { editorOn, openBoard, ready, show } from '../../test/boardPanelKit';
+import {
+  installIntersectionObserver,
+  uninstallIntersectionObserver,
+} from '../../test/fakeIntersectionObserver';
+import { BY_VERSION_Q, rangeByVersion } from '../../test/rangeFixtures';
 import { fakeEngine, type FakeEngine, type FakeFrame } from '../../test/fakeEngine';
 import { installResizeObserver, resizeAll, resizeOf } from '../../test/fakeResizeObserver';
 import { locationOf, renderApp, type RenderAppOptions } from '../../test/renderApp';
@@ -1744,5 +1752,55 @@ describe('panel editor dialog', () => {
       f.draw();
     });
     expect(t.pendingShown()).toBe(false);
+  });
+});
+
+describe('stored auto keeps line (T22 §4.5, owner; #173 Part 3b)', () => {
+  beforeEach(() => {
+    installIntersectionObserver();
+  });
+  afterEach(() => {
+    uninstallIntersectionObserver();
+  });
+
+  it('an auto panel with a reducer stays a line through a save of another panel and a move', async () => {
+    const A: DataPanelSpec = {
+      ...panel('p-1', 'A', BY_VERSION_Q),
+      vis: { kind: 'auto', options: { reducer: 'max' } },
+    };
+    const B = panel('p-2', 'B', BY_VERSION_Q);
+    const t = openBoard([A, B]);
+    t.range.mockImplementation(() => Promise.resolve(rangeByVersion()));
+    const save = vi.spyOn(t.api, 'saveBoard');
+    await ready('A', 'B');
+    show('A', 'B');
+    const isLine = async (): Promise<void> => {
+      await waitFor(() => {
+        expect(panelOf('A')).toHaveAttribute('data-panel-vis', 'line');
+      });
+    };
+    await isLine();
+    const d = await editorOn(t, 'B');
+    fireEvent.change(within(d).getByRole('textbox', { name: 'Title' }), {
+      target: { value: 'B renamed' },
+    });
+    await t.user.click(within(d).getByRole('button', { name: 'Done' }));
+    await t.user.click(await screen.findByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(save).toHaveBeenCalledTimes(1);
+    });
+    await isLine();
+    const move = await screen.findByRole('button', { name: 'Move or resize: A' });
+    move.focus();
+    await t.user.keyboard('{ArrowDown}');
+    await t.user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(save).toHaveBeenCalledTimes(2);
+    });
+    await isLine();
+    for (const c of save.mock.calls) {
+      const saved = c[3].panels.find((p) => p.id === 'p-1');
+      expect(saved?.vis).toEqual({ kind: 'auto', options: { reducer: 'max' } });
+    }
   });
 });

@@ -1,0 +1,21 @@
+{
+  "name": "bars-keys",
+  "provenance": {
+    "synthetic": "two series of one version: the bar names carry the region; the keys are shared with a line panel"
+  },
+  "match": {
+    "method": "POST",
+    "paths": [
+      "/api/v1/query_range"
+    ],
+    "query": "bars_keys"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Pulsus-Query-Id": "fake-bars-keys-1"
+    },
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"version":"2.31","region":"eu"},"values":[[1767225600,"50"],[1767227400,"50"],[1767229200,"50"]]},{"metric":{"version":"2.31","region":"us"},"values":[[1767225600,"70"],[1767227400,"70"],[1767229200,"70"]]}]}}
+  }
+}

@@ -80,7 +80,7 @@ describe('unit:board-options', () => {
     // Every kind's keys are in OPTION_ORDER order.
     for (const [kind, keys] of Object.entries(OPTION_KEYS))
       expect(keys, kind).toEqual(OPTION_ORDER.filter((k) => keys.includes(k)));
-    expect([...PENDING_KINDS].sort()).toEqual(['barchart', 'pie'] satisfies PanelVisKind[]);
+    expect([...PENDING_KINDS].sort()).toEqual(['pie'] satisfies PanelVisKind[]);
   });
 });
 

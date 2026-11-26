@@ -57,6 +57,7 @@ import { useElementWidth } from '../../explore/useElementWidth';
 import { t } from '../../i18n/t';
 import { useInspectedPanelId } from '../../inspector/host';
 import type { InspectOrigin } from '../../inspector/types';
+import type { BarAction } from '../../vis/barAction';
 import { useChartInspect } from '../../inspector/useChartInspect';
 import { Button } from '../../kit/Button';
 import { cx } from '../../kit/cx';
@@ -315,6 +316,17 @@ const PanelChart = memo(function PanelChart({
   );
 });
 
+/** A category view's session state and actions (plan #173 Part 3b §4.3). Stub (tests first). */
+export interface PanelCategory {
+  readonly ghost: boolean;
+  readonly anomaly: boolean;
+  readonly table: boolean;
+  readonly onTable: (on: boolean) => void;
+  readonly origin: Omit<InspectOrigin, 'window'>;
+  /** The decided action of a pick (`barAction`); absent in the editor preview. */
+  readonly onPick?: (a: BarAction, returnFocus: HTMLElement | null) => void;
+}
+
 export function PanelBody({
   title,
   view,
@@ -324,6 +336,8 @@ export function PanelBody({
   inspect,
   selectPanelId,
 }: {
+  /** A category view's state and actions; absent: all off, no pick. */
+  category?: PanelCategory;
   title: string;
   view: PanelView;
   /** Kept by the caller (board panel, full screen, preview), above the chart (#90). */
@@ -367,6 +381,7 @@ export function PanelBody({
         />
       );
     case 'loading':
+    case 'category':
       return <p className={cx(styles['message'])}>{t('panel.loading')}</p>;
     case 'message':
       return <p className={cx(styles['message'])}>{view.text}</p>;
