@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.13-rc · 2026-11-26 |
+| **Version** | 1.14-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -1638,9 +1638,17 @@ AnnotationCreate: + entity? { binding: slug of a binding in the org, kind, attrs
 Annotation: + entity (required: { id: EntityId, binding: slug, kind, ident: (string | null)[] in schema order } | null)
 /annotations get: + kind[] ≤ 4 (any-of) · tag[] ≤ 8 (all-of) · entity[] ≤ 16 EntityIds (any-of) · orgWide (only with entity)
   · beforeAt + beforeId (both or neither) → 400 annotations.‹param›.invalid
+  # a repeated value, an upper-case id, a repeated orgWide / beforeAt / beforeId, or orgWide without entity → 400;
+  # a missing cursor partner is reported on the missing one's pointer (beforeId alone → /beforeAt)
 AnnotationList: + applied (required: { kinds?, tags?, entity?, orgWide?, before? }: what was applied)
   · next (required: { at, id } | null) · orgWideHidden (required: integer ≥ 0, or null when scoped)
+all three routes: + 403 scope_denied: "data scope denied" (unset or uncompilable scope, no fields), or
+  "outside your data scope" with one field: /entity annotations.entity.scope or /entity annotations.scope
 ```
+
+`orgWideHidden` is a count of the organisation-wide rows in `base` that an entity filter without
+`orgWide` excluded (0 with no entity filter); the statement always computes it, and the BFF sends
+null when the scope is not full (where it is always 0, because `P` admits no organisation-wide row).
 
 `limit` stays 1–500 (default 500). The list reads `limit + 1` rows: more than `limit` → the extra row
 is trimmed, `next` = the last kept row's `(at, id)`, and `truncated` = `next ≠ null`.
@@ -2015,16 +2023,16 @@ WITH base AS (SELECT id, at, end_at, kind, text, tags, entity_key, entity FROM a
     AND ($scope_full OR entity_key IS NOT NULL AND EXISTS (           -- the data scope P, fail closed
       SELECT 1 FROM jsonb_array_elements($scope) c
       WHERE c->>'k' = a.entity->>'kind'
-        AND (c->'b' IS NULL OR c->'b' ? (a.entity->>'binding_id'))
+        AND (c->'b' IS NULL OR c->'b' @> jsonb_build_array(a.entity->>'binding_id'))
         AND NOT EXISTS (SELECT 1 FROM jsonb_each(c->'a') kv
-                        WHERE NOT coalesce(kv.value ? (a.entity->'attrs'->>kv.key), false))))
+                        WHERE NOT kv.value @> jsonb_build_array(a.entity->'attrs'->>kv.key))))
     AND at <= $to AND at >= $from - interval '31 days' AND coalesce(end_at, at) >= $from   -- the overlap set
     AND (cardinality($kinds::text[]) = 0 OR kind = ANY ($kinds)) AND tags @> $tags::text[]),
 f AS (SELECT * FROM base
   WHERE cardinality($ents::text[]) = 0 OR entity_key = ANY ($ents) OR ($org_wide AND entity_key IS NULL)),
-st AS (SELECT CASE WHEN $scope_full THEN count(*) FILTER (
-         WHERE cardinality($ents::text[]) > 0 AND NOT $org_wide AND entity_key IS NULL) END AS org_wide_hidden
-       FROM base)                                                     -- NULL when scoped
+st AS (SELECT count(*) FILTER (
+         WHERE cardinality($ents::text[]) > 0 AND NOT $org_wide AND entity_key IS NULL) AS org_wide_hidden
+       FROM base)                                                     -- the BFF sends null when scoped
 SELECT st.org_wide_hidden, h.* FROM st
 LEFT JOIN LATERAL (SELECT * FROM f WHERE NOT $has_before OR (at, id) < ($before_at, $before_id)
                    ORDER BY at DESC, id DESC LIMIT $lim) h ON true
@@ -2037,7 +2045,10 @@ ORDER BY h.at DESC NULLS LAST, h.id DESC;   -- the all-NULL sentinel exists only
 ```
 
 `annotations_at (org_id, at)` serves the keyset order; the 31-day lower bound on `at` is exact
-because a range is at most 31 days (T11 §4.4).
+because a range is at most 31 days (T11 §4.4). `P` uses `@>` with `jsonb_build_array` (not `?`, which
+sqlc reads as a parameter), and a missing attribute gives `[null]`, which no allowed list contains;
+the compiled `$scope` never holds a JSON `null`. `P` is byte-identical in the list and the delete
+statement.
 
 **Part E, step 1a.** The two assets (§5.12) are static files committed in the client tree and
 built into the client like any other asset, so they are in the signed manifest of
@@ -2422,14 +2433,14 @@ No scope above covers an organisation-wide row; full scope covers every row.
 
 | Test | File | Setup | Expected | Covers |
 |---|---|---|---|---|
-| `unit:entity-id` | annotations/entityid_test.go + `wire/fixtures/json/entity-id.json` (full UUIDs) | The T12 §4.5 vectors; `{}`; name `''`; namespace `''`; an extra key (`service.version`); kind `spaceship`; a pod without its namespace; name `1` (a number); env `prod` vs `stage` | Every T12 §4.5 id; the rest → 400 `annotations.entity.invalid` | T12-010 |
-| `itest:annotations-entity` | store/annotations_itest_test.go | C in org A; org B with a checkout@e1 change | `entity=` checkout@e1 → c1, `orgWideHidden` 3; checkout@e2 → c3; + payments@e1 → c6, c2, c1; checkout@e1 + `orgWide` → c7, c4, c1, c9; `kind` deploy + config → c6, c2, c1, c5, c9; `tag=pr:4411` → c2; payments@e1 + `flag` → `[]`; B sees none of A; bad parameters → the §5.9 400s | T24-030, T24-031 |
+| `unit:entity-id` | entity/entity_test.go + `wire/fixtures/json/entity-id.json` (full UUIDs) | The T12 §4.5 vectors; `{}`; name `''`; namespace `''`; an extra key (`service.version`); kind `spaceship`; a pod without its namespace; name `1` (a number); env `prod` vs `stage` | Every T12 §4.5 id; the rest → 400 `annotations.entity.invalid` | T12-010 |
+| `itest:annotations-entity` | annotations/annotations_itest_test.go | C in org A; org B with a checkout@e1 change | `entity=` checkout@e1 → c1, `orgWideHidden` 3; checkout@e2 → c3; + payments@e1 → c6, c2, c1; checkout@e1 + `orgWide` → c7, c4, c1, c9; `kind` deploy + config → c6, c2, c1, c5, c9; `tag=pr:4411` → c2; payments@e1 + `flag` → `[]`; B sees none of A; bad parameters → the §5.9 400s | T24-030, T24-031 |
 | `itest:annotations-scope` (+ `unit:change-scope-text`) | same (+ widgets/changeFeed/scope.test.ts) | C + c10 + c11; P_eu, P_shop, unset | Full → 10 rows; P_eu in pages of 3 → `[c11, c6, c2]`, `[c1, c5]`; P_shop → c11, c6, c2, with c11's text and tag unchanged and its entity `service shop / payments`; P_shop with `entity=` checkout@e1 → `[]` and the body has `"orgWideHidden": null`; c10 and checkout@e2 are in no structured field, page, cursor, count, CSV entity cell or Inspector fact (the free-text Tags fact excluded); unset → 403; P_shop creates checkout@e1 → 403 `annotations.entity.scope`, no entity → 403 `annotations.scope`, payments@e1 → 201 | T12-018 |
 | `itest:annotations-scope-compile` | same | Env created via `deployment.environment`, via `deployment.environment.name` and via both (`prod`); `prod` vs `stage`. The entities table above; S1–S6, T1–T3 | Env → `f8bdae9d-e739-228c-dd0e-317933242944`, attrs `{deployment.environment.name: prod}` each time; the conflict → 400; each scope covers exactly the entities listed above on create, list, markers, delete and CSV; the SQL predicate = `ScopeCovers` on every entity; `entity` and `entity_key` are set or NULL together | T12-010, T12-018 |
 | `itest:annotations-delete-scope` | same | P_shop deletes c1 (out of scope), an absent id, then c2; unset | c1 and the absent id → identical 404s, c1 kept, no audit; c2 → 204 and one audit event; unset → 403, no SQL | T12-018 |
 | `itest:annotations-keyset` | same; `limit=3` | (a) p1; insert n1 and n2; p2; p3. (b) p1; p2; delete c5 alone; p3. (c) `limit=500` | (a) p1 c7, c4, c3 (`next` 12:21:30 / c3); p2 c6, c2, c1; p3 n2, c5, c9 (`next` null); n1 absent; no id twice. (b) p3 c9. (c) one page of 8. One SELECT per page | T24-032 |
 | `itest:annotations-entity-validate` (I7) | same | Schema 5 with every row's `entity` and `entity_key` paired; apply the I7 migration | `pg_constraint.convalidated` true; an INSERT with only one of the two fails | T11-013 |
-| `itest:annotations-old-binary` | CI job in I5 | The **previous release** binary (schema 4) beside N on schema 5 | It starts; its answers have no `applied`; its create with `entity` → 400; N reads its rows with `entity: null` | T24-038, T11-015 |
+| `itest:annotations-old-binary` | `make itest-old-binary` (local; skips once the previous release has migration 5) | The **previous release** binary (schema 4) beside N on schema 5 | It starts; its answers have no `applied`; its create with `entity` → 400; N reads its rows with `entity: null` | T24-038, T11-015 |
 | `unit:change-source` | widgets/changeFeed/source.test.tsx | A counting stub; a line panel and an unfiltered feed | Concurrent mounts → 1 request; a later mount → 0; Refresh → 1; a failed refresh → the markers' notice and the feed stale; a new window → the feed hides the old rows and the markers keep theirs; an `e` → its own key | T24-030 |
 | `unit:change-pager` | widgets/changeFeed/pager.test.ts | C in pages of 3; cap 5; one page of 500; stubs 1 900 + 150 and 1 500 + 500 (`next` null, then set) | Pages of 3: 3 requests, 8 rows, "all 3 pages loaded · may have changed while loading", setsize −1; after p1 `truncated` + Load older, setsize −1; page 500 → `100 %`, setsize 8; cap 5 → c7, c4, c3, c6, c2, capped; 1 900 + 150 → 2 000, capped; 1 500 + 500 with `next` null → complete, with `next` set → capped | T24-032, T24-036 |
 | `unit:change-snapshot` | same | 2 pages of 3; a refresh whose page 0 lacks c7 and renames c4 "INC-2041 resolved"; a failing refresh; a key change | `[c4′, c3, c6]` with the older request aborted, CSV and facts matching; failure → rows kept, stale; the old key never rendered | T24-033 |
@@ -3065,3 +3076,4 @@ None.
 | 1.11-rc | 2026-11-26 | #198 Part 2b (A1): §5.2 the `depth` removal kind, `removalMessage`, `sourceLines`, `MAX_DEPTH` and `toWellFormed` on the source, the values and the entity. §4.2: the tight-list paragraph, `start` only when not 1, the tree walk (post-order, explicit stack) with the pre-scan and the cost table; an over-deep block shows its whole source lines (verbatim, terminators kept) in one span with one `depth`. T24-007: `depth`. T24-018: `/api` and `/auth` images count as external (byte-level decoding, at most three rounds, invalid UTF-8 counted as a route); `ai` external and mailto links are text with host or address until the T18 §4.10 interstitial. §8: no Trusted Types policy. §10: the fuzz sets gain `span`, `class`, `aria-hidden` and depth ≤ `MAX_DEPTH`; the new unit rows, the corpus rows; the uncached bench. §11: Part 2b landed |
 | 1.12-rc | 2026-11-26 | #198 Part 3a (A1): new §5.2a (the Text view `TextBody` and its lazy `TextMarkdown` entry, the states, `widgetVisErrors`, `textVis`, the registry and its context, `addWidget` and `updateWidget`, the module rules). T24-008: a Markdown Text's references join the board's variables. T24-014: the view validates first; the preview shows "Preview unavailable". T24-015: the Text widget uses the Compact metrics until VL-013. §10: the Part 3a unit rows. §11: A1 Part 3 split into 3a (landed) and 3b |
 | 1.13-rc | 2026-11-26 | #198 Part 3b (A1): §7 `bench:text-widget-render` (the `markdown:render:<bucket>` measures in stub and dev builds, board P, the steps, the measured numbers) and the M0, M1 and M2 rungs with their triggers. §10: `e2e:widget-text` adds the Add widget flow and the named region; `e2e:widget-text-xss` runs the whole corpus in the browser (the generated case list with digests, skip reasons and image request paths; one case per fresh context against a committed per-browser load baseline; the exact CSP; a Trusted Types canary) with canaries; `e2e:widget-a11y` gains the Text rows; `golden:widget-gallery` lands the two Text pages; new `unit:xss-e2e-cases` and `unit:widget-gallery-route`. §11: Part 3b landed, A1 landed |
+| 1.14-rc | 2026-11-26 | #222 (part B2, I5): §5.9 `orgWide` only with `entity`, repeated values, upper-case ids and repeated single parameters → 400, a missing cursor partner reported on its own pointer; the 403 bodies (`scope_denied`, "data scope denied" without fields, "outside your data scope" with `/entity` `annotations.entity.scope` or `annotations.scope`); `orgWideHidden` is a count the BFF sends null when scoped. §6: `P` with `@>` and `jsonb_build_array`, byte-identical in list and delete; `org_wide_hidden` computed unconditionally. §10.2: `unit:entity-id` in `entity/entity_test.go`, the itests in `annotations/annotations_itest_test.go`, and `itest:annotations-old-binary` runs by `make itest-old-binary` (local) |
