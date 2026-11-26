@@ -10,7 +10,10 @@
  * `e2e:engine-camera` (plan #68 C2a2) runs on `lavapipe` (gated) and `swiftshader` (report-only
  * with the WebGPU leg) against the fault build with `?probe=1`; `bench:shim-input-cost` runs with
  * `e2e:shim-fuzz` in `probe`, report-only. `e2e:engine-layer` (plan #68 C2c1) runs as
- * `e2e:engine-camera` does. `e2e:engine-selection` (plan #68 C2c2) too, its S11 in `probe`; the
+ * `e2e:engine-camera` does. The default legs of `e2e:mode-matrix` (plan #256 §5) use three more
+ * servers: the unflagged release BFF (`make e2e-build-release`, port 4176), `vite preview` of
+ * `dist-release-stub` with its computed manifest (4177) and the dev server (5175).
+ * `e2e:engine-selection` (plan #68 C2c2) runs as `e2e:engine-camera` does, its S11 in `probe`; the
  * engine leg of `e2e:selection-sources` (`inspector.spec.ts`) runs on `lavapipe` against the
  * http-mode BFF (port 4174).
  */
@@ -120,6 +123,28 @@ export default defineConfig({
       command: 'tools/e2e/serve.sh probe 4175',
       cwd: '..',
       url: 'http://localhost:4175/healthz',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command: 'tools/e2e/serve.sh release 4176',
+      cwd: '..',
+      url: 'http://localhost:4176/healthz',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command: 'npx --no-install vite preview --outDir dist-release-stub --port 4177 --strictPort',
+      cwd: '.',
+      url: 'http://localhost:4177',
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      command: 'npx --no-install vite --port 5175 --strictPort',
+      cwd: '.',
+      env: { VITE_API_MODE: 'stub' },
+      url: 'http://localhost:5175',
       reuseExistingServer: false,
       timeout: 120_000,
     },

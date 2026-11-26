@@ -5,7 +5,7 @@
 | **Status** | Accepted (2026-11-26, on merge of #68 Part C2c2, under the owner's standing authorisation for pipeline design changes) |
 | **Amends** | [ADR-0025](0025-chart-frame-selection.md), its line rule ("the others at `dimmed`"): the unmatched series are dimmed together, one layer composited once at `dimmed`, in every renderer. Decision 4 (per matched series, its underlay and then its line, in shown order) and the rest of ADR-0025 are unchanged |
 | **Source** | Issue #68 Part C2c2 (the selection highlight on engine frames) |
-| **See** | [T25](../technical/T25-inspector-and-pivots.md) T25-006, §10 `unit:selection-draw`; [T02](../technical/T02-vis-engine.md) §4.2, T02-025; [T05](../technical/T05-testing-and-performance.md) §7.1 (`e2e:engine-selection`); ADR-0031 (#256: the engine is the default line renderer) |
+| **See** | [T25](../technical/T25-inspector-and-pivots.md) T25-006, §10 `unit:selection-draw`; [T02](../technical/T02-vis-engine.md) §4.2, T02-025; [T05](../technical/T05-testing-and-performance.md) §7.1 (`e2e:engine-selection`); [ADR-0031](0031-gpu-engine-default-renderer.md) (the engine is the default line renderer) |
 
 ## Context
 
@@ -15,7 +15,7 @@ round-capped capsules, one per segment, span and dot, and neighbouring capsules 
 overlap at every sample joint, and almost everywhere in dense data. A per-instance alpha adds up
 there: measured on lavapipe, a series drawn at 0.35 showed an effective alpha of 0.46 at the joints
 of a 61-sample line and 0.6–0.8 at one or more samples per column. A per-stroke alpha adds up in
-the same way where two dimmed series cross. ADR-0031 makes the engine the default line renderer,
+the same way where two dimmed series cross. [ADR-0031](0031-gpu-engine-default-renderer.md) makes the engine the default line renderer,
 so the dimmed background must read the same, and calm, in both renderers.
 
 ## Decision

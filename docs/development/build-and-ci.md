@@ -22,12 +22,12 @@ see [the supply chain page](../client/supply-chain.md) for adding a dependency).
 
 | Script | What it does | Gate |
 |---|---|---|
-| `npm run dev` | Vite dev server on `localhost:5173` (COOP and COEP only, no CSP; stub API by default) | — |
-| `npm run build` | `tsc -p tsconfig.app.json --noEmit`, then `vite build` into `client/dist/` (hashed names, `assetsInlineLimit: 0`, Vite manifest in `dist/.vite/manifest.json`) | build |
-| `npm run preview` | Serves `dist/` on `localhost:4173` with the production headers (`config/headers.ts`) | — |
+| `npm run dev` | Vite dev server on `localhost:5173` (COOP and COEP only, no CSP; stub API by default); refuses to start without the engine (`client/src/engine/wasm/gen/`, `make engine-wasm`; ADR-0031) | `ci:engine-built` |
+| `npm run build` | `tsc -p tsconfig.app.json --noEmit`, then `vite build` into `client/dist/` (hashed names, `assetsInlineLimit: 0`, Vite manifest in `dist/.vite/manifest.json`); fails without the engine, also with `VITE_ENGINE=canvas2d` (`the chart engine is not built (src/engine/wasm/gen/ is missing): run make engine-wasm first`) | build, `ci:engine-built` |
+| `npm run preview` | Serves `dist/` on `localhost:4173` with the production headers (`config/headers.ts`) and an `/asset-manifest.json` computed from `dist/` when it starts (`config/previewManifest.ts`: every file's SHA-384 and size, `cache-control: no-store`), so the engine's integrity check runs and the engine loads; loopback only (it refuses `--host` and any non-loopback `preview.host`); the BFF's signed manifest is the only deployment path | — |
 | `npm run lint` | ESLint (`--max-warnings=0`) and `prettier --check .` | `ci:lint-ts` |
 | `npm run typecheck` | `tsc` over `tsconfig.app.json` (browser code), `tsconfig.node.json` (scripts, ESLint plugin, configs; Node ESM resolution) and `e2e/tsconfig.json` (end-to-end tests, bundler resolution, because they import `src/` modules such as the gallery generator and the brush snap unit) | `ci:typecheck` |
-| `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library) | `unit:*` |
+| `npm test` | Vitest: project `node` (scripts and config) and project `dom` (jsdom, Testing Library); the only entry point that runs without the engine: Vitest reads `vitest.config.ts`, the client configuration with `absentEngine` (`virtual:dash-engine` is `absent.ts`) in place of `dashEngine`; `vite build` and the dev server never read it, so `VITEST` set does not bypass their refusal | `unit:*`, `ci:engine-built` |
 | `npm run e2e` | Playwright against the BFF-served builds ([end-to-end tests](#end-to-end-tests)); a full run also checks the keyboard coverage over its parts | `e2e:*`, `golden:interim-gallery`, `golden:greyscale`, `bench:startup`, `bench:frame-interim-line`, `bench:frame-interim-categories`, `bench:frame-interim-heatmap`, `bench:inp-rooms`, `bench:rooms-long-tasks`, `bench:editor-keystroke`, `bench:logql-completion-latency`, `bench:log-scroll`, `bench:promql-completion-latency`, `bench:log-page-load` |
 | `npm run e2e:keyboard-coverage -- <dir> <project>` | The keyboard coverage check over the part files under `<dir>` ([below](#keyboard-coverage-and-e2e-completeness)) | `e2e:a11y-rooms` (CI, merged shards) |
 | `npm run e2e:complete -- <listed.json> <project> <shard.json>...` | Every listed test is in exactly one shard (retries allowed) and was not skipped ([below](#keyboard-coverage-and-e2e-completeness)) | `ci:e2e-complete` |
@@ -575,13 +575,24 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
 | PulsusDB fake on `localhost:4190` (first; ready on `/__fake/requests`) | `tools/e2e/fake.sh 4190` | both BFFs' data source; the specs read its request records through `e2e/fake.ts` ([control mode](testing-pulsusdb.md#in-the-e2e-suite-control-mode)) |
 | stub-mode BFF on `localhost:4173` | `tools/e2e/serve.sh stub 4173` | every existing spec (`baseURL`): the stub's seeded boards and tenants, served with the real headers; and `e2e:bff-headers` |
 | http-mode BFF on `localhost:4174` | `tools/e2e/serve.sh http 4174` | `e2e:bff-http-shell` (`bff-http.spec.ts`): the shell bootstraps from `GET /api/dash/v1/bootstrap`; `e2e:board-edit-save`, `e2e:board-tall` and `e2e:board-sections` (`board-edit.spec.ts`): boards created, laid out, saved and reloaded through the boards API, and collapsed sections, their URL overrides and saved state; `e2e:board-prefs` (`board-prefs.spec.ts`): Starred and Recent across two tabs and a fresh browser context (each test creates its own uniquely named board and deletes it in `finally`); the board PromQL panels of `board-promql.spec.ts` (below) |
-| Vite dev on `localhost:5174` | `npx --no-install vite --port 5174 --strictPort` with `VITE_API_MODE=http` and `PULSUS_DASH_DEV_BFF=http://localhost:4174` | `dev-proxy.spec.ts`: the developer path shows the server version |
+| Vite dev on `localhost:5174` | `npx --no-install vite --port 5174 --strictPort` with `VITE_API_MODE=http`, `VITE_ENGINE=canvas2d` and `PULSUS_DASH_DEV_BFF=http://localhost:4174` | `dev-proxy.spec.ts`: the developer path shows the server version |
 
 Before a run:
 
 1. `make e2e-build` builds the two BFF binaries, `build/e2e-stub/pulsus-dash` and
    `build/e2e-http/pulsus-dash` (version `0.1.0-e2e`), each with its client embedded, and the
-   fake, `build/e2e-fake/pulsus-fake`.
+   fake, `build/e2e-fake/pulsus-fake`. It needs the engine (`make engine-wasm`; `make build`
+   runs it).
+
+**Canvas 2D pin.** The GPU chart engine is the default renderer
+([ADR-0031](../../designs/adr/0031-gpu-engine-default-renderer.md)), but this suite runs on host
+browsers with uncontrolled GPUs, so every build and server it uses pins Canvas 2D with
+`VITE_ENGINE=canvas2d`: `make e2e-build` sets it on both builds (`E2E_ENGINE ?= canvas2d`; the
+engine is still built in), and the dev server and the `E2E_SERVER=preview` server get it in their
+`env`. The Canvas 2D specs keep their URLs; `?engine=wasm` still opts a page in. `e2e:canvas2d-pin`
+(`e2e/engine-pin.spec.ts`, every browser, also under `E2E_SERVER=preview`) fails if the pin is
+lost: every gallery frame must be `canvas2d` and no `assets/dash-engine-*` file may be requested.
+The engine suite ([below](#the-engine-in-the-browser-part-c1)) proves the default.
 2. Set `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` to the `pulsus_app` and `pulsus_owner` URLs of a
    `pulsus_e2e` database on any PostgreSQL 15 or 16 where `server/deploy/postgres-roles.sql` has
    been applied (Part C's development stack is one way to get one), for example
@@ -610,7 +621,7 @@ keyboard part runs alone with `npx playwright test --grep "K3 " --project=chromi
 after the part ends the match); `--grep @kbd` runs all five, in parallel.
 
 `E2E_SERVER=preview npm run e2e` restores the old single server (`npm run build && npm run
-preview`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. `bff-headers`,
+preview` with `VITE_ENGINE=canvas2d`, no database); the `bff-*` and `dev-proxy` specs then skip themselves. `bff-headers`,
 `bff-http`, `dev-proxy`, `editor-ime`, `perf-editor-keystroke`, `perf-logql-completion` and
 `perf-log-scroll` and
 `perf-promql-completion` run on Chromium only; `perf-log-page-load` skips itself outside Chromium.
@@ -870,9 +881,10 @@ repository at `/w`, git's common directory mounted where a worktree's `.git` fil
 | `make engine-wasm` | `cargo xtask build-wasm` into the git-ignored `client/src/engine/wasm/gen/`; `make build` (so `make e2e-build`) needs it | — |
 | `make engine-wasm-check` | two builds from separate target directories, byte-equal; the generated `dash_core_mt.d.ts` equal to the committed one; `cargo xtask gen-layout --check` | `ci:engine-gen` |
 | `make engine-wasm-probe` | `cargo xtask build-wasm --probe`: the engine with the `probe` feature (`engine_probe_input`, `engine_probe_ring_start`; `engine_probe_freeze` and `engine_probe_unfreeze`, plan #68 C2b) into the git-ignored `client/src/engine/wasm/gen-probe/` (plan #68 C2a1) | — |
+| `make e2e-build-release` | `make build API_MODE=stub VERSION=0.1.0-e2e CLIENT_OUT=dist-release` with no `VITE_ENGINE` and no faults into `client/dist-release` and `build/e2e-release/pulsus-dash` (served by `tools/e2e/serve.sh release PORT`), then `probe-absent.ts client/dist-release`: the unflagged signed-asset build of the default legs (plan #256) | `ci:probe-absent` |
 | `make e2e-build-probe` | after `make engine-wasm-probe`: `VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1 make build API_MODE=stub CLIENT_OUT=dist-probe` (Vite resolves `virtual:dash-engine` to `gen-probe/`) into `client/dist-probe` and `build/e2e-probe/pulsus-dash`, then `probe-absent.ts --expect-faults --expect-probe client/dist-probe` | `ci:probe-absent` (probe tree) |
 | `make engine-gpu-smoke` | per engine e2e project, the adapter headless Chromium sees and whether it renders | — |
-| `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` on each, `check-bundle-modules.ts` on both, and `probe-absent.ts` on each; `make e2e-build-probe`; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine), `e2e:shim-fuzz`, `e2e:engine-camera`, `e2e:engine-hover`, `e2e:engine-layer`, `e2e:engine-selection`, `e2e:selection-sources` (engine leg), `bench:shim-input-cost` (report-only) |
+| `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` on each, `check-bundle-modules.ts` on both, and `probe-absent.ts` on each; `make e2e-build-probe`; `make e2e-build-release`; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine), `e2e:shim-fuzz`, `e2e:engine-camera`, `e2e:engine-hover`, `e2e:engine-layer`, `e2e:engine-selection`, `e2e:selection-sources` (engine leg), `bench:shim-input-cost` (report-only) |
 
 **Projects.** `lavapipe` (gated): `--use-angle=vulkan --enable-features=Vulkan --use-vulkan=native
 --ignore-gpu-blocklist --disable-vulkan-surface`, WebGL2 through ANGLE on lavapipe.
@@ -892,6 +904,21 @@ So does `e2e:engine-selection` (plan #68 C2c2: the selection on probe frames, wi
 Canvas 2D frames for S10 and S1c), except S11, which needs the probe build's `renew()` and runs in
 `probe`. The engine leg of `e2e:selection-sources` (`inspector.spec.ts`) runs on `lavapipe` against
 the http-mode BFF, which the engine config starts too (`tools/e2e/serve.sh http 4174`).
+
+**Default legs (plan #256).** The engine is the default renderer
+([ADR-0031](../../designs/adr/0031-gpu-engine-default-renderer.md)); the fault build (4173) is
+pinned to Canvas 2D like every `make e2e-build`, so its engine specs pass `engine=wasm`. Three more
+servers carry `e2e:mode-matrix`'s default legs, none reused: the unflagged release BFF
+(`tools/e2e/serve.sh release 4176`, `make e2e-build-release`, its signed manifest) for M1 (the
+engine with no flag, both projects), M2 (a board's line panel on the engine, its stat on Canvas 2D),
+M3 (`?engine=canvas2d`) and M5–M12 (no OffscreenCanvas, `mode=static`, `st`, `mtr`, not
+cross-origin isolated, no GPU API, no `Atomics.waitAsync`, a failed session: each Canvas 2D with no
+engine request); `npx --no-install vite preview --outDir dist-release-stub --port 4177` (the computed
+manifest) for M13 (the manifest lists the wasm; the engine draws) and M14 (a flipped wasm byte is
+refused twice, then Canvas 2D); and the dev server `npx --no-install vite --port 5175` with
+`VITE_API_MODE=stub` and no `VITE_ENGINE` for M15 (the engine draws). On the fault build M4 checks
+the pin (Canvas 2D, no engine request), and the integrity leg reloads after the failed boot: Canvas
+2D with no engine request, because the boot failure marked the session.
 
 **Goldens in the browser.** `golden:engine-line` compares the browser engine's canvas
 (`&engine=wasm&mode=t2`, status 2, llvmpipe) with `dash-golden render` of the same page, theme, CSS
@@ -970,7 +997,8 @@ cgo.
 | Target | What it does | Gate |
 |---|---|---|
 | `make build` | `client-build` (`VITE_API_MODE=$(API_MODE)`, `API_MODE ?= http`, `VITE_GIT_SHA=$(GIT_SHA)`), `assets-pack` (a new signing key in `build/keys/`, then `pack-assets.ts` into `server/internal/gateway/static/dist/`), then `go build -tags embedassets` with the public key into `$(OUT)` (`OUT ?= build/pulsus-dash`); see [Serving the client](../server/README.md#serving-the-client) | build |
-| `make e2e-build` | `make build` twice, `API_MODE=stub` into `build/e2e-stub/pulsus-dash` and `API_MODE=http` into `build/e2e-http/pulsus-dash`, both `VERSION=0.1.0-e2e`; and the PulsusDB fake, `CGO_ENABLED=0 go build -trimpath` of `./cmd/pulsus-fake` into `build/e2e-fake/pulsus-fake` | — |
+| `make e2e-build` | `make build` twice with `VITE_ENGINE=$(E2E_ENGINE)` (`E2E_ENGINE ?= canvas2d`: the main suite's host browsers have uncontrolled GPUs, so its builds pin Canvas 2D; the engine is still built in), `API_MODE=stub` into `build/e2e-stub/pulsus-dash` and `API_MODE=http` into `build/e2e-http/pulsus-dash`, both `VERSION=0.1.0-e2e`; and the PulsusDB fake, `CGO_ENABLED=0 go build -trimpath` of `./cmd/pulsus-fake` into `build/e2e-fake/pulsus-fake` | — |
+| `make client-dev` | `make engine-wasm`, then `npm --prefix client run dev` (the dev server refuses to start without the engine) | — |
 | `make e2e` | `npm --prefix client run e2e` | `e2e:*` |
 | `make server-build` | builds `build/pulsus-dash` without the client (`VERSION ?= 0.1.0-dev`); its `serve` refuses to start unless `--api-only` | — |
 | `make api-gen` | regenerates `server/internal/gateway/api/api.gen.go` (oapi-codegen), `server/internal/store/dbgen` (sqlc) and `client/src/api/gen/schema.d.ts` (openapi-typescript) | — |

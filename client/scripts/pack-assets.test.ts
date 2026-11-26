@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { manifestEntries } from './pack-assets.ts';
 
 const SCRIPT = fileURLToPath(new URL('./pack-assets.ts', import.meta.url));
 
@@ -164,5 +165,23 @@ describe('pack-assets errors (P2)', () => {
       expect(text).not.toContain(keyText.split('\n')[1] ?? 'unreachable');
     }
     expect(existsSync(join(out, 'asset-manifest.sig'))).toBe(false);
+  });
+});
+
+describe('manifestEntries (plan #256 §3.5)', () => {
+  it("equals pack's manifest entries without the .br and .gz variants", () => {
+    const keys = tmp();
+    expect(pack('--gen-key', keys).code).toBe(0);
+    const input = dist();
+    const out = join(tmp(), 'out');
+    expect(pack('--in', input, '--out', out, '--key', join(keys, 'asset-signing.key')).code).toBe(
+      0,
+    );
+    const manifest = JSON.parse(readFileSync(join(out, 'asset-manifest.json'), 'utf8')) as {
+      files: { path: string; sha384: string; size: number }[];
+    };
+    const want = manifest.files.filter((f) => !/\.(br|gz)$/.test(f.path));
+    expect(want.map((f) => f.path)).toEqual(['assets/a.js', 'assets/f.woff2', 'index.html']);
+    expect(manifestEntries(input)).toEqual(want);
   });
 });

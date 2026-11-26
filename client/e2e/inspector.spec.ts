@@ -393,7 +393,7 @@ test.describe('e2e:inspector (fake)', () => {
   });
 
   // Plan #68 C2c2 S8: the same source on engine line frames (`playwright.engine.config.ts`,
-  // lavapipe; ADR-0031 makes the engine the default, `engine=wasm` until then): every panel holding
+  // lavapipe; the engine is the default by ADR-0031, `mode=t2` picks WebGL2): every panel holding
   // the key highlights it on the next frame (its pixels change and show `focus`), "none" restores
   // each panel exactly.
   test('e2e:selection-sources (engine)', async ({ page, request }, info) => {
