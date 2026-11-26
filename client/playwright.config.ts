@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { E2E_TIMEOUTS, shardFilter } from './config/e2eShards.ts';
+import { engineOnlyPattern } from './config/engineSpecs.ts';
 
 const viewport = { width: 1440, height: 900 };
 const ci = Boolean(process.env['CI']);
@@ -59,8 +60,9 @@ const previewServer = {
   timeout: 120_000,
 };
 
-// The engine specs run in playwright.engine.config.ts (Chromium on lavapipe, `make engine-e2e`).
-const engineOnly = /(engine-mode-matrix|golden-engine-line|engine-recovery)\.spec\.ts/;
+// The engine specs run in playwright.engine.config.ts (Chromium on lavapipe, `make engine-e2e`);
+// the list is config/engineSpecs.ts (plan #263, `unit:engine-spec-split`).
+const engineOnly = engineOnlyPattern;
 
 export default defineConfig({
   testDir: 'e2e',

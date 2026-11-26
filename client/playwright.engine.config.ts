@@ -15,6 +15,7 @@
  * `dist-release-stub` with its computed manifest (4177) and the dev server (5175).
  */
 import { defineConfig, devices } from '@playwright/test';
+import { ENGINE_ONLY_SPECS, ENGINE_SHARED_SPECS } from './config/engineSpecs.ts';
 
 const viewport = { width: 1440, height: 900 };
 
@@ -33,16 +34,8 @@ export const SWIFTSHADER_ARGS = [
 
 export default defineConfig({
   testDir: 'e2e',
-  testMatch: [
-    'engine-mode-matrix.spec.ts',
-    'golden-engine-line.spec.ts',
-    'engine-recovery.spec.ts',
-    'csp-violations.spec.ts',
-    'engine-shim-fuzz.spec.ts',
-    'engine-camera.spec.ts',
-    'engine-hover.spec.ts',
-    'engine-layer.spec.ts',
-  ],
+  // config/engineSpecs.ts (plan #263): the engine-only specs and the shared ones.
+  testMatch: [...ENGINE_ONLY_SPECS, ...ENGINE_SHARED_SPECS],
   grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera|e2e:engine-hover|e2e:engine-layer/,
   retries: 0,
   workers: 2,
