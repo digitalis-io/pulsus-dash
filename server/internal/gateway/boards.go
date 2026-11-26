@@ -25,8 +25,10 @@ var (
 )
 
 const (
-	recentDefault     = 5
-	recentMax         = 50
+	recentDefault = 5
+	recentMax     = 50
+	// maxSearchRunes bounds GET /boards q (T24-021).
+	maxSearchRunes    = 100
 	maxMessageRunes   = 500
 	msgUnavailable    = "configuration store unavailable"
 	msgNotFound       = "board not found"
@@ -189,12 +191,63 @@ func toAPIBoard(b core.Board) api.Board {
 		Etag: strconv.FormatInt(b.ETag, 10), SchemaVersion: b.SchemaVersion, Spec: json.RawMessage(b.Spec)}
 }
 
-func toAPIRefs(refs []core.BoardRef) api.BoardRefList {
+func toAPIRefs(refs []core.BoardRef, truncated bool) api.BoardRefList {
 	items := make([]api.BoardRef, 0, len(refs))
 	for _, r := range refs {
 		items = append(items, api.BoardRef{Uid: r.UID, Title: r.Title})
 	}
-	return api.BoardRefList{Items: items}
+	return api.BoardRefList{Items: items, Applied: api.BoardRefApplied{}, Truncated: truncated}
+}
+
+// validSearch reports whether q is a valid GET /boards q: UTF-8 of 1 to 100 code points with no
+// C0 or C1 control character (Cc: U+0000–001F, U+007F–009F).
+func validSearch(q string) bool {
+	if !utf8.ValidString(q) {
+		return false
+	}
+	n := 0
+	for _, r := range q {
+		if r <= 0x1f || (r >= 0x7f && r <= 0x9f) {
+			return false
+		}
+		n++
+	}
+	return n >= 1 && n <= maxSearchRunes
+}
+
+// boardFilter checks the q and tag of GET /boards (plan #215 §3.6): the first invalid one is a
+// 400 before any service call, /q before /tag. A valid value is kept as sent (no trim).
+func boardFilter(p api.ListBoardsParams) (core.BoardFilter, api.BoardListApplied, *errResponse) {
+	var f core.BoardFilter
+	var applied api.BoardListApplied
+	invalid := func(pointer, key string) *errResponse {
+		e := errResponse{status: http.StatusBadRequest, body: api.ErrorEnvelope{Error: api.ErrorBody{Code: api.Invalid, Message: msgInvalidRequest,
+			Fields: &[]api.FieldError{{Pointer: pointer, MessageKey: key}}}}}
+		return &e
+	}
+	if p.Q != nil {
+		if !validSearch(*p.Q) {
+			return f, applied, invalid("/q", "boards.q.invalid")
+		}
+		f.Q, applied.Q = *p.Q, p.Q
+	}
+	if p.Tag != nil {
+		if !tagPattern.MatchString(*p.Tag) {
+			return f, applied, invalid("/tag", "boards.tag.invalid")
+		}
+		f.Tag, applied.Tag = *p.Tag, p.Tag
+	}
+	return f, applied, nil
+}
+
+// summaryTags is a list row's tags: the tags when known ([] when there are none), else null.
+func summaryTags(s core.BoardSummary) *[]api.AnnotationTag {
+	if !s.TagsFresh {
+		return nil
+	}
+	tags := make([]api.AnnotationTag, 0, len(s.Tags))
+	tags = append(tags, s.Tags...)
+	return &tags
 }
 
 // fail maps a service error to its answer (plan #61 §3.7). submitted is the request's spec for
@@ -223,19 +276,26 @@ func (b *boards) fail(ctx context.Context, op string, err error, submitted json.
 	return errUnavailable
 }
 
-func (b *boards) ListBoards(ctx context.Context, _ api.ListBoardsRequestObject) (api.ListBoardsResponseObject, error) {
+// ListBoards answers GET /boards (T24-021, T24-029): q and tag are checked first, then the
+// service lists; applied echoes the filters given, and tags is null for a row not yet known.
+func (b *boards) ListBoards(ctx context.Context, req api.ListBoardsRequestObject) (api.ListBoardsResponseObject, error) {
+	f, applied, bad := boardFilter(req.Params)
+	if bad != nil {
+		return *bad, nil
+	}
 	if !b.available() {
 		return errUnavailable, nil
 	}
-	items, truncated, err := b.deps.Boards.ListBoards(ctx, rcFrom(ctx))
+	page, err := b.deps.Boards.ListBoards(ctx, rcFrom(ctx), f)
 	if err != nil {
 		return b.fail(ctx, "list", err, nil), nil
 	}
-	out := make([]api.BoardSummary, 0, len(items))
-	for _, s := range items {
-		out = append(out, api.BoardSummary{Uid: s.UID, Title: s.Title, Version: s.Version, UpdatedAt: s.UpdatedAt, UpdatedBy: author(s.UpdatedBy)})
+	out := make([]api.BoardSummary, 0, len(page.Items))
+	for _, s := range page.Items {
+		out = append(out, api.BoardSummary{Uid: s.UID, Title: s.Title, Version: s.Version, UpdatedAt: s.UpdatedAt, UpdatedBy: author(s.UpdatedBy),
+			Tags: summaryTags(s)})
 	}
-	return api.ListBoards200JSONResponse{Items: out, Truncated: truncated}, nil
+	return api.ListBoards200JSONResponse{Items: out, Truncated: page.Truncated, Applied: applied, TagsStale: page.TagsStale}, nil
 }
 
 func (b *boards) CreateBoard(ctx context.Context, req api.CreateBoardRequestObject) (api.CreateBoardResponseObject, error) {
@@ -322,11 +382,11 @@ func (b *boards) ListStarredBoards(ctx context.Context, _ api.ListStarredBoardsR
 	if !b.available() {
 		return errUnavailable, nil
 	}
-	refs, err := b.deps.Boards.ListStarred(ctx, rcFrom(ctx))
+	refs, more, err := b.deps.Boards.ListStarred(ctx, rcFrom(ctx))
 	if err != nil {
 		return b.fail(ctx, "list_starred", err, nil), nil
 	}
-	return api.ListStarredBoards200JSONResponse(toAPIRefs(refs)), nil
+	return api.ListStarredBoards200JSONResponse(toAPIRefs(refs, more)), nil
 }
 
 func (b *boards) StarBoard(ctx context.Context, req api.StarBoardRequestObject) (api.StarBoardResponseObject, error) {
@@ -364,11 +424,11 @@ func (b *boards) ListRecentBoards(ctx context.Context, req api.ListRecentBoardsR
 	if req.Params.Limit != nil {
 		limit = min(max(*req.Params.Limit, 1), recentMax)
 	}
-	refs, err := b.deps.Boards.ListRecent(ctx, rcFrom(ctx), limit)
+	refs, more, err := b.deps.Boards.ListRecent(ctx, rcFrom(ctx), limit)
 	if err != nil {
 		return b.fail(ctx, "list_recent", err, nil), nil
 	}
-	return api.ListRecentBoards200JSONResponse(toAPIRefs(refs)), nil
+	return api.ListRecentBoards200JSONResponse(toAPIRefs(refs, more)), nil
 }
 
 // RecordBoardView records a view, at the client's navigation time `at` when given (0 …

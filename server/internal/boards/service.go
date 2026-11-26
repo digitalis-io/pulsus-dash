@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
@@ -34,15 +35,21 @@ type Service struct {
 	now    func() time.Time
 	newUID func() (string, error)
 	// schemaMax is the newest board schema version the service reads: spec.BoardSchemaVersion,
-	// or 1 in the test that proves the previous release's refusal of a v2 row (§4.7).
+	// or the previous release's in the test that proves its refusal of a newer row (§4.7).
 	schemaMax int64
+	logger    *slog.Logger
+	// afterRepair runs between the repair and the list transactions of ListBoards (tests only).
+	afterRepair func()
 }
 
 var _ core.Boards = (*Service)(nil)
 
-// New returns the service over db (the pulsus_app pool).
-func New(db *store.Db) *Service {
-	return &Service{db: db, now: time.Now, newUID: NewUID, schemaMax: spec.BoardSchemaVersion}
+// New returns the service over db (the pulsus_app pool); a nil logger discards.
+func New(db *store.Db, logger *slog.Logger) *Service {
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+	return &Service{db: db, now: time.Now, newUID: NewUID, schemaMax: spec.BoardSchemaVersion, logger: logger}
 }
 
 // toBoard converts a head into the API's board: the spec upcast to the current version and in
@@ -73,16 +80,32 @@ func (s *Service) event(rc *core.RequestCtx, action, uid string, diff []byte) (c
 		ResourceID: uid, RequestID: rc.RequestID, Diff: diff}, nil
 }
 
-// ListBoards returns at most 1000 boards of the organisation and whether more exist.
-func (s *Service) ListBoards(ctx context.Context, rc *core.RequestCtx) ([]core.BoardSummary, bool, error) {
-	var items []core.BoardSummary
-	var truncated bool
+// ListBoards returns at most 1000 boards of the organisation matching f, whether more matched,
+// and how many live boards have tags not yet known (T24-029, plan #215 §4). It runs two
+// transactions on the request's context: first a bounded repair of stale tag caches, committed on
+// its own, whose failure is logged (SQLSTATE only) and never fails the list; then the list itself,
+// one statement. Cancelling ctx stops either; the list then returns the context's error.
+func (s *Service) ListBoards(ctx context.Context, rc *core.RequestCtx, f core.BoardFilter) (core.BoardPage, error) {
 	err := s.db.Tx(ctx, rc.Org, func(ctx context.Context, tx *store.OrgTx) error {
-		var err error
-		items, truncated, err = tx.ListBoards(ctx)
+		_, err := tx.RepairBoardTags(ctx)
 		return err
 	})
-	return items, truncated, err
+	if err != nil && ctx.Err() == nil {
+		s.logger.WarnContext(ctx, "boards: tag repair failed", "op", "repair_tags", "sqlstate", store.SQLState(err), "request_id", rc.RequestID)
+	}
+	if s.afterRepair != nil {
+		s.afterRepair()
+	}
+	var p core.BoardPage
+	err = s.db.Tx(ctx, rc.Org, func(ctx context.Context, tx *store.OrgTx) error {
+		var err error
+		p.Items, p.Truncated, p.TagsStale, err = tx.ListBoards(ctx, f)
+		return err
+	})
+	if err != nil {
+		return core.BoardPage{}, err
+	}
+	return p, nil
 }
 
 // GetBoard returns a live board, or core.ErrNotFound.
@@ -131,7 +154,7 @@ func (s *Service) CreateBoard(ctx context.Context, rc *core.RequestCtx, raw []by
 			if err != nil {
 				return err
 			}
-			ok, err := tx.InsertBoard(ctx, id, candidate, folder, b.Title)
+			ok, err := tx.InsertBoard(ctx, id, candidate, folder, b.Title, b.Tags)
 			if err != nil {
 				return err
 			}
@@ -218,7 +241,7 @@ func (s *Service) SaveBoard(ctx context.Context, rc *core.RequestCtx, uid string
 			Spec: canon, ContentHash: hash[:], Author: rc.Actor, Message: message}); err != nil {
 			return err
 		}
-		if err := tx.MoveBoardHead(ctx, id, next, b.Title); err != nil {
+		if err := tx.MoveBoardHead(ctx, id, next, b.Title, b.Tags); err != nil {
 			return err
 		}
 		ev, err := s.event(rc, "board.update", uid, diff)
@@ -272,15 +295,16 @@ func (s *Service) DeleteBoard(ctx context.Context, rc *core.RequestCtx, uid stri
 	})
 }
 
-// ListStarred returns the boards the principal starred.
-func (s *Service) ListStarred(ctx context.Context, rc *core.RequestCtx) ([]core.BoardRef, error) {
+// ListStarred returns at most 200 boards the principal starred and whether more exist.
+func (s *Service) ListStarred(ctx context.Context, rc *core.RequestCtx) ([]core.BoardRef, bool, error) {
 	var out []core.BoardRef
+	var more bool
 	err := s.db.Tx(ctx, rc.Org, func(ctx context.Context, tx *store.OrgTx) error {
 		var err error
-		out, err = tx.ListStarred(ctx, rc.Actor.ID)
+		out, more, err = tx.ListStarred(ctx, rc.Actor.ID)
 		return err
 	})
-	return out, err
+	return out, more, err
 }
 
 // SetStarred stars or unstars a board for the principal. Starring an unknown or deleted board is
@@ -301,16 +325,18 @@ func (s *Service) SetStarred(ctx context.Context, rc *core.RequestCtx, uid strin
 	})
 }
 
-// ListRecent returns the boards the principal viewed most recently, limit clamped to 1…50.
-func (s *Service) ListRecent(ctx context.Context, rc *core.RequestCtx, limit int) ([]core.BoardRef, error) {
+// ListRecent returns the boards the principal viewed most recently, limit clamped to 1…50, and
+// whether more exist.
+func (s *Service) ListRecent(ctx context.Context, rc *core.RequestCtx, limit int) ([]core.BoardRef, bool, error) {
 	limit = min(max(limit, recentMin), recentMax)
 	var out []core.BoardRef
+	var more bool
 	err := s.db.Tx(ctx, rc.Org, func(ctx context.Context, tx *store.OrgTx) error {
 		var err error
-		out, err = tx.ListRecent(ctx, rc.Actor.ID, limit)
+		out, more, err = tx.ListRecent(ctx, rc.Actor.ID, limit)
 		return err
 	})
-	return out, err
+	return out, more, err
 }
 
 // RecordView records that the principal viewed a live board, or returns core.ErrNotFound.

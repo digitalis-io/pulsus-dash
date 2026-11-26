@@ -8,8 +8,9 @@ INSERT INTO folders (org_id, id, uid, title, path) VALUES ($1, $2, 'root', 'Root
 SELECT id FROM folders WHERE org_id = $1 AND uid = 'root';
 
 -- name: InsertBoard :one
-INSERT INTO boards (org_id, id, uid, folder_id, title, head_version, etag) VALUES ($1, $2, $3, $4, $5, 1, 1)
-ON CONFLICT (org_id, uid) DO NOTHING RETURNING id;
+-- The head at version 1 with its tags cache fresh (tags_version = head_version, T24-029).
+INSERT INTO boards (org_id, id, uid, folder_id, title, head_version, etag, tags, tags_version)
+VALUES ($1, $2, $3, $4, $5, 1, 1, sqlc.arg(tags)::text[], 1) ON CONFLICT (org_id, uid) DO NOTHING RETURNING id;
 
 -- name: InsertBoardVersion :exec
 INSERT INTO board_versions (org_id, board_id, version, spec, schema_version, content_hash, author_kind, author_id, message, source)
@@ -24,15 +25,40 @@ FROM boards b JOIN board_versions v ON v.org_id = b.org_id AND v.board_id = b.id
 WHERE b.org_id = $1 AND b.uid = $2 AND b.deleted_at IS NULL;
 
 -- name: MoveBoardHead :exec
-UPDATE boards SET head_version = $3, etag = etag + 1, title = $4 WHERE org_id = $1 AND id = $2;
+-- Every head move by this binary refreshes the tags cache (T24-029).
+UPDATE boards SET head_version = $3, etag = etag + 1, title = $4, tags = sqlc.arg(tags)::text[], tags_version = $3
+WHERE org_id = $1 AND id = $2;
 
 -- name: SoftDeleteBoard :exec
 UPDATE boards SET deleted_at = now(), etag = etag + 1 WHERE org_id = $1 AND id = $2;
 
+-- name: RepairBoardTags :execrows
+-- Refreshes at most 200 stale cache rows of the organisation from their head specs (T24-029); rows
+-- a save holds (FOR UPDATE) are skipped, never waited for. No audit event, no ETag change.
+WITH s AS (SELECT id FROM boards WHERE org_id = $1 AND deleted_at IS NULL AND tags_version <> head_version
+           ORDER BY id LIMIT 200 FOR UPDATE SKIP LOCKED)
+UPDATE boards b SET tags = coalesce(ARRAY(SELECT jsonb_array_elements_text(v.spec->'tags')), '{}'), tags_version = b.head_version
+FROM s, board_versions v
+WHERE b.org_id = $1 AND b.id = s.id AND v.org_id = $1 AND v.board_id = b.id AND v.version = b.head_version;
+
 -- name: ListBoards :many
-SELECT b.id, b.uid, b.title, b.head_version, b.etag, v.schema_version, v.created_at, v.author_kind, v.author_id
-FROM boards b JOIN board_versions v ON v.org_id = b.org_id AND v.board_id = b.id AND v.version = b.head_version
-WHERE b.org_id = $1 AND b.deleted_at IS NULL ORDER BY v.created_at DESC, b.uid LIMIT 1001;
+-- One statement (T24-029): the matching boards (at most 1001, most recently updated first), and
+-- tagsStale, the organisation's live stale rows. With no match it returns one row with found false.
+-- q is a title substring (strpos: % and _ are literal) or an exact fresh tag, folded ASCII-only
+-- (COLLATE "C"); tag is an exact fresh tag; "" is absent. A stale row matches by title only.
+WITH m AS (
+  SELECT b.uid, b.title, b.tags, b.tags_version = b.head_version AS fresh, b.head_version, v.created_at, v.author_kind, v.author_id,
+         (sqlc.arg(q)::text = '' OR strpos(lower(b.title COLLATE "C"), lower(sqlc.arg(q)::text COLLATE "C")) > 0
+            OR (b.tags_version = b.head_version AND lower(sqlc.arg(q)::text COLLATE "C") = ANY (b.tags)))
+     AND (sqlc.arg(tag)::text = '' OR (b.tags_version = b.head_version AND sqlc.arg(tag)::text = ANY (b.tags))) AS hit
+  FROM boards b JOIN board_versions v ON v.org_id = b.org_id AND v.board_id = b.id AND v.version = b.head_version
+  WHERE b.org_id = sqlc.arg(org_id) AND b.deleted_at IS NULL),
+st AS (SELECT count(*) FILTER (WHERE NOT fresh) AS tags_stale FROM m)
+SELECT st.tags_stale, (h.uid IS NOT NULL)::boolean AS found, coalesce(h.uid, '')::text AS uid, coalesce(h.title, '')::text AS title,
+       coalesce(h.fresh, false)::boolean AS fresh, coalesce(CASE WHEN h.fresh THEN h.tags END, '{}')::text[] AS tags,
+       coalesce(h.head_version, 0)::bigint AS head_version, h.created_at, coalesce(h.author_kind, '')::text AS author_kind, h.author_id
+FROM st LEFT JOIN LATERAL (SELECT * FROM m WHERE hit ORDER BY created_at DESC, uid LIMIT 1001) h ON true
+ORDER BY h.created_at DESC NULLS LAST, h.uid;
 
 -- name: BoardIDByUID :one
 SELECT id, title FROM boards WHERE org_id = $1 AND uid = $2 AND deleted_at IS NULL;
@@ -59,7 +85,7 @@ DELETE FROM stars WHERE org_id = $1 AND user_id = $2 AND kind = 'board' AND obje
 
 -- name: ListStarred :many
 SELECT b.uid, b.title FROM stars s JOIN boards b ON b.org_id = s.org_id AND b.id = s.object_id
-WHERE s.org_id = $1 AND s.user_id = $2 AND s.kind = 'board' AND b.deleted_at IS NULL ORDER BY lower(b.title), b.uid LIMIT 200;
+WHERE s.org_id = $1 AND s.user_id = $2 AND s.kind = 'board' AND b.deleted_at IS NULL ORDER BY lower(b.title), b.uid LIMIT 201;
 
 -- name: RecentLock :exec
 -- Serialises RecordView per (org, user) until commit (plan #61 review r1 #2).

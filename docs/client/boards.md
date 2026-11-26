@@ -181,6 +181,28 @@ the drawn vis of a frame. The completeness badge (`PanelNotices`: **Partial data
 labelled "`<badge>`: `<title>`") shows with any frame or message of an outcome and opens Explore's
 `CompletenessNotice` in a popover.
 
+### Board tags (#215)
+
+Board spec v4 ([the boards API](../server/boards-api.md#board-spec-v4)) adds the optional `tags`:
+0 to 16 unique tags of `^[a-z0-9][a-z0-9_.:/-]{0,63}$`. The client accepts and keeps them; it has
+no editor for them yet (the tags editor and the Board list widget come with #216).
+
+- `checkBoardSpec` (`boards/spec.ts`) checks them as the server does, with the same pointers and
+  keys: more than `MAX_BOARD_TAGS` (16) at `/tags` (`board.tags.invalid`), then each item against
+  `TAG_PATTERN` (`board.tags.invalid`) and the earlier items (`board.tags.duplicate`), after the
+  time and before the panels. The shared `invalid.json` rows and `v4-board-tags.json` hold the two
+  suites together, the canonical form's SHA-256 included.
+- The editor never drops them: every action rebuilds the draft from the previous one, and turning
+  off **Save current time range** (`setTime` with `null`) removes only `time`. A tagged board opens,
+  edits and saves with its tags unchanged.
+- The en-GB texts are `field.board.tags.invalid` ("Use at most 16 tags of lower-case letters,
+  digits and _ . : / -, each up to 64 characters") and `field.board.tags.duplicate` ("Use each tag
+  once").
+
+`canonicalJson` is unchanged: the client never creates `tags`, and heads come canonical from the
+server, where `tags: []` is stored as no key. The list's `tags`, `applied` and `tagsStale` members
+are not read by the client yet (#216).
+
 ## Thresholds, legends and stat tiles (#64 Part B)
 
 Board spec version 2 adds two optional members to a panel's `vis`
@@ -529,6 +551,8 @@ failing 0.05 "SLO breach").
 - [09 Performance contract](../../designs/product/09-performance-contract.md): PRF-030, PRF-031
   (board subsets); [08 Visual language](../../designs/product/08-visual-language.md): VL-015 (the
   shimmer).
+- Board tags (#215): [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-029
+  and §5.5; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v3 upcast).
 - Board spec v3 and the pending kinds (#173 Part 1):
   [T22](../../designs/technical/T22-value-categorical-and-table-panels.md) §6.1 (`vis.options`)
   and T22-002; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v2 upcast); the

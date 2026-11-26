@@ -730,6 +730,7 @@ export interface components {
         BoardSpec: {
             title: string;
             time?: components["schemas"]["TimeRange"];
+            tags?: components["schemas"]["AnnotationTag"][];
             panels: components["schemas"]["Panel"][];
             sections: components["schemas"]["Section"][];
         };
@@ -825,6 +826,8 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
             updated_by: components["schemas"]["Author"];
+            /** @description null = not yet known */
+            tags: components["schemas"]["AnnotationTag"][] | null;
         };
         Board: {
             uid: string;
@@ -842,6 +845,13 @@ export interface components {
         BoardList: {
             items: components["schemas"]["BoardSummary"][];
             truncated: boolean;
+            applied: components["schemas"]["BoardListApplied"];
+            /** Format: int64 */
+            tagsStale: number;
+        };
+        BoardListApplied: {
+            q?: string;
+            tag?: components["schemas"]["AnnotationTag"];
         };
         BoardCreate: {
             spec: components["schemas"]["BoardSpec"];
@@ -865,7 +875,10 @@ export interface components {
         };
         BoardRefList: {
             items: components["schemas"]["BoardRef"][];
+            applied: components["schemas"]["BoardRefApplied"];
+            truncated: boolean;
         };
+        BoardRefApplied: Record<string, never>;
         /**
          * Format: int64
          * @description ms since the Unix epoch
@@ -1138,7 +1151,11 @@ export interface operations {
     };
     listBoards: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Title substring or exact tag, ASCII case-insensitive; 1–100 characters, no Cc */
+                q?: string;
+                tag?: components["schemas"]["AnnotationTag"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1152,6 +1169,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BoardList"];
+                };
+            };
+            /** @description Invalid q or tag */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Configuration store unavailable */

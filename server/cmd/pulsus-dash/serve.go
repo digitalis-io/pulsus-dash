@@ -111,7 +111,7 @@ func cmdServe(ctx context.Context, e runEnv, args []string) int {
 			Logger: logger, Probe: db, SchemaLatest: store.SchemaLatest(),
 			Assets: set, Build: core.Build(store.SchemaLatest()), Bootstrap: db.BootstrapView,
 			Now: time.Now, PulsusDB: pdb,
-			Boards: boards.New(db), Annotations: annotations.New(db), Org: install.BootstrapOrg, AuditPartitions: partitions,
+			Boards: boards.New(db, logger), Annotations: annotations.New(db), Org: install.BootstrapOrg, AuditPartitions: partitions,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,

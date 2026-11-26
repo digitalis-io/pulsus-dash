@@ -27,6 +27,11 @@ type fakeBoards struct {
 	limit int
 	rc    *core.RequestCtx
 	at    []*time.Time
+	// filters are the filters ListBoards was called with; page, when set, is its answer.
+	filters     []core.BoardFilter
+	page        *core.BoardPage
+	starredMore bool
+	recentMore  bool
 }
 
 func (f *fakeBoards) record(call string, rc *core.RequestCtx) {
@@ -36,9 +41,15 @@ func (f *fakeBoards) record(call string, rc *core.RequestCtx) {
 	f.rc = rc
 }
 
-func (f *fakeBoards) ListBoards(_ context.Context, rc *core.RequestCtx) ([]core.BoardSummary, bool, error) {
+func (f *fakeBoards) ListBoards(_ context.Context, rc *core.RequestCtx, filter core.BoardFilter) (core.BoardPage, error) {
 	f.record("list", rc)
-	return []core.BoardSummary{f.board.BoardSummary}, false, f.err
+	f.mu.Lock()
+	f.filters = append(f.filters, filter)
+	f.mu.Unlock()
+	if f.page != nil {
+		return *f.page, f.err
+	}
+	return core.BoardPage{Items: []core.BoardSummary{f.board.BoardSummary}}, f.err
 }
 
 func (f *fakeBoards) GetBoard(_ context.Context, rc *core.RequestCtx, uid string) (core.Board, error) {
@@ -61,9 +72,9 @@ func (f *fakeBoards) DeleteBoard(_ context.Context, rc *core.RequestCtx, uid str
 	return f.err
 }
 
-func (f *fakeBoards) ListStarred(_ context.Context, rc *core.RequestCtx) ([]core.BoardRef, error) {
+func (f *fakeBoards) ListStarred(_ context.Context, rc *core.RequestCtx) ([]core.BoardRef, bool, error) {
 	f.record("starred", rc)
-	return []core.BoardRef{{UID: "u1", Title: "One"}}, f.err
+	return []core.BoardRef{{UID: "u1", Title: "One"}}, f.starredMore, f.err
 }
 
 func (f *fakeBoards) SetStarred(_ context.Context, rc *core.RequestCtx, uid string, starred bool) error {
@@ -75,12 +86,12 @@ func (f *fakeBoards) SetStarred(_ context.Context, rc *core.RequestCtx, uid stri
 	return f.err
 }
 
-func (f *fakeBoards) ListRecent(_ context.Context, rc *core.RequestCtx, limit int) ([]core.BoardRef, error) {
+func (f *fakeBoards) ListRecent(_ context.Context, rc *core.RequestCtx, limit int) ([]core.BoardRef, bool, error) {
 	f.record("recent", rc)
 	f.mu.Lock()
 	f.limit = limit
 	f.mu.Unlock()
-	return []core.BoardRef{}, f.err
+	return []core.BoardRef{}, f.recentMore, f.err
 }
 
 func (f *fakeBoards) RecordView(_ context.Context, rc *core.RequestCtx, uid string, at *time.Time) error {
@@ -313,7 +324,7 @@ func TestBoardRoutes(t *testing.T) {
 				t.Errorf("recent%s: limit %d, want %d", q, f.limit, want)
 			}
 		}
-		if r := call(t, h, http.MethodGet, "/api/dash/v1/me/starred-boards", nil); r.code != 200 || !jsonEqual(t, r.body, map[string]any{"items": []map[string]string{{"uid": "u1", "title": "One"}}}) {
+		if r := call(t, h, http.MethodGet, "/api/dash/v1/me/starred-boards", nil); r.code != 200 || !jsonEqual(t, r.body, map[string]any{"items": []map[string]string{{"uid": "u1", "title": "One"}}, "applied": map[string]any{}, "truncated": false}) {
 			t.Errorf("starred = %d %s", r.code, r.raw)
 		}
 		if r := call(t, h, http.MethodPut, "/api/dash/v1/me/recent-boards/u1", nil); r.code != 204 {
@@ -439,5 +450,121 @@ func TestBoardRequestEnvelope(t *testing.T) {
 	}
 	if r := call(t, h, "POST", boardsPath, []byte(`{"spec":`+spec+`}`)); r.code != 201 {
 		t.Errorf("valid create = %d %s", r.code, r.raw)
+	}
+}
+
+func listHandler(f *fakeBoards) http.Handler {
+	return New(Deps{Probe: &fakeProbe{version: 1}, SchemaLatest: 1, Boards: f, Org: testOrg})
+}
+
+func fieldsOf(r resp) []any {
+	e, _ := r.body["error"].(map[string]any)
+	fs, _ := e["fields"].([]any)
+	return fs
+}
+
+// TestListBoardsParams: q and tag of GET /boards (plan #215 §3.6, T24-021). Every 400 is answered
+// before any service call; a valid filter reaches the service unchanged and is echoed in applied.
+func TestListBoardsParams(t *testing.T) {
+	type field struct{ pointer, key string }
+	for _, tc := range []struct {
+		name, query string
+		status      int
+		fields      []field
+		filter      core.BoardFilter
+		applied     string
+	}{
+		{name: "q", query: "q=Checkout", status: 200, filter: core.BoardFilter{Q: "Checkout"}, applied: `{"q":"Checkout"}`},
+		{name: "none", query: "", status: 200, applied: `{}`},
+		{name: "q empty", query: "q=", status: 400, fields: []field{{"/q", "boards.q.invalid"}}},
+		{name: "q 101", query: "q=" + strings.Repeat("a", 101), status: 400, fields: []field{{"/q", "boards.q.invalid"}}},
+		{name: "q 100 runes", query: "q=" + strings.Repeat("%C3%A9", 100), status: 200, filter: core.BoardFilter{Q: strings.Repeat("é", 100)}, applied: `{"q":"` + strings.Repeat("é", 100) + `"}`},
+		{name: "q tab", query: "q=a%09b", status: 400, fields: []field{{"/q", "boards.q.invalid"}}},
+		{name: "q del", query: "q=a%7Fb", status: 400, fields: []field{{"/q", "boards.q.invalid"}}},
+		{name: "q nel", query: "q=a%C2%85b", status: 400, fields: []field{{"/q", "boards.q.invalid"}}},
+		{name: "q not utf-8", query: "q=%FF", status: 400, fields: []field{{"/q", "boards.q.invalid"}}},
+		{name: "q kept untrimmed", query: "q=+a+", status: 200, filter: core.BoardFilter{Q: " a "}, applied: `{"q":" a "}`},
+		{name: "tag", query: "tag=team:payments", status: 200, filter: core.BoardFilter{Tag: "team:payments"}, applied: `{"tag":"team:payments"}`},
+		{name: "tag bad", query: "tag=Bad%20Tag", status: 400, fields: []field{{"/tag", "boards.tag.invalid"}}},
+		{name: "tag empty", query: "tag=", status: 400, fields: []field{{"/tag", "boards.tag.invalid"}}},
+		{name: "both invalid", query: "q=%09&tag=Bad", status: 400, fields: []field{{"/q", "boards.q.invalid"}}},
+		{name: "both", query: "q=a&tag=b", status: 200, filter: core.BoardFilter{Q: "a", Tag: "b"}, applied: `{"q":"a","tag":"b"}`},
+		{name: "q repeated", query: "q=a&q=b", status: 400, fields: []field{{"/q", "field.type"}}},
+		{name: "tag repeated", query: "tag=a&tag=b", status: 400, fields: []field{{"/tag", "field.type"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeBoards{board: sampleBoard(1, 1)}
+			path := boardsPath
+			if tc.query != "" {
+				path += "?" + tc.query
+			}
+			r := call(t, listHandler(f), http.MethodGet, path, nil)
+			if r.code != tc.status {
+				t.Fatalf("GET %s = %d %s, want %d", path, r.code, r.raw, tc.status)
+			}
+			if tc.status != 200 {
+				want := make([]map[string]string, 0, len(tc.fields))
+				for _, fe := range tc.fields {
+					want = append(want, map[string]string{"pointer": fe.pointer, "message_key": fe.key})
+				}
+				if errCode(r) != "invalid" || !jsonEqual(t, fieldsOf(r), want) {
+					t.Errorf("GET %s = %s, want invalid with fields %v", path, r.raw, want)
+				}
+				if tc.fields[0].key != "field.type" && errMessage(r) != "invalid request" {
+					t.Errorf("message = %q, want %q", errMessage(r), "invalid request")
+				}
+				if len(f.calls) != 0 {
+					t.Errorf("service called on a 400: %v", f.calls)
+				}
+				return
+			}
+			if len(f.filters) != 1 || f.filters[0] != tc.filter {
+				t.Errorf("filters = %+v, want [%+v]", f.filters, tc.filter)
+			}
+			if !jsonEqual(t, r.body["applied"], []byte(tc.applied)) {
+				t.Errorf("applied = %v, want %s", r.body["applied"], tc.applied)
+			}
+		})
+	}
+}
+
+// TestListBoardsShape: tags ([] when fresh and empty, null when stale), tagsStale, truncated and
+// applied of the board and ref lists (T24-021, T24-029).
+func TestListBoardsShape(t *testing.T) {
+	at := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	sum := func(uid string, tags []string, fresh bool) core.BoardSummary {
+		return core.BoardSummary{UID: uid, Title: uid, Version: 1, UpdatedAt: at, UpdatedBy: core.LocalActor(), Tags: tags, TagsFresh: fresh}
+	}
+	page := core.BoardPage{Items: []core.BoardSummary{sum("a", nil, true), sum("b", []string{"a"}, true), sum("c", nil, false)},
+		Truncated: true, TagsStale: 1}
+	f := &fakeBoards{page: &page, starredMore: true}
+	h := listHandler(f)
+	r := call(t, h, http.MethodGet, boardsPath, nil)
+	if r.code != 200 {
+		t.Fatalf("list = %d %s", r.code, r.raw)
+	}
+	items, _ := r.body["items"].([]any)
+	if len(items) != 3 {
+		t.Fatalf("items = %s", r.raw)
+	}
+	for i, want := range []string{`[]`, `["a"]`, `null`} {
+		it, _ := items[i].(map[string]any)
+		got, ok := it["tags"]
+		if !ok || !jsonEqual(t, got, []byte(want)) {
+			t.Errorf("items[%d].tags = %v (present %v), want %s", i, got, ok, want)
+		}
+	}
+	if r.body["tagsStale"] != float64(1) || r.body["truncated"] != true || !jsonEqual(t, r.body["applied"], []byte(`{}`)) {
+		t.Errorf("list = %s, want tagsStale 1, truncated, applied {}", r.raw)
+	}
+	for _, tc := range []struct {
+		path      string
+		truncated bool
+	}{{"/api/dash/v1/me/starred-boards", true}, {"/api/dash/v1/me/recent-boards", false}} {
+		r := call(t, h, http.MethodGet, tc.path, nil)
+		applied, ok := r.body["applied"]
+		if r.code != 200 || !ok || !jsonEqual(t, applied, []byte(`{}`)) || r.body["truncated"] != tc.truncated {
+			t.Errorf("GET %s = %d %s, want applied {} and truncated %v", tc.path, r.code, r.raw, tc.truncated)
+		}
 	}
 }

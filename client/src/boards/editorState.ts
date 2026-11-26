@@ -345,8 +345,10 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
     }
     case 'setTime': {
       if (a.time === null) {
-        const { title, panels, sections } = s.draft;
-        return edited(s, { title, panels, sections });
+        // Every other key is kept (tags among them, T24-029).
+        const rest = { ...s.draft };
+        delete rest.time;
+        return edited(s, rest);
       }
       return edited(s, { ...s.draft, time: a.time });
     }
