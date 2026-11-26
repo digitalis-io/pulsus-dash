@@ -7,7 +7,8 @@
  *   (also `new window.DOMParser`); no `.createContextualFragment(`. Static computed keys
  *   (`document['createElement']('iframe')`) count as the plain name.
  * - `security/no-html-sink` (T18-004), over the same files: no `innerHTML` or `outerHTML`
- *   assignment and no `insertAdjacentHTML` call, by name or by a static computed key.
+ *   assignment; no `insertAdjacentHTML`, `setHTMLUnsafe` or `parseHTMLUnsafe` call; no literal
+ *   `Reflect.set` or `Object.assign` of `innerHTML`, `outerHTML` or `srcdoc`.
  * - `security/markdown-boundary` (ADR-0024), over `src/**`: `commonmark` only under
  *   `src/security/sanitise/`; `parse5` and `parse5-sax-parser/feedback` only in `findIframes.ts` and
  *   the sanitise tests; never commonmark's `HtmlRenderer` or `XmlRenderer`; never `minimist`; the
@@ -120,12 +121,42 @@ const noIframe: Rule.RuleModule = {
 };
 
 const HTML_PROPERTIES = new Set(['innerHTML', 'outerHTML']);
+const UNSAFE_HTML_CALLS = new Set(['insertAdjacentHTML', 'setHTMLUnsafe', 'parseHTMLUnsafe']);
+
+/** A key that writes HTML when set: `innerHTML`, `outerHTML`, `srcdoc` (any case). */
+function isSinkKey(name: string | null): name is string {
+  return name !== null && (HTML_PROPERTIES.has(name) || name.toLowerCase() === 'srcdoc');
+}
+
+/** The key of an object-literal property: `k`, `'k'`, `['k']`; `null` if computed from an expression. */
+function propertyKey(p: ESTree.Property | ESTree.SpreadElement): string | null {
+  if (p.type !== 'Property') return null;
+  if (!p.computed) return p.key.type === 'Identifier' ? p.key.name : staticName(p.key);
+  return p.key.type === 'Identifier' ? null : staticName(p.key);
+}
+
+/** `Reflect.set` / `Object.assign` (also through a static computed key). */
+function isGlobalCall(callee: ESTree.Node, object: string, method: string): boolean {
+  return (
+    callee.type === 'MemberExpression' &&
+    callee.object.type === 'Identifier' &&
+    callee.object.name === object &&
+    memberName(callee) === method
+  );
+}
 
 /**
- * HTML string sinks in every spelling (T18-004, Trusted Types): `innerHTML` and `outerHTML`
- * assignments and `insertAdjacentHTML` calls, by name or by a static computed key. The plain forms
- * are also in `eslint.config.js` `bannedSyntax`; this rule's name is its own, so no
- * `no-restricted-syntax` override drops it.
+ * HTML string sinks in every literal spelling (T18-004, Trusted Types): `innerHTML` and `outerHTML`
+ * assignments; `insertAdjacentHTML`, `setHTMLUnsafe` and `parseHTMLUnsafe` calls; and
+ * `Reflect.set(x, k, …)` or `Object.assign(x, {k: …})` with a literal `innerHTML`, `outerHTML` or
+ * `srcdoc` key. Names and static computed keys count alike. The plain assignment forms are also in
+ * `eslint.config.js` `bannedSyntax`; this rule's name is its own, so no `no-restricted-syntax`
+ * override drops it.
+ *
+ * Out of scope for this backstop: keys computed at run time, arbitrary aliasing (`const s =
+ * el.setHTMLUnsafe; s(…)`), and a detached or bound `createContextualFragment`. The primary defence
+ * is the renderer's design: it builds React elements from the parsed tree and has no HTML string
+ * sink (T24-004).
  */
 const noHtmlSink: Rule.RuleModule = {
   meta: {
@@ -143,7 +174,25 @@ const noHtmlSink: Rule.RuleModule = {
         if (name !== null && HTML_PROPERTIES.has(name)) report(node, `${name} assignment`);
       },
       CallExpression(node) {
-        if (calleeName(node.callee) === 'insertAdjacentHTML') report(node, 'insertAdjacentHTML');
+        const name = calleeName(node.callee);
+        if (name !== null && UNSAFE_HTML_CALLS.has(name)) {
+          report(node, name);
+          return;
+        }
+        if (isGlobalCall(node.callee, 'Reflect', 'set')) {
+          const key = staticName(node.arguments[1]);
+          if (isSinkKey(key)) report(node, `Reflect.set of ${key}`);
+          return;
+        }
+        if (isGlobalCall(node.callee, 'Object', 'assign')) {
+          for (const arg of node.arguments.slice(1)) {
+            if (arg.type !== 'ObjectExpression') continue;
+            for (const p of arg.properties) {
+              const key = propertyKey(p);
+              if (isSinkKey(key)) report(p, `Object.assign of ${key}`);
+            }
+          }
+        }
       },
     };
   },

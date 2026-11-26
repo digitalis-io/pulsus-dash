@@ -144,6 +144,62 @@ describe('unit:security-lint: static computed keys and qualified constructors (r
   });
 });
 
+describe('unit:security-lint: security/no-html-sink, other spellings (review r2)', () => {
+  const ts = 'src/x.ts';
+
+  it('reports a literal Reflect.set of innerHTML, outerHTML or srcdoc', async () => {
+    for (const code of [
+      "export const f = (el: Element) => Reflect.set(el, 'innerHTML', 'x');\n",
+      'export const f = (el: Element) => Reflect.set(el, `outerHTML`, "x");\n',
+      "export const f = (el: Element) => Reflect['set'](el, 'srcdoc', 'x');\n",
+    ]) {
+      expect(await rules(code, ts), code).toEqual([HTML_SINK]);
+    }
+    for (const code of [
+      "export const f = (el: Element) => Reflect.set(el, 'title', 'x');\n",
+      "export const f = (el: Element, k: string) => Reflect.set(el, k, 'x');\n",
+      "export const f = (el: Element) => Reflect.get(el, 'innerHTML');\n",
+    ]) {
+      expect(await rules(code, ts), code).toEqual([]);
+    }
+  });
+
+  it('reports a literal Object.assign of innerHTML, outerHTML or srcdoc', async () => {
+    for (const code of [
+      "export const f = (el: Element) => Object.assign(el, { innerHTML: 'x' });\n",
+      "export const f = (el: Element) => Object.assign(el, { 'outerHTML': 'x' });\n",
+      "export const f = (el: Element) => Object.assign(el, { title: 't' }, { ['srcdoc']: 'x' });\n",
+    ]) {
+      expect(await rules(code, ts), code).toEqual([HTML_SINK]);
+    }
+    for (const code of [
+      "export const f = (el: Element) => Object.assign(el, { title: 'x' });\n",
+      "export const f = (el: Element, k: string) => Object.assign(el, { [k]: 'x' });\n",
+      "export const o = Object.assign({}, { innerHTMLText: 'x' });\n",
+    ]) {
+      expect(await rules(code, ts), code).toEqual([]);
+    }
+  });
+
+  it('reports setHTMLUnsafe and parseHTMLUnsafe calls in every literal spelling', async () => {
+    for (const code of [
+      "export const f = (el: Element) => { el.setHTMLUnsafe('x'); };\n",
+      "export const f = (el: Element) => { el['setHTMLUnsafe']('x'); };\n",
+      "export const f = () => { setHTMLUnsafe('x'); };\ndeclare function setHTMLUnsafe(s: string): void;\n",
+      "export const d = () => Document.parseHTMLUnsafe('x');\n",
+      "export const d = () => parseHTMLUnsafe('x');\ndeclare function parseHTMLUnsafe(s: string): Document;\n",
+    ]) {
+      expect(await rules(code, ts), code).toEqual([HTML_SINK]);
+    }
+    for (const code of [
+      "export const f = (el: Element) => { el.setAttribute('title', 'x'); };\n",
+      'export const f = (el: Element) => el.setHTMLUnsafe;\n',
+    ]) {
+      expect(await rules(code, ts), code).toEqual([]);
+    }
+  });
+});
+
 describe('unit:security-lint: security/markdown-boundary', () => {
   it('commonmark only inside src/security/sanitise/', async () => {
     const code = "import { Parser } from 'commonmark';\nexport const p = new Parser();\n";

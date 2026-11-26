@@ -277,10 +277,14 @@ The `security` ESLint plugin (`eslint/security-plugin.ts`) runs in `ci:lint-ts`:
 | Rule | Files | Reports |
 |---|---|---|
 | `security/no-iframe` (`ci:no-iframe`, T08-009) | `src/**`, `e2e/**` | JSX `iframe`, `frame`, `frameset`, `object`, `embed`; `createElement` of one of those names in any case; JSX `srcDoc`, a `srcdoc` assignment or `setAttribute('srcdoc')`; `new DOMParser`, also member-qualified (`new window.DOMParser`); `.createContextualFragment(`. A static computed key (`document['createElement']('iframe')`) counts as the plain name |
-| `security/no-html-sink` (T18-004) | `src/**`, `e2e/**` | `innerHTML` and `outerHTML` assignments and `insertAdjacentHTML` calls, by name or static computed key (`el['innerHTML'] = …`); the plain forms are also in `bannedSyntax` |
+| `security/no-html-sink` (T18-004) | `src/**`, `e2e/**` | `innerHTML` and `outerHTML` assignments; `insertAdjacentHTML`, `setHTMLUnsafe` and `parseHTMLUnsafe` calls (`el.setHTMLUnsafe(`, `Document.parseHTMLUnsafe(`, bare calls); `Reflect.set(x, k, …)` and `Object.assign(x, {k: …})` with a literal `innerHTML`, `outerHTML` or `srcdoc` key; names and static computed keys (`el['innerHTML'] = …`) alike. The plain assignments are also in `bannedSyntax` |
 | `security/markdown-boundary` (ADR-0024) | `src/**` | `commonmark` outside `src/security/sanitise/`; `parse5` or `parse5-sax-parser/feedback` outside `findIframes.ts` (and its `feedback.d.ts`) and the sanitise tests; commonmark's `HtmlRenderer` or `XmlRenderer`; `minimist`; the bare `parse5-sax-parser` outside `findIframes.test.ts` |
 
-The rule names are the plugin's own, so no `no-restricted-*` block overrides them. The one
+The rule names are the plugin's own, so no `no-restricted-*` block overrides them. These rules are a
+backstop for literal spellings only. Keys or names computed at run time, arbitrary aliasing (a sink
+method stored in a variable, or an element reached through another name) and a detached or bound
+`createContextualFragment` are out of their scope. The primary defence is the renderer's design: it
+builds React elements from the parsed tree and has no HTML string sink (T24-004). The one
 exception in the tree is a reasoned disable in `src/test/labelInName.test.ts`, which parses static
 markup in jsdom.
 
