@@ -258,6 +258,20 @@ describe('stub boards from storage (plan #198 Part 3b)', () => {
     expect((await api.getBoard('demo', 'b-1')).title).not.toBe('Taken uid');
   });
 
+  it('HTTP builds never read the key', async () => {
+    localStorage.setItem(STUB_BOARDS_KEY, JSON.stringify([board('b-bench', 'Bench')]));
+    const get = vi.spyOn(Storage.prototype, 'getItem');
+    vi.stubEnv('VITE_API_MODE', 'http');
+    try {
+      const api = new StubApi();
+      expect(get.mock.calls.map(([k]) => k)).not.toContain(STUB_BOARDS_KEY);
+      expect((await api.listBoards('demo')).items.map((b) => b.uid)).not.toContain('b-bench');
+    } finally {
+      vi.unstubAllEnvs();
+      get.mockRestore();
+    }
+  });
+
   it('adds none for anything but an array', async () => {
     localStorage.setItem(STUB_BOARDS_KEY, '{"uid":"b-x"}');
     expect((await new StubApi().listBoards('demo')).items).toHaveLength(3);

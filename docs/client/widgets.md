@@ -459,7 +459,8 @@ c13 (a baseline with one count changed) and c14 (a changed source under the same
 
 **Limit.** Chromium and WebKit send an unload-time beacon outside the page's network stack, so no
 route sees it; c8 runs in Firefox only. A beacon sent while the page lives is seen in all three
-(as `ping` in Chromium, `beacon` in Firefox and WebKit).
+(as `ping` in Chromium, `beacon` in Firefox and WebKit). Proving unload-time requests in Chromium and WebKit
+(a browser-side or server-side observation of the beacon) is a follow-up.
 
 ### Render measures and the bench
 
@@ -832,7 +833,7 @@ violations of a rendered tree:
 | `bench:markdown-render` (report-only) | `src/security/sanitise/markdown.bench.test.ts`: 50 distinct 64 KiB inputs, every lookup a memo miss; prints the uncached p95 against the 16 ms budget. Under vitest it measures React's development build, which creates elements several times slower than production |
 | `e2e:widget-text` | `e2e/widgets.spec.ts` (three engines, the http-mode BFF): the T24 §10 input through the boards API with `var-env=prod`: `h4` "R", the new-tab link with the three `rel` values, "Env prod", then "Env dev" through the filter bar with no query at the fake; the region named by the title; Add widget → Text → `# Added` → Done → Save → reload shows `h4` "Added" |
 | `e2e:widget-text-xss` (a), (b), (c) | same: the T24 row input watched, then its editor removal lines; the corpus run; the canaries ([above](#the-corpus-run-and-the-canaries)) |
-| `e2e:widget-a11y` (Text) | same: an overflowing Text with two links and a short one: axe clean (Firefox skips the `label` rule with the editor open, as `e2e:a11y-rooms`), panel menu → region → link 1 → link 2, the short region not tabbable; in the editor the region "Preview: Note" and, for a 65 537-byte content, the "Preview unavailable" status that describes it |
+| `e2e:widget-a11y` (Text) | same: an overflowing Text with two links and a short one: axe clean on the board and in the editor in Chromium and WebKit (Firefox runs neither axe scan: its content process crashed during or soon after axe on this board in 5 of 6 runs, never without it; every other step runs in Firefox), panel menu → region → link 1 → link 2, the short region not tabbable; in the editor the region "Preview: Note" and, for a 65 537-byte content, the "Preview unavailable" status that describes it |
 | `golden:widget-gallery` (Text) | `e2e/widget-gallery.spec.ts` (Chromium, 1440 × 1400): `widget-text` and `widget-text-removals` in dark, light and greyscale (CSSOM `grayscale(1)` on dark); a reload gives the same pixels; 6 baselines under `e2e/__screenshots__/widget-gallery.spec.ts/` |
 | `unit:xss-e2e-cases` | `scripts/gen-xss-e2e-cases.test.ts`: `--check` in-process and through the CLI, one changed expectation gives 1; c13 and c14; the image extraction rows; one case per skip reason |
 | `unit:widget-gallery-route` | `src/app/router.test.tsx`: 3 `[data-text-body]` on `widget-text`, 1 `[data-text-removals]` of 7 lines on `widget-text-removals`, no route in the http build |

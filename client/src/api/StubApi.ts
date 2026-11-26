@@ -32,7 +32,8 @@
  * `{ kind: 'range' | 'instant', query }` (the raw request text). `pulsus-dash.stub.boards`, a JSON
  * array of `{ uid, title, updatedAt, spec }`, adds those boards to the seed when the stub is made
  * (plan #198 Part 3b: `bench:text-widget-render`'s board); an entry whose spec fails the save's
- * rules, or whose uid is taken, is skipped, and anything but an array adds none.
+ * rules, or whose uid is taken, is skipped, and anything but an array adds none. HTTP builds compile
+ * this hook out.
  */
 import { checkBoardSpec, canonicalJson } from '../boards/spec';
 import type { Api } from './Api';
@@ -231,6 +232,9 @@ function isStubBoard(x: unknown): x is StubBoard {
 
 /** The valid boards of `pulsus-dash.stub.boards` whose uids `seeded` does not hold. */
 function extraBoards(seeded: readonly StubBoard[]): StubBoard[] {
+  // HTTP builds still make a StubApi (the ApiContext default): the static condition compiles the
+  // hook, and its key, out of them, so production startup never reads stub storage.
+  if (import.meta.env.VITE_API_MODE === 'http') return [];
   const raw = parseJson(read(STUB_BOARDS_KEY));
   if (!Array.isArray(raw)) return [];
   const uids = new Set(seeded.map((b) => b.uid));
