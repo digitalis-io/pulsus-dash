@@ -187,7 +187,7 @@ refuses a board list on a write (`board.vis.kind.invalid`). No client writes one
 | `unit:list-coverage` | `src/widgets/lists/snapshot.test.ts` |
 | `unit:list-table-csv` | `src/widgets/lists/table.test.ts`: the guard block, B, S, `unknown` tags, the facts |
 | `unit:list-keyboard` (pure) | `src/widgets/lists/focus.test.ts` |
-| `unit:board-list-source`, `unit:board-list-mixed` (API) | `src/api/HttpApi.test.ts`, `src/api/StubApi.test.ts`: the URLs, the old-server decoding and snapshots, the stub's filter and truncation |
+| `unit:board-list-source`, `unit:board-list-mixed` (API) | `src/api/HttpApiBoardList.test.ts`, `src/api/StubApi.test.ts`: the URLs, the old-server decoding and snapshots, the stub's filter and truncation |
 | `unit:import-board-list` | `src/import/boardList.test.ts`: I1–I12 |
 
 ## Designs
