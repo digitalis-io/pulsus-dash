@@ -20,6 +20,7 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 
 # RUN_PATTERN selects every Test*OldBinary test (any valid Go identifier between Test and
 # OldBinary, digits and _ included); PASS_PATTERN is a top-level PASS line of one of them.
+# The selector assumes ASCII Test*OldBinary names (the repository's test names are ASCII).
 RUN_PATTERN='^Test[A-Za-z0-9_]*OldBinary$'
 PASS_PATTERN='^--- PASS: Test[A-Za-z0-9_]*OldBinary \('
 
