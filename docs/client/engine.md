@@ -666,7 +666,7 @@ at 0, with a `chart-draw` measure (`detail: {kind: 'line', series, frame}`).
 |---|---|
 | No WebGPU adapter or device | WebGL2; neither: status 4, every frame on Canvas 2D |
 | `failed` (surface, read-back) | that frame falls back |
-| Device lost | one new device on the same canvases; a second loss within 60 s is fatal |
+| Device lost (handled at once, also while the loop is idle: the worker wakes itself) | one new device on the same canvases; if it lands on another tier (WebGPU lost, only WebGL2 left), every engine frame moves to Canvas 2D with the notice (`failed{tier}`) and later frames use the new tier; a second loss within 60 s, or no device at all, is fatal |
 | The render worker throws after a `drawn`, the first time on the page | one restart: new render and pool workers from the same `Module`; every engine frame moves to a fresh transferred canvas, replayed, with the notice |
 | A throw before any `drawn`, a second throw, a restart without status 1 or 2 in 10 s, or `fatal` | the session flag is set (`sessionStorage` `pulsus-dash.engine-failed`, and in memory for the page); every engine frame falls back; later frames and pages use Canvas 2D |
 | A data or spec error | the frame's data or spec is cleared; `console.error` once |
