@@ -322,7 +322,9 @@ test.describe('e2e:shim-fuzz', () => {
       };
     }, GALLERY_FROM);
     expect(r.ms).toBeLessThan(1000);
-    expect(r.published).toBe(1);
+    // The window's Camera and, as for every layout input since plan #68 C2b, the hover's clearing
+    // Overlay: the first wakes the worker.
+    expect(r.published).toBe(2);
     expect(r.last).toMatchObject({ fromMs: GALLERY_FROM + 5000, toMs: GALLERY_FROM + 65_000 });
     expect(r.decoded).toBe(r.produced);
   });

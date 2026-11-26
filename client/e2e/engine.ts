@@ -241,7 +241,6 @@ export function nativeRender(o: {
   const r = spawnSync(
     goldenBin(),
     [
-      ...overlay,
       'render',
       '--page',
       o.page,
@@ -255,6 +254,7 @@ export function nativeRender(o: {
       o.tier,
       '--out',
       o.out,
+      ...overlay,
     ],
     { encoding: 'utf8' },
   );
