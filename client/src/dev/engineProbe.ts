@@ -15,6 +15,7 @@
  * | `wheel(n, x, y, init)`, `pointer(n, type, x, y, o)` | a wheel (returns `defaultPrevented`) or a pointer or mouse event on the frame's canvas at canvas px, built as `test/engineHarness.ts` builds them (plan #68 C2a2 §3.4) |
  * | `commits(n)`, `brushes(n)` | the frame's `commit` and `brush` events |
  * | `fresh(o)` | a new frame's first summary; the frame is then disposed and its canvas removed |
+ * | `holdTimers(on)` | holds the probe frames' controller timers (none fires; each restarts its full delay on release), so a screenshot does not end a gesture |
  * | `id(n)`, `stats().enqueued` | the frame's engine id (its records' `frame`); Camera records enqueued by probe frames |
  *
  * Probe frames are `ControlledFrame`s: the camera controller runs on them as on the page's engine
@@ -88,6 +89,11 @@ export interface DashProbe {
   commits(n: number): CommitEvent[];
   brushes(n: number): BrushEvent[];
   fresh(o: ProbeFrame): Promise<FrameSummary>;
+  /**
+   * Holds the probe frames' controller timers (the wheel-idle commit): while held none fires, and
+   * on release each restarts its full delay. A screenshot inside a gesture does not end it.
+   */
+  holdTimers(on: boolean): void;
 }
 
 interface Entry {
@@ -148,6 +154,34 @@ export function createProbe(o: {
     return e;
   };
   let enqueued = 0;
+  // The probe frames' controller timers, holdable (`holdTimers`).
+  let held = false;
+  let nextTimer = 1;
+  const timers = new Map<
+    number,
+    { cb: () => void; ms: number; t: ReturnType<typeof setTimeout> | null }
+  >();
+  const arm = (id: number): void => {
+    const x = timers.get(id);
+    if (x === undefined) return;
+    x.t = setTimeout(() => {
+      timers.delete(id);
+      x.cb();
+    }, x.ms);
+  };
+  const deps = {
+    setTimer: (cb: () => void, ms: number): number => {
+      const id = nextTimer++;
+      timers.set(id, { cb, ms, t: null });
+      if (!held) arm(id);
+      return id;
+    },
+    clearTimer: (id: number): void => {
+      const x = timers.get(id);
+      if (x?.t !== null && x?.t !== undefined) clearTimeout(x.t);
+      timers.delete(id);
+    },
+  };
   /**
    * A frame on a canvas at (0, 0), above the page: its spec, data, window and size, then
    * `onA11y` at each summary.
@@ -174,7 +208,7 @@ export function createProbe(o: {
       enqueued += 1;
       setCamera(c);
     };
-    const frame = new ControlledFrame(canvas, init, inner);
+    const frame = new ControlledFrame(canvas, init, inner, deps);
     e.frame = frame;
     e.inner = inner;
     e.canvas = canvas;
@@ -315,6 +349,17 @@ export function createProbe(o: {
           ? new MouseEvent(type, init)
           : new PointerEvent(type, init),
       );
+    },
+    holdTimers(on) {
+      held = on;
+      for (const [id, x] of timers) {
+        if (on && x.t !== null) {
+          clearTimeout(x.t);
+          x.t = null;
+        } else if (!on && x.t === null) {
+          arm(id);
+        }
+      }
     },
     commits: (n) => [...entry(n).commits],
     brushes: (n) => [...entry(n).brushes],

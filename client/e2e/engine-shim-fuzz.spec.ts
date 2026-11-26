@@ -14,7 +14,7 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import { galleryEntries } from '../src/dev/gallery.ts';
-import { GALLERY_FROM, GALLERY_TO, GALLERY_URL, open } from './helpers.ts';
+import { GALLERY_FROM, GALLERY_TO, GALLERY_URL, open, waitReady } from './helpers.ts';
 
 /** The gallery loads the chart engine module (and so the probe); its own frames stay idle. */
 const PROBE_URL = `${GALLERY_URL}&engine=wasm&mode=t2&probe=1`;
@@ -309,7 +309,10 @@ const pct = (xs: number[], q: number): number => {
 test.describe('bench:shim-input-cost', () => {
   test('synthetic wheel and pointer input on a probe frame (report-only)', async ({ page }) => {
     test.setTimeout(300_000);
-    await probeReady(page);
+    // No fixed clock (`open`): it would make `performance.now()` whole milliseconds.
+    await page.goto(PROBE_URL);
+    await waitReady(page, PROBE_URL);
+    await page.waitForFunction(() => '__dashProbe' in window);
     const series = line50();
     const r = await page.evaluate(
       async ({ series, spec, from, to }) => {

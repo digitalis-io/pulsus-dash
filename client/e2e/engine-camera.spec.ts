@@ -19,6 +19,7 @@ import type {
   ValueRange,
   VisSpec,
 } from '../src/engine/api.ts';
+import { fy, valueLimits, zoomAbout, type Span } from '../src/engine/canvas2d/camera.ts';
 import { mulberry32 } from '../src/test/random.ts';
 import { decodePng, leg, liveCanvas, tierOf } from './engine.ts';
 import { frame, GALLERY_URL, galleryReady, open, plotOf } from './helpers.ts';
@@ -54,6 +55,7 @@ interface Probe {
   commits(n: number): CommitEvent[];
   brushes(n: number): BrushEvent[];
   fresh(o: unknown): Promise<FrameSummary>;
+  holdTimers(on: boolean): void;
 }
 
 type Act =
@@ -165,10 +167,19 @@ const vAt = (s: FrameSummary, y: number): number => {
   return a.min + (1 - (y - s.plot.y) / s.plot.height) * (a.max - a.min);
 };
 const winOf = (s: FrameSummary): TimeWindow => ({ fromMs: s.fromMs, toMs: s.toMs });
-const at = (s: FrameSummary, f: number, g = 0.5) => ({
-  x: s.plot.x + f * s.plot.width,
-  y: s.plot.y + g * s.plot.height,
-});
+/**
+ * The point at fractions of the plot, in whole CSS px inside it: Chromium's `WheelEvent` and
+ * `MouseEvent` carry whole-px client coordinates, so the anchor is where the event lands.
+ */
+const at = (s: FrameSummary, f: number, g = 0.5) => {
+  const { x, y, width, height } = s.plot;
+  const clamp = (v: number, lo: number, hi: number): number =>
+    Math.min(Math.floor(hi), Math.max(Math.ceil(lo), Math.round(v)));
+  return {
+    x: clamp(x + f * width, x, x + width),
+    y: clamp(y + g * height, y, y + height),
+  };
+};
 const wheelAt = (p: { x: number; y: number }, init: Record<string, number | boolean>): Act => ({
   k: 'wheel',
   x: p.x,
@@ -208,8 +219,21 @@ async function leftInk(page: Page, s: FrameSummary, size: [number, number] = [80
   return { left, want: Math.round(s.plot.x * dpr) };
 }
 
+/** The probe frames' wheel-idle timer is held through the screenshot (it must not end a gesture). */
+const holdTimers = (page: Page, on: boolean): Promise<void> =>
+  page.evaluate((on) => {
+    (window as unknown as { __dashProbe: Probe }).__dashProbe.holdTimers(on);
+  }, on);
+
 async function expectInkAt(page: Page, s: FrameSummary, what: string): Promise<void> {
-  const { left, want } = await leftInk(page, s);
+  await holdTimers(page, true);
+  let r: { left: number; want: number };
+  try {
+    r = await leftInk(page, s);
+  } finally {
+    await holdTimers(page, false);
+  }
+  const { left, want } = r;
   expect(
     Math.abs(left - want),
     `${what}: leftmost ink ${String(left)} vs plot ${String(want)}`,
@@ -316,14 +340,35 @@ test.describe('e2e:engine-camera', () => {
       const p = at(s0, 0.3, 0.9);
       const ta = tAt(s0, p.x);
       const va = vAt(s0, p.y);
+      // The value ranges the gesture shows (the controller's arithmetic: Shift+wheel −300, then
+      // +1 000 clamped to 400 px), up to the first wider than 1e22 whose measured band is wider
+      // than the held one (a fresh frame's plot x): a label that does not fit the held band.
+      const f = fy(s0.plot, p.y);
+      const zoom = (r: Span, k: number): Span =>
+        zoomAbout(r, f, k, valueLimits(r.lo + f * (r.hi - r.lo)));
+      let r = zoom({ lo: axisOf(s0).min, hi: axisOf(s0).max }, Math.exp(-0.6));
+      let steps = 0;
+      for (let i = 1; i <= 200 && steps === 0; i++) {
+        r = zoom(r, Math.exp(0.8));
+        const wide =
+          r.hi - r.lo > 1e22 &&
+          (await ref(page, { spec: { ...LINE, valueRange: { min: r.lo, max: r.hi } } })) >
+            s0.plot.x;
+        if (wide) steps = i;
+      }
+      expect(steps, 'a range past 1e22 with a non-fitting label').toBeGreaterThan(0);
       const first = await gstep(page, n, [wheelAt(p, { deltaY: -300, shiftKey: true })]);
       await expectInkAt(page, first, 'first preview');
       const frames = [first];
       let s = first;
-      for (let i = 0; i < 200 && axisOf(s).max - axisOf(s).min <= 1e22; i++) {
+      for (let i = 0; i < steps; i++) {
         s = await gstep(page, n, [wheelAt(p, { deltaY: 1_000, shiftKey: true })]);
         frames.push(s);
       }
+      // The precomputed range, to rounding (the page's and Node's Math.exp may differ in the ulp).
+      const span = r.hi - r.lo;
+      expect(Math.abs(axisOf(s).min - r.lo) / span).toBeLessThan(1e-9);
+      expect(Math.abs(axisOf(s).max - r.hi) / span).toBeLessThan(1e-9);
       expect(axisOf(s).max - axisOf(s).min).toBeGreaterThan(1e22);
       await expectInkAt(page, s, 'last preview');
       for (const f of frames) expectHeld(f, s0, p, ta, va);
