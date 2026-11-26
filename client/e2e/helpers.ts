@@ -87,6 +87,20 @@ export const GALLERY_IDS = [
   'stat-sparkline',
   'line-extreme',
   'line-events',
+  'barchart',
+  'barchart-thresholds',
+  'barchart-dupes',
+  'barchart-subset',
+  'barchart-cap',
+] as const;
+
+/** The bar chart entries (#173 Part 2), also shot in greyscale (VIZ-067). */
+export const BARCHART_IDS = [
+  'barchart',
+  'barchart-thresholds',
+  'barchart-dupes',
+  'barchart-subset',
+  'barchart-cap',
 ] as const;
 
 /** The chart frame of a gallery entry. */

@@ -1,16 +1,24 @@
 /**
- * The chart frame seam (ADR-0014 §3, amended by ADR-0019, ADR-0020, ADR-0022, ADR-0023 and ADR-0025). Every chart is drawn by a `ChartEngine`
+ * The chart frame seam (ADR-0014 §3, amended by ADR-0019, ADR-0020, ADR-0022, ADR-0023, ADR-0025 and ADR-0028). Every chart is drawn by a `ChartEngine`
  * through this interface only: the interim Canvas 2D engine now, the Rust/WASM engine later (#68), which changes
  * only `engine/index.ts`. Specs and data are validated values, never code. Events report what the
  * engine saw; the application owns the Context and the URL (ADR-0014 §2).
  */
-import type { FrameData } from '../data/frames';
+import type { Coverage, FrameData } from '../data/frames';
 import type { Unit } from '../i18n/format';
-export type { FrameData, SeriesFrame, HeatmapFrame, ScalarFrame } from '../data/frames';
+export type {
+  CategoryRow,
+  Coverage,
+  FrameData,
+  SeriesFrame,
+  HeatmapFrame,
+  ScalarFrame,
+} from '../data/frames';
 export type { Unit } from '../i18n/format';
 
 export type ThemeName = 'dark' | 'light';
-export type VisKind = 'line' | 'bars' | 'heatmap' | 'stat';
+/** I3 adds `pie` (T22). */
+export type VisKind = 'line' | 'bars' | 'heatmap' | 'stat' | 'barchart';
 export interface TimeWindow {
   readonly fromMs: number;
   readonly toMs: number;
@@ -31,6 +39,28 @@ export interface ThresholdLine {
   readonly state: ThresholdState;
   /** Display text, drawn after the state glyph; plain text, never markup. */
   readonly label: string;
+}
+
+/**
+ * A bar chart of reduced categories (ADR-0028, T22 §5.1): one bar per `categories` row, in data
+ * order. The panel's fit (`vis/barchart.ts`) sets `names` and may lower `valueLabels`.
+ */
+export interface BarchartSpec {
+  readonly kind: 'barchart';
+  readonly title: string;
+  readonly unit: Unit;
+  readonly orientation: 'horizontal' | 'vertical';
+  readonly valueLabels: boolean;
+  /** Set by the fit (plan #173 Part 2 §3.4 step 7): no category names are drawn. */
+  readonly names?: 'hidden';
+  /** Absent = auto: [min(0, drawn, thresholds), max(0, …)], nice-rounded. */
+  readonly valueRange?: ValueRange;
+  /** Absent = none; at most 8 are drawn, in order (ADR-0022). */
+  readonly thresholds?: readonly ThresholdLine[];
+  /** A dashed bar at each finite baseline. */
+  readonly ghost: boolean;
+  /** Nothing is drawn until Epic #9. */
+  readonly anomaly: boolean;
 }
 
 /** Validated data, never code. One axis per side; the time axis is the Context window. */
@@ -66,7 +96,8 @@ export type VisSpec =
       readonly countUnit: Unit;
     }
   /** With series data, a sparkline of the first series is drawn under the value (ADR-0022). */
-  | { readonly kind: 'stat'; readonly title: string; readonly unit: Unit };
+  | { readonly kind: 'stat'; readonly title: string; readonly unit: Unit }
+  | BarchartSpec;
 
 export interface FrameInit {
   /** IANA zone for the time axis. */
@@ -184,7 +215,7 @@ export interface EventLabelBox {
 
 export interface FrameSummary {
   readonly kind: VisKind;
-  /** Heatmap: buckets; bars: categories; stat: 1. */
+  /** Heatmap: buckets; bars: categories; stat: 1; barchart: `coverage.total`. */
   readonly seriesTotal: number;
   readonly seriesShown: number;
   readonly fromMs: number;
@@ -203,6 +234,12 @@ export interface FrameSummary {
   readonly thresholdLabels: readonly ThresholdLabelBox[];
   /** The event labels in x order (line, bars, heatmap; [] for stat; ADR-0023). */
   readonly eventLabels: readonly EventLabelBox[];
+  /** The frame data's coverage, copied (categories only; ADR-0028). */
+  readonly coverage?: Coverage;
+  /** Barchart: no category names were drawn (T22-004). */
+  readonly namesHidden?: true;
+  /** Barchart: no value labels were drawn (the spec's `valueLabels` is false). */
+  readonly valuesHidden?: true;
 }
 
 /**
@@ -223,6 +260,26 @@ export interface SummaryFacts {
   readonly baselineRatio: number | null;
 }
 
+/**
+ * The bar under the pointer or the keyboard focus (ADR-0028): its key, its draw index, the value end
+ * and band centre of the bar (CSS px), and one row (`colourIndex` null when state-coloured).
+ */
+export interface MarkEvent {
+  readonly source: 'pointer' | 'keyboard';
+  readonly key: string;
+  /** Draw order. */
+  readonly index: number;
+  readonly xCss: number;
+  readonly yCss: number;
+  readonly rows: readonly HoverRow[];
+}
+
+/** A click on a bar (`keys` = [its key]) or on no bar (`[]`), or a brush (Part 3; ADR-0028). */
+export interface PickEvent {
+  readonly keys: readonly string[];
+  readonly gesture: 'click' | 'brush';
+}
+
 /** The visible canvas was drawn completely at this size (#90, ADR-0019). */
 export interface DrawnEvent {
   readonly cssWidth: number;
@@ -237,6 +294,8 @@ export interface FrameEvents {
   a11y: FrameSummary;
   drawn: DrawnEvent;
   commit: CommitEvent;
+  mark: MarkEvent | null;
+  pick: PickEvent;
 }
 
 export interface ChartEngine {

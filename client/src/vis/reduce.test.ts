@@ -195,6 +195,27 @@ describe('unit:coverage-text', () => {
     expect(coverageText(coverage({ outside: 5 }))).toBe('5 values outside the fixed range');
   });
 
+  it('map area counts (T22-006, T24-098)', () => {
+    expect(
+      coverageText(
+        coverage({ area: { outside: 1_200, unlocated: 3, unapplied: 2 }, staleAtMs: 0 }),
+        'UTC',
+      ),
+    ).toBe(
+      'stale (00:00:00) · 1,200 outside the map area · 3 without a location · ' +
+        'map area not applied to 2 (locations unavailable)',
+    );
+    expect(coverageText(coverage({ area: { outside: 0, unlocated: 0, unapplied: 0 } }))).toBe(
+      '100 %',
+    );
+    expect(coverageText(coverage({ area: { outside: 0, unlocated: 4, unapplied: 0 } }))).toBe(
+      '4 without a location',
+    );
+    expect(coverageText(coverage({ area: { outside: 0, unlocated: 0, unapplied: 1 } }))).toBe(
+      'map area not applied to 1 (locations unavailable)',
+    );
+  });
+
   it('geomap counts (T22-006, T24 §4.11)', () => {
     const geo = {
       notPlaced: 3,

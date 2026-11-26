@@ -374,3 +374,23 @@ describe('unit:panel-view LogQL', () => {
     }
   });
 });
+
+describe('barchart boundary (#173 Part 2)', () => {
+  it('a board `auto` panel with a reducer over 5 range series stays a line', () => {
+    const five: RangeResult = {
+      ...R_A,
+      series: [1, 2, 3, 4, 5].map((i) => ({
+        key: i.toString(16).padStart(16, '0'),
+        labels: { version: `2.${String(i)}` },
+        timestamps: R_A.series[0]?.timestamps ?? new Float64Array(0),
+        values: new Float64Array([i, i + 1, i + 2]),
+      })),
+    };
+    const view = panelView(
+      { ...BASE, outcome: outcome(five) },
+      { kind: 'auto', options: { reducer: 'max' } },
+      'T',
+    );
+    expect(view).toMatchObject({ kind: 'frame', vis: 'line', spec: { kind: 'line' } });
+  });
+});

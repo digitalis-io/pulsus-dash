@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { VisSpec } from '../engine/api';
 import {
+  EMPTY_COVERAGE,
   emptyFrameData,
   seriesName,
   validateFrameData,
@@ -109,5 +110,48 @@ describe('unit:frame-validate', () => {
     expect(seriesName({ __name__: 'up', b: '2', a: '1' })).toBe('up{a="1", b="2"}');
     expect(seriesName({})).toBe('{}');
     expect(seriesName({ level: 'error' })).toBe('{level="error"}');
+  });
+});
+
+describe('unit:frame-data-categories', () => {
+  const BAR: VisSpec = {
+    kind: 'barchart',
+    title: 'T',
+    unit: { kind: 'none' },
+    orientation: 'horizontal',
+    valueLabels: true,
+    ghost: false,
+    anomaly: false,
+  };
+  const row = (key: string) => ({
+    key,
+    labels: {},
+    name: key,
+    value: 1,
+    state: null,
+    baseline: null,
+    anomaly: null,
+    members: null,
+  });
+  const cats = (keys: string[]): FrameData => ({
+    kind: 'categories',
+    categories: keys.map(row),
+    coverage: EMPTY_COVERAGE,
+  });
+  const key = (i: number): string => i.toString(16).padStart(16, '0');
+
+  it('kind, then the 200-row cap, then the first bad or repeated key', () => {
+    expect(validateFrameData(BAR, lines(series(K1, [0], [1])))).toEqual({ code: 'kind' });
+    expect(validateFrameData(LINE, cats([K1]))).toEqual({ code: 'kind' });
+    const many = Array.from({ length: 201 }, (_, i) => key(i + 1));
+    expect(validateFrameData(BAR, cats(many))).toEqual({ code: 'cap', count: 201, max: 200 });
+    expect(validateFrameData(BAR, cats(many.slice(0, 200)))).toBeNull();
+    expect(validateFrameData(BAR, cats([K1, 'bad', K2]))).toEqual({ code: 'key', key: 'bad' });
+    expect(validateFrameData(BAR, cats([K1, K2, K1]))).toEqual({ code: 'key', key: K1 });
+    expect(emptyFrameData(BAR)).toEqual({
+      kind: 'categories',
+      categories: [],
+      coverage: EMPTY_COVERAGE,
+    });
   });
 });

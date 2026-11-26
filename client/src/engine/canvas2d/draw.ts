@@ -20,7 +20,13 @@
  * rectangle then depends only on the held width.
  */
 import { font, radius, size, space } from '../../styles/tokens';
-import { statValue, type FrameData, type HeatmapFrame, type SeriesFrame } from '../../data/frames';
+import {
+  EMPTY_COVERAGE,
+  statValue,
+  type FrameData,
+  type HeatmapFrame,
+  type SeriesFrame,
+} from '../../data/frames';
 import { compactSamples, formatCompact, formatValue, type Unit } from '../../i18n/format';
 import type {
   EventMarker,
@@ -32,6 +38,7 @@ import type {
   ValueRange,
   VisSpec,
 } from '../api';
+import { drawBarchart, type BarPick } from './barchart';
 import { bucketScale, type BucketScale } from './bucketScale';
 import { bucketEnd, columnCount, lineColumns, mergeBuckets, type Column } from './columns';
 import type { Ctx2D } from './ctx';
@@ -118,7 +125,8 @@ export type PickModel =
       readonly heatmap: HeatmapFrame;
       readonly scale: BucketScale;
       readonly unit: Unit;
-    };
+    }
+  | BarPick;
 
 export interface LayerModel {
   readonly summary: FrameSummary;
@@ -840,6 +848,7 @@ export function measureValueBand(i: LayerInput): number {
       return heatmapAxis(m, data.kind === 'heatmap' ? data.heatmap : emptyHeatmap(), spec.unit)
         .width;
     case 'stat':
+    case 'barchart':
       return 0;
   }
 }
@@ -858,6 +867,10 @@ export function drawLayer(i: LayerInput): LayerModel {
       return drawHeatmap(i, spec, data.kind === 'heatmap' ? data.heatmap : emptyHeatmap());
     case 'stat':
       return drawStat(i);
+    case 'barchart':
+      return data.kind === 'categories'
+        ? drawBarchart(i, spec, data.categories, data.coverage)
+        : drawBarchart(i, spec, [], EMPTY_COVERAGE);
   }
 }
 

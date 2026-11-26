@@ -654,7 +654,7 @@ test.describe('e2e:a11y-rooms gallery', () => {
   test('gallery canvases expose their summary', async ({ page }) => {
     await open(page, GALLERY_URL);
     await galleryReady(page);
-    await expect(page.locator('canvas[role="img"]')).toHaveCount(11);
+    await expect(page.locator('canvas[role="img"]')).toHaveCount(16);
     const label = (id: string) => frame(page, id).locator('canvas').getAttribute('aria-label');
     const range = '12:00 – 13:00 GMT';
     expect(await label('line-50')).toMatch(
@@ -678,5 +678,24 @@ test.describe('e2e:a11y-rooms gallery', () => {
     await expect(frame(page, 'line-600').getByRole('status')).toHaveText(
       'Showing 500 of 600 series',
     );
+    // #173 Part 2: a bar chart counts its bars; its meter is outside the frame.
+    expect(await label('barchart')).toBe('Requests by version: 5 bars');
+    // Review r1: the canvas is described by a hidden list of every bar, full name and value.
+    const listId = await frame(page, 'barchart').locator('canvas').getAttribute('aria-describedby');
+    expect(listId).not.toBeNull();
+    const list = page.locator(`[id="${listId ?? ''}"]`);
+    await expect(list.locator('li')).toHaveText([
+      '2.31: 120',
+      '2.29: 40',
+      '2.33: 15',
+      '2.30: 7',
+      '2.32: 3',
+    ]);
+    await expect(
+      frame(page, 'barchart-thresholds').locator('[data-bar-list] li').first(),
+    ).toHaveText('2.31: 120, Failing');
+    await expect(
+      page.locator('[data-gallery-id="barchart"] [data-coverage-meter]').getByRole('status'),
+    ).toHaveText('100 %');
   });
 });

@@ -764,3 +764,57 @@ describe('heatmap missing cells (plan #63 §4.3.1)', () => {
     expect(h.a11y.at(-1)).toMatchObject({ max: 4 });
   });
 });
+
+describe('unit:frame-coverage', () => {
+  it('a barchart copies its data coverage into the summary; a line has none', async () => {
+    const { many } = await import('../../test/categoryFixtures');
+    const { barCap, capMarks, categoryCoverage } = await import('../../vis/reduce');
+    const { BOTTOM, categoryExtent } = await import('./layout');
+    const spec: VisSpec = {
+      kind: 'barchart',
+      title: 'B',
+      unit: { kind: 'none' },
+      orientation: 'horizontal',
+      valueLabels: true,
+      ghost: false,
+      anomaly: false,
+    };
+    const height = 2_800 + 8 + BOTTOM;
+    expect(categoryExtent(spec, 600, height)).toBe(2_800);
+    const cap = barCap(categoryExtent(spec, 600, height));
+    expect(cap).toBe(200);
+    const all = many();
+    const capped = capMarks(all, cap);
+    const coverage = categoryCoverage({
+      all,
+      capped,
+      query: {
+        truncated: false,
+        warnings: [],
+        infos: [],
+        queryId: null,
+        dataAgeMs: null,
+        readCache: null,
+        readCacheThroughMs: null,
+      },
+      baseline: null,
+      outside: 0,
+      duplicates: 0,
+      conflicts: 0,
+    });
+    const h = harness(Canvas2DEngine);
+    show(
+      h,
+      spec,
+      { kind: 'categories', categories: capped.drawn, coverage },
+      { fromMs: 0, toMs: 1 },
+      [600, height, 1],
+    );
+    expect(h.a11y.at(-1)).toMatchObject({ kind: 'barchart', seriesTotal: 250, seriesShown: 200 });
+    expect(h.a11y.at(-1)?.coverage).toEqual(coverage);
+
+    const line = harness(Canvas2DEngine);
+    show(line, LINE_NONE, seriesData(seriesFrame(K(1), [0, 1], [1, 2])), { fromMs: 0, toMs: 1 });
+    expect(line.a11y.at(-1)).not.toHaveProperty('coverage');
+  });
+});

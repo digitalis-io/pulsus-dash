@@ -168,13 +168,19 @@ never carry them. `panelFrame(view, key)` is the frame with series `key` isolate
 ### Pending kinds
 
 Board spec v3 (#173 Part 1, [the boards API](../server/boards-api.md#visoptions-v3)) stores the
-kinds `barchart` and `pie` and their `vis.options`, before this version can draw them (the bar
-chart comes with #173 Part 2, the pie with T22 I3). `PENDING_KINDS` (`boards/options.ts`) lists
-them. Such a panel is blocked before anything is sent, in both languages
+kinds `barchart` and `pie` and their `vis.options`, before boards can draw them (the bar chart
+comes to boards with #173 Part 3, the pie with T22 I3). `PENDING_KINDS` (`boards/options.ts`) lists
+them. #173 Part 2 ships the bar chart's engine seam, drawing, fit and meter
+([Charts](charts.md#bar-chart-adr-0028), [Categorical panels](panels.md)), shown only in the chart
+gallery: boards keep both kinds pending. Such a panel is blocked before anything is sent, in both languages
 (`usePanelRun`/`useLogPanelRun` set `pre` to `kindUnavailable`, ahead of every other check), so it
 makes no request, and shows the message above. Its saved spec, options included, is kept as it
 is. Open in Explore opens such a panel's query on Auto, and a LogQL panel of a pending kind maps to
-the `logs-frame` path (unused while it is blocked).
+the `logs-frame` path (unused while it is blocked). The editor lists Bar chart and Pie only as the
+disabled option of a panel that stores them. The auto-vis row 11 (bar chart) is not in the boards'
+`available` set either, so an `auto` panel with a `reducer` over a few range series is still a line
+(`unit:autovis-table`, and the boundary tests in `boards/panelRun.test.ts` and
+`pages/board/PanelEditorKinds.test.tsx`).
 
 `data-panel-state` on the panel's root is the view kind or the message state, and `data-panel-vis`
 the drawn vis of a frame. The completeness badge (`PanelNotices`: **Partial data** or **Warnings**,
@@ -553,7 +559,8 @@ failing 0.05 "SLO breach").
   shimmer).
 - Board tags (#215): [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-029
   and §5.5; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v3 upcast).
-- Board spec v3 and the pending kinds (#173 Part 1):
-  [T22](../../designs/technical/T22-value-categorical-and-table-panels.md) §6.1 (`vis.options`)
-  and T22-002; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v2 upcast); the
-  categorical transforms are on [the panels page](panels.md).
+- Board spec v3 and the pending kinds (#173 Parts 1 and 2):
+  [T22](../../designs/technical/T22-value-categorical-and-table-panels.md) §6.1 (`vis.options`),
+  T22-002 and §4.5 (row 11 not available on boards until Part 3);
+  [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v2 upcast); the categorical
+  transforms are on [the panels page](panels.md).
