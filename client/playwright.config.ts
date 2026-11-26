@@ -13,7 +13,9 @@ const chromiumOnly =
 
 // The servers of plan #59 §3.7: the PulsusDB fake both BFFs use as their data source (plan #63
 // §4.5), the stub-mode and http-mode BFF builds (`make e2e-build`), and the Vite dev server
-// proxied to the http-mode BFF.
+// proxied to the http-mode BFF. The suite runs on host browsers with uncontrolled GPUs, so every
+// build it serves pins Canvas 2D (`VITE_ENGINE=canvas2d`, plan #256 §4.3; `e2e:canvas2d-pin`
+// fails if the pin is lost); the engine suite (playwright.engine.config.ts) proves the default.
 const bffServers = [
   {
     command: 'tools/e2e/fake.sh 4190',
@@ -39,7 +41,11 @@ const bffServers = [
   {
     command: 'npx --no-install vite --port 5174 --strictPort',
     cwd: '.',
-    env: { VITE_API_MODE: 'http', PULSUS_DASH_DEV_BFF: 'http://localhost:4174' },
+    env: {
+      VITE_API_MODE: 'http',
+      VITE_ENGINE: 'canvas2d',
+      PULSUS_DASH_DEV_BFF: 'http://localhost:4174',
+    },
     url: 'http://localhost:5174',
     reuseExistingServer: !ci,
     timeout: 120_000,
@@ -47,6 +53,7 @@ const bffServers = [
 ];
 const previewServer = {
   command: 'npm run build && npm run preview',
+  env: { VITE_ENGINE: 'canvas2d' },
   url: 'http://localhost:4173',
   reuseExistingServer: !ci,
   timeout: 120_000,

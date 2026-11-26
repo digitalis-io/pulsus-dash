@@ -20,11 +20,37 @@ resolution, the bundled basemap and gazetteer, their validation and loading, `sr
 ## Run
 
 ```sh
+make engine-wasm     # once, from the repository root: the chart engine (engine web image)
 cd client
 npm ci
 npm run dev          # http://localhost:5173, stub API, no backend needed
 npm run build && npm run preview   # the production build on http://localhost:4173, production headers
 ```
+
+`make client-dev` (from the repository root) builds the engine and starts the dev server in one
+step. The GPU chart engine is the default renderer
+([ADR-0031](../../designs/adr/0031-gpu-engine-default-renderer.md),
+[Chart engine](engine.md#choosing-an-engine)), so every build and dev server includes it: without
+`client/src/engine/wasm/gen/`, `npm run build` (`vite build`) and `npm run dev` (`vite`) exit
+non-zero with
+
+```text
+the chart engine is not built (src/engine/wasm/gen/ is missing): run make engine-wasm first
+```
+
+(`gen-probe/` and `make engine-wasm-probe` with `VITE_ENGINE_PROBE=1`). There is no opt-out; only
+the unit tests (`npm test`, through `vitest.config.ts`) run without the engine; setting `VITEST` does not change that. Rebuild it with `make engine-wasm` after
+changing `engine/`.
+
+`npm run preview` serves an `/asset-manifest.json` it computes from the `dist/` it serves (every
+file's SHA-384 and size, as the BFF's manifest without the compressed variants,
+`config/previewManifest.ts`), so the engine's integrity check runs and the engine loads there too.
+That manifest is computed by the server it describes, so the preview is for this machine only: with
+`--host`, or `preview.host` set to anything but `localhost`, `::1` or an address in 127.0.0.0/8, it
+refuses to start with "the preview server computes its own asset manifest and is for this machine
+only: …; serve the client through the BFF (make build) instead". The BFF's signed manifest
+([ADR-0016](../../designs/adr/0016-asset-integrity-verified-by-bff.md)) is the only deployment
+path. The dev server serves no manifest and fetches the wasm without an integrity check.
 
 In production the BFF serves the client: `make build` embeds an `http`-mode build in the binary
 ([Serving the client](../server/README.md#serving-the-client)). To develop against a running BFF,
@@ -36,6 +62,7 @@ start it with `serve --api-only` (or a full build) and run `VITE_API_MODE=http n
 | `VITE_API_MODE`       | the client at build and dev time (`createApi()`) | `stub` (in-repo seeded data) or `http` (the BFF client) | `stub`                  |
 | `PULSUS_DASH_DEV_BFF` | `vite.config.ts` (dev server only)               | base URL the dev server proxies `/api` and `/auth` to   | `http://localhost:8080` |
 | `VITE_GIT_SHA`        | the About dialog                                 | commit SHA (CI sets it); shown as 12 characters         | `dev`                   |
+| `VITE_ENGINE`         | the client at build and dev time (`select.ts`)   | `canvas2d` forces Canvas 2D (the engine is still built in); any other value, or none, the engine; the URL's `?engine=` beats it | unset (the engine) |
 
 The proxy target is never logged. In `http` mode the client is `HttpApi` (below).
 

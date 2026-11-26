@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Starts an e2e BFF (plan #59 §3.7): tools/e2e/serve.sh MODE PORT, MODE = stub, http or probe (the
-# probe build of e2e:shim-fuzz, plan #68 C2a1). Needs make e2e-build (probe: make e2e-build-probe),
+# Starts an e2e BFF (plan #59 §3.7): tools/e2e/serve.sh MODE PORT, MODE = stub, http, probe (the
+# probe build of e2e:shim-fuzz, plan #68 C2a1) or release (the unflagged release build of the engine
+# suite's default legs, plan #256). Needs make e2e-build (probe: make e2e-build-probe, release:
+# make e2e-build-release),
 # and E2E_PG_APP_URL / E2E_PG_OWNER_URL pointing at a database with the
 # roles of server/deploy/postgres-roles.sql (docs/development/build-and-ci.md#end-to-end-tests).
 set -euo pipefail

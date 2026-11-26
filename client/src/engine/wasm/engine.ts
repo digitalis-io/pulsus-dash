@@ -87,7 +87,10 @@ export interface Backend {
 /** Fetches (with integrity) and compiles the engine; never instantiates it here. */
 async function compileEngine(): Promise<WebAssembly.Module> {
   const { wasmUrl } = await import('virtual:dash-engine');
-  if (wasmUrl === null) throw new Error('the engine is not in this build');
+  if (wasmUrl === null) {
+    // Not a boot failure: `markOnFailure` leaves the session unmarked (plan #256 §3.2).
+    throw Object.assign(new Error('the engine is not in this build'), { name: 'EngineAbsent' });
+  }
   const r = await fetchEngineWasm(wasmUrl, {
     fetch: globalThis.fetch.bind(globalThis),
     dev: import.meta.env.DEV,
