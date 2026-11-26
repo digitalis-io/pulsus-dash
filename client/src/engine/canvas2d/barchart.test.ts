@@ -389,3 +389,15 @@ describe('unit:barchart-ghost', () => {
     }
   });
 });
+
+describe('unit:barchart-events (window)', () => {
+  it('a new time window is stored without a redraw', () => {
+    const h = harness(Canvas2DEngine);
+    show(h, spec(), cats(versions()));
+    const draws = h.layer().calls('setTransform').length;
+    h.frame.setTimeWindow({ fromMs: 1, toMs: 2 });
+    h.flush();
+    expect(h.layer().calls('setTransform')).toHaveLength(draws);
+    expect(h.queued()).toBe(0);
+  });
+});

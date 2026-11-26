@@ -286,6 +286,12 @@ class Canvas2DFrame implements ChartFrame {
       this.window = win;
       return;
     }
+    if (this.isBar()) {
+      // A bar chart has no time axis: the window is stored, nothing is redrawn (ADR-0028).
+      this.window = win;
+      this.view = spanOf(win);
+      return;
+    }
     const base = this.window;
     if (g === null && (base === null || base.fromMs !== win.fromMs || base.toMs !== win.toMs)) {
       this.bandHold = null;
