@@ -13,6 +13,8 @@ pub enum FailReason {
     Surface,
     /// Its status read-back failed three times in a row.
     Readback,
+    /// A device restore landed on another tier than its canvas was set up for.
+    Tier,
 }
 
 impl FailReason {
@@ -20,6 +22,7 @@ impl FailReason {
         match self {
             FailReason::Surface => "surface",
             FailReason::Readback => "readback",
+            FailReason::Tier => "tier",
         }
     }
 }
@@ -43,7 +46,16 @@ pub fn drawn(id: u32, ev: &DrawnEvent, start_ms: f64, end_ms: f64, series: u32) 
     .to_string()
 }
 
-/// `{"t":"failed","id":…,"reason":"surface"|"readback"}`.
+/// `{"t":"tier","tier":"t1"|"t2"}`: the engine's tier after a device restore changed it.
+pub fn tier(t: dash_gpu::Tier) -> String {
+    let name = match t {
+        dash_gpu::Tier::T1 => "t1",
+        dash_gpu::Tier::T2 => "t2",
+    };
+    json!({"t": "tier", "tier": name}).to_string()
+}
+
+/// `{"t":"failed","id":…,"reason":"surface"|"readback"|"tier"}`.
 pub fn failed(id: u32, reason: FailReason) -> String {
     json!({"t": "failed", "id": id, "reason": reason.as_str()}).to_string()
 }

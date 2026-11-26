@@ -230,4 +230,51 @@ describe('engine restart policy (T03 §9.2)', () => {
     expect(p.c2d.createCalls.at(-1)?.canvas).toBe(later);
     expect(p.render).toHaveLength(2);
   });
+
+  it('device loss: a restore on another tier moves the frames to Canvas 2D; later frames use it (review r1 #3)', async () => {
+    const { markSessionFailed } = await import('../failFlag');
+    const p = await page(markSessionFailed);
+    const [w1] = p.render;
+    // T1 lost, only WebGL2 left: the worker reports the new tier and fails the old frames.
+    w1?.message({
+      t: 'events',
+      json: JSON.stringify([
+        { t: 'tier', tier: 't2' },
+        { t: 'failed', id: 1, reason: 'tier' },
+      ]),
+    });
+    await flush();
+    const c2 = canvases(p.host)[1];
+    expect(c2?.dataset['engine']).toBe('canvas2d');
+    expect(notices(p.host)).toBe(1);
+    const fr = p.c2d.frames[0];
+    expect([fr?.last('setSpec'), fr?.last('setData'), fr?.last('setTimeWindow')]).toEqual([
+      [S],
+      [D],
+      [W],
+    ]);
+    expect(p.render).toHaveLength(1);
+    expect(sessionStorage.getItem(KEY)).toBe(null);
+    // A later line frame binds on the new tier.
+    const later = document.createElement('canvas');
+    p.host.append(later);
+    p.engine.createFrame(later, { timeZone: 'UTC', keyTarget: null }).setSpec(S);
+    await flush();
+    expect(later.dataset['engine']).toBe('wasm-webgl2');
+  });
+
+  it('device loss: a fatal report (repeated loss, failed restore) ends the engine (review r1 #2)', async () => {
+    const { markSessionFailed } = await import('../failFlag');
+    const p = await page(markSessionFailed);
+    p.render[0]?.drawn(1);
+    p.render[0]?.message({
+      t: 'events',
+      json: JSON.stringify([{ t: 'fatal', reason: 'device-lost' }]),
+    });
+    await flush();
+    expect(canvases(p.host)[1]?.dataset['engine']).toBe('canvas2d');
+    expect(p.render).toHaveLength(1);
+    expect(p.render[0]?.terminated).toBe(true);
+    expect(sessionStorage.getItem(KEY)).toBe('1');
+  });
 });

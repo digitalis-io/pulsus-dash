@@ -164,6 +164,11 @@ class EngineHost implements Backend {
         this.fatal();
         return;
       }
+      if (ev.t === 'tier') {
+        // Later frames bind on the new tier; the old ones fall back (`failed{tier}`).
+        this.tier = ev.tier;
+        continue;
+      }
       if (ev.t === 'drawn') this.drawn = true;
       this.frames.get(ev.id)?.frame.handle(ev);
     }

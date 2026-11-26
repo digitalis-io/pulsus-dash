@@ -79,9 +79,11 @@ export type RenderEvent =
       readonly endMs: number;
       readonly series: number;
     }
-  | { readonly t: 'failed'; readonly id: number; readonly reason: 'surface' | 'readback' }
+  | { readonly t: 'failed'; readonly id: number; readonly reason: 'surface' | 'readback' | 'tier' }
+  /** A device restore changed the engine's tier; the frames on the old tier report `failed{tier}`. */
+  | { readonly t: 'tier'; readonly tier: 't1' | 't2' }
   /** The engine cannot go on (a second device loss within 60 s): as a second trap. */
   | { readonly t: 'fatal'; readonly reason: string };
 
 /** The events addressed to one frame. */
-export type FrameEvent = Exclude<RenderEvent, { readonly t: 'fatal' }>;
+export type FrameEvent = Exclude<RenderEvent, { readonly t: 'fatal' } | { readonly t: 'tier' }>;

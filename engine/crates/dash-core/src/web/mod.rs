@@ -23,11 +23,9 @@ use wasm_bindgen::prelude::*;
 
 use crate::events::{self, FailReason};
 use crate::frames::Frames;
+use crate::recovery::{LossAction, LossPolicy, Restored, restore_events, restored};
 use control::Control;
 use gpu::{Gpu, SurfaceTarget, bitmap_context, format};
-
-/// A second device loss within this window ends the engine (plan #68 C1 §4.3).
-const LOST_AGAIN_MS: f64 = 60_000.0;
 
 /// What `engine_start` returns: the runtime status (1 T1, 2 T2, 4 Failed) and the control block's
 /// address.
@@ -79,13 +77,31 @@ struct Engine {
     /// Events produced outside a tick (a surface that could not be made).
     queued: Vec<String>,
     frame_no: u64,
-    lost_at: Option<f64>,
+    losses: LossPolicy,
     restoring: bool,
     dead: bool,
 }
 
 thread_local! {
     static ENGINE: RefCell<Option<Engine>> = const { RefCell::new(None) };
+    /// The worker's wake-up (`engine_on_wake`): schedules an animation frame when the loop is idle.
+    static WAKE: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
+}
+
+/// Wakes the render loop (a device loss or a finished restore while no frame was dirty).
+pub(crate) fn wake() {
+    WAKE.with_borrow(|w| {
+        if let Some(f) = w {
+            let _ = f.call0(&JsValue::NULL);
+        }
+    });
+}
+
+/// The function that schedules the next animation frame; called when the engine needs a tick
+/// outside the frame loop (device loss, restore).
+#[wasm_bindgen]
+pub fn engine_on_wake(wake: &js_sys::Function) {
+    WAKE.with_borrow_mut(|w| *w = Some(wake.clone()));
 }
 
 fn with<T>(f: impl FnOnce(&mut Engine) -> T) -> Option<T> {
@@ -127,7 +143,7 @@ pub async fn engine_start(force_t2: bool, caps_bits: u32, epoch: u32) -> BootSta
                     failed: BTreeSet::new(),
                     queued: Vec::new(),
                     frame_no: 0,
-                    lost_at: None,
+                    losses: LossPolicy::default(),
                     restoring: false,
                     dead: false,
                 });
@@ -352,13 +368,14 @@ impl Engine {
             return events::batch(&out);
         }
         if self.gpu.lost.load(Ordering::Acquire) && !self.restoring {
-            if self.lost_at.is_some_and(|t| now_ms - t < LOST_AGAIN_MS) {
-                self.dead = true;
-                out.push(events::fatal("device-lost"));
-                return events::batch(&out);
+            match self.losses.on_lost(now_ms) {
+                LossAction::Fatal => {
+                    self.dead = true;
+                    out.push(events::fatal("device-lost"));
+                    return events::batch(&out);
+                }
+                LossAction::Restore => self.restore(),
             }
-            self.lost_at = Some(now_ms);
-            self.restore();
         }
         if self.restoring {
             return events::batch(&out);
@@ -542,17 +559,21 @@ impl Engine {
         }
     }
 
-    /// The device was lost (first time in 60 s): a new device on the same canvases, every frame
-    /// redrawn.
+    /// The device was lost (first time in 60 s): a new device. On the same tier every frame is
+    /// redrawn on its canvas; on another tier (T1 lost, only WebGL2 left) the frames fall back to
+    /// Canvas 2D (`failed{tier}`) and later frames use the new tier; with no device, `fatal`.
     fn restore(&mut self) {
         self.restoring = true;
-        let force_t2 = self.gpu.ctx.tier == Tier::T2;
+        let old = self.gpu.ctx.tier;
         wasm_bindgen_futures::spawn_local(async move {
-            let gpu = Gpu::init(force_t2).await;
+            let gpu = Gpu::init(old == Tier::T2).await;
             with(|e| {
                 e.restoring = false;
-                match gpu {
-                    Ok(g) => {
+                let outcome = restored(old, gpu.as_ref().ok().map(|g| g.ctx.tier));
+                let ids = e.frames.ids();
+                e.queued.extend(restore_events(&ids, outcome));
+                match (outcome, gpu) {
+                    (Restored::Same, Ok(g)) => {
                         e.gpu = g;
                         for fg in e.gpus.values_mut() {
                             fg.renderer = None;
@@ -568,15 +589,23 @@ impl Engine {
                             }
                         }
                         e.awaiting.clear();
-                        let ids = e.frames.ids();
                         e.dirty.extend(ids);
                     }
-                    Err(_) => {
-                        e.dead = true;
-                        e.queued.push(events::fatal("device-lost"));
+                    (Restored::TierChanged(_), Ok(g)) => {
+                        // `restore_events` reported each frame failed: drop their GPU side.
+                        e.gpu = g;
+                        for id in ids {
+                            e.failed.insert(id);
+                            e.gpus.remove(&id);
+                            e.dirty.remove(&id);
+                            e.awaiting.remove(&id);
+                        }
                     }
+                    _ => e.dead = true,
                 }
             });
+            // The loop may be idle: the next tick posts the events and redraws.
+            wake();
         });
     }
 }
