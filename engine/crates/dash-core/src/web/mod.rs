@@ -218,6 +218,16 @@ pub fn frame_set_spec(id: u32, json: &str) -> Result<(), JsError> {
     .map_err(|err| JsError::new(&err.to_string()))
 }
 
+/// The frame's event markers' times, ms (`EventMarker.atMs` in call order, NaN kept; plan #68 C2c1
+/// §3.3): a layer input, so the frame is rebuilt.
+#[wasm_bindgen]
+pub fn frame_set_events(id: u32, at_ms: Vec<f64>) {
+    with(|e| {
+        e.dirty.insert(id);
+        e.frames.set_events(id, at_ms);
+    });
+}
+
 #[wasm_bindgen]
 pub fn frame_data_begin(id: u32) {
     with(|e| e.frames.data_begin(id));

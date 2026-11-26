@@ -15,7 +15,7 @@ use dash_scales::encode::{axis_map, choose_encoding, is_far};
 use dash_scene::hover::{HoverAt, hover_at, overlay_item};
 use dash_scene::{Band, Camera, PlotCamera, Size64, Theme, ValueRange, Viewport, VisSpec, YRange};
 use dash_tokens::Rgba8;
-use dash_wire::Chunk;
+use dash_wire::{Chunk, ChunkBuilder, ChunkId, SeriesMeta};
 use pulsus_synth::{GALLERY_WINDOW, GalleryLine, gallery_line};
 
 pub use flip::{FlipStats, flip_mean, flip_stats};
@@ -174,7 +174,102 @@ pub fn page_viewport(
         spec,
         data: Some(Arc::new(chunk)),
         band: Band::Measure,
+        events: std::sync::Arc::from([]),
     }
+}
+
+/// The layer pages (plan #68 C2c1): gallery pages with threshold lines and event lines, whose
+/// inputs (spec JSON, series and event times) are the `engine/fixtures/layer.json` cases of the
+/// same id (written from `dev/gallery.ts` by `engine-fixtures.ts`).
+pub const LAYER_PAGES: [&str; 2] = ["line-thresholds", "line-events"];
+
+/// A fixture number: a JSON number or "NaN", "Infinity", "-Infinity".
+fn fixture_num(v: &serde_json::Value) -> f64 {
+    match v {
+        serde_json::Value::Number(n) => n.as_f64().unwrap_or(f64::NAN),
+        serde_json::Value::String(s) if s == "Infinity" => f64::INFINITY,
+        serde_json::Value::String(s) if s == "-Infinity" => f64::NEG_INFINITY,
+        _ => f64::NAN,
+    }
+}
+
+fn fixture_nums(v: &serde_json::Value) -> Vec<f64> {
+    v.as_array()
+        .map(|a| a.iter().map(fixture_num).collect())
+        .unwrap_or_default()
+}
+
+/// The chunk of a fixture's `series` (`{key, labels, t, v}`), in the local id space.
+pub fn fixture_chunk(series: &serde_json::Value) -> Result<Chunk, String> {
+    let mut b = ChunkBuilder::explicit(ChunkId(1 << 63));
+    for s in series.as_array().into_iter().flatten() {
+        let key = s["key"].as_str().unwrap_or_default();
+        let key_hash = u64::from_str_radix(key, 16).map_err(|e| format!("key {key:?}: {e}"))?;
+        let labels: Vec<(String, String)> = s["labels"]
+            .as_object()
+            .map(|o| {
+                o.iter()
+                    .map(|(k, v)| (k.clone(), v.as_str().unwrap_or_default().to_owned()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let meta = SeriesMeta {
+            key_hash,
+            labels: labels.into(),
+        };
+        b.push_series(meta, Some(&fixture_nums(&s["t"])), &fixture_nums(&s["v"]))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(b.finish())
+}
+
+/// The viewport of `layer.json` case `id` (a [`LAYER_PAGES`] page) at `css` and `dpr`: its spec,
+/// series, event times and window, on the idle camera of the spec.
+pub fn layer_viewport(id: &str, theme: Theme, css: Size64, dpr: f32) -> Result<Viewport, String> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/layer.json");
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let rows: Vec<serde_json::Value> =
+        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let row = rows
+        .iter()
+        .find(|r| r["case"].as_str() == Some(id))
+        .ok_or_else(|| format!("layer.json has no case {id:?}"))?;
+    let spec = VisSpec::from_json(row["spec"].as_str().unwrap_or_default())
+        .map_err(|e| format!("{id}: {e}"))?;
+    let window = Range64 {
+        lo: fixture_num(&row["window"]["fromMs"]),
+        hi: fixture_num(&row["window"]["toMs"]),
+    };
+    Ok(Viewport {
+        id: 0,
+        frame_id: None,
+        css,
+        dpr,
+        theme,
+        camera: Camera::Plot2D(PlotCamera::idle(window, &spec)),
+        spec,
+        data: Some(Arc::new(fixture_chunk(&row["series"])?)),
+        band: Band::Measure,
+        events: Arc::from(fixture_nums(&row["events"])),
+    })
+}
+
+/// Renders a layer page (plan #68 C2c1).
+pub fn render_layer_page(
+    ctx: &GpuContext,
+    id: &str,
+    theme: Theme,
+    css: Size64,
+    dpr: f32,
+) -> Result<Image, String> {
+    let v = layer_viewport(id, theme, css, dpr)?;
+    let (list, _) = dash_scene::build(&v);
+    let mut r = Renderer::new(
+        ctx,
+        wgpu::TextureFormat::Rgba8Unorm,
+        RendererOptions::default(),
+    );
+    Ok(render_list(ctx, &mut r, &list))
 }
 
 /// The middle 40 % of the page's auto domain (the `-manual` golden).

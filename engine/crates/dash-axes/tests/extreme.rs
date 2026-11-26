@@ -21,6 +21,7 @@ fn overflowing_spans_use_extreme_ticks() {
                 None,
                 &Unit::None,
                 Band::Measure,
+                0.0,
             );
             let _ = tx.send(ax);
         });
@@ -35,7 +36,7 @@ fn overflowing_spans_use_extreme_ticks() {
         let want = extreme_ticks(
             lo.min(0.0),
             hi,
-            layout_plot(VisKind::Line, 1118.0, 240.0, 0.0).height,
+            layout_plot(VisKind::Line, 1118.0, 240.0, 0.0, 0.0).height,
             label_height(),
         );
         assert_eq!(ax.ticks, want.ticks, "{lo:e}..{hi:e}");

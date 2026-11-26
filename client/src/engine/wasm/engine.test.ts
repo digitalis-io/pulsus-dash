@@ -170,11 +170,13 @@ async function restarted(p: Page): Promise<FakeWorker> {
   w2.status();
   await flush();
   const after = w2.sent.slice(1);
-  expect(after.map((m) => m.t)).toEqual(['create', 'spec', 'data', 'theme']);
+  // Plan #68 C2c1: the replayed events (none) go too.
+  expect(after.map((m) => m.t)).toEqual(['create', 'spec', 'data', 'theme', 'events']);
   expect(after[0]).toMatchObject({ t: 'create', id: 1, frameId: 'f1' });
   expect(after[0]?.['canvas']).toBe(transferred[1]);
   expect(transferred[1]).not.toBe(transferred[0]);
   expect(after[3]).toEqual({ t: 'theme', id: 1, theme: 0 });
+  expect(after[4]).toEqual({ t: 'events', id: 1, atMs: new Float64Array([]) });
   // A new ring on the new worker's memory: the frame's camera, overlay (plan #68 C2b) and size
   // wait for its `created`.
   expect(w2.ring.head()).toBe(0);

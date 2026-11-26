@@ -303,6 +303,28 @@ heatmap (no timestamps or no bounds) draws no axes or cells but still draws and 
 plot, so it clears the hover as any layout input does; other changes redraw the layer only. The
 layer redraws on every camera preview, so the markers follow a pan or a zoom before its commit.
 
+### The same rules on the engine (#68 Part C2c1)
+
+The WASM engine's line frames draw the threshold lines and event lines by these rules
+([engine](engine.md#thresholds-and-event-markers-part-c2c1)): the first 8 thresholds, the
+`withThresholds` auto domain, the dashes as Canvas 2D strokes them (from `plot.x`, 5 on 4 off,
+offset 0, cut at the plot's right edge), the event band once the frame holds an event, and one
+`text-muted` column per event in view. Their labels wait for the engine's text mark (#69), so its
+summary's `thresholdLabels` and `eventLabels` stay empty. One difference: on an auto axis an event
+at the window's end (or rounding to it) is drawn in the plot's last column, where Canvas 2D strokes
+it one column outside the plot (it clips only under a pinned axis, as the engine does then).
+
+The parity fixture `engine/fixtures/layer.json` (`client/scripts/engine-fixtures-layer.ts`, part of
+`npm run engine-fixtures`) runs `drawLayer` with a recording 2D context on the gallery's
+`line-thresholds` and `line-events` and on cases with thresholds above, below and inside the data,
+a NaN, 10 lines, a pinned axis, a line at the plot's top, no events, events out of view, NaN, at
+both window ends (auto and pinned) and 30 s apart, at 1118×240 and 300×150 at DPR 1 and 2 (and
+800×240 for the probe cases). Each frame records the plot, the domain, the label band, the event
+band, `layoutPlot` with it, every dashed stroke (its y, ends, pattern, offset, colour and dash runs)
+and every event stroke (its x, colour and clip), and the summary's label boxes. The Rust tests
+(`layer_parity`, `layout_event_band`) and the browser tests (`e2e:engine-layer`,
+`canvas2d parity`) read it; `unit:engine-fixtures` keeps it fresh.
+
 
 ## Interaction (INT-033, IA-020 subset)
 
@@ -764,9 +786,9 @@ The WASM engine implements the same `ChartEngine` interface and is returned by
 `defaultChartEngine()`; only `engine/index.ts` changes. Its line frames already run the camera
 controller above (Part C2a2): zoom, pan, axis drags, the band hold and the commits behave as on
 Canvas 2D; since Part C2b hover, the keyboard crosshair, the click's `select` and the box band do
-too (the same rules, ported). It implements the threshold lines,
-labels and the stat sparkline (ADR-0022), and the event markers (ADR-0023, as M1 verticals and M9
-glyphs), the selection and the `select` item (ADR-0025), and the bar chart (ADR-0028: the
+too (the same rules, ported), and since Part C2c1 the threshold lines and the event lines with
+the event band. It implements the threshold labels and the stat sparkline (ADR-0022), the event
+labels (ADR-0023, as M9 glyphs), the selection and the `select` item (ADR-0025), and the bar chart (ADR-0028: the
 `categories` data, `categoryExtent` and `barLayout` exactly, `mark`, `pick` and the drawing) before
 it replaces `engine/index.ts`. The canvas is already created per frame
 lifetime, so it can be transferred to the render worker, and `keyTarget` lets the adapter forward key

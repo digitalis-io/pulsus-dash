@@ -6,7 +6,8 @@
  * writes (plan #68 C2a1 §5 `ring_fixture`): its bytes and its log, which the render worker's
  * decoder must read back. `hover.json` is the hover and click picking of `canvas2d/pick.ts`
  * `hoverAt`, `select.ts` `pickItem` and `data/frames.ts` `seriesName` on line layer models (plan
- * #68 C2b §5 `hover_parity`). `--write` writes the files; without it the committed files are
+ * #68 C2b §5 `hover_parity`). `layer.json` is the line layer's threshold and event strokes
+ * (`engine-fixtures-layer.ts`, plan #68 C2c1 §5 `layer_parity`). `--write` writes the files; without it the committed files are
  * compared and the exit code is 1 when one is stale (`unit:engine-fixtures` runs the same check).
  *
  * The client modules are loaded at run time (their imports are extensionless, which Node resolves
@@ -18,6 +19,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { layerRows } from './engine-fixtures-layer.ts';
 
 export const CLIENT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const FIXTURE_DIR = join(CLIENT_ROOT, '..', 'engine', 'fixtures');
@@ -46,7 +48,7 @@ const SUMMARY_FIELDS = [
   'valueAxis',
 ] as const;
 
-type Unit =
+export type Unit =
   | { kind: 'none' }
   | { kind: 'time'; base: 'ns' | 'us' | 'ms' | 's' }
   | { kind: 'bytes' }
@@ -59,7 +61,7 @@ interface Plot {
   width: number;
   height: number;
 }
-interface Window {
+export interface Window {
   fromMs: number;
   toMs: number;
 }
@@ -71,7 +73,7 @@ interface Point {
   x: number;
   y: number;
 }
-interface Series {
+export interface Series {
   key: string;
   labels: Record<string, string>;
   timestamps: Float64Array;
@@ -103,14 +105,15 @@ interface Summary {
   plot: Plot;
   valueAxis?: { min: number; max: number; manual: boolean } | null;
 }
-interface Entry {
+export interface Entry {
   id: string;
   spec: { kind: string; unit: Unit };
   data: { kind: string; series?: readonly Series[] };
+  events?: readonly unknown[];
 }
 
 /** The client modules the fixtures come from. */
-interface Sources {
+export interface Sources {
   formatValue: (v: number, u: Unit) => string;
   valueTicks: (
     min: number,
@@ -132,7 +135,14 @@ interface Sources {
     h: number,
     label: number,
   ) => { min: number; max: number; ticks: readonly number[] };
-  layoutPlot: (kind: string, w: number, h: number, labelW: number) => Plot;
+  layoutPlot: (kind: string, w: number, h: number, labelW: number, eventBand?: number) => Plot;
+  eventBandOf: (kind: string, events: readonly unknown[]) => number;
+  thresholdsOf: (spec: unknown) => readonly { value: number; state: string }[];
+  withThresholds: (
+    min: number | null,
+    max: number | null,
+    t: readonly { value: number }[],
+  ) => { min: number; max: number };
   LABEL_HEIGHT: number;
   drawLayer: (i: Record<string, unknown>) => { summary: Summary } & Record<string, unknown>;
   hoverAt: (m: unknown, v: Span, keyIndex: number | null, p: Point | null) => unknown;
@@ -210,6 +220,8 @@ async function load(): Promise<Sources> {
       'engine/canvas2d/valueTicks.ts',
       'engine/canvas2d/layout.ts',
       'engine/canvas2d/draw.ts',
+      'engine/canvas2d/thresholdMark.ts',
+      'engine/canvas2d/eventMark.ts',
       'engine/canvas2d/summary.ts',
       'engine/canvas2d/columns.ts',
       'engine/canvas2d/palette.ts',
@@ -899,6 +911,7 @@ export async function fixtures(): Promise<Record<string, string>> {
     'summary.json': json(summaryRows(s, entries)),
     'input-ring.json': json(inputRingRows(s)),
     'hover.json': json(hoverRows(s, entries)),
+    'layer.json': json(layerRows(s, entries, GALLERY_WINDOW, seriesOf)),
   };
 }
 

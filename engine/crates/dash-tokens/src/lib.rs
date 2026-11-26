@@ -32,6 +32,10 @@ pub enum ColourRole {
     TextMuted,
     Brush,
     Text,
+    /// Threshold states (ADR-0022, `StateEncoding`'s colours).
+    Watch,
+    Degraded,
+    Failing,
 }
 
 /// The token of `role` in `theme`.
@@ -43,11 +47,17 @@ pub fn colour(theme: Theme, role: ColourRole) -> Rgba8 {
         (Theme::Dark, ColourRole::TextMuted) => dark::TEXT_MUTED,
         (Theme::Dark, ColourRole::Brush) => dark::BRUSH,
         (Theme::Dark, ColourRole::Text) => dark::TEXT,
+        (Theme::Dark, ColourRole::Watch) => dark::WATCH,
+        (Theme::Dark, ColourRole::Degraded) => dark::DEGRADED,
+        (Theme::Dark, ColourRole::Failing) => dark::FAILING,
         (Theme::Light, ColourRole::Surface1) => light::SURFACE_1,
         (Theme::Light, ColourRole::Hairline) => light::HAIRLINE,
         (Theme::Light, ColourRole::TextMuted) => light::TEXT_MUTED,
         (Theme::Light, ColourRole::Brush) => light::BRUSH,
         (Theme::Light, ColourRole::Text) => light::TEXT,
+        (Theme::Light, ColourRole::Watch) => light::WATCH,
+        (Theme::Light, ColourRole::Degraded) => light::DEGRADED,
+        (Theme::Light, ColourRole::Failing) => light::FAILING,
     }
 }
 

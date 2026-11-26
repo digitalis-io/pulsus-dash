@@ -4,7 +4,9 @@
  * Static and integrity legs; `swiftshader` the WebGPU leg and the line presence (report-only
  * under `engine-legs.json`).
  */
+import { readFileSync } from 'node:fs';
 import { expect, test, type Browser, type Page, type TestInfo } from '@playwright/test';
+import { colour } from '../src/styles/tokens.ts';
 import { GALLERY_IDS, GALLERY_URL, open } from './helpers.ts';
 import {
   canvasPng,
@@ -140,6 +142,96 @@ test.describe('e2e:mode-matrix', () => {
 
 /** The five line pages of `canvas2d parity`. */
 const PARITY_PAGES = ['line-1', 'line-50', 'line-gaps', 'line-600', 'line-extreme'] as const;
+/** Plan #68 C2c1: the layer pages, with threshold lines and event lines. */
+const LAYER_PAGES = ['line-thresholds', 'line-events'] as const;
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+/** A `layer.json` frame (plan #68 C2c1 §5): the Canvas 2D layer's strokes and label boxes. */
+interface LayerFrame {
+  w: number;
+  h: number;
+  dpr: number;
+  plot: Box;
+  thresholds: { y: number; state: 'watch' | 'degraded' | 'failing'; runs: [number, number][] }[];
+  events: { x: number }[];
+  thresholdLabels: Box[];
+  eventLabels: Box[];
+}
+
+/** The `layer.json` frame of gallery page `id` at the page's 1118×240, DPR 1. */
+function layerFrame(id: string): LayerFrame {
+  const rows = JSON.parse(readFileSync('../engine/fixtures/layer.json', 'utf8')) as {
+    case: string;
+    frames: LayerFrame[];
+  }[];
+  const f = rows
+    .find((r) => r.case === id)
+    ?.frames.find((x) => x.w === 1118 && x.h === 240 && x.dpr === 1);
+  if (f === undefined) throw new Error(`layer.json: no 1118×240 frame of ${id}`);
+  return f;
+}
+
+/** Inside a label box grown by 2 CSS px (the browser's text metrics, not the fixture's). */
+const inBoxes = (boxes: readonly Box[], x: number, y: number): boolean =>
+  boxes.some(
+    (b) => x >= b.x - 2 && x <= b.x + b.width + 2 && y >= b.y - 2 && y <= b.y + b.height + 2,
+  );
+
+const rgbOf = (c: string): number[] => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16));
+
+/** `c` ink (every channel within 40) in the 3 × 3 device px around (x, y). */
+function inkAround(img: Rgba, x: number, y: number, c: number[]): boolean {
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const i = ((y + dy) * img.w + (x + dx)) * 4;
+      if ([0, 1, 2].every((k) => Math.abs((img.px[i + k] ?? 0) - (c[k] ?? 0)) <= 40)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The layer marks of `canvas2d parity` (plan #68 C2c1 §5): at each dash run's centre of every
+ * threshold row, and down every event column, outside Canvas 2D's label boxes, both Canvas 2D and
+ * the engine have the mark's ink within ±1 device px. The misses of each.
+ */
+function layerMisses(
+  c2: Rgba,
+  wa: Rgba,
+  f: LayerFrame,
+  theme: 'dark' | 'light',
+  dpr: number,
+): { canvas2d: string[]; engine: string[] } {
+  const palette = colour[theme];
+  const boxes = [...f.thresholdLabels, ...f.eventLabels];
+  const out = { canvas2d: [] as string[], engine: [] as string[] };
+  const check = (x: number, y: number, c: number[], what: string): void => {
+    const [dx, dy] = [Math.round(x * dpr), Math.round(y * dpr)];
+    if (!inkAround(c2, dx, dy, c)) out.canvas2d.push(what);
+    if (!inkAround(wa, dx, dy, c)) out.engine.push(what);
+  };
+  for (const t of f.thresholds) {
+    const c = rgbOf(palette[t.state]);
+    for (const [a, b] of t.runs) {
+      const x = Math.floor((a + b) / 2);
+      if (inBoxes(boxes, x, t.y)) continue;
+      check(x + 0.5, t.y, c, `${t.state} ${String(x)},${String(t.y)}`);
+    }
+  }
+  const muted = rgbOf(palette['text-muted']);
+  for (const e of f.events) {
+    for (let y = Math.ceil(f.plot.y) + 1; y < f.plot.y + f.plot.height - 1; y += 4) {
+      if (inBoxes(boxes, e.x, y)) continue;
+      check(e.x, y + 0.5, muted, `event ${String(e.x)},${String(y)}`);
+    }
+  }
+  return out;
+}
 
 interface Shot {
   img: Rgba;
@@ -161,7 +253,7 @@ async function frames(
     await open(page, `${GALLERY_URL}${query}`);
     await framesReady(page);
     const shots = new Map<string, Shot>();
-    for (const id of PARITY_PAGES) {
+    for (const id of [...PARITY_PAGES, ...LAYER_PAGES]) {
       shots.set(id, { img: decodePng(await canvasPng(page, id)), plot: await plotRect(page, id) });
     }
     return { shots, dpr: await page.evaluate(() => devicePixelRatio) };
@@ -224,7 +316,9 @@ const count = (a: Rgba, b: Rgba, pts: [number, number][], around: boolean): numb
  * engine's plot rects equal Canvas 2D's, and the engine draws a line where Canvas 2D does (the
  * sampled line mask, ±1 device px); anti-aliasing differs by design, so pixel identity is gated
  * against the native renderer instead (`golden:engine-line`). Negative: `noline` (no line drawn)
- * must fail the mask.
+ * must fail the mask. Plan #68 C2c1: `line-thresholds` and `line-events` add their threshold rows
+ * and event columns (from `engine/fixtures/layer.json`, ±1 device px), outside Canvas 2D's label
+ * boxes, which the engine does not draw until #69; the line mask is checked outside them too.
  */
 test.describe('canvas2d parity (VIZ-001)', () => {
   for (const theme of ['dark', 'light'] as const) {
@@ -254,6 +348,40 @@ test.describe('canvas2d parity (VIZ-001)', () => {
           );
           expect(
             count(w.img, we.img, p.background, false),
+            `${id} ${theme}: background`,
+          ).toBeLessThanOrEqual(8);
+        }
+        // Plan #68 C2c1: the layer pages. The plot is the fixture's (so are its strokes); the
+        // threshold rows and event columns match outside the label boxes, and so does the line
+        // mask (its probes outside the boxes).
+        for (const id of LAYER_PAGES) {
+          const [a, ae, w, we] = [c2, c2e, wa, wae].map((f) => get(f, id));
+          if (a === undefined || ae === undefined || w === undefined || we === undefined) {
+            throw new Error(id);
+          }
+          const f = layerFrame(id);
+          expect(a.plot, `${id} ${theme}: the fixture's plot`).toEqual([
+            f.plot.x,
+            f.plot.y,
+            f.plot.width,
+            f.plot.height,
+          ]);
+          expect(w.plot, `${id} ${theme}: data-plot`).toEqual(a.plot);
+          expect(f.thresholds.length + f.events.length, `${id}: marks`).toBeGreaterThan(0);
+          const m = layerMisses(a.img, w.img, f, theme, c2.dpr);
+          expect(m.canvas2d.slice(0, 5), `${id} ${theme}: Canvas 2D marks`).toEqual([]);
+          expect(m.engine.slice(0, 5), `${id} ${theme}: engine marks`).toEqual([]);
+          const boxes = [...f.thresholdLabels, ...f.eventLabels];
+          const p = probes(a.img, ae.img, a.plot, c2.dpr);
+          const out = (pts: [number, number][]) =>
+            pts.filter(([x, y]) => !inBoxes(boxes, x / c2.dpr, y / c2.dpr));
+          const [line, background] = [out(p.line), out(p.background)];
+          expect(line.length, `${id} ${theme}: line probes`).toBeGreaterThanOrEqual(24);
+          expect(count(w.img, we.img, line, true), `${id} ${theme}: line`).toBeGreaterThanOrEqual(
+            line.length - 4,
+          );
+          expect(
+            count(w.img, we.img, background, false),
             `${id} ${theme}: background`,
           ).toBeLessThanOrEqual(8);
         }

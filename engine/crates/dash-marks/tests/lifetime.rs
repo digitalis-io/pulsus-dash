@@ -48,6 +48,7 @@ fn ranges_and_values_have_their_own_lifetimes() {
             spec,
             data: Some(chunk.clone()),
             band: Band::Measure,
+            events: std::sync::Arc::from([]),
         };
         let mut r = Renderer::new(
             &ctx,
@@ -211,6 +212,7 @@ fn cpu_batches_hold_one_batch() {
         spec,
         data: Some(Arc::new(fx.chunk.clone())),
         band: Band::Measure,
+        events: std::sync::Arc::from([]),
     };
     let max = 1000u64;
     let mut r = Renderer::new(

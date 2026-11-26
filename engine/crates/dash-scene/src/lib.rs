@@ -4,12 +4,15 @@
 mod build;
 pub mod camera;
 pub mod hover;
+pub mod layer;
 mod spec;
 mod summary;
 
 pub use build::{Built, StageInfo, build, build_frame};
 pub use camera::{Camera, PlotCamera, YRange};
-pub use spec::{LineSpec, SpecError, ValueRange, VisSpec};
+pub use spec::{
+    LineSpec, MAX_THRESHOLDS, SpecError, ThresholdLine, ThresholdState, ValueRange, VisSpec,
+};
 pub use summary::{CommitEvent, FrameSummary, Gesture, TimeWindow, ValueAxisSummary, ValueCommit};
 
 pub use dash_axes::{Band, PlotRect, ValueAxis, VisKind};
@@ -42,6 +45,9 @@ pub struct Viewport {
     pub data: Option<Arc<Chunk>>,
     /// Set by the caller (D-GESTURE); `build` only reads it.
     pub band: Band,
+    /// The event markers' times, ms (`EventMarker.atMs`, plan #68 C2c1): every event the frame
+    /// holds, in call order; NaN kept (not drawn).
+    pub events: Arc<[f64]>,
 }
 
 /// All viewports of a page (T02-020).
