@@ -12,10 +12,55 @@
 # not a gate).
 #
 # Usage: server/scripts/itest-old-binary.sh   (make itest-old-binary; needs DASH_ITEST_PG_URLS)
+#        server/scripts/itest-old-binary.sh --self-test   (the selector and pass patterns only)
 # Exit: 0 the gate passed, 1 otherwise.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+
+# RUN_PATTERN selects every Test*OldBinary test (any valid Go identifier between Test and
+# OldBinary, digits and _ included); PASS_PATTERN is a top-level PASS line of one of them.
+RUN_PATTERN='^Test[A-Za-z0-9_]*OldBinary$'
+PASS_PATTERN='^--- PASS: Test[A-Za-z0-9_]*OldBinary \('
+
+# self_test checks both patterns: Go's -run selection over a fixture package of test names (in
+# build/, removed on exit), and the PASS lines over sample go test output.
+self_test() {
+  SELFTEST_DIR="$ROOT/build/old-binary-selftest"
+  local dir="$SELFTEST_DIR"
+  rm -rf "$dir"
+  mkdir -p "$dir"
+  trap 'rm -rf "$SELFTEST_DIR"' EXIT
+  printf 'module selftest\n\ngo 1.21\n' >"$dir/go.mod"
+  {
+    echo 'package selftest'
+    echo 'import "testing"'
+    for n in TestBoardSpecOldBinary TestBoardV5OldBinary Test_tags2OldBinary TestOldBinary \
+      TestOldBinaryX TestBoardOldBinaryLater TestOther; do
+      echo "func $n(t *testing.T) {}"
+    done
+  } >"$dir/x_test.go"
+  local got want
+  got=$(go -C "$dir" test -list "$RUN_PATTERN" . | grep '^Test' | LC_ALL=C sort | tr '\n' ' ')
+  want='TestBoardSpecOldBinary TestBoardV5OldBinary TestOldBinary Test_tags2OldBinary '
+  if [ "$got" != "$want" ]; then
+    echo "itest-old-binary self-test: FAIL (-run selects '$got', want '$want')"
+    exit 1
+  fi
+  local line
+  for line in '--- PASS: TestBoardV5OldBinary (0.10s)' '--- PASS: Test_tags2OldBinary (1.00s)'; do
+    grep -qE -- "$PASS_PATTERN" <<<"$line" || { echo "itest-old-binary self-test: FAIL (no PASS match: $line)"; exit 1; }
+  done
+  for line in '--- PASS: TestBoardOldBinaryLater (0.10s)' '    --- PASS: TestBoardV5OldBinary/pg16 (0.10s)' \
+    '--- SKIP: TestBoardV5OldBinary (0.00s)'; do
+    if grep -qE -- "$PASS_PATTERN" <<<"$line"; then echo "itest-old-binary self-test: FAIL (PASS match: $line)"; exit 1; fi
+  done
+  echo "itest-old-binary self-test: PASS"
+}
+if [ "${1:-}" = "--self-test" ]; then
+  self_test
+  exit 0
+fi
 : "${DASH_ITEST_PG_URLS:?DASH_ITEST_PG_URLS is not set}"
 BASE_REF=${OLD_BINARY_REF:-origin/main}
 REF=$(git -C "$ROOT" merge-base HEAD "$BASE_REF")
@@ -48,7 +93,7 @@ LOG="$DIR/test.log"
 rc=0
 DASH_OLD_BINARY="$DIR/pulsus-dash" DASH_OLD_SPEC_VERSION="$OLD_SPEC" DASH_OLD_FIXTURE="$OLD_FIXTURE" \
   CGO_ENABLED=1 go -C "$ROOT/server" test -race -tags itest -count=1 -v \
-  -run '^Test[A-Za-z]*OldBinary$' ./cmd/pulsus-dash >"$LOG" 2>&1 || rc=$?
+  -run "$RUN_PATTERN" ./cmd/pulsus-dash >"$LOG" 2>&1 || rc=$?
 cat "$LOG"
 fail() {
   echo "itest-old-binary: FAIL ($1)"
@@ -56,8 +101,8 @@ fail() {
 }
 [ "$rc" -eq 0 ] || fail "exit $rc"
 ! grep -q -- '^--- FAIL' "$LOG" || fail "a test failed"
-grep -qE -- '^--- PASS: Test[A-Za-z]*OldBinary' "$LOG" || fail "no old-binary test passed"
-if [ "$OLD_SPEC" -lt "$CUR_SPEC" ] && ! grep -q -- '^--- PASS: TestBoardSpecOldBinary' "$LOG"; then
+grep -qE -- "$PASS_PATTERN" "$LOG" || fail "no old-binary test passed"
+if [ "$OLD_SPEC" -lt "$CUR_SPEC" ] && ! grep -qE -- '^--- PASS: TestBoardSpecOldBinary \(' "$LOG"; then
   fail "TestBoardSpecOldBinary did not pass for board spec $OLD_SPEC < $CUR_SPEC"
 fi
 echo "itest-old-binary: PASS"

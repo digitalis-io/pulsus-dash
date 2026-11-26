@@ -254,8 +254,11 @@ missing fails the gate), and runs every `Test*OldBinary` test in `server/cmd/pul
 | `DASH_OLD_SPEC_VERSION` | its board spec version (a positive integer, else the tests fail) |
 | `DASH_OLD_FIXTURE` | its own fixture of that version: the first, by name, of `api/fixtures/board-spec/v<P>-*.json` in its tree |
 
-The gate passes only when the run exits 0, no test fails, at least one `Test*OldBinary` test
-passes, and `TestBoardSpecOldBinary` passes whenever the previous release's spec version is older
+The selector is `^Test[A-Za-z0-9_]*OldBinary$` (any test name ending in `OldBinary`, digits and
+`_` included); `make itest-old-binary` first runs `server/scripts/itest-old-binary.sh --self-test`,
+which checks that selector against a fixture package with `go test -list`, and the PASS-line
+pattern against sample output, without a database. The gate passes only when the run exits 0, no
+test fails, at least one `Test*OldBinary` test passes, and `TestBoardSpecOldBinary` passes whenever the previous release's spec version is older
 than this one's. A missing or failing binary fails the tests; plain `make itest` skips them (no
 `DASH_OLD_BINARY`). It needs `DASH_ITEST_PG_URLS`, and is a required local gate for every change to
 the board schema or spec.

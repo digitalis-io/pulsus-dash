@@ -119,6 +119,7 @@ itest:
 OLD_BINARY_REF ?= origin/main
 itest-old-binary:
 	@test -n "$${DASH_ITEST_PG_URLS:-}" || { echo "DASH_ITEST_PG_URLS is not set"; exit 1; }
+	server/scripts/itest-old-binary.sh --self-test
 	OLD_BINARY_REF=$(OLD_BINARY_REF) server/scripts/itest-old-binary.sh
 
 # The pinned linters, verified by sha256, into build/bin.
