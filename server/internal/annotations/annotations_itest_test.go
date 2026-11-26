@@ -341,12 +341,12 @@ func newEntity(t *testing.T, f fixtureEntity) *core.NewEntity {
 }
 
 type change struct {
-	n         int
-	kind      core.AnnotationKind
-	at, end   string // HH:MM:SS on 2026-11-26; end "" = a point
-	text      string
-	tags      []string
-	entity    string // a fixtureEntities name, "" = organisation-wide
+	n       int
+	kind    core.AnnotationKind
+	at, end string // HH:MM:SS on 2026-11-26; end "" = a point
+	text    string
+	tags    []string
+	entity  string // a fixtureEntities name, "" = organisation-wide
 }
 
 func hms(s string) time.Time {

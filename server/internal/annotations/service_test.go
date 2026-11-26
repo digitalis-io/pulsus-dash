@@ -39,7 +39,9 @@ func TestScopeDeniedBeforeSQL(t *testing.T) {
 				return err
 			},
 			"create": func() error { _, err := svc.CreateAnnotation(ctx, rc, n); return err },
-			"delete": func() error { return svc.DeleteAnnotation(ctx, rc, uuid.MustParse("00000000-0000-4000-8000-000000000001")) },
+			"delete": func() error {
+				return svc.DeleteAnnotation(ctx, rc, uuid.MustParse("00000000-0000-4000-8000-000000000001"))
+			},
 		}
 		for op, call := range calls {
 			if err := guarded(call); !errors.Is(err, core.ErrScopeDenied) {
