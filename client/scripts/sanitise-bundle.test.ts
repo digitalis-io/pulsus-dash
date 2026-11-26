@@ -1,6 +1,6 @@
 /**
  * unit:sanitise-bundle (plan #198 Part 2a §3.6, §5; ADR-0024, ADR-0014 §8): a Vite build of a probe
- * that lazily imports the sanitiser modules. The lazy chunk holds the ADR-0024 packages, no
+ * that lazily imports the sanitiser modules, the Markdown renderer included (Part 2b). The lazy chunk holds the ADR-0024 packages, no
  * forbidden module (minimist, a Node built-in, `SAXParser`), and is at most 100 000 bytes after
  * brotli 11. A second build of a module that extends `node:stream`'s `Transform` (as `SAXParser`
  * does) must be caught.
@@ -55,6 +55,8 @@ describe('unit:sanitise-bundle', () => {
       '/node_modules/parse5/dist/',
       '/node_modules/parse5-sax-parser/dist/parser-feedback-simulator.js',
       '/src/security/sanitise/findIframes.ts',
+      '/src/security/sanitise/markdown.tsx',
+      '/src/kit/Icon.tsx',
     ]) {
       expect(ids, m).toContain(m);
     }

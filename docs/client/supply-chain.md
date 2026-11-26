@@ -278,13 +278,15 @@ build never holds it; the check proves it on every audited build rather than ass
 
 **Bundle.** No page imports the sanitiser yet, so `dist/` and `buildUrlAllowlist` are unchanged.
 `unit:sanitise-bundle` builds a probe (`scripts/__fixtures__/sanitise-probe/`) that lazily imports
-`classifyUrl`, `findIframes` and `convertImportedText` with this project's alias and React external:
-the lazy chunk holds the three packages and no forbidden module, and must be at most **100 000**
-bytes brotli 11 (measured 85 037 on 2026-11-26 with vite 8.3.8; a dependencies-only probe was
-83 975, and today's `BoardPage` chunk is 22 302 against the 120 000 lazy-chunk budget). A second
+`classifyUrl`, `findIframes`, `convertImportedText` and, since #198 Part 2b, `renderMarkdown`, with
+this project's alias and React external: the lazy chunk holds the three packages, the renderer and
+no forbidden module, and must be at most **100 000** bytes brotli 11. Measured with vite 8.3.8 on
+2026-11-26: 97 077 with the renderer, which also brings in the i18n catalogue (it uses `t`; in the
+app the catalogue is already in the main bundle); 85 037 without it; a dependencies-only probe was
+83 975, and today's `BoardPage` chunk is 22 302 against the 120 000 lazy-chunk budget. A second
 probe that extends `node:stream`'s `Transform`, as `SAXParser` does, must give a `forbidden-module`
-finding, which proves Vite's browser-external id is caught. Part 2b adds the renderer to the probe
-under the same limit; Part 3 loads the Markdown code as its own dynamic chunk, outside `BoardPage`.
+finding, which proves Vite's browser-external id is caught. Part 3 loads the Markdown code as its
+own dynamic chunk, outside `BoardPage`.
 When a page first imports parse5, its namespace and DOCTYPE identifier strings join
 `buildUrlAllowlist`.
 
