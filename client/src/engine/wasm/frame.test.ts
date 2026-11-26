@@ -1,9 +1,16 @@
+/**
+ * The main-thread side of an engine frame (plan #68 C1 §3.5; C2a1 §4.4; ADR-0019, D-PROTO): spec,
+ * data, theme and dispose are messages; the camera and the size go through the input ring, held
+ * until the worker reports the frame `created`; `drawn` is reported only for the latest `resize()`
+ * call, with the caller's values, once no Resize is held or unpublished.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChartFrame, FrameData, VisSpec } from '../api';
-import { WasmFrame } from './frame';
+import { WasmFrame, type CameraState, type FrameRing } from './frame';
 import type { MainToRender } from './protocol';
 
 const S: VisSpec = { kind: 'line', title: 'T', unit: { kind: 'none' } };
+const PINNED: VisSpec = { ...S, valueRange: { min: 0, max: 5 } };
 const T = new Float64Array([1, 2]);
 const V = new Float64Array([3, 4]);
 const SERIES: FrameData = {
@@ -18,6 +25,8 @@ const HEAT: FrameData = {
     counts: new Float64Array([1]),
   },
 };
+const RESIZE = 0x20;
+const CAMERA = 0x23;
 
 function port() {
   const sent: { msg: MainToRender; transfer: Transferable[] }[] = [];
@@ -29,29 +38,96 @@ function port() {
   };
 }
 
-const drawn = (w: number, startMs = 5) =>
+type Arg = CameraState | readonly [number, number, number];
+type Kind = 'camera' | 'resize';
+
+/** A ring that publishes at once unless `full`; unpublished records coalesce per kind. */
+class FakeRing implements FrameRing {
+  full = false;
+  readonly published: { kind: Kind; frame: number; seq: number; arg: Arg }[] = [];
+  readonly dropped: number[] = [];
+  private readonly pending = new Map<string, { kind: Kind; frame: number; arg: Arg }>();
+  private readonly seqs = new Map<number, number>();
+  private readonly cbs = new Map<number, (kind: number, seq: number) => void>();
+
+  camera(frame: number, c: CameraState): void {
+    this.put('camera', frame, c);
+  }
+  resize(frame: number, w: number, h: number, dpr: number): void {
+    this.put('resize', frame, [w, h, dpr]);
+  }
+  onPublish(frame: number, cb: (kind: number, seq: number) => void): void {
+    this.cbs.set(frame, cb);
+  }
+  unpublished(frame: number): number {
+    return [...this.pending.values()].filter((p) => p.frame === frame).length;
+  }
+  drop(frame: number): void {
+    for (const [k, p] of this.pending) if (p.frame === frame) this.pending.delete(k);
+    this.dropped.push(frame);
+  }
+  release(): void {
+    this.full = false;
+    for (const [k, p] of [...this.pending]) {
+      this.pending.delete(k);
+      this.publish(p.kind, p.frame, p.arg);
+    }
+  }
+  private put(kind: Kind, frame: number, arg: Arg): void {
+    const k = `${kind}:${String(frame)}`;
+    if (this.full) {
+      this.pending.delete(k);
+      this.pending.set(k, { kind, frame, arg });
+      return;
+    }
+    this.publish(kind, frame, arg);
+  }
+  private publish(kind: Kind, frame: number, arg: Arg): void {
+    const seq = (this.seqs.get(frame) ?? 0) + 1;
+    this.seqs.set(frame, seq);
+    this.published.push({ kind, frame, seq, arg });
+    this.cbs.get(frame)?.(kind === 'camera' ? CAMERA : RESIZE, seq);
+  }
+}
+
+const drawn = (o: {
+  w: number;
+  h?: number;
+  dpr?: number;
+  seq: number;
+  rseq: number;
+  at?: number;
+}) =>
   ({
     t: 'drawn',
     id: 1,
-    ev: { cssWidth: w, cssHeight: 150, dpr: 2 },
-    startMs,
-    endMs: startMs + 2,
+    ev: { cssWidth: o.w, cssHeight: o.h ?? 150, dpr: o.dpr ?? 1 },
+    startMs: o.at ?? 5,
+    endMs: (o.at ?? 5) + 2,
     series: 1,
+    seq: o.seq,
+    rseq: o.rseq,
   }) as const;
+
+function frame(id = 1) {
+  const p = port();
+  const onFail = vi.fn();
+  const canvas = { width: 0, height: 0 } as unknown as OffscreenCanvas;
+  const f = new WasmFrame(p, id, canvas, { timeZone: 'UTC', keyTarget: null, id: 'f1' }, onFail);
+  const got = vi.fn();
+  f.on('drawn', got);
+  return { f, p, onFail, canvas, got };
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe('WasmFrame (ADR-0019, D-PROTO)', () => {
-  it('posts each call as one message and reports drawn at the last size only', () => {
-    const p = port();
-    const canvas = { width: 0, height: 0 } as unknown as OffscreenCanvas;
-    const onFail = vi.fn();
-    const f = new WasmFrame(p, 1, canvas, { timeZone: 'UTC', keyTarget: null, id: 'f1' }, onFail);
+  it('posts spec, data, theme and dispose; holds the camera and size until created', () => {
+    const { f, p, onFail, canvas, got } = frame();
+    const ring = new FakeRing();
     const measure = vi.spyOn(performance, 'measure');
-    const got = vi.fn();
-    f.on('drawn', got);
     f.setSpec(S);
     f.setData(SERIES);
     f.setTimeWindow({ fromMs: 0, toMs: 10 });
@@ -61,13 +137,28 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
     seam.setEvents([]);
     seam.setSelection(null);
     f.resize(300, 150, 2);
-    f.handle(drawn(300));
-    f.handle(drawn(200));
+    expect(ring.published).toEqual([]);
+    f.handle(drawn({ w: 300, dpr: 2, seq: 2, rseq: 2 }));
+    expect(got).not.toHaveBeenCalled();
+    f.created(ring);
+    expect(ring.published).toEqual([
+      {
+        kind: 'camera',
+        frame: 1,
+        seq: 1,
+        arg: { view: { lo: 0, hi: 10 }, value: null, band: null },
+      },
+      { kind: 'resize', frame: 1, seq: 2, arg: [300, 150, 2] },
+    ]);
+    f.handle(drawn({ w: 300, dpr: 2, seq: 2, rseq: 2 }));
     f.setData(HEAT);
     f.dispose();
-    f.handle(drawn(300, 9));
+    f.handle(drawn({ w: 300, dpr: 2, seq: 2, rseq: 2, at: 9 }));
     f.handle({ t: 'failed', id: 1, reason: 'readback' });
     f.setSpec(S);
+    f.resize(10, 10, 1);
+    expect(ring.dropped).toEqual([1]);
+    expect(ring.published).toHaveLength(2);
     expect(p.sent.map((s) => s.msg)).toEqual([
       { t: 'create', id: 1, canvas, frameId: 'f1' },
       { t: 'spec', id: 1, json: JSON.stringify(S) },
@@ -76,16 +167,13 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
         id: 1,
         series: [{ key: '00000000000000aa', names: ['job'], values: ['api'], t: T, v: V }],
       },
-      { t: 'window', id: 1, from: 0, to: 10 },
       { t: 'theme', id: 1, theme: 0 },
-      { t: 'resize', id: 1, w: 300, h: 150, dpr: 2 },
       { t: 'data', id: 1, series: null },
       { t: 'dispose', id: 1 },
     ]);
     // Only the canvas is transferred; the data arrays stay with the caller (cloned).
     expect(p.sent[0]?.transfer).toEqual([canvas]);
     expect(p.sent.slice(1).every((s) => s.transfer.length === 0)).toBe(true);
-    expect([T.length, V.length]).toEqual([2, 2]);
     expect(got.mock.calls).toEqual([[{ cssWidth: 300, cssHeight: 150, dpr: 2 }]]);
     const m = measure.mock.calls.filter((c) => c[0] === 'chart-draw');
     expect(m.map((c) => c[1])).toEqual([
@@ -94,22 +182,66 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
     expect(onFail).not.toHaveBeenCalled();
   });
 
-  it('a11y and failed reach the frame; drawn is never at size 0', () => {
-    const p = port();
-    const onFail = vi.fn();
-    const f = new WasmFrame(
-      p,
-      1,
-      {} as OffscreenCanvas,
-      { timeZone: 'UTC', keyTarget: null },
-      onFail,
-    );
-    const got = vi.fn();
-    const a11y = vi.fn();
-    f.on('drawn', got);
-    f.on('a11y', a11y);
+  it('reports drawn only for the latest resize, with the caller’s values', () => {
+    const { f, got } = frame();
+    const ring = new FakeRing();
+    f.created(ring);
+    f.resize(300, 150, 1);
+    f.resize(300, 150, 2);
+    f.handle(drawn({ w: 300, dpr: 1, seq: 1, rseq: 1 }));
+    expect(got).not.toHaveBeenCalled();
+    f.handle(drawn({ w: 300, dpr: 2, seq: 2, rseq: 2 }));
+    expect(got.mock.calls).toEqual([[{ cssWidth: 300, cssHeight: 150, dpr: 2 }]]);
+    f.resize(300.3, 150, 1);
+    f.handle(drawn({ w: Math.fround(300.3), seq: 3, rseq: 3 }));
+    expect(got.mock.calls[1]).toEqual([{ cssWidth: 300.3, cssHeight: 150, dpr: 1 }]);
+    f.setTimeWindow({ fromMs: 10, toMs: 20 });
+    expect(ring.published.at(-1)).toMatchObject({
+      kind: 'camera',
+      arg: { view: { lo: 10, hi: 20 }, value: null, band: null },
+    });
+    // A spec with a valid value range pins the idle camera's value; an invalid one does not.
+    f.setSpec(PINNED);
+    expect(ring.published.at(-1)?.arg).toEqual({
+      view: { lo: 10, hi: 20 },
+      value: { min: 0, max: 5 },
+      band: null,
+    });
+    f.setSpec({ ...S, valueRange: { min: 5, max: 5 } });
+    expect(ring.published.at(-1)?.arg).toEqual({
+      view: { lo: 10, hi: 20 },
+      value: null,
+      band: null,
+    });
+    f.setCamera({ view: { lo: 1, hi: 2 }, value: null, band: 40 });
+    expect(ring.published.at(-1)?.arg).toEqual({ view: { lo: 1, hi: 2 }, value: null, band: 40 });
+  });
+
+  it('a resize waiting in a full ring blocks every drawn until it is published', () => {
+    const { f, got } = frame();
+    const ring = new FakeRing();
+    f.created(ring);
+    f.resize(300, 150, 1);
+    f.resize(300, 150, 2);
+    ring.full = true;
     f.resize(0, 150, 1);
-    f.handle({ ...drawn(0), ev: { cssWidth: 0, cssHeight: 150, dpr: 1 } });
+    // The worker presents the last published size: not the latest call, so nothing.
+    f.handle(drawn({ w: 300, dpr: 2, seq: 2, rseq: 2 }));
+    expect(got).not.toHaveBeenCalled();
+    f.resize(300, 150, 2);
+    ring.release();
+    expect(ring.published.at(-1)).toMatchObject({ kind: 'resize', seq: 3, arg: [300, 150, 2] });
+    f.handle(drawn({ w: 300, dpr: 2, seq: 3, rseq: 3 }));
+    expect(got.mock.calls).toEqual([[{ cssWidth: 300, cssHeight: 150, dpr: 2 }]]);
+  });
+
+  it('a11y and failed reach the frame; drawn is never at size 0', () => {
+    const { f, onFail, got } = frame();
+    const a11y = vi.fn();
+    f.on('a11y', a11y);
+    f.created(new FakeRing());
+    f.resize(0, 150, 1);
+    f.handle(drawn({ w: 0, seq: 1, rseq: 1 }));
     expect(got).not.toHaveBeenCalled();
     const summary = {
       kind: 'line',

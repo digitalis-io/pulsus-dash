@@ -62,4 +62,45 @@ describe('ci:probe-absent (T03-024)', () => {
     const r = checkProbeAbsent(dist(noBoot), { expectFaults: true });
     expect(r.map((f) => [f.rule, f.subject])).toEqual([['fault-site-missing', 'boot']]);
   });
+  it('engine_probe_input in a .wasm fails a release and a fault tree; --expect-probe requires it (plan #68 C2a1)', () => {
+    const PROBE = Buffer.concat([WASM, Buffer.from('engine_probe_' + 'input')]);
+    const sites = {
+      'assets/r.js': `x("${SENTINEL}:route")`,
+      'assets/b.js': `x("${SENTINEL}:boot")`,
+      'assets/w/x.js': `x("${SENTINEL}:worker")`,
+    };
+    // Release: the probe export in the wasm is a finding; the name in a script is not.
+    const release = checkProbeAbsent(
+      dist({
+        ...CLEAN,
+        'assets/dash-engine-b.wasm': PROBE,
+        'assets/glue.js': 'engine_probe_input',
+      }),
+    );
+    expect(release.map((f) => [f.rule, f.file, f.subject])).toEqual([
+      ['probe-in-release', 'assets/dash-engine-b.wasm', 'engine_probe_input'],
+    ]);
+    // The fault build serves the release wasm: the probe export there is a finding too.
+    const fault = checkProbeAbsent(
+      dist({ ...CLEAN, ...sites, 'assets/dash-engine-b.wasm': PROBE }),
+      { expectFaults: true },
+    );
+    expect(fault.map((f) => [f.rule, f.subject])).toEqual([
+      ['probe-in-release', 'engine_probe_input'],
+    ]);
+    // The probe build must carry it.
+    const missing = checkProbeAbsent(dist({ ...CLEAN, ...sites }), {
+      expectFaults: true,
+      expectProbe: true,
+    });
+    expect(missing.map((f) => [f.rule, f.subject])).toEqual([
+      ['probe-missing', 'engine_probe_input'],
+    ]);
+    expect(
+      checkProbeAbsent(dist({ ...CLEAN, ...sites, 'assets/dash-engine-b.wasm': PROBE }), {
+        expectFaults: true,
+        expectProbe: true,
+      }),
+    ).toEqual([]);
+  });
 });

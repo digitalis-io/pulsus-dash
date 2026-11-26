@@ -2,7 +2,9 @@
  * Writes the engine parity fixtures `engine/fixtures/*.json` (plan #68 §3.14, A.7) from the TS
  * sources of truth: `formatValue`, `valueTicks`, `layoutPlot` with draw.ts's value axis,
  * `lineColumns`, `seriesColourIndex`, `synthLines` and `frameSummary`. The Rust ports must
- * reproduce them (`unit:*-parity`). `--write` writes the files; without it the committed files are
+ * reproduce them (`unit:*-parity`). `input-ring.json` is the input ring the adapter's `InputRing`
+ * writes (plan #68 C2a1 §5 `ring_fixture`): its bytes and its log, which the render worker's
+ * decoder must read back. `--write` writes the files; without it the committed files are
  * compared and the exit code is 1 when one is stale (`unit:engine-fixtures` runs the same check).
  *
  * The client modules are loaded at run time (their imports are extensionless, which Node resolves
@@ -132,6 +134,27 @@ interface Sources {
   hash01: (...ints: number[]) => number;
   galleryEntries: (w: Window, seed?: number) => Entry[];
   font: { size: { xs: number }; advance: { mono: number } };
+  InputRing: new (
+    memory: { buffer: SharedArrayBuffer },
+    cb: number,
+    wake: () => void,
+    o: { log: boolean; now: () => number },
+  ) => FixtureRing;
+}
+
+/** What the fixture uses of `engine/wasm/ring.ts`. */
+interface FixtureRing {
+  produced: unknown[] | null;
+  camera(
+    frame: number,
+    c: {
+      view: { lo: number; hi: number };
+      value: { min: number; max: number } | null;
+      band: number | null;
+    },
+  ): void;
+  resize(frame: number, w: number, h: number, dpr: number): void;
+  unpublished(frame: number): number;
 }
 
 /**
@@ -179,6 +202,7 @@ async function load(): Promise<Sources> {
       'dev/synth.ts',
       'dev/gallery.ts',
       'styles/tokens.ts',
+      'engine/wasm/ring.ts',
     ].map(mod),
   );
   return Object.assign({}, ...parts) as Sources;
@@ -649,6 +673,53 @@ function summaryRows(s: Sources, entries: readonly Entry[]): unknown[] {
   });
 }
 
+/**
+ * `input-ring.json`: 40 records from `InputRing` with its counters at 0xFFFF_FF80, so the third
+ * record leaves a wrap marker in the last 24 bytes and the counters roll over 2³²: the counters,
+ * the published bytes in counter order (hex) and the produced log.
+ */
+function inputRingRows(s: Sources): unknown[] {
+  const RING = 0x10000;
+  const DATA = 0x10000;
+  const start = 0xffff_ff80;
+  const buffer = new SharedArrayBuffer(0x40000);
+  const i32 = new Int32Array(buffer);
+  Atomics.store(i32, 0x80 / 4, start | 0);
+  Atomics.store(i32, 0xc0 / 4, start | 0);
+  let t = 1000;
+  const ring = new s.InputRing({ buffer }, 0, () => undefined, {
+    log: true,
+    now: () => (t += 0.25),
+  });
+  const w0 = GALLERY_WINDOW.fromMs;
+  ring.resize(1, 1118.5, 240.25, 1.25);
+  ring.camera(2, { view: { lo: w0, hi: w0 + 3_600_000 }, value: null, band: null });
+  ring.camera(1, {
+    view: { lo: w0 + 0.25, hi: w0 + 1000.75 },
+    value: { min: 0, max: 10 },
+    band: 60,
+  });
+  for (let i = 3; i < 40; i++) {
+    const frame = 1 + (i % 4);
+    if (i % 3 === 0) {
+      ring.resize(frame, 100 + i * 7.3, 50 + i, [1, 1.25, 2][i % 3] ?? 1);
+    } else {
+      ring.camera(frame, {
+        view: { lo: w0 + i * 1000.5, hi: w0 + i * 1000.5 + 60_000 * i },
+        value: i % 5 === 0 ? { min: -i, max: i * 2.5 } : null,
+        band: i % 7 === 0 ? 48 : null,
+      });
+    }
+  }
+  const head = Atomics.load(i32, 0x80 / 4) >>> 0;
+  const bytes = new Uint8Array(buffer, DATA, RING);
+  let hex = '';
+  for (let c = start; c !== head; c = (c + 1) >>> 0) {
+    hex += (bytes[c & (RING - 1)] ?? 0).toString(16).padStart(2, '0');
+  }
+  return [{ start, head, data: hex, records: ring.produced }];
+}
+
 /** Every fixture file name → its JSON text. */
 export async function fixtures(): Promise<Record<string, string>> {
   const s = await load();
@@ -663,6 +734,7 @@ export async function fixtures(): Promise<Record<string, string>> {
     'palette.json': json(paletteRows(s)),
     'synth.json': json(synthRows(s, entries)),
     'summary.json': json(summaryRows(s, entries)),
+    'input-ring.json': json(inputRingRows(s)),
   };
 }
 

@@ -1,13 +1,16 @@
 /**
  * The restart policy (plan #68 C1 §4.3, T03 §9.2): one restart per page after a draw; a trap
  * before any draw, a second trap or a failed restart sends every engine frame to Canvas 2D and
- * marks the session, so later frames start on Canvas 2D.
+ * marks the session, so later frames start on Canvas 2D. Part C2a1 (§3.1, §4.1, §4.4, §5 `created
+ * gate`, `dispose`, `restart`): every status gets a new input ring on its memory; a frame's
+ * records wait for its `created` and are dropped by its dispose.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeEngine } from '../../test/fakeEngine';
+import { CB, KIND_CAMERA, KIND_RESIZE, memory, RingView } from '../../test/ringView';
 import type { ChartEngine, FrameData, VisSpec } from '../api';
 import { RoutingEngine } from '../route';
-import { loadBackend, type WorkerLike } from './engine';
+import { loadBackend, type Backend, type WorkerLike } from './engine';
 
 const S: VisSpec = { kind: 'line', title: 'T', unit: { kind: 'none' } };
 const D: FrameData = {
@@ -32,6 +35,12 @@ interface Msg {
 
 class FakeWorker implements WorkerLike {
   readonly sent: Msg[] = [];
+  /** The worker's engine memory: the control block at `CB`, idle at boot (T03 §4.3). */
+  readonly memory = memory();
+  readonly ring = new RingView(this.memory);
+  constructor() {
+    this.ring.setIdle(1);
+  }
   terminated = false;
   private readonly listeners = new Map<string, ((e: unknown) => void)[]>();
   postMessage(msg: unknown): void {
@@ -50,7 +59,7 @@ class FakeWorker implements WorkerLike {
     this.emit('message', { data });
   }
   status(status = 1): void {
-    this.message({ t: 'status', status, adapter: 'swiftshader', cb: 64, memory: {} });
+    this.message({ t: 'status', status, adapter: 'swiftshader', cb: CB, memory: this.memory });
     this.message({ t: 'spawn-pool', ptr: 8 });
   }
   drawn(id: number): void {
@@ -62,6 +71,12 @@ class FakeWorker implements WorkerLike {
   }
   trap(): void {
     this.emit('error', { message: 'unreachable' });
+  }
+  created(...ids: number[]): void {
+    this.message({ t: 'events', json: JSON.stringify(ids.map((id) => ({ t: 'created', id }))) });
+  }
+  inputs(): number {
+    return this.sent.filter((m) => m.t === 'input').length;
   }
 }
 
@@ -155,12 +170,20 @@ async function restarted(p: Page): Promise<FakeWorker> {
   w2.status();
   await flush();
   const after = w2.sent.slice(1);
-  expect(after.map((m) => m.t)).toEqual(['create', 'spec', 'data', 'window', 'theme', 'resize']);
+  expect(after.map((m) => m.t)).toEqual(['create', 'spec', 'data', 'theme']);
   expect(after[0]).toMatchObject({ t: 'create', id: 1, frameId: 'f1' });
   expect(after[0]?.['canvas']).toBe(transferred[1]);
   expect(transferred[1]).not.toBe(transferred[0]);
-  expect(after[4]).toEqual({ t: 'theme', id: 1, theme: 0 });
-  expect(after[5]).toEqual({ t: 'resize', id: 1, w: 300, h: 150, dpr: 1 });
+  expect(after[3]).toEqual({ t: 'theme', id: 1, theme: 0 });
+  // A new ring on the new worker's memory: the frame's camera and size wait for its `created`.
+  expect(w2.ring.head()).toBe(0);
+  w2.created(1);
+  expect(w2.ring.decode().map((r) => [r.kind, r.frame, r.seq])).toEqual([
+    [KIND_CAMERA, 1, 1],
+    [KIND_RESIZE, 1, 2],
+  ]);
+  expect(w2.inputs()).toBe(1);
+  expect(w1.ring.decode()).toEqual([]);
   const [c1, c2] = canvases(p.host);
   expect(c1?.hasAttribute('data-retired')).toBe(true);
   expect(c2?.dataset['engine']).toBe('wasm-webgpu');
@@ -281,5 +304,108 @@ describe('engine restart policy (T03 §9.2)', () => {
     expect(p.render).toHaveLength(1);
     expect(p.render[0]?.terminated).toBe(true);
     expect(sessionStorage.getItem(KEY)).toBe('1');
+  });
+});
+
+const INIT = { timeZone: 'UTC', keyTarget: null } as const;
+
+async function backend(o: { start?: number } = {}): Promise<{ b: Backend; w: FakeWorker }> {
+  const render: FakeWorker[] = [];
+  const p = loadBackend({
+    forceT2: false,
+    markFailed: () => undefined,
+    compile: () => Promise.resolve(MODULE),
+    spawnRender: () => {
+      const w = new FakeWorker();
+      render.push(w);
+      return w;
+    },
+    spawnPool: () => new FakeWorker(),
+    timeoutMs: 10_000,
+  });
+  await flush();
+  const w = render[0];
+  if (w === undefined) throw new Error('no render worker');
+  if (o.start !== undefined) w.ring.setCounters(o.start);
+  w.status();
+  return { b: await p, w };
+}
+
+const canvas = (): OffscreenCanvas => ({}) as OffscreenCanvas;
+const sleep = (ms: number): Promise<void> =>
+  new Promise((r) => {
+    setTimeout(r, ms);
+  });
+
+describe('the input ring and the created gate (plan #68 C2a1)', () => {
+  it('a frame’s records wait for its created, then go in call order', async () => {
+    for (const start of [0, 0xffff_ff00]) {
+      const { b, w } = await backend({ start });
+      const frames = Array.from({ length: 300 }, () => b.createFrame(canvas(), INIT, () => {}));
+      for (const f of frames) {
+        f.setSpec(S);
+        f.resize(300, 150, 1);
+        f.setTimeWindow(W);
+      }
+      expect(w.ring.head()).toBe(start);
+      expect(w.inputs()).toBe(0);
+      w.created(...frames.map((_, i) => i + 1));
+      const recs = w.ring.decode();
+      expect(recs).toHaveLength(600);
+      expect(recs.map((r) => [r.kind, r.frame, r.seq])).toEqual(
+        frames.flatMap((_, i) => [
+          [KIND_RESIZE, i + 1, 1],
+          [KIND_CAMERA, i + 1, 2],
+        ]),
+      );
+      expect(w.inputs()).toBe(1);
+      if (start !== 0) expect(w.ring.head()).toBeLessThan(start);
+      // (b) After created: at once.
+      frames[0]?.setTimeWindow({ fromMs: 5, toMs: 6 });
+      expect(w.ring.decode().map((r) => [r.kind, r.frame, r.seq, r.f[0]])).toEqual([
+        [KIND_CAMERA, 1, 3, 5],
+      ]);
+    }
+  });
+
+  it('dispose drops held and pending records; a late created or drawn is ignored', async () => {
+    const { b, w } = await backend();
+    const a = b.createFrame(canvas(), INIT, () => {});
+    const z = b.createFrame(canvas(), INIT, () => {});
+    const early = b.createFrame(canvas(), INIT, () => {});
+    early.resize(300, 150, 1);
+    // (a) Disposed before created, (b) its created arrives after.
+    early.dispose();
+    w.created(1, 2, 3);
+    expect(w.ring.decode()).toEqual([]);
+    expect(w.sent.filter((m) => m['id'] === 3).map((m) => m.t)).toEqual(['create', 'dispose']);
+    // (c) A has a published and a pending record, then is disposed.
+    a.resize(300, 150, 1);
+    for (let i = 0; i < 1100; i++) z.setTimeWindow({ fromMs: i, toMs: i + 1 });
+    a.setTimeWindow({ fromMs: 1, toMs: 2 });
+    const got = vi.fn();
+    a.on('drawn', got);
+    a.dispose();
+    const first = w.ring.decode();
+    expect(first.filter((r) => r.frame === 1).map((r) => r.kind)).toEqual([KIND_RESIZE]);
+    await sleep(60);
+    expect(w.ring.decode().filter((r) => r.frame === 1)).toEqual([]);
+    w.message({
+      t: 'events',
+      json: JSON.stringify([
+        {
+          t: 'drawn',
+          id: 1,
+          ev: { cssWidth: 300, cssHeight: 150, dpr: 1 },
+          startMs: 1,
+          endMs: 2,
+          series: 1,
+          seq: 1,
+          rseq: 1,
+        },
+      ]),
+    });
+    expect(got).not.toHaveBeenCalled();
+    expect(w.sent.filter((m) => m['id'] === 1).map((m) => m.t)).toEqual(['create', 'dispose']);
   });
 });

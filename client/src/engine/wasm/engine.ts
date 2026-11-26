@@ -9,6 +9,10 @@
  * | A trap after at least one `drawn`, the first on the page | one restart: new workers from the same `Module`; every frame `onFail('restart')` |
  * | A trap before any `drawn`, a second trap, a restart that does not reach status 1 or 2 in 10 s, or `fatal` | `markFailed()`; every frame `onFail('trap')` |
  *
+ * Part C2a1 (§3.1, §4.1): each status (boot, restart) gets a new input ring on the worker's memory
+ * before any queued `create` is posted; a frame's camera and size reach the ring only after the
+ * worker reports it `created`. Frame ids count up from 1 per worker and are never reused.
+ *
  * The session flag is injected (`markFailed`): this directory imports only `../api` (T03-001).
  */
 import type { ChartFrame, FrameInit } from '../api';
@@ -22,7 +26,15 @@ import {
 } from './boot';
 import { WasmFrame, type Port } from './frame';
 import { fetchEngineWasm } from './integrity';
+import {
+  CB_BYTES,
+  OFF_INPUT_HEAD,
+  OFF_INPUT_IDLE,
+  OFF_INPUT_OVERFLOW,
+  OFF_INPUT_TAIL,
+} from './layout.gen';
 import type { MainToRender, RenderEvent } from './protocol';
+import { InputRing, type InputRec } from './ring';
 import { spawnPool, spawnRender } from './workers';
 
 export type { WorkerLike } from './boot';
@@ -36,6 +48,25 @@ export interface EngineOptions {
   readonly spawnRender?: () => WorkerLike;
   readonly spawnPool?: () => WorkerLike;
   readonly timeoutMs?: number;
+  /** Fault builds with `?probe=1` only (`dev/engineProbe.ts`). */
+  readonly probe?: EngineProbe;
+}
+
+/** The probe's hooks into the engine (plan #68 C2a1 §3.4, §3.5). */
+export interface EngineProbe {
+  /** The input ring's counters start here (the probe build's `engine_probe_ring_start`). */
+  readonly ringStart?: number;
+  /** Each status: the running engine's ring and counters. */
+  onHost(h: ProbeHost): void;
+}
+
+/** What `__dashProbe` reads of the running engine (fault builds only; plan #68 C2a1 §3.4). */
+export interface ProbeHost {
+  readonly ring: InputRing;
+  counters(): { head: number; tail: number };
+  overflow(): number;
+  idle(): boolean;
+  inputLog(): Promise<InputRec[]>;
 }
 
 export interface Backend {
@@ -84,6 +115,10 @@ class EngineHost implements Backend {
   private state: 'booting' | 'ready' | 'restarting' | 'dead' = 'booting';
   private readonly queue: [MainToRender, Transferable[]][] = [];
   private faultOf: (restart: boolean) => string | undefined = () => undefined;
+  /** The input ring of the current worker's memory (from its status on). */
+  private ring: InputRing | null = null;
+  /** The probe build: `inputLog()` calls waiting for the worker's reply. */
+  private readonly probeWaits: ((json: string) => void)[] = [];
   private readonly port: Port = {
     postMessage: (msg, transfer = []) => {
       if (this.state === 'ready' && this.render !== null)
@@ -111,6 +146,10 @@ class EngineHost implements Backend {
       onError: () => {
         this.trap();
       },
+      ...(this.o.probe?.ringStart === undefined ? {} : { ringStart: this.o.probe.ringStart }),
+      onProbeInput: (json) => {
+        this.probeWaits.shift()?.(json);
+      },
     });
   }
 
@@ -132,8 +171,41 @@ class EngineHost implements Backend {
     this.tier = s.status === 1 ? 't1' : 't2';
     showStatus(s.status, s.adapter);
     this.state = 'ready';
+    // A new ring on this worker's memory before any `create` is posted.
+    this.ring?.close();
+    const worker = this.render?.worker;
+    const probe = import.meta.env.VITE_ENGINE_FAULTS === '1' ? this.o.probe : undefined;
+    const ring = new InputRing(
+      s.memory,
+      s.cb,
+      () => {
+        worker?.postMessage({ t: 'input' } satisfies MainToRender);
+      },
+      probe === undefined ? {} : { log: true },
+    );
+    this.ring = ring;
+    if (probe !== undefined && worker !== undefined) probe.onHost(this.probeHost(ring, worker, s));
     for (const [msg, transfer] of this.queue.splice(0))
       this.render?.worker.postMessage(msg, transfer);
+  }
+
+  /** What the probe reads of this engine (fault builds only). */
+  private probeHost(ring: InputRing, worker: WorkerLike, s: Status): ProbeHost {
+    const i32 = new Int32Array(s.memory.buffer, s.cb, CB_BYTES / 4);
+    const word = (off: number): number => Atomics.load(i32, off / 4) >>> 0;
+    return {
+      ring,
+      counters: () => ({ head: word(OFF_INPUT_HEAD), tail: word(OFF_INPUT_TAIL) }),
+      overflow: () => word(OFF_INPUT_OVERFLOW),
+      idle: () => word(OFF_INPUT_IDLE) === 1,
+      inputLog: () =>
+        new Promise<InputRec[]>((resolve) => {
+          this.probeWaits.push((json) => {
+            resolve(JSON.parse(json) as InputRec[]);
+          });
+          worker.postMessage({ t: 'probe-input' } satisfies MainToRender);
+        }),
+    };
   }
 
   createFrame(
@@ -171,7 +243,13 @@ class EngineHost implements Backend {
         continue;
       }
       if (ev.t === 'drawn') this.drawn = true;
-      this.frames.get(ev.id)?.frame.handle(ev);
+      const frame = this.frames.get(ev.id)?.frame;
+      // A disposed frame's events (a late `created` included) are ignored.
+      if (ev.t === 'created') {
+        if (this.ring !== null) frame?.created(this.ring);
+        continue;
+      }
+      frame?.handle(ev);
     }
   }
 
@@ -189,6 +267,8 @@ class EngineHost implements Backend {
     this.restarted = true;
     this.state = 'restarting';
     this.render?.terminate();
+    this.ring?.close();
+    this.ring = null;
     const old = [...this.frames.values()];
     this.frames.clear();
     for (const e of old) e.frame.detach();
@@ -214,6 +294,8 @@ class EngineHost implements Backend {
     this.state = 'dead';
     this.queue.length = 0;
     this.render?.terminate();
+    this.ring?.close();
+    this.ring = null;
     showStatus(4);
     this.o.markFailed();
     const all = [...this.frames.values()];

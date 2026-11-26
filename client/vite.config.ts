@@ -22,11 +22,14 @@ const root = fileURLToPath(new URL('.', import.meta.url));
  * `virtual:dash-engine` (plan #68 C1 §2): the wasm-bindgen glue of `cargo xtask build-wasm` in the
  * git-ignored `src/engine/wasm/gen/` with the URL of its wasm, or `src/engine/wasm/absent.ts` in a
  * build without the engine (every frame stays on Canvas 2D). Types: `wasm/engine-module.d.ts`.
+ * With `VITE_ENGINE_PROBE=1` (the probe build of `e2e:shim-fuzz`, plan #68 C2a1 §3.5) it is the
+ * `--probe` engine in `src/engine/wasm/gen-probe/` instead.
  */
 function dashEngine(): Plugin {
   const id = 'virtual:dash-engine';
   const resolved = `\0${id}`;
-  const gen = `${root}src/engine/wasm/gen/`;
+  const probe = process.env['VITE_ENGINE_PROBE'] === '1';
+  const gen = `${root}src/engine/wasm/${probe ? 'gen-probe' : 'gen'}/`;
   return {
     name: 'dash-engine',
     resolveId(source) {

@@ -7,6 +7,8 @@ interface ImportMetaEnv {
   readonly VITE_ENGINE?: string;
   /** `1` in the fault build of the engine e2e suite only (plan #68 C1 §4.3). */
   readonly VITE_ENGINE_FAULTS?: string;
+  /** `1` in the probe build of `e2e:shim-fuzz` only, with `VITE_ENGINE_FAULTS` (plan #68 C2a1). */
+  readonly VITE_ENGINE_PROBE?: string;
 }
 
 interface ImportMeta {
