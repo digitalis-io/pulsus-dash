@@ -5,6 +5,8 @@
  * query under `['data', 'panel', …]` (the shell's refresh reaches it; a new key aborts the old
  * request, PRF-030), fresh within the window epoch only (`staleTime: Infinity`, `BoardRunProvider`).
  * A window or step change keeps the previous outcome as the placeholder; any other change does not.
+ * A bar chart with a baseline offset (or its ghost on) sends the same query on the window moved
+ * back by the offset beside the main one, in the same query function (plan #173 Part 3b §4.2).
  * A LogQL panel runs through `useLogPanelRun` (plan #67 §3.3); both hooks are called on every render
  * and the inactive one sends nothing and loads no language.
  */
@@ -16,7 +18,8 @@ import { promGrid } from '../data/step';
 import type { Diagnostic } from '../editor/lang/types';
 import { refusalOf, runKind, type Refusal } from '../explore/useExploreRun';
 import { useTimeContext } from '../state/useTimeContext';
-import { fromInstant, fromRange } from '../vis/autovis';
+import { fromInstant, fromRange, type ExploreResult } from '../vis/autovis';
+import { baselineOffset, OFFSET_MS } from './baseline';
 import { BoardRunContext } from './boardRunContext';
 import { PENDING_KINDS } from './options';
 import {
@@ -141,6 +144,10 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   );
   const sentPairs = useMemo(() => panelVars(text, vars), [text, vars]);
   const varsJson = useMemo(() => JSON.stringify(sentPairs), [sentPairs]);
+  // The bar chart's baseline run (plan #173 Part 3b §4.2): its offset, or null for none.
+  const ghost = a.ghost ?? false;
+  const off = panel.vis.kind === 'barchart' ? baselineOffset(panel.vis.options, ghost) : null;
+  const baselineMs = off === null ? null : OFFSET_MS[off];
   const runKey = useMemo(
     () =>
       kind !== null && stepMs !== null
@@ -151,10 +158,10 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
             kind,
             stepMs,
             { fromMs, toMs },
-            null,
+            baselineMs,
           )
         : null,
-    [kind, stepMs, tenant, panel.id, text, varsJson, fromMs, toMs],
+    [kind, stepMs, tenant, panel.id, text, varsJson, fromMs, toMs, baselineMs],
   );
   const key = useMemo(
     () => runKey ?? panelIdleKey(tenant, panel.id, text),
@@ -183,20 +190,55 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
     queryFn: async ({ signal, queryKey }): Promise<PanelOutcome> => {
       if (kind === null || stepMs === null) throw new Error('panel: a run without its inputs');
       const sent = Object.fromEntries(sentPairs);
-      if (kind === 'range') {
-        const r = await api.queryRange(
+      const widthPx = widthRef.current ?? 0;
+      // One request: the panel's window, or that window moved back by `shift` (the baseline).
+      const request = async (shift: number, s: AbortSignal): Promise<PanelOutcome> => {
+        if (kind === 'range') {
+          const r = await api.queryRange(
+            tenant,
+            {
+              query: text,
+              fromMs: fromMs - shift,
+              toMs: toMs - shift,
+              widthPx,
+              vars: sent,
+              rate: true,
+            },
+            s,
+          );
+          return { key: queryKey, planned: r.planned, result: fromRange(r) };
+        }
+        const r = await api.queryInstant(
           tenant,
-          { query: text, fromMs, toMs, widthPx: widthRef.current ?? 0, vars: sent, rate: true },
-          signal,
+          { query: text, atMs: toMs - shift, vars: sent, stepMs },
+          s,
         );
-        return { key: queryKey, planned: r.planned, result: fromRange(r) };
+        return { key: queryKey, planned: r.planned, result: fromInstant(r) };
+      };
+      if (baselineMs === null) return request(0, signal);
+      // One run controller linked to the query's signal (§4.2): the query's abort (a new key, an
+      // unmount) aborts both requests; a failed main request aborts the baseline. A failed
+      // baseline never fails the panel.
+      const run = new AbortController();
+      const onAbort = (): void => {
+        run.abort(signal.reason);
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      try {
+        const main = request(0, run.signal).catch((e: unknown) => {
+          run.abort();
+          throw e;
+        });
+        const base: Promise<ExploreResult | 'failed'> = request(baselineMs, run.signal).then(
+          (o) => o.result,
+          () => 'failed' as const,
+        );
+        // Rejects with the main request's error first; the baseline promise never rejects.
+        const [m, b] = await Promise.all([main, base]);
+        return { ...m, baseline: run.signal.aborted ? 'failed' : b };
+      } finally {
+        signal.removeEventListener('abort', onAbort);
       }
-      const r = await api.queryInstant(
-        tenant,
-        { query: text, atMs: toMs, vars: sent, stepMs },
-        signal,
-      );
-      return { key: queryKey, planned: r.planned, result: fromInstant(r) };
     },
   });
 

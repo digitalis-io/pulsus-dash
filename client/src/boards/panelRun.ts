@@ -5,7 +5,8 @@
  * the previous result (§4.3). A frame view carries the panel's thresholds (as seam lines on line and
  * bars, ADR-0022) and legend mode, and its result for the legend rows and local isolation (plan
  * #64 Part B §3.8). A LogQL panel (plan #67 §3.4) is a stream view of its pager, a frame of its
- * metric answer, or the log volume by level for Bars.
+ * metric answer, or the log volume by level for Bars. A saved bar chart is a category view of its
+ * `barchartModel` (plan #173 Part 3b §4.1); the key's last element is its baseline offset.
  */
 import type { DataPanelSpec, PlannedQuery } from '../api/types';
 import type { VolumeResult } from '../data/decode';
@@ -17,7 +18,7 @@ import { seriesRows, type SeriesRow } from '../explore/seriesRows';
 import { errorView, refusalText } from '../explore/statusText';
 import { t } from '../i18n/t';
 import { autoVis, chooseVis, fromRange, type ExploreResult } from '../vis/autovis';
-import type { BarchartModel } from '../vis/barchart';
+import { barchartModel, type BarchartModel } from '../vis/barchart';
 import { framePlan, type FramePlan } from '../vis/framePlan';
 import { thresholdLines, type Thresholds } from '../vis/thresholds';
 import type { LogPager, LogPagerState } from '../logs/logPager';
@@ -113,9 +114,13 @@ export type PanelState =
 
 /** The head: indices 0–6 (through `kind`). */
 export const PANEL_KEY_HEAD = 7;
-const RUN_KEY_LENGTH = 10;
+const RUN_KEY_LENGTH = 11;
 
-/** `['data', 'panel', tenant, id, text, vars, kind, step, fromMs, toMs]`. */
+/**
+ * `['data', 'panel', tenant, id, text, vars, kind, step, fromMs, toMs, baselineMs]`: `baselineMs`
+ * is the bar chart's baseline offset (null: no baseline run, #173 Part 3b §4.2). Outside the head,
+ * so a ghost toggle keeps the previous outcome as the placeholder.
+ */
 export function panelRunKey(
   tenant: string,
   id: string,
@@ -123,10 +128,9 @@ export function panelRunKey(
   kind: PanelRunKind,
   stepMs: number,
   w: { readonly fromMs: number; readonly toMs: number },
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- stub (tests first)
-  _baselineMs: number | null,
+  baselineMs: number | null,
 ): readonly unknown[] {
-  return ['data', 'panel', tenant, id, r.text, r.vars, kind, stepMs, w.fromMs, w.toMs];
+  return ['data', 'panel', tenant, id, r.text, r.vars, kind, stepMs, w.fromMs, w.toMs, baselineMs];
 }
 
 /** The key while nothing can be sent (no request): `['data', 'panel', tenant, id, text, null]`. */
@@ -134,7 +138,7 @@ export function panelIdleKey(tenant: string, id: string, text: string): readonly
   return ['data', 'panel', tenant, id, text, null];
 }
 
-/** Equal heads (`===` per element) and both are run keys (length 10). */
+/** Equal heads (`===` per element) and both are run keys (length 11). */
 export function sameExceptWindow(a: readonly unknown[], b: readonly unknown[]): boolean {
   if (a.length !== RUN_KEY_LENGTH || b.length !== RUN_KEY_LENGTH) return false;
   for (let i = 0; i < PANEL_KEY_HEAD; i++) if (a[i] !== b[i]) return false;
@@ -295,16 +299,43 @@ function streamView(s: PanelStream, panelVis: DataPanelSpec['vis'], title: strin
   if (state.phase === 'streams') return { kind: 'stream', stream: { ...s, pager: s.pager } };
   if (state.phase === 'series' && state.series !== null) {
     if (panelVis.kind === 'logs') return message('logs', t('panel.noVis'));
-    return frameView('line', streamResult(state.series), false, panelVis, title);
+    const r = streamResult(state.series);
+    if (panelVis.kind === 'barchart' && r.kind !== 'string') {
+      return categoryView(r, {
+        title,
+        rateApplied: false,
+        panelVis,
+        lang: 'logql',
+        baseline: undefined,
+      });
+    }
+    return frameView('line', r, false, panelVis, title);
   }
   return { kind: 'loading' };
 }
 
 /** Stub (tests first). */
-/* eslint-disable @typescript-eslint/no-unused-vars -- stub (tests first) */
+type NonString = Exclude<ExploreResult, { kind: 'string' }>;
+
+/** The models of one result: by baseline object, then for no baseline and a failed one. */
+interface ModelsOf {
+  readonly byBase: WeakMap<ExploreResult, Map<string, BarchartModel>>;
+  readonly none: Map<string, BarchartModel>;
+  readonly failed: Map<string, BarchartModel>;
+}
+
+const models = new WeakMap<ExploreResult, ModelsOf>();
+
+/**
+ * A saved bar chart's view (plan #173 Part 3b §4.1): `barchartModel` of `r` with the panel's
+ * options and thresholds and, when the baseline run answered, its rows' baselines. The model is
+ * cached on every input: `r` and `baseline` by object identity, then the title, the rate, the
+ * options and the thresholds by their JSON, so a remount (the Edit grid, full screen, the preview)
+ * reuses it and any edit builds a new one.
+ */
 export function categoryView(
-  _r: Exclude<ExploreResult, { kind: 'string' }>,
-  _o: {
+  r: NonString,
+  o: {
     readonly title: string;
     readonly rateApplied: boolean;
     readonly panelVis: DataPanelSpec['vis'];
@@ -312,9 +343,37 @@ export function categoryView(
     readonly baseline: ExploreResult | 'failed' | undefined;
   },
 ): PanelView {
-  return { kind: 'loading' };
+  let of = models.get(r);
+  if (of === undefined) {
+    of = { byBase: new WeakMap(), none: new Map(), failed: new Map() };
+    models.set(r, of);
+  }
+  const b = o.baseline;
+  let byInput: Map<string, BarchartModel> | undefined;
+  if (b === undefined) byInput = of.none;
+  else if (b === 'failed') byInput = of.failed;
+  else {
+    byInput = of.byBase.get(b);
+    if (byInput === undefined) {
+      byInput = new Map();
+      of.byBase.set(b, byInput);
+    }
+  }
+  const thresholds = o.panelVis.thresholds ?? null;
+  const k = JSON.stringify([o.title, o.rateApplied, o.panelVis.options ?? null, thresholds]);
+  let model = byInput.get(k);
+  if (model === undefined) {
+    model = barchartModel(r, {
+      title: o.title,
+      rateApplied: o.rateApplied,
+      options: o.panelVis.options,
+      thresholds,
+      base: b === undefined || b === 'failed' || b.kind === 'string' ? null : b,
+    });
+    byInput.set(k, model);
+  }
+  return { kind: 'category', model, baselineFailed: b === 'failed', lang: o.lang };
 }
-/* eslint-enable @typescript-eslint/no-unused-vars */
 
 /**
  * Pure: §4.2's table, first match. `panelVis` is the panel's `vis` (its kind, thresholds and
@@ -378,14 +437,26 @@ export function panelView(run: PanelRun, panelVis: DataPanelSpec['vis'], title: 
     };
   }
   if (r.kind === 'string') return message('string', t('explore.result.string', { value: r.value }));
+  // A saved bar chart (#173 Part 3b §4.1): PromQL with its baseline, LogQL's series answer without.
+  if (vis === 'barchart') {
+    const logql = o.logKind !== undefined;
+    return categoryView(r, {
+      title,
+      rateApplied: o.planned.rateApplied,
+      panelVis,
+      lang: logql ? 'logql' : 'promql',
+      baseline: logql ? undefined : o.baseline,
+    });
+  }
+  // A board `auto` panel chooses from the default set (T22 §4.5, owner): never a bar chart.
   const auto = autoVis({
     histogram: o.planned.histogram,
     rateApplied: o.planned.rateApplied,
     result: r,
   });
-  // PromQL `logs` and the pending kinds (barchart, pie) are blocked above; any other saved kind
-  // overrides the auto vis.
-  const saved = vis === 'logs' || vis === 'barchart' || vis === 'pie' ? 'auto' : vis;
+  // PromQL `logs` and the pending kind (pie) are blocked above; any other saved kind overrides the
+  // auto vis.
+  const saved = vis === 'logs' || vis === 'pie' ? 'auto' : vis;
   const chosen = chooseVis(saved, auto) ?? 'line';
   return frameView(chosen, r, o.planned.rateApplied, panelVis, title);
 }

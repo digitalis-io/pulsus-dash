@@ -55,7 +55,10 @@ export interface AutoVis {
   readonly rule: 5 | 6 | 7 | 11 | 14 | null;
 }
 
-/** The kinds every surface draws today; #173 Part 3 adds `barchart` for boards. */
+/**
+ * The kinds a board's `auto` panel chooses from (the default set): the bar chart is chosen in the
+ * editor, so a stored `auto` panel never switches (T22 §4.5, owner; `legacyAuto`, #237).
+ */
 export const SHIPPED_VIS: ReadonlySet<VisKind> = new Set<VisKind>([
   'line',
   'bars',
@@ -63,13 +66,13 @@ export const SHIPPED_VIS: ReadonlySet<VisKind> = new Set<VisKind>([
   'stat',
 ]);
 
-/** Stub (tests first). */
-export const EXPLORE_VIS: ReadonlySet<VisKind> = SHIPPED_VIS;
+/** Explore's set (#173 Part 3b): the default set and the bar chart, so row 11 can fire there. */
+export const EXPLORE_VIS: ReadonlySet<VisKind> = new Set<VisKind>([...SHIPPED_VIS, 'barchart']);
 
 /**
  * The auto vis of a result. A range result is never a stat (row 7 is "1 series, 1 value"): the
  * BFF grids it, so a series with one sample is a series with gaps. Row 11 (bar chart) needs the
- * kind in `available` (default `SHIPPED_VIS`, without it until #173 Part 3).
+ * kind in `available` (default `SHIPPED_VIS`, without it; Explore passes `EXPLORE_VIS`).
  */
 export function autoVis(i: {
   readonly histogram: boolean;
