@@ -845,3 +845,31 @@ func TestAnnotationsKeyset(t *testing.T) {
 		})
 	}
 }
+
+// A stored entity that does not decode, or whose id is not its entity_key, is a store error (503
+// at the gateway): the list fails, and a delete fails and rolls back with no audit event.
+func TestAnnotationsCorruptEntity(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			for name, entity := range map[string]string{
+				"undecodable": `{"id": 1}`,
+				"id mismatch": `{"id":"3d1d4695-d757-d5f8-d6bf-c1b134128742","binding":"prod-eu","binding_id":"00000000-0000-4000-8000-0000000000e1","kind":"service","ident":[null,"checkout"],"attrs":{"service.name":"checkout"}}`,
+			} {
+				e := newEnv(t, c)
+				e.seedBindings(t, e.org, true)
+				e.createChange(t, e.org, fixtureC[0])
+				storetest.Exec(t, e.db.SuperURL, "UPDATE annotations SET entity = $1::jsonb WHERE id = $2", entity, cid(1))
+				if _, err := e.svc.ListAnnotations(itestCtx(t), e.rc(e.org), winFrom, winTo, 500, core.AnnotationFilter{}); err == nil || errors.Is(err, core.ErrNotFound) {
+					t.Errorf("%s: list = %v, want a store error", name, err)
+				}
+				before := e.counts(t)
+				if err := e.svc.DeleteAnnotation(itestCtx(t), e.rc(e.org), cid(1)); err == nil || errors.Is(err, core.ErrNotFound) {
+					t.Errorf("%s: delete = %v, want a store error", name, err)
+				}
+				if after := e.counts(t); after != before {
+					t.Errorf("%s: rows/audit %s → %s, want the delete rolled back", name, before, after)
+				}
+			}
+		})
+	}
+}
