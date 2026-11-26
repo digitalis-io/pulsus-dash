@@ -44,7 +44,10 @@ test('golden:greyscale', async ({ page }) => {
   });
   await open(page, GALLERY_URL);
   await galleryReady(page);
-  await page.addStyleTag({ content: 'canvas { filter: grayscale(1); }' });
+  // Through CSSOM: the page's CSP (style-src 'self') blocks an injected style tag.
+  await page.evaluate(() => {
+    for (const c of document.querySelectorAll('canvas')) c.style.filter = 'grayscale(1)';
+  });
   for (const id of BARCHART_IDS) {
     await expect.soft(frame(page, id)).toHaveScreenshot(`gallery-${id}-greyscale.png`);
   }

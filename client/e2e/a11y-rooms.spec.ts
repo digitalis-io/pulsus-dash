@@ -654,7 +654,7 @@ test.describe('e2e:a11y-rooms gallery', () => {
   test('gallery canvases expose their summary', async ({ page }) => {
     await open(page, GALLERY_URL);
     await galleryReady(page);
-    await expect(page.locator('canvas[role="img"]')).toHaveCount(11);
+    await expect(page.locator('canvas[role="img"]')).toHaveCount(16);
     const label = (id: string) => frame(page, id).locator('canvas').getAttribute('aria-label');
     const range = '12:00 – 13:00 GMT';
     expect(await label('line-50')).toMatch(
@@ -678,5 +678,10 @@ test.describe('e2e:a11y-rooms gallery', () => {
     await expect(frame(page, 'line-600').getByRole('status')).toHaveText(
       'Showing 500 of 600 series',
     );
+    // #173 Part 2: a bar chart counts its bars; its meter is outside the frame.
+    expect(await label('barchart')).toBe('Requests by version: 5 bars');
+    await expect(
+      page.locator('[data-gallery-id="barchart"] [data-coverage-meter]').getByRole('status'),
+    ).toHaveText('100 %');
   });
 });
