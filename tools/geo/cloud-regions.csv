@@ -1,133 +1,136 @@
-# as of 2026-11-25
+# as of 2026-11-26
 provider,id,place,iso_a2,ne_id,source,retrieved
-aws,af-south-1,Cape Town,ZA,1159151583,aws public region list,2026-11-25
-aws,ap-east-1,Hong Kong,HK,1159151629,aws public region list,2026-11-25
-aws,ap-east-2,Taipei,TW,1159151567,aws public region list,2026-11-25
-aws,ap-northeast-1,Tokyo,JP,1159151609,aws public region list,2026-11-25
-aws,ap-northeast-2,Seoul,KR,1159151523,aws public region list,2026-11-25
-aws,ap-northeast-3,Osaka,JP,1159151537,aws public region list,2026-11-25
-aws,ap-south-1,Mumbai,IN,1159151611,aws public region list,2026-11-25
-aws,ap-south-2,Hyderabad,IN,1159151407,aws public region list,2026-11-25
-aws,ap-southeast-1,Singapore,SG,1159151627,aws public region list,2026-11-25
-aws,ap-southeast-2,Sydney,AU,1159151623,aws public region list,2026-11-25
-aws,ap-southeast-3,Jakarta,ID,1159151599,aws public region list,2026-11-25
-aws,ap-southeast-4,Melbourne,AU,1159151565,aws public region list,2026-11-25
-aws,ap-southeast-5,Malaysia,MY,1159151317,aws public region list,2026-11-25
-aws,ap-southeast-6,New Zealand,NZ,1159151703,aws public region list,2026-11-25
-aws,ap-southeast-7,Thailand,TH,1159151509,aws public region list,2026-11-25
-aws,ca-central-1,Canada (Central),CA,1159151457,aws public region list,2026-11-25
-aws,ca-west-1,Calgary,CA,1159151035,aws public region list,2026-11-25
-aws,eu-central-1,Frankfurt,DE,1159151351,aws public region list,2026-11-25
-aws,eu-central-2,Zurich,CH,1159151271,aws public region list,2026-11-25
-aws,eu-north-1,Stockholm,SE,1159151507,aws public region list,2026-11-25
-aws,eu-south-1,Milan,IT,1159151315,aws public region list,2026-11-25
-aws,eu-south-2,Spain,ES,1159148251,aws public region list,2026-11-25
-aws,eu-west-1,Dublin,IE,1159151309,aws public region list,2026-11-25
-aws,eu-west-2,London,GB,1159151577,aws public region list,2026-11-25
-aws,eu-west-3,Paris,FR,1159151613,aws public region list,2026-11-25
-aws,il-central-1,Tel Aviv,IL,1159151417,aws public region list,2026-11-25
-aws,me-central-1,UAE,AE,1159150565,aws public region list,2026-11-25
-aws,me-south-1,Bahrain,BH,1159150451,aws public region list,2026-11-25
-aws,mx-central-1,Mexico (Central),MX,1159146811,aws public region list,2026-11-25
-aws,sa-east-1,São Paulo,BR,1159151621,aws public region list,2026-11-25
-aws,us-east-1,N. Virginia,US,1159133487,aws public region list,2026-11-25
-aws,us-east-2,Ohio,US,1159147453,aws public region list,2026-11-25
-aws,us-west-1,N. California,US,1159150479,aws public region list,2026-11-25
-aws,us-west-2,Oregon,US,1159132537,aws public region list,2026-11-25
-azure,australiacentral,Canberra,AU,1159151161,azure public region list,2026-11-25
-azure,australiacentral2,Canberra,AU,1159151161,azure public region list,2026-11-25
-azure,australiaeast,New South Wales,AU,1159151623,azure public region list,2026-11-25
-azure,australiasoutheast,Victoria,AU,1159151565,azure public region list,2026-11-25
-azure,brazilsouth,São Paulo State,BR,1159151621,azure public region list,2026-11-25
-azure,brazilsoutheast,Rio de Janeiro,BR,1159151619,azure public region list,2026-11-25
-azure,canadacentral,Toronto,CA,1159151557,azure public region list,2026-11-25
-azure,canadaeast,Quebec City,CA,1159151065,azure public region list,2026-11-25
-azure,centralindia,Pune,IN,1159151411,azure public region list,2026-11-25
-azure,centralus,Iowa,US,1159150495,azure public region list,2026-11-25
-azure,chilecentral,Santiago,CL,1159151615,azure public region list,2026-11-25
-azure,eastasia,Hong Kong,HK,1159151629,azure public region list,2026-11-25
-azure,eastus,Virginia,US,1159133495,azure public region list,2026-11-25
-azure,eastus2,Virginia,US,1159125281,azure public region list,2026-11-25
-azure,francecentral,Paris,FR,1159151613,azure public region list,2026-11-25
-azure,francesouth,Marseille,FR,1159150037,azure public region list,2026-11-25
-azure,germanynorth,Berlin,DE,1159151529,azure public region list,2026-11-25
-azure,germanywestcentral,Frankfurt,DE,1159151351,azure public region list,2026-11-25
-azure,indonesiacentral,Jakarta,ID,1159151599,azure public region list,2026-11-25
-azure,israelcentral,Israel,IL,1159151417,azure public region list,2026-11-25
-azure,italynorth,Milan,IT,1159151315,azure public region list,2026-11-25
-azure,japaneast,Tokyo,JP,1159151609,azure public region list,2026-11-25
-azure,japanwest,Osaka,JP,1159151537,azure public region list,2026-11-25
-azure,jioindiacentral,Nagpur,IN,1159151413,azure public region list,2026-11-25
-azure,jioindiawest,Jamnagar,IN,1159149189,azure public region list,2026-11-25
-azure,koreacentral,Seoul,KR,1159151523,azure public region list,2026-11-25
-azure,koreasouth,Busan,KR,1159149599,azure public region list,2026-11-25
-azure,malaysiawest,Kuala Lumpur,MY,1159151317,azure public region list,2026-11-25
-azure,mexicocentral,Querétaro,MX,1159146811,azure public region list,2026-11-25
-azure,newzealandnorth,Auckland,NZ,1159151703,azure public region list,2026-11-25
-azure,northcentralus,Illinois,US,1159151491,azure public region list,2026-11-25
-azure,northeurope,Ireland,IE,1159151309,azure public region list,2026-11-25
-azure,norwayeast,Norway,NO,1159151281,azure public region list,2026-11-25
-azure,norwaywest,Norway,NO,1159146443,azure public region list,2026-11-25
-azure,polandcentral,Warsaw,PL,1159151299,azure public region list,2026-11-25
-azure,qatarcentral,Doha,QA,1159149469,azure public region list,2026-11-25
-azure,southafricanorth,Johannesburg,ZA,1159151515,azure public region list,2026-11-25
-azure,southafricawest,Cape Town,ZA,1159151583,azure public region list,2026-11-25
-azure,southcentralus,Texas,US,1159150503,azure public region list,2026-11-25
-azure,southeastasia,Singapore,SG,1159151627,azure public region list,2026-11-25
-azure,southindia,Chennai,IN,1159151431,azure public region list,2026-11-25
-azure,spaincentral,Madrid,ES,1159151503,azure public region list,2026-11-25
-azure,swedencentral,Gävle,SE,1159134099,azure public region list,2026-11-25
-azure,switzerlandnorth,Zurich,CH,1159151271,azure public region list,2026-11-25
-azure,switzerlandwest,Geneva,CH,1159151505,azure public region list,2026-11-25
-azure,uaecentral,Abu Dhabi,AE,1159150565,azure public region list,2026-11-25
-azure,uaenorth,Dubai,AE,1159151497,azure public region list,2026-11-25
-azure,uksouth,London,GB,1159151577,azure public region list,2026-11-25
-azure,ukwest,Cardiff,GB,1159146373,azure public region list,2026-11-25
-azure,westcentralus,Wyoming,US,1159150493,azure public region list,2026-11-25
-azure,westeurope,Amsterdam,NL,1159151519,azure public region list,2026-11-25
-azure,westindia,Mumbai,IN,1159151611,azure public region list,2026-11-25
-azure,westus,California,US,1159151479,azure public region list,2026-11-25
-azure,westus2,Washington,US,1159147355,azure public region list,2026-11-25
-azure,westus3,Arizona,US,1159151225,azure public region list,2026-11-25
-gcp,africa-south1,Johannesburg,ZA,1159151515,gcp public region list,2026-11-25
-gcp,asia-east1,Changhua County,TW,1159146169,gcp public region list,2026-11-25
-gcp,asia-east2,Hong Kong,HK,1159151629,gcp public region list,2026-11-25
-gcp,asia-northeast1,Tokyo,JP,1159151609,gcp public region list,2026-11-25
-gcp,asia-northeast2,Osaka,JP,1159151537,gcp public region list,2026-11-25
-gcp,asia-northeast3,Seoul,KR,1159151523,gcp public region list,2026-11-25
-gcp,asia-south1,Mumbai,IN,1159151611,gcp public region list,2026-11-25
-gcp,asia-south2,Delhi,IN,1159151541,gcp public region list,2026-11-25
-gcp,asia-southeast1,Jurong West,SG,1159151627,gcp public region list,2026-11-25
-gcp,asia-southeast2,Jakarta,ID,1159151599,gcp public region list,2026-11-25
-gcp,australia-southeast1,Sydney,AU,1159151623,gcp public region list,2026-11-25
-gcp,australia-southeast2,Melbourne,AU,1159151565,gcp public region list,2026-11-25
-gcp,europe-central2,Warsaw,PL,1159151299,gcp public region list,2026-11-25
-gcp,europe-north1,Hamina,FI,1159119269,gcp public region list,2026-11-25
-gcp,europe-north2,Stockholm,SE,1159151507,gcp public region list,2026-11-25
-gcp,europe-southwest1,Madrid,ES,1159151503,gcp public region list,2026-11-25
-gcp,europe-west1,Mons,BE,1159120321,gcp public region list,2026-11-25
-gcp,europe-west10,Berlin,DE,1159151529,gcp public region list,2026-11-25
-gcp,europe-west12,Turin,IT,1159146875,gcp public region list,2026-11-25
-gcp,europe-west2,London,GB,1159151577,gcp public region list,2026-11-25
-gcp,europe-west3,Frankfurt,DE,1159151351,gcp public region list,2026-11-25
-gcp,europe-west4,Eemshaven,NL,1159136311,gcp public region list,2026-11-25
-gcp,europe-west6,Zurich,CH,1159151271,gcp public region list,2026-11-25
-gcp,europe-west8,Milan,IT,1159151315,gcp public region list,2026-11-25
-gcp,europe-west9,Paris,FR,1159151613,gcp public region list,2026-11-25
-gcp,me-central1,Doha,QA,1159149469,gcp public region list,2026-11-25
-gcp,me-central2,Dammam,SA,1159136389,gcp public region list,2026-11-25
-gcp,me-west1,Tel Aviv,IL,1159151417,gcp public region list,2026-11-25
-gcp,northamerica-northeast1,Montréal,CA,1159151457,gcp public region list,2026-11-25
-gcp,northamerica-northeast2,Toronto,CA,1159151557,gcp public region list,2026-11-25
-gcp,northamerica-south1,Querétaro,MX,1159146811,gcp public region list,2026-11-25
-gcp,southamerica-east1,Osasco,BR,1159151621,gcp public region list,2026-11-25
-gcp,southamerica-west1,Santiago,CL,1159151615,gcp public region list,2026-11-25
-gcp,us-central1,Council Bluffs,US,1159132919,gcp public region list,2026-11-25
-gcp,us-east1,Moncks Corner,US,1159147433,gcp public region list,2026-11-25
-gcp,us-east4,Ashburn,US,1159133487,gcp public region list,2026-11-25
-gcp,us-east5,Columbus,US,1159147453,gcp public region list,2026-11-25
-gcp,us-south1,Dallas,US,1159151235,gcp public region list,2026-11-25
-gcp,us-west1,The Dalles,US,1159149217,gcp public region list,2026-11-25
-gcp,us-west2,Los Angeles,US,1159151569,gcp public region list,2026-11-25
-gcp,us-west3,Salt Lake City,US,1159150489,gcp public region list,2026-11-25
-gcp,us-west4,Las Vegas,US,1159150483,gcp public region list,2026-11-25
+aws,af-south-1,Cape Town,ZA,1159151583,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-east-1,Hong Kong,HK,1159151629,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-east-2,Taipei,TW,1159151567,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-northeast-1,Tokyo,JP,1159151609,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-northeast-2,Seoul,KR,1159151523,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-northeast-3,Osaka,JP,1159151537,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-south-1,Mumbai,IN,1159151611,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-south-2,Hyderabad,IN,1159151407,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-southeast-1,Singapore,SG,1159151627,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-southeast-2,Sydney,AU,1159151623,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-southeast-3,Jakarta,ID,1159151599,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-southeast-4,Melbourne,AU,1159151565,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-southeast-5,Malaysia,MY,1159151317,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-southeast-6,New Zealand,NZ,1159151703,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ap-southeast-7,Thailand,TH,1159151509,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ca-central-1,Canada (Central),CA,1159151457,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,ca-west-1,Calgary,CA,1159151035,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,eu-central-1,Frankfurt,DE,1159151351,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,eu-central-2,Zurich,CH,1159151271,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,eu-north-1,Stockholm,SE,1159151507,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,eu-south-1,Milan,IT,1159151315,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,eu-south-2,Spain,ES,1159148251,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,eu-west-1,Dublin,IE,1159151309,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,eu-west-2,London,GB,1159151577,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,eu-west-3,Paris,FR,1159151613,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,il-central-1,Tel Aviv,IL,1159151417,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,me-central-1,UAE,AE,1159150565,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,me-south-1,Bahrain,BH,1159150451,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,mx-central-1,Mexico (Central),MX,1159146811,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,sa-east-1,São Paulo,BR,1159151621,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,us-east-1,N. Virginia,US,1159133487,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,us-east-2,Ohio,US,1159147453,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,us-west-1,N. California,US,1159150479,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+aws,us-west-2,Oregon,US,1159132537,AWS Regions - AWS Regions and Availability Zones,2026-11-26
+azure,australiacentral,Canberra,AU,1159151161,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,australiacentral2,Canberra,AU,1159151161,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,australiaeast,New South Wales,AU,1159151623,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,australiasoutheast,Victoria,AU,1159151565,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,austriaeast,Vienna,AT,1159151563,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,belgiumcentral,Brussels,BE,1159151465,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,brazilsouth,Sao Paulo State,BR,1159151621,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,brazilsoutheast,Rio,BR,1159151619,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,canadacentral,Toronto,CA,1159151557,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,canadaeast,Quebec,CA,1159151065,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,centralindia,Pune,IN,1159151411,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,centralus,Iowa,US,1159150495,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,chilecentral,Santiago,CL,1159151615,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,denmarkeast,Copenhagen,DK,1159151437,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,eastasia,Hong Kong,HK,1159151629,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,eastus,Virginia,US,1159133495,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,eastus2,Virginia,US,1159125281,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,francecentral,Paris,FR,1159151613,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,francesouth,Marseille,FR,1159150037,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,germanynorth,Berlin,DE,1159151529,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,germanywestcentral,Frankfurt,DE,1159151351,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,indiasouthcentral,Hyderabad,IN,1159151407,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,indonesiacentral,Jakarta,ID,1159151599,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,israelcentral,Israel,IL,1159151417,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,italynorth,Milan,IT,1159151315,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,japaneast,"Tokyo, Saitama",JP,1159151609,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,japanwest,Osaka,JP,1159151537,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,koreacentral,Seoul,KR,1159151523,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,koreasouth,Busan,KR,1159149599,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,malaysiawest,Kuala Lumpur,MY,1159151317,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,mexicocentral,Querétaro State,MX,1159146811,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,newzealandnorth,Auckland,NZ,1159151703,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,northcentralus,Illinois,US,1159151491,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,northeurope,Ireland,IE,1159151309,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,norwayeast,Norway,NO,1159151281,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,norwaywest,Norway,NO,1159146443,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,polandcentral,Warsaw,PL,1159151299,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,qatarcentral,Doha,QA,1159149469,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,southafricanorth,Johannesburg,ZA,1159151515,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,southafricawest,Cape Town,ZA,1159151583,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,southcentralus,Texas,US,1159150503,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,southeastasia,Singapore,SG,1159151627,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,southindia,Chennai,IN,1159151431,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,spaincentral,Madrid,ES,1159151503,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,swedencentral,Gävle,SE,1159134099,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,switzerlandnorth,Zurich,CH,1159151271,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,switzerlandwest,Geneva,CH,1159151505,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,uaecentral,Abu Dhabi,AE,1159150565,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,uaenorth,Dubai,AE,1159151497,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,uksouth,London,GB,1159151577,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,ukwest,Cardiff,GB,1159146373,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,westcentralus,Wyoming,US,1159150493,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,westeurope,Amsterdam,NL,1159151519,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,westindia,Mumbai,IN,1159151611,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,westus,California,US,1159151479,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,westus2,Washington,US,1159147355,List of Azure Regions - Microsoft Learn,2026-11-26
+azure,westus3,Phoenix,US,1159151225,List of Azure Regions - Microsoft Learn,2026-11-26
+gcp,africa-south1,Johannesburg,ZA,1159151515,Regions and zones - Compute Engine,2026-11-26
+gcp,asia-east1,Changhua County,TW,1159146169,Regions and zones - Compute Engine,2026-11-26
+gcp,asia-east2,Hong Kong,HK,1159151629,Regions and zones - Compute Engine,2026-11-26
+gcp,asia-northeast1,Tokyo,JP,1159151609,Regions and zones - Compute Engine,2026-11-26
+gcp,asia-northeast2,Osaka,JP,1159151537,Regions and zones - Compute Engine,2026-11-26
+gcp,asia-northeast3,Seoul,KR,1159151523,Regions and zones - Compute Engine,2026-11-26
+gcp,asia-south1,Mumbai,IN,1159151611,Regions and zones - Compute Engine,2026-11-26
+gcp,asia-south2,Delhi,IN,1159151541,Regions and zones - Compute Engine,2026-11-26
+gcp,asia-southeast1,Jurong West,SG,1159151627,Regions and zones - Compute Engine,2026-11-26
+gcp,asia-southeast2,Jakarta,ID,1159151599,Regions and zones - Compute Engine,2026-11-26
+gcp,asia-southeast3,Bangkok,TH,1159151509,Regions and zones - Compute Engine,2026-11-26
+gcp,australia-southeast1,Sydney,AU,1159151623,Regions and zones - Compute Engine,2026-11-26
+gcp,australia-southeast2,Melbourne,AU,1159151565,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-central2,Warsaw,PL,1159151299,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-north1,Hamina,FI,1159119269,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-north2,Stockholm,SE,1159151507,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-southwest1,Madrid,ES,1159151503,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-west1,St. Ghislain,BE,1159120321,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-west10,Berlin,DE,1159151529,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-west12,Turin,IT,1159146875,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-west2,London,GB,1159151577,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-west3,Frankfurt,DE,1159151351,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-west4,Eemshaven,NL,1159136311,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-west6,Zurich,CH,1159151271,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-west8,Milan,IT,1159151315,Regions and zones - Compute Engine,2026-11-26
+gcp,europe-west9,Paris,FR,1159151613,Regions and zones - Compute Engine,2026-11-26
+gcp,me-central1,Doha,QA,1159149469,Regions and zones - Compute Engine,2026-11-26
+gcp,me-central2,Dammam,SA,1159136389,Regions and zones - Compute Engine,2026-11-26
+gcp,me-west1,Tel Aviv,IL,1159151417,Regions and zones - Compute Engine,2026-11-26
+gcp,northamerica-northeast1,Montréal,CA,1159151457,Regions and zones - Compute Engine,2026-11-26
+gcp,northamerica-northeast2,Toronto,CA,1159151557,Regions and zones - Compute Engine,2026-11-26
+gcp,northamerica-south1,Queretaro,MX,1159146811,Regions and zones - Compute Engine,2026-11-26
+gcp,southamerica-east1,Osasco,BR,1159151621,Regions and zones - Compute Engine,2026-11-26
+gcp,southamerica-west1,Santiago,CL,1159151615,Regions and zones - Compute Engine,2026-11-26
+gcp,us-central1,Council Bluffs,US,1159132919,Regions and zones - Compute Engine,2026-11-26
+gcp,us-east1,Moncks Corner,US,1159147433,Regions and zones - Compute Engine,2026-11-26
+gcp,us-east4,Ashburn,US,1159133487,Regions and zones - Compute Engine,2026-11-26
+gcp,us-east5,Columbus,US,1159147453,Regions and zones - Compute Engine,2026-11-26
+gcp,us-south1,Dallas,US,1159151235,Regions and zones - Compute Engine,2026-11-26
+gcp,us-west1,The Dalles,US,1159149217,Regions and zones - Compute Engine,2026-11-26
+gcp,us-west2,Los Angeles,US,1159151569,Regions and zones - Compute Engine,2026-11-26
+gcp,us-west3,Salt Lake City,US,1159150489,Regions and zones - Compute Engine,2026-11-26
+gcp,us-west4,Las Vegas,US,1159150483,Regions and zones - Compute Engine,2026-11-26

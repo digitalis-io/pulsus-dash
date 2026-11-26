@@ -145,7 +145,16 @@ describe('unit:geo-assets (VIZ-045, VIZ-046)', () => {
     expect(Object.keys(inv.providers).sort()).toStrictEqual(['aws', 'azure', 'gcp']);
     const csv = readFileSync(`${ROOT}tools/geo/cloud-regions.csv`, 'utf8');
     expect(csv.split('\n')[0]).toBe(`# as of ${inv.asOf}`);
+    // Government, sovereign and China partitions are excluded; azure restricted-access regions
+    // are on the published list and included; ids not on it (the Jio regions) are not.
     for (const r of gz.cloud) expect(r.id).not.toMatch(/gov|iso|cn-|china|eusc/);
+    const azure = new Set(ids['azure']);
+    for (const id of ['australiacentral2', 'brazilsoutheast', 'uaecentral']) {
+      expect(azure.has(id), id).toBe(true);
+    }
+    for (const id of ['jioindiacentral', 'jioindiawest', 'saudiarabiaeast']) {
+      expect(azure.has(id), id).toBe(false);
+    }
 
     expect(locate({ cloud_region: 'eu-west-1' }, { mode: 'auto' }, gz)).toStrictEqual({
       status: 'placed',
@@ -164,7 +173,8 @@ describe('unit:geo-assets (VIZ-045, VIZ-046)', () => {
       const r = locate({ cloud_provider: provider, cloud_region: id }, { mode: 'auto' }, gz);
       return r.status === 'placed' ? [r.place.name, r.place.lat, r.place.lon] : r;
     };
-    expect(at('gcp', 'europe-west1')).toStrictEqual(['Mons', 50.45, 3.94]);
+    // The published place; its position is the Natural Earth populated place Mons (ne_id).
+    expect(at('gcp', 'europe-west1')).toStrictEqual(['St. Ghislain', 50.45, 3.94]);
     expect(at('azure', 'westeurope')).toStrictEqual(['Amsterdam', 52.35, 4.91]);
   });
   it('SHA-256 and byte length equal the manifest', () => {

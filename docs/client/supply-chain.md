@@ -405,10 +405,13 @@ validator.
 
 1. Put the source files in a local directory outside the repository and record each new version,
    file date, retrieval date and SHA-256 (`sha256sum`) in `tools/geo/sources.json` (sorted by
-   `file`). For a cloud region, add its record to `tools/geo/cloud-regions.csv` with its published
-   place, `iso_a2` and Natural Earth `ne_id` (or the nearest populated place in the same country),
-   update the `# as of` line, and the id list and `asOf` of
-   `client/src/vis/geo/fixtures/cloud-inventory.json`.
+   `file`). For the cloud regions, reconcile `tools/geo/cloud-regions.csv` with each provider's
+   published region list (the page titles are in each record's `source`; the coverage rule is in
+   [Geomap data](geomap.md#cloud-regions)): each record gets the published place in the provider's
+   spelling (a curated city where only a country is given), `iso_a2`, the Natural Earth `ne_id`
+   (or a curated populated place in the same country) and the reconciliation date in `retrieved`.
+   Update the `# as of` line, the cloud row's `retrieved` in `sources.json`, and the id list and
+   `asOf` of `client/src/vis/geo/fixtures/cloud-inventory.json`.
 2. Run `python3 -I tools/geo/build.py <dir>`: it checks every digest before parsing anything
    (`‹file›: missing`, `‹file›: SHA-256 mismatch`) and writes the two assets, `tools/geo/report.txt`
    (the dropped slivers) and `tools/geo/manifest.json`.

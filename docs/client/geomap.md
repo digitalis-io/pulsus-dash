@@ -132,46 +132,71 @@ y = round(lat · 100), rounded half away from zero; the basemap's latitudes are 
   `coast` and `border` polylines. An edge shared by two features is drawn once as border; the
   ±85.0511 closures and the ±180° seams are never stroked.
 - **`gazetteer.json`**: `country` (238 rows), `region` (4 408 rows, ISO 3166-2), `iata` (3 245
-  rows: large and medium airports with scheduled service) and `cloud` (131 rows: aws 34, gcp 42,
-  azure 55). A code may repeat (60 region codes have two or more Natural Earth rows): such a
+  rows: large and medium airports with scheduled service) and `cloud` (134 rows: aws 34, gcp 43,
+  azure 57). A code may repeat (60 region codes have two or more Natural Earth rows): such a
   lookup is `sharedCode`, not a guess.
 
-Sizes: 138 106 and 260 350 bytes raw; 31 441 and 91 896 bytes brotli, inside the `geoBasemap`
+Sizes: 138 106 and 260 498 bytes raw; 31 441 and 91 909 bytes brotli, inside the `geoBasemap`
 (40 000) and `geoGazetteer` (104 000) budgets of `ci:bundle-size`
 ([bundle budgets](../development/build-and-ci.md#bundle-budgets)).
 
 ### Cloud regions
 
-`tools/geo/cloud-regions.csv` lists every generally available region of the aws, gcp and azure
-standard partitions as of the date on its first line (`# as of 2026-11-25`), sorted by provider and
-id; `client/src/vis/geo/fixtures/cloud-inventory.json` is the same dated id list, and
-`unit:geo-assets` checks the gazetteer against it exactly. **Excluded**, by design: the aws
-GovCloud (`us-gov-*`), ISO (`us-iso*`) and China (`cn-*`) partitions and the aws European
-Sovereign Cloud (`eusc-*`); azure Government (`usgov*`, `usdod*`) and azure China (`china*`); gcp
-sovereign and partner-operated clouds. Unlisted ids resolve to `unknownCode`.
+`tools/geo/cloud-regions.csv` holds 134 regions (aws 34, gcp 43, azure 57), sorted by provider and
+id, as of the date on its first line (`# as of 2026-11-26`). It was reconciled on that date with
+each provider's published public-cloud region list, named by title in each record's `source`:
 
-`place` is the provider's published location. Its position is that Natural Earth populated place
-(`ne_id`); where the published location is not one (a state, a country, a campus), it is the
-nearest populated place in the same country:
+| Provider | Published list (`source`) | Date the page shows | Included |
+|---|---|---|---|
+| aws | AWS Regions - AWS Regions and Availability Zones | none | every row of "Available AWS Regions" (opt-in regions included) |
+| gcp | Regions and zones - Compute Engine | 2026-11-25 | every region with zones |
+| azure | List of Azure Regions - Microsoft Learn | 2026-10-13 | every row, restricted-access regions included (`australiacentral2`, `brazilsoutheast`, `francesouth`, `germanynorth`, `norwaywest`, `southafricawest`, `switzerlandwest`, `uaecentral`): they are deployable sites whose ids telemetry carries |
 
-| Region | Published location | Natural Earth place used |
+`client/src/vis/geo/fixtures/cloud-inventory.json` is the same dated id list, and
+`unit:geo-assets` checks the gazetteer against it exactly. **Excluded:**
+
+- preview and announced regions: azure `saudiarabiaeast`, `southeastasia3`, `taiwannorth`; aws
+  `me-west-1` and `sa-west-1`, which SDK endpoint data names but the AWS list does not;
+- ids that are not on the published list: azure `jioindiacentral`, `jioindiawest`;
+- the government, sovereign and China partitions: aws GovCloud (`us-gov-*`), ISO (`us-iso*`),
+  China (`cn-*`) and the European Sovereign Cloud (`eusc-*`); azure Government (`usgov*`,
+  `usdod*`) and China (`china*`); gcp sovereign and partner-operated clouds.
+
+An unlisted id resolves to `unknownCode`. A region added later needs a new dated reconciliation
+([refreshing the data](supply-chain.md#geo-data)).
+
+**Places.** `place` is the provider's published location, in the provider's spelling (`Sao Paulo
+State`, `Queretaro`, `Tokyo, Saitama`). Where the provider gives only a country, `place` is a
+**curated choice**, not a provider statement: aws `eu-west-1` Dublin, `ap-southeast-5` Malaysia,
+`ap-southeast-6` New Zealand, `ap-southeast-7` Thailand, `ca-central-1` Canada (Central),
+`eu-south-2` Spain, `me-central-1` UAE, `mx-central-1` Mexico (Central); azure `westeurope`
+Amsterdam. Where the provider gives a state or a country (azure `eastus` Virginia, `norwayeast`
+Norway), that is the place, and the position below is curated.
+
+**Positions.** The position is the Natural Earth populated place `ne_id`. Where the published
+location is not one (a state, a country, a campus, another spelling), it is a curated populated
+place in the same country, the named city where there is one, else the nearest:
+
+| Region | Place | Natural Earth place used |
 |---|---|---|
-| aws `us-east-1`, gcp `us-east4` | N. Virginia; Ashburn | Alexandria |
-| aws `us-west-2` | Oregon | Richland |
-| aws `us-east-2`; aws `us-west-1` | Ohio; N. California | Columbus; San Jose |
-| aws `ca-central-1`; aws `eu-south-2` | Canada (Central); Spain | Montréal; Zaragoza |
+| aws `us-east-1`; gcp `us-east4` | N. Virginia; Ashburn | Alexandria |
+| aws `us-west-2`; `us-east-2`; `us-west-1` | Oregon; Ohio; N. California | Richland; Columbus; San Jose |
+| aws `ca-central-1`; `eu-south-2`; `mx-central-1` | Canada (Central); Spain; Mexico (Central) | Montréal; Zaragoza; Querétaro |
 | aws `ap-southeast-5`, `-6`, `-7` | Malaysia; New Zealand; Thailand | Kuala Lumpur; Auckland; Bangkok |
-| aws `me-central-1`; `me-south-1`; `mx-central-1` | UAE; Bahrain; Mexico (Central) | Abu Dhabi; Manama; Querétaro |
-| gcp `asia-east1` | Changhua County | Changhua |
+| aws `me-central-1`; `me-south-1` | UAE; Bahrain | Abu Dhabi; Manama |
+| gcp `asia-east1`; `asia-south2` | Changhua County; Delhi | Changhua; New Delhi |
 | gcp `asia-southeast1`; `southamerica-east1` | Jurong West; Osasco | Singapore; São Paulo |
-| gcp `europe-north1`; `europe-west4` | Hamina; Eemshaven | Kouvola; Groningen |
-| gcp `us-central1`; `us-east1`; `us-west1` | Council Bluffs; Moncks Corner; The Dalles | Council Bluffs; Charleston; Vancouver (WA) |
+| gcp `europe-north1`; `europe-west1`; `europe-west4` | Hamina; St. Ghislain; Eemshaven | Kouvola; Mons; Groningen |
+| gcp `us-east1`; `us-west1` | Moncks Corner; The Dalles | Charleston; Vancouver (WA) |
 | azure `eastus`; `eastus2` | Virginia | Roanoke; Durham |
 | azure `centralus`; `northcentralus`; `southcentralus` | Iowa; Illinois; Texas | Des Moines; Chicago; San Antonio |
-| azure `westus`; `westus2`; `westus3`; `westcentralus` | California; Washington; Arizona; Wyoming | San Francisco; Wenatchee; Phoenix; Cheyenne |
-| azure `australiaeast`; `australiasoutheast`; `brazilsouth` | New South Wales; Victoria; São Paulo State | Sydney; Melbourne; São Paulo |
+| azure `westus`; `westus2`; `westcentralus` | California; Washington; Wyoming | San Francisco; Wenatchee; Cheyenne |
+| azure `australiaeast`; `australiasoutheast` | New South Wales; Victoria | Sydney; Melbourne |
+| azure `brazilsouth`; `brazilsoutheast` | Sao Paulo State; Rio | São Paulo; Rio de Janeiro |
 | azure `northeurope`; `norwayeast`; `norwaywest`; `israelcentral` | Ireland; Norway; Norway; Israel | Dublin; Oslo; Stavanger; Tel Aviv |
-| azure `jioindiawest` | Jamnagar | Rajkot |
+
+Spelling-only differences (Osaka and Ōsaka, Zurich and Zürich, Quebec and Québec, Copenhagen and
+København, Queretaro and Querétaro) are not listed.
 
 ## Validation (T24-087)
 
@@ -251,7 +276,7 @@ ring`) and exits 2; `--check` exits 1 naming each file that differs from the reb
 | `unit:geo-locate` | `src/vis/geo/locate.test.ts` | the T24 §10.3 fixtures L, C, E and G0, coordinate aliases X1–X3, row identity, the normal form, 500 random label maps |
 | `unit:geo-geohash` | `src/vis/geo/geohash.test.ts` | cell centres and sizes; `''`, 13 characters and `u4pa` are null |
 | `unit:geo-decode` | `src/vis/geo/assets.test.ts` | the build fixtures decode (round trip); M1–M15, the ×100 hole cases and G1–G8 are null |
-| `unit:geo-assets` | same | the bundled assets decode, the counts, the cloud inventory and exclusions, Dublin, Mons and Amsterdam, the manifest digests |
+| `unit:geo-assets` | same | the bundled assets decode, the counts, the cloud inventory and exclusions, Dublin, St. Ghislain and Amsterdam, the manifest digests |
 | `unit:geo-load` | same | one shared promise, two `force-cache` requests, a failed asset nulls only itself with one debug line |
 | `unit:geo-build`, `unit:geo-gazetteer-build` | `tools/geo/test_build.py` (`make geo-test`) | the exact build outputs and errors of T24 §10.3, assembly, the gazetteer rules, digests before parsing, `--check`, the fixtures, the notices |
 | `ci:geo-data` | `scripts/check-geo-data.ts` (`make geo-data`) | the committed assets match `tools/geo/manifest.json` and decode |
