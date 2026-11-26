@@ -229,6 +229,12 @@ sets `Viewport.camera` and `Viewport.band` (`Band::Measure` or `Band::Fixed(w)`)
 `Band::Fixed` the plot rect depends only on (kind, size, band); a label wider than the band has
 `fits = false` and #69 draws it on a chip inside the plot.
 
+In the browser that controller is #93's `FrameController` on the main thread, the same one the
+Canvas 2D frame uses ([ADR-0030](../../designs/adr/0030-engine-camera-controller-on-main.md),
+amending ADR-0014 §2 and ADR-0020 decision 4): the worker applies the camera, band and value view it
+receives in Camera records and emits no `commit`. See [the camera
+controller](#the-camera-controller-part-c2a2).
+
 ## Colour and blending
 
 Slots 0–7 are `SERIES_PALETTE[theme][series_colour_index(key, labels)]`, slot 8 is `hairline`, the
@@ -584,7 +590,8 @@ profile so that the split-point and fuzz tests stay fast.
 Part C1 runs the engine in the page, opt-in: a chart frame uses it only when the engine flag is
 `wasm` (the URL's `?engine=wasm`, else the build's `VITE_ENGINE`) and the page can run it. Axis
 text, bars, heatmap and stat stay with Canvas 2D until #69; Part C2 adds input: the input ring
-(C2a1, [below](#the-input-ring-part-c2a1)), then the camera controller, hover and selection; Part D
+(C2a1, [below](#the-input-ring-part-c2a1)), the camera controller (C2a2,
+[below](#the-camera-controller-part-c2a2)), then hover and selection; Part D
 streams Arrow data to a data worker.
 
 ### Choosing an engine
@@ -704,9 +711,8 @@ re-run reports nothing. On the main thread `WasmFrame` reports `drawn` only for 
 `resize()` call: never while a Resize is held or waiting, only when the event's `rseq` is that
 call's seq, and with the caller's own width, height and DPR (the ring carries `f32`).
 
-**The idle camera.** Until Part C2a2 moves it into the camera controller, `WasmFrame` derives the
-camera from `setTimeWindow` (view = the window; value = the spec's `valueRange` when it is finite
-with min < max, else auto; band measured) and sends it again when the spec changes.
+**The camera.** `WasmFrame` sends only the cameras it is given (`setCamera`); it has no
+`setTimeWindow`. The camera controller decides them (below).
 
 **Errors.** A record that is not a multiple of 8, shorter than its header, past the head or the
 end of the ring, the wrong size for its kind or of an unknown kind ends the batch: the rest is
@@ -715,6 +721,59 @@ skipped (tail = head), `INPUT_BAD` (0x4D10) counts it and the first is logged
 non-finite or empty value range or a negative band is counted the same way and leaves the camera
 unchanged; the frame still redraws, so its `drawn` carries the record's seq. A record
 of a disposed frame is ignored and not counted.
+
+### The camera controller (Part C2a2)
+
+`RoutingFrame` wraps each engine frame (`WasmFrame`, an `EngineFrame`) in a `ControlledFrame`
+(`client/src/engine/controlled.ts`), which runs #93's `FrameController` (`engine/controller/`,
+[charts.md](charts.md#zoom-and-pan-the-2d-camera-93)) on the main thread, on the canvas element
+that stays in the page after its transfer ([ADR-0030](../../designs/adr/0030-engine-camera-controller-on-main.md)).
+Every camera change is one `setCamera`: one Camera record with the view, the value view (null =
+auto) and the held band (null = measured), coalesced in the ring like any other.
+
+| `ControlledFrame` call | Controller | `WasmFrame` |
+|---|---|---|
+| `setSpec` | `setSpec`, then `layoutChanged` | `setSpec` |
+| `setData`, `setTheme` | `layoutChanged` | same call |
+| `setTimeWindow` | `setTimeWindow`, `layoutChanged` when it returns true | — (the camera carries the view) |
+| `resize` | `resize`, `layoutChanged` | `resize` |
+| `setEvents`, `setSelection` | — | same call (kept, not drawn) |
+| `dispose` | `dispose` | `dispose` |
+
+**The stage.** The controller reads the geometry of the frame on screen (`Stage.model()`): the
+plot, the value domain and the value-label band. For an engine frame that is the stage of the
+worker's last **completed** presentation, as Canvas 2D uses its last drawn layer. The worker builds
+it with the draw list (`dash-scene::build_stage`: `StageInfo { plot, domain, band_w }`), captures it
+at submit with the rest of the presentation (`Presented.stage`) and, when the presentation
+completes, sends it before its `drawn`:
+
+```json
+{"t":"stage","id":1,"rseq":4,"stage":{"plot":{"x":50,"y":8,"width":742,"height":206},"domain":{"min":0,"max":30},"labelW":38}}
+```
+
+It is sent only for a presentation of the frame's current Resize, and only when (rseq, stage)
+differs from the last one sent, so the first completion after any applied Resize always reports
+and a stale one never does. `"stage": null` withdraws it: a presentation with no plot (no camera,
+no data, an empty plot). A retried, re-run, failed or never-completed submission sends nothing.
+
+On the main thread every `resize()` call blocks the stage until a `stage` or `drawn` of that call
+arrives (no Resize held or waiting, and the event's `rseq` the call's seq); blocked `stage` events
+are ignored. A zero size withdraws the stage at once (the worker draws nothing then). `onStage`
+fires on every change; `pickCount` is 0 until Part C2b.
+
+**The lag.** While a new layout is submitted, retried or awaiting its read-back, input keeps acting
+on the stage on screen; the held band keeps the plot fixed through a gesture, so the anchor stays
+under the pointer (`e2e:engine-camera` E1–E6).
+
+**Withdrawal.** With no stage the controller ignores every gesture: no `preventDefault`, no camera,
+no commit. A stage that becomes null during a gesture aborts it (`abortGesture`): a wheel's idle
+timer is cleared, a press releases its pointer capture, and the view, value view and band return to
+the committed camera (the last external `setSpec` or `setTimeWindow`, or the last emitted commit);
+no `commit` or `brush` follows. An engine restart mid-gesture creates a new `ControlledFrame`: the
+gesture is dropped without a commit, as on dispose.
+
+**Cost.** Per DOM event the main thread runs the controller's arithmetic and at most one ring
+write (T03-003); `bench:shim-input-cost` reports it.
 
 ### Tiers and the frame loop
 
@@ -767,7 +826,12 @@ Without storage the flag lasts for the page only; a reload tries the engine agai
   worker applied and, at a non-zero size, presented its last record (`settle`), and reads the
   last summary, the `drawn` events, the idle word, the counters and the ring's statistics. In the
   probe build (below) `inputLog()` returns the records the worker decoded and `?ringStart=<u32>`
-  starts the counters there.
+  starts the counters there. Probe frames are `ControlledFrame`s (Part C2a2): `wheel(n, x, y,
+  init)` (returns `defaultPrevented`) and `pointer(n, type, x, y, o)` dispatch events on the
+  frame's canvas at canvas px, built as `test/engineHarness.ts` builds them; `commits(n)` and
+  `brushes(n)` return its events; `fresh(o)` makes a frame, resolves with its first summary and
+  disposes it (the engine's own layout for given inputs); `id(n)` is its engine id and
+  `stats().enqueued` counts the Camera records probe frames enqueued.
 
 ### Building
 
@@ -815,6 +879,24 @@ Chromium projects of the engine web image:
   than one ring's worth must have passed, records must have been coalesced, none dropped, and the
   last window and `drawn` must be the last calls'. Two more cases cross 2³²
   (`ringStart` 0xFFFF_F000) and wake an idle worker with one record (settled within 1 s).
+  Since Part C2a2 a fifth of the 10⁴ ops are DOM events on either canvas (wheels with
+  deltaX/Y ±600, modes 0–2 and Shift, Ctrl or Meta; pointer down, move, up and cancel with buttons
+  0–2; double clicks); every gesture is ended (`pointercancel`, then the wheel-idle commit) before
+  the final ops, and each frame's last summary must show its last published Camera's view.
+- `e2e:engine-camera` (`lavapipe` gated, `swiftshader` report-only; the fault build with
+  `?probe=1`): #93's camera cases on probe frames, each step settled (< 250 ms inside a gesture,
+  asserted, so no wheel-idle commit comes early). E1: 100 seeded wheel steps keep the plot and the
+  anchor (< 0.01 px); E2: a sub-minimum preview survives a wider external window (Part A C3);
+  E3–E6: non-fitting and wider labels during a Y zoom and after a refetch keep the plot until a
+  layout transition releases the band, then the plot is a fresh frame's (Part A C4), with the
+  leftmost ink column of the first preview, last preview and final frames at the plot's x (± 1
+  device px); E7: axis drags and double clicks (INT-008); E8: a wheel and a drag on the gallery's
+  `line-50` change the URL.
+- `bench:shim-input-cost` (project `probe`, report-only): 10⁴ wheels and 10⁴ pointer moves on a
+  probe frame, 16 per animation frame; prints p50, p99 and max per dispatch and per frame's group
+  next to the catalogue limits (p99 ≤ 0.05 ms, callback ≤ 2 ms) and asserts only that every
+  prevented wheel enqueued a record. The trusted-input leg, three runs and the limits as assertions
+  wait for the reference lab (T05 §7.1).
 - `make engine-gpu-smoke` prints the adapter each project sees and whether it renders.
 
 Real-GPU WebGPU runs on a hardware runner later (follow-up).
@@ -833,9 +915,11 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
   never reporting it as drawn.
 - The value band is at least the widest compact label (`min_value_band`, as Canvas 2D's
   `minValueBand`), so the engine's plot rect equals Canvas 2D's.
-- In the browser: line frames only; the camera is the idle camera of the time window until C2a2
-  (no gestures, hover or selection yet); WebGPU is verified only report-only in CI's image
-  (SwiftShader); one restart per page.
+- In the browser: line frames only; zoom, pan and axis drags work (the camera controller), but
+  hover, the click's selection and the box band are not drawn until C2b (`pickCount` 0); WebGPU is
+  verified only report-only in the engine image (SwiftShader); one restart per page.
+- The stage lags the newest layout by one completed presentation (as Canvas 2D's model lags its
+  inputs); a frame with no stage takes no gestures.
 - The input ring: 64 KiB; a Resize is 40 bytes and a Camera 64, so at most 1 638 records are in
   flight; waiting records keep only the latest per kind and frame. CSS sizes travel as `f32`
   (exact for 1/64 px below 2¹⁸ px); `drawn` reports the caller's values.
