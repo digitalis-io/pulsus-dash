@@ -190,6 +190,7 @@ test.describe('e2e:mode-matrix preview', () => {
     only(info, 'lavapipe');
     const r = await page.request.get('/asset-manifest.json');
     expect(r.status()).toBe(200);
+    expect(r.headers()['content-type']).toBe('application/json');
     const m = (await r.json()) as { files?: { path: string }[] };
     expect((m.files ?? []).some((f) => /^assets\/dash-engine-[^/]+\.wasm$/.test(f.path))).toBe(
       true,
