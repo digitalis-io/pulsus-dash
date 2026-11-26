@@ -232,7 +232,17 @@ pub fn frame_data_clear(id: u32) {
 pub fn frame_set_window(id: u32, from_ms: f64, to_ms: f64) {
     with(|e| {
         e.dirty.insert(id);
-        e.frames.set_window(id, from_ms, to_ms);
+        e.frames.set_camera(
+            id,
+            crate::frames::CameraIn {
+                view: dash_scene::Range64 {
+                    lo: from_ms,
+                    hi: to_ms,
+                },
+                value: None,
+                band: None,
+            },
+        );
     });
 }
 
@@ -255,7 +265,12 @@ pub fn frame_set_theme(id: u32, theme: u8) {
 pub fn frame_resize(id: u32, css_w: f64, css_h: f64, dpr: f64) {
     with(|e| {
         e.dirty.insert(id);
-        e.frames.resize(id, css_w, css_h, dpr as f32);
+        let device = (
+            (css_w * dpr).round().max(0.0) as u32,
+            (css_h * dpr).round().max(0.0) as u32,
+        );
+        e.frames
+            .resize(id, (css_w as f32, css_h as f32), dpr as f32, device, 0);
     });
 }
 
@@ -307,7 +322,7 @@ fn device_px(css: f64, dpr: f32, max: u32) -> u32 {
 
 impl Engine {
     fn create(&mut self, id: u32, canvas: web_sys::OffscreenCanvas, frame_id: Option<String>) {
-        self.frames.create(id, frame_id);
+        let _ = self.frames.create(id, frame_id);
         self.failed.remove(&id);
         let (surface, bitmap) = match self.gpu.ctx.tier {
             Tier::T1 => match self
@@ -442,9 +457,18 @@ impl Engine {
         for (id, d, series) in drawn {
             // Only at the size last applied, never 0 (ADR-0019, D-DRAWN).
             let size = self.frames.size(id);
-            let at_size = size.is_some_and(|(w, h, _)| w == d.css_width && h == d.css_height);
+            let at_size = size.is_some_and(|((w, h), _, _)| {
+                f64::from(w) == d.css_width && f64::from(h) == d.css_height
+            });
             if at_size && d.css_width > 0.0 && d.css_height > 0.0 {
-                out.push(events::drawn(id, &d, now_ms, end_ms, series));
+                let p = crate::frames::Presented {
+                    seq: 0,
+                    rseq: 0,
+                    css: (d.css_width as f32, d.css_height as f32),
+                    dpr: d.dpr as f32,
+                    series,
+                };
+                out.push(events::drawn(id, &p, now_ms, end_ms));
             }
         }
         if presented {

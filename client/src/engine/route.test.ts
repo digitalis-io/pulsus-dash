@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeEngine, type FakeEngine, type FakeFrame } from '../test/fakeEngine';
-import type { ChartFrame, FrameData, FrameInit, VisSpec } from './api';
+import type { ChartFrame, FrameData, FrameEvents, FrameInit, VisSpec } from './api';
 import { RoutingEngine, type WasmBackend } from './route';
 
 const LINE_A: VisSpec = { kind: 'line', title: 'A', unit: { kind: 'none' } };
@@ -214,5 +214,32 @@ describe('RoutingEngine (D-ROUTE)', () => {
     expect(b.inner.createCalls).toHaveLength(0);
     expect(c2d.createCalls).toHaveLength(0);
     expect(transfers).toBe(0);
+  });
+
+  it('mark and pick of a Canvas 2D bar chart reach the listeners (plan #68 C2a1 §2)', () => {
+    const c2d = fakeEngine();
+    const e = new RoutingEngine(() => Promise.resolve(backend()), c2d);
+    const f = e.createFrame(document.createElement('canvas'), INIT);
+    const marks: unknown[] = [];
+    const picks: unknown[] = [];
+    f.on('mark', (m) => marks.push(m));
+    f.on('pick', (p) => picks.push(p));
+    f.setSpec(BARS);
+    const inner = c2d.frames[0];
+    if (inner === undefined) throw new Error('not bound');
+    const mark = {
+      source: 'pointer',
+      key: 'k1',
+      index: 0,
+      xCss: 10,
+      yCss: 20,
+      rows: [],
+    } as FrameEvents['mark'];
+    const pick = { keys: ['k1'], gesture: 'click' } as unknown as FrameEvents['pick'];
+    inner.emit('mark', mark);
+    inner.emit('mark', null);
+    inner.emit('pick', pick);
+    expect(marks).toEqual([mark, null]);
+    expect(picks).toEqual([pick]);
   });
 });

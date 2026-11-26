@@ -23,6 +23,7 @@ import {
 import { WasmFrame, type Port } from './frame';
 import { fetchEngineWasm } from './integrity';
 import type { MainToRender, RenderEvent } from './protocol';
+import type { InputRec, InputRing } from './ring';
 import { spawnPool, spawnRender } from './workers';
 
 export type { WorkerLike } from './boot';
@@ -36,6 +37,15 @@ export interface EngineOptions {
   readonly spawnRender?: () => WorkerLike;
   readonly spawnPool?: () => WorkerLike;
   readonly timeoutMs?: number;
+}
+
+/** What `__dashProbe` reads of the running engine (fault builds only; plan #68 C2a1 §3.4). */
+export interface ProbeHost {
+  readonly ring: InputRing;
+  counters(): { head: number; tail: number };
+  overflow(): number;
+  idle(): boolean;
+  inputLog(): Promise<InputRec[]>;
 }
 
 export interface Backend {

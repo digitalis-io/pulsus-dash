@@ -262,6 +262,7 @@ dependencies = [
 name = "dash-core"
 version = "0.0.0"
 dependencies = [
+ "dash-axes",
  "dash-gpu",
  "dash-marks",
  "dash-protocol",

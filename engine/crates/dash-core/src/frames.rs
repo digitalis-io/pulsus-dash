@@ -18,6 +18,31 @@ use dash_wire::{Chunk, ChunkBuilder, ChunkError, IdAlloc, IdSpace, SeriesMeta};
 use serde_json::{Value, json};
 
 use crate::CoreError;
+use crate::input::Decoded;
+
+/// A camera from an input record (TODO C2a1: stub).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CameraIn {
+    pub view: Range64,
+    pub value: Option<Range64>,
+    pub band: Option<f64>,
+}
+
+impl CameraIn {
+    pub fn from_record(_view: (f64, f64), _value: (f64, f64), _band: f64) -> Option<Self> {
+        None
+    }
+}
+
+/// What one submitted presentation shows (TODO C2a1: stub).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Presented {
+    pub seq: u32,
+    pub rseq: u32,
+    pub css: (f32, f32),
+    pub dpr: f32,
+    pub series: u32,
+}
 
 /// The chunk being built from TS series.
 #[derive(Debug)]
@@ -35,10 +60,10 @@ struct Frame {
     frame_id: Option<String>,
     /// `None` before the first spec and after a spec error (the frame is cleared).
     spec: Option<VisSpec>,
-    window: Option<(f64, f64)>,
+    camera: Option<CameraIn>,
     theme: Theme,
-    /// CSS px and DPR of the last resize.
-    size: Option<(f64, f64, f32)>,
+    /// CSS px, DPR and device px of the last resize.
+    size: Option<((f32, f32), f32, (u32, u32))>,
     data: Option<Arc<Chunk>>,
     building: Option<Building>,
     /// The summary JSON reported last.
@@ -50,7 +75,7 @@ impl Frame {
         Self {
             frame_id,
             spec: None,
-            window: None,
+            camera: None,
             theme: Theme::Dark,
             size: None,
             data: None,
@@ -112,9 +137,41 @@ impl Frames {
         Self::default()
     }
 
-    /// A new frame (replacing one with the same id).
-    pub fn create(&mut self, id: u32, frame_id: Option<String>) {
+    /// A new frame (TODO C2a1: the id contract).
+    pub fn create(&mut self, id: u32, frame_id: Option<String>) -> bool {
         self.frames.insert(id, Frame::new(frame_id));
+        true
+    }
+
+    /// TODO C2a1.
+    pub fn apply(&mut self, _d: &Decoded) -> Option<u32> {
+        None
+    }
+
+    /// Input records rejected by `apply`.
+    pub fn bad(&self) -> u32 {
+        0
+    }
+
+    /// TODO C2a1.
+    pub fn submit(&self, _id: u32) -> Option<Presented> {
+        None
+    }
+
+    /// TODO C2a1.
+    pub fn complete(
+        &mut self,
+        _id: u32,
+        _p: &Presented,
+        _start_ms: f64,
+        _end_ms: f64,
+    ) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// TODO C2a1.
+    pub fn take_applied(&mut self) -> Vec<String> {
+        Vec::new()
     }
 
     pub fn contains(&self, id: u32) -> bool {
@@ -141,11 +198,8 @@ impl Frames {
         }
     }
 
-    pub fn set_window(&mut self, id: u32, from_ms: f64, to_ms: f64) {
-        if let Some(f) = self.frames.get_mut(&id) {
-            f.window = Some((from_ms, to_ms));
-        }
-    }
+    /// TODO C2a1.
+    pub fn set_camera(&mut self, _id: u32, _c: CameraIn) {}
 
     pub fn set_theme(&mut self, id: u32, theme: Theme) {
         if let Some(f) = self.frames.get_mut(&id) {
@@ -153,14 +207,14 @@ impl Frames {
         }
     }
 
-    pub fn resize(&mut self, id: u32, css_w: f64, css_h: f64, dpr: f32) {
+    pub fn resize(&mut self, id: u32, css: (f32, f32), dpr: f32, device: (u32, u32), _rseq: u32) {
         if let Some(f) = self.frames.get_mut(&id) {
-            f.size = Some((css_w, css_h, dpr));
+            f.size = Some((css, dpr, device));
         }
     }
 
-    /// CSS px and DPR of the last resize.
-    pub fn size(&self, id: u32) -> Option<(f64, f64, f32)> {
+    /// CSS px, DPR and device px of the last resize.
+    pub fn size(&self, id: u32) -> Option<((f32, f32), f32, (u32, u32))> {
         self.frames.get(&id)?.size
     }
 
@@ -251,9 +305,14 @@ impl Frames {
     /// build; `None` for an unknown frame.
     pub fn build(&mut self, id: u32) -> Option<(DrawList, Option<String>)> {
         let f = self.frames.get_mut(&id)?;
-        let (w, h, dpr) = f.size.unwrap_or((0.0, 0.0, 1.0));
-        let css = Size64 { w, h };
-        let window = f.window.unwrap_or((f64::NAN, f64::NAN));
+        let ((w, h), dpr, _) = f.size.unwrap_or(((0.0, 0.0), 1.0, (0, 0)));
+        let css = Size64 {
+            w: f64::from(w),
+            h: f64::from(h),
+        };
+        let window = f
+            .camera
+            .map_or((f64::NAN, f64::NAN), |c| (c.view.lo, c.view.hi));
         let spec = f
             .spec
             .clone()
@@ -272,9 +331,9 @@ impl Frames {
         let (list, summary) = build(&v);
         let summary = match (&f.spec, summary) {
             (None, _) => None,
-            (Some(VisSpec::Unsupported(kind)), _) => {
-                f.window.map(|win| unsupported_summary(*kind, win, css))
-            }
+            (Some(VisSpec::Unsupported(kind)), _) => f
+                .camera
+                .map(|c| unsupported_summary(*kind, (c.view.lo, c.view.hi), css)),
             (Some(VisSpec::Line(_)), Some(s)) => serde_json::to_value(s).ok().map(|mut s| {
                 if let Some(o) = s.as_object_mut() {
                     o.insert("thresholdLabels".into(), json!([]));

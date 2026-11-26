@@ -13,9 +13,26 @@ import type {
   FrameInit,
   ThemeName,
   TimeWindow,
+  ValueRange,
   VisSpec,
 } from '../api';
 import type { FrameEvent, MainToRender, SeriesMessage } from './protocol';
+
+/** The engine camera a Camera record carries (TODO C2a1). */
+export interface CameraState {
+  readonly view: { readonly lo: number; readonly hi: number };
+  readonly value: ValueRange | null;
+  readonly band: number | null;
+}
+
+/** What a frame needs of the input ring (`ring.ts`). */
+export interface FrameRing {
+  camera(frame: number, c: CameraState): void;
+  resize(frame: number, cssW: number, cssH: number, dpr: number): void;
+  onPublish(frame: number, cb: (kind: number, seq: number) => void): void;
+  unpublished(frame: number): number;
+  drop(frame: number): void;
+}
 
 export interface Port {
   postMessage(msg: MainToRender, transfer?: Transferable[]): void;
@@ -65,6 +82,21 @@ export class WasmFrame implements ChartFrame {
 
   setTimeWindow(w: TimeWindow): void {
     this.post({ t: 'window', id: this.id, from: w.fromMs, to: w.toMs });
+  }
+
+  /** TODO C2a1. */
+  setCamera(_c: CameraState): void {
+    // TODO C2a1.
+  }
+
+  /** TODO C2a1: the worker created the frame. */
+  created(_ring: FrameRing): void {
+    // TODO C2a1.
+  }
+
+  /** TODO C2a1: the probe's settle condition. */
+  settled(): boolean {
+    return false;
   }
 
   setTheme(theme: ThemeName): void {

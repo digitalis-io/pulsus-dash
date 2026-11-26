@@ -16,6 +16,8 @@ pub const RING_BYTES: u32 = 0x10000;
 /// Booting longer than this is Failed (T03 §9.3).
 pub const BOOT_TIMEOUT_MS: u32 = 10_000;
 
+pub mod input;
+
 /// One row of the T03 §4.3 table.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Region {
@@ -72,6 +74,10 @@ pub mod off {
     pub const INPUT_TAIL: u32 = 0xC0;
     /// `u32` input records dropped (T03-020).
     pub const INPUT_OVERFLOW: u32 = 0xC4;
+    /// `u32` 1 while the render worker sleeps (TODO C2a1).
+    pub const INPUT_IDLE: u32 = 0;
+    /// `u32` input records rejected (TODO C2a1).
+    pub const INPUT_BAD: u32 = 0;
     /// The captured-chord table.
     pub const CHORDS: u32 = 0x100;
     /// The copy buffer.
@@ -82,7 +88,7 @@ pub mod off {
     pub const INPUT_DATA: u32 = 0x10000;
 
     /// Every offset, in declaration order (the `OFF_` exports of `layout.gen.ts`).
-    pub const ALL: [(&str, u32); 17] = [
+    pub const ALL: [(&str, u32); 19] = [
         ("MAGIC", MAGIC),
         ("LAYOUT_VERSION", LAYOUT_VERSION),
         ("CAPS", CAPS),
@@ -96,9 +102,11 @@ pub mod off {
         ("INPUT_HEAD", INPUT_HEAD),
         ("INPUT_TAIL", INPUT_TAIL),
         ("INPUT_OVERFLOW", INPUT_OVERFLOW),
+        ("INPUT_IDLE", INPUT_IDLE),
         ("CHORDS", CHORDS),
         ("COPY", COPY),
         ("COUNTERS", COUNTERS),
+        ("INPUT_BAD", INPUT_BAD),
         ("INPUT_DATA", INPUT_DATA),
     ];
 }

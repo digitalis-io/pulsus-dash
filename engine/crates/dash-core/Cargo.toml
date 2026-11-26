@@ -48,4 +48,5 @@ wgpu.workspace = true
 
 
 [dev-dependencies]
+dash-axes.workspace = true
 pulsus-synth.workspace = true

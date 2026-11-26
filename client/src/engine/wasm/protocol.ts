@@ -78,7 +78,15 @@ export type RenderEvent =
       readonly startMs: number;
       readonly endMs: number;
       readonly series: number;
+      /** The frame's last applied seq when this presentation was submitted (plan #68 C2a1 §3.4). */
+      readonly seq: number;
+      /** The seq of its last applied Resize. */
+      readonly rseq: number;
     }
+  /** `frame_create` succeeded: the frame's records may be published (plan #68 C2a1 §3.1). */
+  | { readonly t: 'created'; readonly id: number }
+  /** The last seq of the frame's records applied in one tick (the ack, §3.1). */
+  | { readonly t: 'applied'; readonly id: number; readonly seq: number }
   | { readonly t: 'failed'; readonly id: number; readonly reason: 'surface' | 'readback' | 'tier' }
   /** A device restore changed the engine's tier; the frames on the old tier report `failed{tier}`. */
   | {

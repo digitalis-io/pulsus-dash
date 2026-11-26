@@ -6,6 +6,8 @@
 use dash_marks::DrawnEvent;
 use serde_json::json;
 
+use crate::frames::Presented;
+
 /// Why a frame falls back to Canvas 2D.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FailReason {
@@ -32,18 +34,32 @@ pub fn a11y(id: u32, summary_json: &str) -> String {
     format!(r#"{{"t":"a11y","id":{id},"ev":{summary_json}}}"#)
 }
 
-/// `{"t":"drawn","id":…,"ev":{"cssWidth","cssHeight","dpr"},"startMs":…,"endMs":…,"series":…}`;
-/// the times are on the main thread's time origin.
-pub fn drawn(id: u32, ev: &DrawnEvent, start_ms: f64, end_ms: f64, series: u32) -> String {
+/// TODO C2a1: from the presentation.
+pub fn drawn(id: u32, p: &Presented, start_ms: f64, end_ms: f64) -> String {
+    let ev = DrawnEvent {
+        css_width: f64::from(p.css.0),
+        css_height: f64::from(p.css.1),
+        dpr: f64::from(p.dpr),
+    };
     json!({
         "t": "drawn",
         "id": id,
         "ev": ev,
         "startMs": start_ms,
         "endMs": end_ms,
-        "series": series,
+        "series": p.series,
     })
     .to_string()
+}
+
+/// TODO C2a1.
+pub fn created(_id: u32) -> String {
+    String::new()
+}
+
+/// TODO C2a1.
+pub fn applied(_id: u32, _seq: u32) -> String {
+    String::new()
 }
 
 /// `{"t":"tier","tier":"t1"|"t2","status":1|2,"adapter":…}`: the engine's tier, runtime status

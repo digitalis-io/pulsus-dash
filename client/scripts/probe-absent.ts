@@ -36,7 +36,10 @@ function tree(dist: string): string[] {
   }
 }
 
-export function checkProbeAbsent(dist: string, o: { expectFaults?: boolean } = {}): Finding[] {
+export function checkProbeAbsent(
+  dist: string,
+  o: { expectFaults?: boolean; expectProbe?: boolean } = {},
+): Finding[] {
   const list = tree(dist);
   const findings: Finding[] = [];
   if (o.expectFaults === true) {
