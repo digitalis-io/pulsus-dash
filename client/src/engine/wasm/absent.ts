@@ -10,6 +10,7 @@ const absent = (): never => {
 export const wasmUrl: string | null = null;
 export default absent;
 export const initSync = absent;
+export const engine_on_wake = absent;
 export const engine_start = absent;
 export const engine_tick = absent;
 export const engine_wants_frame = absent;

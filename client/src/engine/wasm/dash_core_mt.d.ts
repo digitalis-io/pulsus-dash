@@ -18,6 +18,12 @@ export class BootStatus {
 }
 
 /**
+ * The function that schedules the next animation frame; called when the engine needs a tick
+ * outside the frame loop (device loss, restore).
+ */
+export function engine_on_wake(wake: Function): void;
+
+/**
  * Allocates the control block and starts the GPU: WebGPU (status 1) unless `force_t2`, else
  * or failing that WebGL2 (status 2); neither is status 4.
  */
@@ -89,6 +95,7 @@ export interface InitOutput {
     readonly __wbg_set_bootstatus_cb: (a: number, b: number) => void;
     readonly __wbg_set_bootstatus_status: (a: number, b: number) => void;
     readonly bootstatus_adapter: (a: number) => [number, number];
+    readonly engine_on_wake: (a: any) => void;
     readonly engine_start: (a: number, b: number, c: number) => any;
     readonly engine_tick: (a: number) => [number, number];
     readonly engine_wants_frame: () => number;
@@ -107,12 +114,12 @@ export interface InitOutput {
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___js_sys_5ad0944f19124a33___Function_fn_wasm_bindgen_fdf7a4a3b6a46677___JsValue_____wasm_bindgen_fdf7a4a3b6a46677___sys__Undefined___js_sys_5ad0944f19124a33___Function_fn_wasm_bindgen_fdf7a4a3b6a46677___JsValue_____wasm_bindgen_fdf7a4a3b6a46677___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue__core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true_: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true_: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__27: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__28: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__29: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___js_sys_5ad0944f19124a33___futures__task__wait_async_polyfill__MessageEvent______true_: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true_: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__25: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__26: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__27: (a: number, b: number, c: any) => void;
     readonly memory: WebAssembly.Memory;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

@@ -5,6 +5,7 @@
 pub mod error;
 pub mod events;
 pub mod frames;
+pub mod recovery;
 
 #[cfg(target_arch = "wasm32")]
 mod web;

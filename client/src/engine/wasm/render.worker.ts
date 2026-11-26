@@ -6,6 +6,7 @@
  * reported on the main thread's time origin.
  */
 import init, {
+  engine_on_wake,
   engine_start,
   engine_tick,
   engine_wants_frame,
@@ -21,6 +22,7 @@ import init, {
   frame_set_window,
   pool_start,
 } from 'virtual:dash-engine';
+import { frameLoop } from './loop';
 import type { BootMessage, MainToRender, RenderToMain, SeriesMessage } from './protocol';
 
 interface Scope {
@@ -39,7 +41,6 @@ const scope = self as unknown as Scope;
 let booted = false;
 const early: MainToRender[] = [];
 let shift = 0;
-let raf = 0;
 let faults: Faults | null = null;
 /** Frames whose data or spec failed: logged once each. */
 const logged = new Set<string>();
@@ -53,18 +54,20 @@ function logOnce(what: string, id: number, e: unknown): void {
   );
 }
 
-function schedule(): void {
-  if (raf === 0) raf = scope.requestAnimationFrame(tick);
-}
-
-function tick(): void {
-  raf = 0;
+/** One tick: the engine's events, posted; whether another frame is wanted. */
+function tick(): boolean {
   const json = engine_tick(performance.now() + shift);
   if (json !== '') {
     scope.postMessage({ t: 'events', json });
     faults?.afterEvents(json);
   }
-  if (engine_wants_frame()) schedule();
+  return engine_wants_frame();
+}
+
+const loop = frameLoop({ tick, requestFrame: (cb) => scope.requestAnimationFrame(cb) });
+
+function schedule(): void {
+  loop.wake();
 }
 
 function apply(m: MainToRender): void {
@@ -135,6 +138,8 @@ async function boot(m: BootMessage): Promise<void> {
   }
   shift = performance.timeOrigin - m.mainTimeOrigin;
   const out = await init({ module_or_path: m.module });
+  // The engine wakes the loop itself after a device loss or a restore while idle.
+  engine_on_wake(schedule);
   const st = await engine_start(m.forceT2, m.caps, 1);
   scope.postMessage({
     t: 'status',

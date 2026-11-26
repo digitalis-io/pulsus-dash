@@ -82,7 +82,11 @@ pub(crate) fn format(caps: &wgpu::SurfaceCapabilities) -> Option<wgpu::TextureFo
 fn watch(device: &wgpu::Device) -> Arc<AtomicBool> {
     let lost = Arc::new(AtomicBool::new(false));
     let l = lost.clone();
-    device.set_device_lost_callback(move |_reason, _message| l.store(true, Ordering::Release));
+    device.set_device_lost_callback(move |_reason, _message| {
+        l.store(true, Ordering::Release);
+        // The frame loop may be idle: a tick handles the loss (review r1 #2).
+        super::wake();
+    });
     // Validation errors are logged, never a panic: a frame that fails reports `failed`.
     device.on_uncaptured_error(Arc::new(|e: wgpu::Error| {
         web_sys::console::warn_1(&format!("pulsus engine: {e}").into());
