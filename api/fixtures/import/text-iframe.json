@@ -1,0 +1,475 @@
+{
+  "description": "T24 §10 import fixtures f1, f3-f12 for convertImportedText (plan #198 Part 2a). content is a string or {repeat: [[text, count]]}; offsets are UTF-16 indices in the input, ascending.",
+  "origin": "https://dash.test",
+  "cases": [
+    {
+      "id": "f1",
+      "note": "T24 §10 f1",
+      "content": "Intro <iframe src=\"https://x.test/a)b?q=[1]&amp;r=<2>\"></iframe> end\n<div>\nkeep <b>me</b>\n<iframe src=\"https://intended.test/\"></iframe>\n</div>\nafter\n\n`<iframe src=\"https://code.test/\">` and \\<iframe src=\"https://esc.test/\">\n\n<iframe src=\"javascript:alert(1)\"></iframe>\n",
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 69,
+            "text": "\n[Open embedded page \\(x\\.test\\)](<https://x.test/a)b?q=[1]&amp;r=%3C2%3E>)\n\n"
+          },
+          {
+            "offset": 150,
+            "text": "\n[Open embedded page \\(intended\\.test\\)](<https://intended.test/>)\n"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 1,
+            "host": "x.test"
+          },
+          {
+            "kind": "iframeToLink",
+            "line": 4,
+            "host": "intended.test"
+          },
+          {
+            "kind": "iframeNoLink",
+            "line": 10
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 4
+          }
+        ],
+        "hrefs": [
+          "https://x.test/a)b?q=%5B1%5D&r=%3C2%3E",
+          "https://intended.test/"
+        ]
+      }
+    },
+    {
+      "id": "f3",
+      "note": "T24 §10 f3",
+      "content": "<iframe src=\"https://x.test/?a=&amp;copy;&amp;b=&amp;#169;&amp;c=&amp;amp;d&amp;e=1\"></iframe>\n",
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 95,
+            "text": "\n[Open embedded page \\(x\\.test\\)](<https://x.test/?a=&amp;copy;&amp;b=&amp;#169;&amp;c=&amp;amp;d&amp;e=1>)\n"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 1,
+            "host": "x.test"
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 1
+          }
+        ],
+        "hrefs": ["https://x.test/?a=&copy;&b=&#169;&c=&amp;d&e=1"]
+      }
+    },
+    {
+      "id": "f4",
+      "note": "T24 §10 f4",
+      "content": "0 `<iframe src=\"https://code.test/\">`\n\n<script>const e = '<iframe src=\"https://s1.test/\">';</script>\n\n<style>/* <iframe src=\"https://s2.test/\"> */</style>\n\nx <textarea><iframe src=\"https://s3.test/\"></textarea> <title><iframe src=\"https://s4.test/\"></title> y\n\n<iframe src=\"https://real.test/\"><iframe src=\"https://inner.test/\"></iframe>\n\n    <iframe src=\"https://indented.test/\">\n\n<plaintext><iframe src=\"https://p.test/\">\n",
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 340,
+            "text": "\n[Open embedded page \\(real\\.test\\)](<https://real.test/>)\n"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 9,
+            "host": "real.test"
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 11
+          }
+        ],
+        "hrefs": ["https://real.test/"]
+      }
+    },
+    {
+      "id": "f5",
+      "note": "T24 §10 f5",
+      "content": "<iframe src=\"https://x.test/?a=1&copy=2&b=&copy;&c=&notit;&d=&#169=x\"></iframe>\n",
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 80,
+            "text": "\n[Open embedded page \\(x\\.test\\)](<https://x.test/?a=1&amp;copy=2&amp;b=%C2%A9&amp;c=&amp;notit;&amp;d=%C2%A9=x>)\n"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 1,
+            "host": "x.test"
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 1
+          }
+        ],
+        "hrefs": ["https://x.test/?a=1&copy=2&b=%C2%A9&c=&notit;&d=%C2%A9=x"]
+      }
+    },
+    {
+      "id": "f7",
+      "note": "T24 §10 f7",
+      "content": "<![CDATA[<iframe src=\"https://c1.test/\">]]>\n\na <![CDATA[<iframe src=\"https://c2.test/\">]]> b\n\n<?x <iframe src=\"https://p1.test/\"> ?>\n\na <?x <iframe src=\"https://p2.test/\"> ?> b\n\n<!DOCTYPE <iframe src=\"https://d.test/\">>\n\n<div></ <iframe src=\"https://b.test/\">x</div>\n\n<div><!--><iframe src=\"https://after.test/\"></div>\n",
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 319,
+            "text": "\n[Open embedded page \\(after\\.test\\)](<https://after.test/>)\n"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 13,
+            "host": "after.test"
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 7
+          }
+        ],
+        "hrefs": ["https://after.test/"]
+      }
+    },
+    {
+      "id": "f8",
+      "note": "T24 §10 f8",
+      "content": "<div><!-- a --!><iframe src=\"https://bang.test/\"></iframe></div>\n\nx <!-- b --!> <iframe src=\"https://bang2.test/\"></iframe> y\n",
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 65,
+            "text": "\n[Open embedded page \\(bang\\.test\\)](<https://bang.test/>)\n"
+          },
+          {
+            "offset": 126,
+            "text": "\n[Open embedded page \\(bang2\\.test\\)](<https://bang2.test/>)\n"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 1,
+            "host": "bang.test"
+          },
+          {
+            "kind": "iframeToLink",
+            "line": 3,
+            "host": "bang2.test"
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 3
+          }
+        ],
+        "hrefs": ["https://bang.test/", "https://bang2.test/"]
+      }
+    },
+    {
+      "id": "f9",
+      "note": "T24 §10 f9",
+      "content": "<select><iframe src=\"https://sel.test/\"></iframe></select>\n\na <select><iframe src=\"https://sel2.test/\"></select> b\n\n<frameset><iframe src=\"https://fs.test/\"></frameset>\n\n<template><iframe src=\"https://tpl.test/\"></template>\n",
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 59,
+            "text": "\n[Open embedded page \\(sel\\.test\\)](<https://sel.test/>)\n"
+          },
+          {
+            "offset": 115,
+            "text": "\n[Open embedded page \\(sel2\\.test\\)](<https://sel2.test/>)\n"
+          },
+          {
+            "offset": 169,
+            "text": "\n[Open embedded page \\(fs\\.test\\)](<https://fs.test/>)\n"
+          },
+          {
+            "offset": 224,
+            "text": "\n[Open embedded page \\(tpl\\.test\\)](<https://tpl.test/>)\n"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 1,
+            "host": "sel.test"
+          },
+          {
+            "kind": "iframeToLink",
+            "line": 3,
+            "host": "sel2.test"
+          },
+          {
+            "kind": "iframeToLink",
+            "line": 5,
+            "host": "fs.test"
+          },
+          {
+            "kind": "iframeToLink",
+            "line": 7,
+            "host": "tpl.test"
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 11
+          }
+        ],
+        "hrefs": [
+          "https://sel.test/",
+          "https://sel2.test/",
+          "https://fs.test/",
+          "https://tpl.test/"
+        ]
+      }
+    },
+    {
+      "id": "f10",
+      "note": "T24 §10 f10",
+      "content": "<select><title><select><iframe src=\"https://x.test/\"></iframe></select></title></select>\n\na <select><title><select><iframe src=\"https://y.test/\"></iframe></select></title></select> b\n",
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 89,
+            "text": "\n[Open embedded page \\(x\\.test\\)](<https://x.test/>)\n"
+          },
+          {
+            "offset": 183,
+            "text": "\n[Open embedded page \\(y\\.test\\)](<https://y.test/>)\n"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 1,
+            "host": "x.test"
+          },
+          {
+            "kind": "iframeToLink",
+            "line": 3,
+            "host": "y.test"
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 16
+          }
+        ],
+        "hrefs": ["https://x.test/", "https://y.test/"]
+      }
+    },
+    {
+      "id": "f6",
+      "note": "T24 §10 f6: 65 483 bytes + a 53-byte insert = 65 536, converted",
+      "content": {
+        "repeat": [
+          ["<iframe src=\"https://s.test/\"></iframe>\n", 1],
+          ["x", 65442],
+          ["\n", 1]
+        ]
+      },
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 65483,
+            "text": "\n[Open embedded page \\(s\\.test\\)](<https://s.test/>)\n"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 1,
+            "host": "s.test"
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 1
+          }
+        ],
+        "hrefs": ["https://s.test/"],
+        "bytes": 65536
+      }
+    },
+    {
+      "id": "f6-over",
+      "note": "T24 §10 f6: one more x is over the limit",
+      "content": {
+        "repeat": [
+          ["<iframe src=\"https://s.test/\"></iframe>\n", 1],
+          ["x", 65442],
+          ["x", 1],
+          ["\n", 1]
+        ]
+      },
+      "result": {
+        "ok": false,
+        "reason": "sizeLimit",
+        "links": 1
+      }
+    },
+    {
+      "id": "f6-code",
+      "note": "T24 §10 f6: mode code leaves the content unchanged",
+      "mode": "code",
+      "content": {
+        "repeat": [
+          ["<iframe src=\"https://s.test/\"></iframe>\n", 1],
+          ["x", 65442],
+          ["\n", 1]
+        ]
+      },
+      "result": {
+        "ok": true,
+        "inserted": [],
+        "notes": [],
+        "hrefs": []
+      }
+    },
+    {
+      "id": "f11-crlf",
+      "note": "f1 with CRLF line ends",
+      "content": "Intro <iframe src=\"https://x.test/a)b?q=[1]&amp;r=<2>\"></iframe> end\r\n<div>\r\nkeep <b>me</b>\r\n<iframe src=\"https://intended.test/\"></iframe>\r\n</div>\r\nafter\r\n\r\n`<iframe src=\"https://code.test/\">` and \\<iframe src=\"https://esc.test/\">\r\n\r\n<iframe src=\"javascript:alert(1)\"></iframe>\r\n",
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 70,
+            "text": "\n[Open embedded page \\(x\\.test\\)](<https://x.test/a)b?q=[1]&amp;r=%3C2%3E>)\n\n"
+          },
+          {
+            "offset": 156,
+            "text": "\n[Open embedded page \\(intended\\.test\\)](<https://intended.test/>)\n"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 1,
+            "host": "x.test"
+          },
+          {
+            "kind": "iframeToLink",
+            "line": 4,
+            "host": "intended.test"
+          },
+          {
+            "kind": "iframeNoLink",
+            "line": 10
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 4
+          }
+        ],
+        "hrefs": [
+          "https://x.test/a)b?q=%5B1%5D&r=%3C2%3E",
+          "https://intended.test/"
+        ]
+      }
+    },
+    {
+      "id": "f11-cr",
+      "note": "f1 with CR line ends",
+      "content": "Intro <iframe src=\"https://x.test/a)b?q=[1]&amp;r=<2>\"></iframe> end\r<div>\rkeep <b>me</b>\r<iframe src=\"https://intended.test/\"></iframe>\r</div>\rafter\r\r`<iframe src=\"https://code.test/\">` and \\<iframe src=\"https://esc.test/\">\r\r<iframe src=\"javascript:alert(1)\"></iframe>\r",
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 69,
+            "text": "\r[Open embedded page \\(x\\.test\\)](<https://x.test/a)b?q=[1]&amp;r=%3C2%3E>)\r\r"
+          },
+          {
+            "offset": 150,
+            "text": "\r[Open embedded page \\(intended\\.test\\)](<https://intended.test/>)\r"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 1,
+            "host": "x.test"
+          },
+          {
+            "kind": "iframeToLink",
+            "line": 4,
+            "host": "intended.test"
+          },
+          {
+            "kind": "iframeNoLink",
+            "line": 10
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 4
+          }
+        ],
+        "hrefs": [
+          "https://x.test/a)b?q=%5B1%5D&r=%3C2%3E",
+          "https://intended.test/"
+        ]
+      }
+    },
+    {
+      "id": "f12",
+      "note": "an iframe in a list item and in a block quote, each followed by a paragraph",
+      "content": "- <iframe src=\"https://li.test/\"></iframe>\npara one\n\n> <iframe src=\"https://bq.test/\"></iframe>\npara two\n",
+      "result": {
+        "ok": true,
+        "inserted": [
+          {
+            "offset": 43,
+            "text": "\n[Open embedded page \\(li\\.test\\)](<https://li.test/>)\n\n"
+          },
+          {
+            "offset": 96,
+            "text": "\n[Open embedded page \\(bq\\.test\\)](<https://bq.test/>)\n\n"
+          }
+        ],
+        "notes": [
+          {
+            "kind": "iframeToLink",
+            "line": 1,
+            "host": "li.test"
+          },
+          {
+            "kind": "iframeToLink",
+            "line": 4,
+            "host": "bq.test"
+          },
+          {
+            "kind": "htmlNotRendered",
+            "count": 2
+          }
+        ],
+        "hrefs": ["https://li.test/", "https://bq.test/"],
+        "types": [
+          "list",
+          "paragraph",
+          "paragraph",
+          "block_quote",
+          "paragraph",
+          "paragraph"
+        ]
+      }
+    }
+  ]
+}
