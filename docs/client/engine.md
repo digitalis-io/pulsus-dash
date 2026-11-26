@@ -729,7 +729,8 @@ of a disposed frame is ignored and not counted.
 [charts.md](charts.md#zoom-and-pan-the-2d-camera-93)) on the main thread, on the canvas element
 that stays in the page after its transfer ([ADR-0030](../../designs/adr/0030-engine-camera-controller-on-main.md)).
 Every camera change is one `setCamera`: one Camera record with the view, the value view (null =
-auto) and the held band (null = measured), coalesced in the ring like any other.
+auto) and the held band (null = measured), coalesced in the ring like any other. A Ctrl or ⌘ wheel
+zooms both axes and changes the camera once per axis, so it sends two.
 
 | `ControlledFrame` call | Controller | `WasmFrame` |
 |---|---|---|
@@ -772,8 +773,9 @@ the committed camera (the last external `setSpec` or `setTimeWindow`, or the las
 no `commit` or `brush` follows. An engine restart mid-gesture creates a new `ControlledFrame`: the
 gesture is dropped without a commit, as on dispose.
 
-**Cost.** Per DOM event the main thread runs the controller's arithmetic and at most one ring
-write (T03-003); `bench:shim-input-cost` reports it.
+**Cost.** Per DOM event the main thread runs the controller's arithmetic and at most one Camera
+record per axis it moves: one ring write, or two for a Ctrl or ⌘ wheel that zooms both axes
+(T03-003). `bench:shim-input-cost` times each whole dispatch, both writes included.
 
 ### Tiers and the frame loop
 

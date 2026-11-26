@@ -26,8 +26,8 @@ in the page after its transfer and receives its events.
    `FrameController`, shared with the Canvas 2D frame (`client/src/engine/controller/`), run by
    `ControlledFrame` on the canvas element. It emits `commit` and `brush` there; the worker emits
    neither.
-2. **The worker applies what it is sent.** Each camera change is one Camera record in the input
-   ring (T03 §5.4): the view, the value view (auto or manual) and the band (measured or held). The
+2. **The worker applies what it is sent.** Each camera change (per axis) is one Camera record in
+   the input ring (T03 §5.4): the view, the value view (auto or manual) and the band (measured or held). The
    render worker holds only the applied render state: the camera it last applied, hover and
    decoded columns.
 3. **The controller acts on what is on screen.** The worker reports each completed presentation's
@@ -42,8 +42,9 @@ in the page after its transfer and receives its events.
 
 - One controller and one set of controller tests for both engines; `e2e:engine-camera` runs #93's
   camera cases against engine frames.
-- Main-thread work per input event is the controller's arithmetic and at most one ring write
-  (T03-003); `bench:shim-input-cost` measures it, report-only until the reference lab exists.
+- Main-thread work per input event is the controller's arithmetic and at most one Camera record
+  per axis it moves (two for a zoom of both axes) (T03-003); `bench:shim-input-cost` measures the
+  whole dispatch, report-only until the reference lab exists.
 - The camera used by input lags the newest layout by the presentation in flight; the held band
   keeps the plot fixed through a gesture, so the anchor stays under the pointer.
 - An engine restart mid-gesture creates a new controller: the gesture is dropped without a commit,
