@@ -559,11 +559,13 @@ fn stages_of(events: &[Value]) -> Vec<Value> {
         .collect()
 }
 
+/// The stage of a line-50 presentation (C2b: with its pick count, line-50's 1 440 samples).
 fn stage_json(plot: dash_axes::PlotRect, domain: (f64, f64), label_w: f64) -> Value {
     norm(&serde_json::json!({
         "plot": {"x": plot.x, "y": plot.y, "width": plot.width, "height": plot.height},
         "domain": {"min": domain.0, "max": domain.1},
         "labelW": label_w,
+        "pickCount": 1440,
     }))
 }
 

@@ -2,10 +2,12 @@
 //! `FrameSummary`), `drawn` (ADR-0019, with the times and series count of the `chart-draw`
 //! measure) and `failed` (the frame falls back to Canvas 2D). Part C2a1 (§3.4) adds `created` (the
 //! frame's input records may be published), `applied` (the ack of a frame's records in one tick)
-//! and the seqs of a `drawn`'s presentation. `engine_tick` joins them into one JSON array per frame.
+//! and the seqs of a `drawn`'s presentation. Part C2b (§3.3) adds `hover` and `select`, and the
+//! stage's `pickCount`. `engine_tick` joins them into one JSON array per frame.
 
 use dash_marks::DrawnEvent;
 use dash_scene::StageInfo;
+use dash_scene::hover::{HoverItem, HoverOut};
 use serde_json::{Value, json};
 
 use crate::frames::Presented;
@@ -59,17 +61,30 @@ pub fn drawn(id: u32, p: &Presented, start_ms: f64, end_ms: f64) -> String {
 }
 
 /// `{"t":"stage","id":…,"rseq":…,"stage":{"plot":{x,y,width,height},"domain":{min,max}|null,
-/// "labelW":…}|null}` (plan #68 C2a2 §3.3): the stage of a completed presentation of Resize `rseq`;
-/// null withdraws it.
+/// "labelW":…,"pickCount":…}|null}` (plan #68 C2a2 §3.3, C2b §3.3): the stage of a completed
+/// presentation of Resize `rseq`; null withdraws it.
 pub fn stage(id: u32, rseq: u32, stage: Option<&StageInfo>) -> String {
     let st = stage.map_or(Value::Null, |s| {
         json!({
             "plot": s.plot,
             "domain": s.domain.map_or(Value::Null, |d| json!({"min": d.lo, "max": d.hi})),
             "labelW": s.band_w,
+            "pickCount": s.pick_count,
         })
     });
     json!({"t": "stage", "id": id, "rseq": rseq, "stage": st}).to_string()
+}
+
+/// `{"t":"hover","id":…,"oseq":…,"ev":<HoverEvent>|null}` (plan #68 C2b §3.3): the hover of the
+/// frame's Overlay record `oseq`, from the build of the tick that applied it.
+pub fn hover(id: u32, oseq: u32, ev: Option<&HoverOut>) -> String {
+    json!({"t": "hover", "id": id, "oseq": oseq, "ev": ev}).to_string()
+}
+
+/// `{"t":"select","id":…,"item":<HoverItem>|null}` (plan #68 C2b §3.3): a Select record answered
+/// against the presentation on screen.
+pub fn select(id: u32, item: Option<&HoverItem>) -> String {
+    json!({"t": "select", "id": id, "item": item}).to_string()
 }
 
 /// `{"t":"created","id":…}`: `frame_create` took the id.

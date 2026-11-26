@@ -1,7 +1,8 @@
 //! The input ring's records (plan #68 C2a1 §3.1; T03 §5.4): a 16-byte header `0 u8 kind · 1 u8
 //! flags · 2 u16 size · 4 u32 seq · 8 f64 t_ms`, then the payload; little-endian, every size a
-//! multiple of 8, so every record and field is aligned. The adapter writes Resize and Camera only
-//! (until #94 adds the raw input records); a Wrap byte at the end of the ring means "continue at the
+//! multiple of 8, so every record and field is aligned. The adapter writes Resize, Camera, Overlay
+//! and Select only (until #94 adds the raw input records; Overlay and Select from plan #68 C2b
+//! §3.1); a Wrap byte at the end of the ring means "continue at the
 //! next multiple of `RING_BYTES`" and may be followed by fewer than 16 bytes.
 //!
 //! The counters (`off::INPUT_HEAD`, `off::INPUT_TAIL`) are free-running `u32` byte counts: occupied
@@ -11,21 +12,22 @@
 /// The header.
 pub const HEADER_BYTES: u32 = 16;
 
-/// Record kinds (T03 §5.4; `0x24`–`0x26` are reserved).
+/// Record kinds (T03 §5.4; `0x26` is reserved).
 pub mod rec {
     /// Continue at the next multiple of `RING_BYTES`.
     pub const WRAP: u8 = 0x00;
     pub const RESIZE: u8 = 0x20;
     pub const CAMERA: u8 = 0x23;
-    // Test-first stubs (plan #68 C2b §3.1): not wired yet.
-    pub const OVERLAY: u8 = 0x00;
-    pub const SELECT: u8 = 0x00;
+    /// The hover and the box band (plan #68 C2b): a state record, coalesced per frame.
+    pub const OVERLAY: u8 = 0x24;
+    /// A click (plan #68 C2b): discrete, never coalesced.
+    pub const SELECT: u8 = 0x25;
 }
 
 pub const RESIZE_BYTES: u32 = 40;
 pub const CAMERA_BYTES: u32 = 64;
-pub const OVERLAY_BYTES: u32 = 0;
-pub const SELECT_BYTES: u32 = 0;
+pub const OVERLAY_BYTES: u32 = 64;
+pub const SELECT_BYTES: u32 = 40;
 
 /// Header field offsets.
 pub mod header {
@@ -57,33 +59,39 @@ pub mod camera {
     pub const BAND: u32 = 56;
 }
 
-/// Overlay payload offsets (stub).
+/// Overlay payload offsets: the frame id, `u8` hover (0 none, 1 pointer, 2 key), `u8` box (0, 1),
+/// a zero `u16`, `f64` pointer x and y (CSS px), `u32` key index, a zero `u32`, `f64` box ends
+/// (CSS px). Fields a mode does not use are 0.
 pub mod overlay {
-    pub const FRAME: u32 = 0;
-    pub const HOVER: u32 = 0;
-    pub const BOX: u32 = 0;
-    pub const X: u32 = 0;
-    pub const Y: u32 = 0;
-    pub const KEY: u32 = 0;
-    pub const BOX_X0: u32 = 0;
-    pub const BOX_X: u32 = 0;
+    pub const FRAME: u32 = 16;
+    pub const HOVER: u32 = 20;
+    pub const BOX: u32 = 21;
+    pub const X: u32 = 24;
+    pub const Y: u32 = 32;
+    pub const KEY: u32 = 40;
+    pub const BOX_X0: u32 = 48;
+    pub const BOX_X: u32 = 56;
 }
 
-/// Select payload offsets (stub).
+/// Select payload offsets: the frame id, a zero `u32`, `f64` x and y (CSS px).
 pub mod select {
-    pub const FRAME: u32 = 0;
-    pub const X: u32 = 0;
-    pub const Y: u32 = 0;
+    pub const FRAME: u32 = 16;
+    pub const X: u32 = 24;
+    pub const Y: u32 = 32;
 }
 
 /// The `layout.gen.ts` constants of this module, in order.
-pub const ALL: [(&str, u32); 18] = [
+pub const ALL: [(&str, u32); 33] = [
     ("REC_WRAP", rec::WRAP as u32),
     ("REC_RESIZE", rec::RESIZE as u32),
     ("REC_CAMERA", rec::CAMERA as u32),
+    ("REC_OVERLAY", rec::OVERLAY as u32),
+    ("REC_SELECT", rec::SELECT as u32),
     ("REC_HEADER_BYTES", HEADER_BYTES),
     ("REC_RESIZE_BYTES", RESIZE_BYTES),
     ("REC_CAMERA_BYTES", CAMERA_BYTES),
+    ("REC_OVERLAY_BYTES", OVERLAY_BYTES),
+    ("REC_SELECT_BYTES", SELECT_BYTES),
     ("RESIZE_CSS_W", resize::CSS_W),
     ("RESIZE_CSS_H", resize::CSS_H),
     ("RESIZE_DPR", resize::DPR),
@@ -96,6 +104,17 @@ pub const ALL: [(&str, u32); 18] = [
     ("CAMERA_VALUE_MIN", camera::VALUE_MIN),
     ("CAMERA_VALUE_MAX", camera::VALUE_MAX),
     ("CAMERA_BAND", camera::BAND),
+    ("OVERLAY_FRAME", overlay::FRAME),
+    ("OVERLAY_HOVER", overlay::HOVER),
+    ("OVERLAY_BOX", overlay::BOX),
+    ("OVERLAY_X", overlay::X),
+    ("OVERLAY_Y", overlay::Y),
+    ("OVERLAY_KEY", overlay::KEY),
+    ("OVERLAY_BOX_X0", overlay::BOX_X0),
+    ("OVERLAY_BOX_X", overlay::BOX_X),
+    ("SELECT_FRAME", select::FRAME),
+    ("SELECT_X", select::X),
+    ("SELECT_Y", select::Y),
 ];
 
 /// `a` is at or after `b` in seq order (the worker side: valid while they are < 2³¹ apart).

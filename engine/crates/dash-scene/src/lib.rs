@@ -7,7 +7,7 @@ pub mod hover;
 mod spec;
 mod summary;
 
-pub use build::{Built, StageInfo, build, build_frame, build_stage};
+pub use build::{Built, StageInfo, build, build_frame};
 pub use camera::{Camera, PlotCamera, YRange};
 pub use spec::{LineSpec, SpecError, ValueRange, VisSpec};
 pub use summary::{CommitEvent, FrameSummary, Gesture, TimeWindow, ValueAxisSummary, ValueCommit};

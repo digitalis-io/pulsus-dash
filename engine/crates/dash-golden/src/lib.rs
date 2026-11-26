@@ -12,6 +12,7 @@ use dash_marks::desc::{DrawList, MarkItem};
 use dash_marks::line::{Renderer, RendererOptions};
 use dash_scales::Range64;
 use dash_scales::encode::{axis_map, choose_encoding, is_far};
+use dash_scene::hover::{HoverAt, hover_at, overlay_item};
 use dash_scene::{Band, Camera, PlotCamera, Size64, Theme, ValueRange, Viewport, VisSpec, YRange};
 use dash_tokens::Rgba8;
 use dash_wire::Chunk;
@@ -233,7 +234,8 @@ pub struct OverlayAt {
     pub box_x: Option<(f64, f64)>,
 }
 
-/// Stub (plan #68 C2b): `render_page` without the overlay.
+/// Renders a gallery page with the overlay the engine draws for `o` (plan #68 C2b): the pointer
+/// hover picked on the page's presentation (`dash-scene::hover`) and the box band.
 pub fn render_page_overlay(
     ctx: &GpuContext,
     page: GalleryLine,
@@ -241,9 +243,23 @@ pub fn render_page_overlay(
     css: Size64,
     dpr: f32,
     value_range: Option<ValueRange>,
-    _o: OverlayAt,
+    o: OverlayAt,
 ) -> Image {
-    render_page(ctx, page, theme, css, dpr, value_range)
+    let v = page_viewport(page, theme, css, dpr, value_range);
+    let b = dash_scene::build_frame(&v);
+    let mut list = b.list;
+    if let Some(p) = b.pick.as_deref() {
+        let h = o
+            .hover
+            .and_then(|(x, y)| hover_at(p, HoverAt::Pointer { x, y }));
+        list.items.push(overlay_item(p, h.as_ref(), o.box_x, theme));
+    }
+    let mut r = Renderer::new(
+        ctx,
+        wgpu::TextureFormat::Rgba8Unorm,
+        RendererOptions::default(),
+    );
+    render_list(ctx, &mut r, &list)
 }
 
 pub const WHITE: Rgba8 = Rgba8([255, 255, 255, 255]);
