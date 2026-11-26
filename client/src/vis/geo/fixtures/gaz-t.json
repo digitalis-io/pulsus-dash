@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "q": 100,
+  "country": [
+    ["GE", "GEO", "Georgia", 4350, 4200],
+    ["JP", "JPN", "Japan", 13800, 3600],
+    ["XA", "XAA", "Atlantis", 0, 100],
+    ["XB", "XBB", "Atlantis", 100, 100],
+    ["ZZ", "ZZZ", "Zed North", 500, 500],
+    ["ZZ", "ZZZ", "Zed South", 500, -500]
+  ],
+  "region": [
+    ["KZ-ALA", "Almaty", 7690, 4325],
+    ["KZ-ALA", "Almaty City", 7695, 4328],
+    ["US-CA", "California", -12000, 3700],
+    ["XX-DUP", "Dupland", 4000, 4000]
+  ],
+  "iata": [
+    ["QQQ", "Alpha", 100, 100],
+    ["QQQ", "Beta", 200, 200],
+    ["SIN", "Singapore", 10399, 135]
+  ],
+  "cloud": [
+    ["aws", "eu-west-1", "Dublin", -625, 5334],
+    ["aws", "eu-west-2", "London", -12, 5150],
+    ["aws", "us-east-1", "Washington, D.C.", -7701, 3890],
+    ["azure", "westeurope", "Amsterdam", 491, 5235],
+    ["gcp", "europe-west1", "Mons", 394, 5045],
+    ["ta", "xx-dup-1", "T1", 1000, 1000],
+    ["tb", "xx-dup-1", "T2", 2000, 2000],
+    ["tc", "xx-dup", "T3", 3000, 3000]
+  ]
+}

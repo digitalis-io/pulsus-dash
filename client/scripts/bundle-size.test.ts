@@ -55,6 +55,10 @@ const S = 'assets/editor-s.js';
 const R = 'assets/MetricsPage-r.js';
 const ENGINE_WASM = 'assets/dash-engine-a.wasm';
 const ENGINE_WORKER = 'assets/dash-engine-render-a.js';
+/** The geo assets (plan #231 §3.3) and the `geo-assets` entry that names them. */
+const GEO_BASEMAP = 'assets/basemap-a1.json';
+const GEO_GAZETTEER = 'assets/gazetteer-b2.json';
+const GEO_ENTRY = 'assets/geo-assets-c3.js';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -96,6 +100,12 @@ function makeDist(o: Overrides = {}): string {
     'src/editor/lang/logql/logql.ts': { file: E3, isDynamicEntry: true, imports: ['_editor-s.js'] },
     'src/editor/logqlEditor.ts': { file: E4, isDynamicEntry: true, imports: ['_editor-s.js'] },
     '_editor-s.js': { file: S, imports: ['index.html'] },
+    'src/vis/geo/urls.ts': {
+      file: GEO_ENTRY,
+      src: 'src/vis/geo/urls.ts',
+      isEntry: true,
+      assets: [GEO_BASEMAP, GEO_GAZETTEER],
+    },
   };
   const metrics = manifest['src/pages/explore/MetricsPage.tsx'] as
     Record<string, unknown> | undefined;
@@ -132,6 +142,9 @@ function makeDist(o: Overrides = {}): string {
     // The engine (plan #68 C1): its wasm and a worker entry.
     [ENGINE_WASM]: Buffer.from('wasm'),
     [ENGINE_WORKER]: Buffer.from('export {}'),
+    [GEO_BASEMAP]: Buffer.from('{"v":1}'),
+    [GEO_GAZETTEER]: Buffer.from('{"v":1}'),
+    [GEO_ENTRY]: Buffer.from('const a="/assets/basemap-a1.json";export{a}'),
     ...o.files,
   };
   for (const [path, content] of Object.entries(files)) {
@@ -276,6 +289,52 @@ describe('bundle-size engine row (PRF-009, plan #68 C1)', () => {
   it('no engine wasm', () => {
     expect(rules(makeDist({ files: { [ENGINE_WASM]: null, [ENGINE_WORKER]: null } }))).toEqual([
       'missing-artefact:engine',
+    ]);
+  });
+});
+
+describe('bundle-size geo assets (plan #231 §3.3, T24-087)', () => {
+  it('the geo rows: one basemap and one gazetteer, the entry chunk lazy', () => {
+    const r = checkBundle(makeDist(), budgets);
+    expect(r.findings).toEqual([]);
+    const geo = r.rows.filter(
+      (x) => x.cls === ('geoBasemap' as string) || x.cls === ('geoGazetteer' as string),
+    );
+    expect(geo.map((x) => [x.cls, x.file, x.budget])).toEqual([
+      ['geoBasemap', 'geo-basemap', 40_000],
+      ['geoGazetteer', 'geo-gazetteer', 104_000],
+    ]);
+    expect(r.rows.some((x) => x.cls === 'lazyChunk' && x.file === GEO_ENTRY)).toBe(true);
+  });
+  it('no basemap', () => {
+    expect(rules(makeDist({ files: { [GEO_BASEMAP]: null } }))).toEqual([
+      'missing-artefact:geo basemap',
+    ]);
+  });
+  it('two basemaps', () => {
+    expect(rules(makeDist({ files: { 'assets/basemap-z9.json': Buffer.from('{}') } }))).toEqual([
+      'missing-artefact:geo basemap',
+    ]);
+  });
+  it('no gazetteer', () => {
+    expect(rules(makeDist({ files: { [GEO_GAZETTEER]: null } }))).toEqual([
+      'missing-artefact:geo gazetteer',
+    ]);
+  });
+  it('a gazetteer over 104 000 B brotli', () => {
+    const big = randomBytes(104_001, 9);
+    expect(rules(makeDist({ files: { [GEO_GAZETTEER]: big } }))).toEqual([
+      'over-budget:geoGazetteer',
+    ]);
+    const r = checkBundle(makeDist({ files: { [GEO_GAZETTEER]: big } }), budgets);
+    const row = r.rows.find((x) => x.file === 'geo-gazetteer');
+    expect(row?.bytes).toBeGreaterThan(104_000);
+    const total = r.rows.find((x) => x.cls === 'totalExceptEngine');
+    expect(total?.bytes).toBeGreaterThan(104_000);
+  });
+  it('a basemap over 40 000 B brotli', () => {
+    expect(rules(makeDist({ files: { [GEO_BASEMAP]: randomBytes(40_001, 8) } }))).toEqual([
+      'over-budget:geoBasemap',
     ]);
   });
 });
