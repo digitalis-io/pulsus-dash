@@ -28,7 +28,9 @@ import type {
   TimeWindow,
   VisSpec,
 } from './api';
+import { ControlledFrame } from './controlled';
 import styles from './route.module.css';
+import type { EngineFrame } from './wasm/frame';
 
 /**
  * The WASM engine as the routing frames use it (`wasm/engine.ts`). `onFail` reasons: `surface`
@@ -41,7 +43,7 @@ export interface WasmBackend {
     canvas: OffscreenCanvas,
     init: FrameInit,
     onFail: (reason: string) => void,
-  ): ChartFrame;
+  ): EngineFrame;
 }
 
 /**
@@ -266,11 +268,10 @@ class RoutingFrame implements ChartFrame {
     this.on2d = false;
     const offscreen = canvas.transferControlToOffscreen();
     canvas.dataset['engine'] = b.tier === 't1' ? 'wasm-webgpu' : 'wasm-webgl2';
-    this.attach(
-      b.createFrame(offscreen, this.init, (reason) => {
-        if (gen === this.gen && this.mode === 'bound') this.onFail(b, reason);
-      }),
-    );
+    const inner = b.createFrame(offscreen, this.init, (reason) => {
+      if (gen === this.gen && this.mode === 'bound') this.onFail(b, reason);
+    });
+    this.attach(new ControlledFrame(canvas, this.init, inner));
   }
 
   /** A backend failure (plan #68 C1 §4.3): rebind on a fresh canvas, to the engine or Canvas 2D. */

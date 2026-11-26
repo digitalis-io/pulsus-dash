@@ -44,9 +44,26 @@ fn rect(p: &PlotRect) -> [f32; 4] {
     [p.x as f32, p.y as f32, p.width as f32, p.height as f32]
 }
 
+/// What the main thread's camera controller reads of a presentation (plan #68 C2a2 §3.3): its
+/// plot, its value domain (None: no value axis) and the value-label band width it used, CSS px.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StageInfo {
+    pub plot: PlotRect,
+    pub domain: Option<Range64>,
+    pub band_w: f64,
+}
+
 /// The draw list of `v` and its summary. No data, no window, an unsupported kind or an empty plot
 /// → the clear only and no summary (as the interim renderer draws no layer).
 pub fn build(v: &Viewport) -> (DrawList, Option<FrameSummary>) {
+    let (list, summary, _) = build_stage(v);
+    (list, summary)
+}
+
+/// [`build`] with the stage of the list: its plot, value domain and band (`band_w`: the held band,
+/// or the measured one); None exactly when there is no summary (no data, no window, an
+/// unsupported kind or an empty plot).
+pub fn build_stage(v: &Viewport) -> (DrawList, Option<FrameSummary>, Option<StageInfo>) {
     let mut palette = [colour(v.theme, ColourRole::Hairline); 9];
     palette[..8].copy_from_slice(&series_palette(v.theme));
     let Camera::Plot2D(cam) = v.camera;
@@ -64,11 +81,11 @@ pub fn build(v: &Viewport) -> (DrawList, Option<FrameSummary>) {
         items: Vec::new(),
     };
     let (VisSpec::Line(spec), Some(chunk)) = (&v.spec, &v.data) else {
-        return (list, None);
+        return (list, None, None);
     };
     let window = cam.x;
     if !(window.lo.is_finite() && window.hi.is_finite() && window.hi > window.lo) {
-        return (list, None);
+        return (list, None, None);
     }
     let shown = chunk
         .series
@@ -91,7 +108,7 @@ pub fn build(v: &Viewport) -> (DrawList, Option<FrameSummary>) {
     );
     let plot = axis.plot;
     if !(plot.width > 0.0 && plot.height > 0.0) {
-        return (list, None);
+        return (list, None, None);
     }
     let summary = FrameSummary {
         kind: VisKind::Line,
@@ -146,5 +163,10 @@ pub fn build(v: &Viewport) -> (DrawList, Option<FrameSummary>) {
     if axis.manual {
         list.clip = Some(rect(&plot));
     }
-    (list, Some(summary))
+    let stage = StageInfo {
+        plot,
+        domain: Some(axis.domain),
+        band_w: axis.band_w,
+    };
+    (list, Some(summary), Some(stage))
 }

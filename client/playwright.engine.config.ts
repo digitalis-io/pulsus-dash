@@ -7,6 +7,9 @@
  * report-only). `e2e/engine-legs.json`, if present, makes the WebGPU leg report-only. A third
  * project, `probe` (plan #68 C2a1 §3.5), runs `e2e:shim-fuzz` alone on lavapipe against the probe
  * build's BFF (`make e2e-build-probe`, port 4175); every other spec stays on the fault build.
+ * `e2e:engine-camera` (plan #68 C2a2) runs on `lavapipe` (gated) and `swiftshader` (report-only
+ * with the WebGPU leg) against the fault build with `?probe=1`; `bench:shim-input-cost` runs with
+ * `e2e:shim-fuzz` in `probe`, report-only.
  */
 import { defineConfig, devices } from '@playwright/test';
 
@@ -33,8 +36,9 @@ export default defineConfig({
     'engine-recovery.spec.ts',
     'csp-violations.spec.ts',
     'engine-shim-fuzz.spec.ts',
+    'engine-camera.spec.ts',
   ],
-  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz/,
+  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera/,
   retries: 0,
   workers: 2,
   reporter: [['list'], ['./e2e/engineLegsReporter.ts']],

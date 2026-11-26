@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.10-rc · 2026-11-26 |
+| **Version** | 1.11-rc · 2026-11-26 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md) (CSP and the engine's worker policy) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
@@ -20,6 +20,7 @@ is the React application.
 | §4.1 artefacts | `dash-core-mt`/`-st` become the engine, loaded on the first chart frame. `dash-shell.wasm` and `dash-rooms-admin.wasm` are withdrawn (React app, lazy route chunks); `dash-editor.wasm` now only carries PulsusDB's parser crates for later editor diagnostics ([T09](T09-query-editors.md) §0). T03-001 revised; T03-002 applies to the engine's satellites |
 | §4.2, §4.3 worker topology and shared memory | Stand, for the engine, from the engine issue on |
 | §4.4 state ownership | Revised: semantic state is owned by the TS application (ADR-0014 §2); the engine owns render-local state. T03-009 revised; T03-010 applies to the TS Context store |
+| §4.1, §4.2, §4.4, §6 camera ownership | *(ADR-0030, #68 C2a2.)* 2D charts: the camera controller on main (ADR-0030); render: the applied camera, hover, decoded columns; Space and 3D controllers (#94) may read the ring in render |
 | §4.5 keymap | The keymap is implemented in TS. T03-011 and T03-012 stand (timing from event timestamps); T03-013 revised |
 | §4.6 URL codec | Implemented in TS; T03-014 to T03-017 stand |
 | §5.1 shim line budget, `ci:shim-lint` | Withdrawn. The adapter is bound by T01-001 instead |
@@ -134,7 +135,7 @@ TS application, ADR-0014), and every engine thread that shares data runs one sha
 |---|---|---|---|---|
 | `shim/*.js` | main + every worker | — | §5.1 | eagerly, inline module preload |
 | ~~`dash-shell.wasm`~~ | — | — | *Withdrawn (ADR-0014): the React application on the main thread* | — |
-| `dash-core-mt.wasm` (the engine, `dash-engine.wasm` in ADR-0014 §8) | render, data × n, layout, pool × m | **one shared `WebAssembly.Memory`** (max 2 GiB) | render-local state (gesture camera, hover), scene graph, wgpu renderer, marks M1–M10, scales, decimation, Arrow decode, IndexedDB chunk cache, local engine | lazily, on the first chart frame (one of mt/st) |
+| `dash-core-mt.wasm` (the engine, `dash-engine.wasm` in ADR-0014 §8) | render, data × n, layout, pool × m | **one shared `WebAssembly.Memory`** (max 2 GiB) | render-local state (2D charts: the applied camera, the controller being on main, ADR-0030; hover; Space and 3D controllers (#94) may read the ring in render), scene graph, wgpu renderer, marks M1–M10, scales, decimation, Arrow decode, IndexedDB chunk cache, local engine | lazily, on the first chart frame (one of mt/st) |
 | `dash-core-st.wasm` | one worker (or main in MT-R) | own, non-shared | same code built without `+atomics`; §9 fallback | only when not cross-origin isolated, or without OffscreenCanvas |
 | `dash-editor.wasm` | `editor` worker | own | Later: PulsusDB's parser crates for editor diagnostics ([T09](T09-query-editors.md) §0); tokenising and completion are TS | on first focus of a query bar, once it exists |
 | ~~`dash-rooms-admin.wasm`~~ | — | — | *Withdrawn (ADR-0014): admin rooms are lazy React route chunks* | — |
@@ -167,11 +168,11 @@ A satellite MUST NOT read or write core memory except through a core-allocated c
  ┌───────────────────────────────┐            ┌───────────────────────────────────────────────┐
  │ React application             │            │ render   one OffscreenCanvas per ChartFrame,   │
  │   route, Context, selection,  │            │          one wgpu device; render-local state   │
- │   undo, keymap, URL (owner)   │            │          (gesture camera, hover), scene, LOD,  │
+ │   undo, keymap, URL (owner)   │            │          (applied camera, hover), scene, LOD,  │
  │ engine adapter (engine/wasm/) │  spawn     │          frame loop on worker rAF              │
- │   boot, ChartFrame calls ─────┼──────────► │◄─── setSpec / setData / setTimeWindow / resize │
- │   input capture → input ring ─┼─ SAB ────► │          input ring consumer                   │
- │   engine events ◄─────────────┼────────────│──── hover, brush, select, commit, a11y, drawn  │
+ │   boot, ChartFrame calls ─────┼──────────► │◄─── setSpec / setData / setTheme / dispose     │
+ │   2D camera ctl → input ring ─┼─ SAB ────► │          input ring consumer (camera, size)    │
+ │   engine events ◄─────────────┼────────────│──── a11y, drawn, stage                         │
  └───────────────────────────────┘            ├───────────────────────────────────────────────┤
                                               │ data-0   coordinator: stream subscriptions,    │
             BFF (HTTP/2, WS)  ◄────────────── │          IndexedDB cache, request ids, cancel  │
@@ -186,12 +187,16 @@ A satellite MUST NOT read or write core memory except through a core-allocated c
    satellites (own memory): editor worker · geo worker · workbench satellites
 ```
 
-`drawn` and `FrameInit.id`: [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md).
+`drawn` and `FrameInit.id`: [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md). The 2D
+camera controller on the main thread, `stage`, and `commit` and `brush` from main:
+[ADR-0030](../adr/0030-engine-camera-controller-on-main.md) (2D charts: the camera controller on
+main; render: the applied camera, hover, decoded columns; Space and 3D controllers (#94) may read
+the ring in render).
 
 | Thread | Count | Blocks? | Owns | Wakes on |
 |---|---|---|---|---|
-| main | 1 | never | DOM, React application and its semantic state (Context, undo, keymap, URL), engine adapter | DOM events; engine event `message` from render |
-| render | 1 | never on locks held by others for > 50 µs | render-local state, scene, GPU device, frame canvases, input ring consumer | worker `requestAnimationFrame` |
+| main | 1 | never | DOM, React application and its semantic state (Context, undo, keymap, URL), engine adapter, the 2D camera controller (ADR-0030) | DOM events; engine event `message` from render |
+| render | 1 | never on locks held by others for > 50 µs | render-local state (the applied camera, hover, decoded columns), scene, GPU device, frame canvases, input ring consumer | worker `requestAnimationFrame` |
 | data-0 | 1 | never (event loop) | stream subscriptions, request table, cache, cancellation (the planner is in the BFF, [T07](T07-scene-query-planner.md)) | doorbell `MessagePort`, fetch promises |
 | data-k | `clamp(hwc/4, 1, 3)` in total, data-0 included | never (event loop) | assigned network streams, decode | fetch/WS promises, doorbell |
 | layout | 1 | may block in rayon joins | layout jobs, glyph runs, tessellation | Rust channel + doorbell |
@@ -278,12 +283,15 @@ audited allowlist.
 Leptos shell held a mirror.)* The **TS application owns the authoritative state store** on the main
 thread: the Context (entity set, time window and time cursor, A/B windows and baseline, filters,
 selection, focus), the committed camera per scene, camera history and the undo stack. The engine
-holds only **render-local state**: the camera *during* a gesture, hover, and decoded columns. A
-gesture ends with an engine event (`commit`, `brush`, `select`); the store reduces it into a
+holds only **render-local state**: the camera *during* a gesture, hover, and decoded columns.
+*(ADR-0030, #68 Part C2a2.)* 2D charts: the camera controller on main (#93's, shared with Canvas
+2D), which sends each preview to the render worker as a Camera record; render: the applied camera,
+hover, decoded columns; Space and 3D controllers (#94) may read the ring in render. A gesture ends
+with an event (`commit`, `brush`, `select`); the store reduces it into a
 Context change and pushes the result back through `ChartFrame.setTimeWindow` and the spec. DOM edits
 (a filter chip removed, a time typed in the picker, a table row clicked) are commands to the same
-store. Undo/redo therefore has one owner, and the input → frame path for a gesture still stays in
-the render worker. A chart's value-axis range is view state of that chart, held by its component and
+store. Undo/redo therefore has one owner, and the input → frame path for a 2D gesture is one ring record
+per event. A chart's value-axis range is view state of that chart, held by its component and
 passed back in its spec; it is not part of the Context and not in the URL (owner decision
 2026-11-21, #93; seam in [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md)). Undo of
 axis ranges arrives with the undo stack.
@@ -680,7 +688,8 @@ from #68 Part C1, so the engine's workers are isolated). A deployment that strip
 | Arrow chunks, staging slabs | core shared memory (chunk arena) | data workers; layout in [T04 §5.7](T04-wire-format-and-data-plane.md#57-zero-copy-path-from-network-to-gpu) |
 | GPU buffers and textures | GPU (counted in the tab on unified-memory machines) | render |
 | Context, committed camera, undo stack, keymap | TS application (main thread) | TS application |
-| Gesture camera, hover, render-local state | core (render worker) | render |
+| 2D charts: the camera controller (the gesture camera), ADR-0030 | TS application (main thread) | TS application |
+| The applied camera, hover, decoded columns (Space and 3D controllers, #94, may read the ring in render) | core (render worker) | render |
 | Chunk and scene cache | IndexedDB, from data-0 via `web-sys` | [T04 §6.1](T04-wire-format-and-data-plane.md#61-indexeddb-chunk-cache) |
 | User keymap remaps, Prefs | Postgres user preferences ([T11](T11-postgres-schema.md)), cached in shell | shell |
 | Compiled WASM | browser HTTP and code cache | browser |
@@ -898,7 +907,7 @@ which forces a reload.
 | Function-level code splitting of threaded WASM (`wasm-split`-style tooling) | Not mature for shared-memory modules today. Re-evaluate in M-UI3 for workbench-specific code |
 | Render on main thread | Any DOM room work would drop canvas frames. Kept only as the MT-R fallback |
 | Data workers as rayon threads | Idle rayon threads block in `Atomics.wait` and would starve their fetch event loop |
-| Keymap in the render worker | *(Reversed by ADR-0014.)* The keymap is in the TS application, which owns focus context; canvas gestures still read the input ring in the worker |
+| Keymap in the render worker | *(Reversed by ADR-0014.)* The keymap is in the TS application, which owns focus context; the 2D camera controller runs on main (ADR-0030); Space controllers later read the input ring in the worker |
 | Camera moves on the undo stack | Mixes navigation with edits; `⌘Z` would fly the camera. Camera history is browser history instead |
 
 ## 13. Open questions
@@ -949,4 +958,5 @@ which forces a reload.
 | 1.7-rc | 2026-11-21 | #93: §4.4 value-axis range is chart view state |
 | 1.8-rc | 2026-11-25 | #68 Part B: §5.6 Arrow is `dash-wire`'s own Arrow IPC reader, no arrow-rs crate (owner decision, licence); §7.3 the size table and its risk sentence name the `dash-wire` reader |
 | 1.10-rc | 2026-11-26 | #68 Part C2a1: §4.3 `idle` at `0xC8` (the tail's line) and `input_bad` at `0x4D10`; §5.4 Resize `36 u32 frame`, the Camera record `0x23`, `0x24`–`0x26` reserved, and the engine adapter's ring as built (counters, per-frame seqs at publish and their 53-bit extension, coalescing, the `created` gate and frame ids, wake-up, `drawn` from the capture, rejected records), replacing the C1 resize note; **T03-004 revised** to the idle-word wake-up |
+| 1.11-rc | 2026-11-26 | #68 Part C2a2 ([ADR-0030](../adr/0030-engine-camera-controller-on-main.md)): the ownership audit, each to "2D charts: the camera controller on main; render: the applied camera, hover, decoded columns; Space and 3D controllers (#94) may read the ring in render": §0 topology note, §4.1 `dash-core-mt` row, §4.2 diagram and thread table, §4.4 paragraph, §6 the gesture camera row, §12 "Keymap in the render worker" row |
 | 1.9-rc | 2026-11-25 | #68 Part C1, [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md): T03-022 and §5.7 assets carry COEP `require-corp`, the CSP names the `pulsus-engine` policy; §9.2 the recovery as built (frame fallback, one restart, session flag, kind swap) and Canvas 2D for not isolated, MT-R and Static until `dash-core-st`; §5.4 resize by message until Part C2 |

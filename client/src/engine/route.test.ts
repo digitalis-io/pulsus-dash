@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeEngine, type FakeEngine, type FakeFrame } from '../test/fakeEngine';
-import type { ChartFrame, FrameData, FrameEvents, FrameInit, VisSpec } from './api';
+import type { FrameData, FrameEvents, FrameInit, VisSpec } from './api';
 import { RoutingEngine, type WasmBackend } from './route';
+import type { EngineFrame } from './wasm/frame';
 
 const LINE_A: VisSpec = { kind: 'line', title: 'A', unit: { kind: 'none' } };
 const LINE_B: VisSpec = { kind: 'line', title: 'B', unit: { kind: 'none' } };
@@ -40,9 +41,9 @@ function backend(): Backend {
     tier: 't1',
     inner,
     fails,
-    createFrame(canvas: OffscreenCanvas, init: FrameInit, onFail): ChartFrame {
+    createFrame(canvas: OffscreenCanvas, init: FrameInit, onFail): EngineFrame {
       fails.push(onFail);
-      return inner.createFrame(canvas as unknown as HTMLCanvasElement, init);
+      return inner.createFrame(canvas as unknown as HTMLCanvasElement, init) as FakeFrame;
     },
   };
 }
@@ -69,7 +70,7 @@ const flush = async (): Promise<void> => {
 const methods = (f: FakeFrame): string[] => f.calls.map((c) => c.method);
 
 describe('RoutingEngine (D-ROUTE)', () => {
-  it('a line frame binds to the engine after boot and replays the latest state once, in order', async () => {
+  it('a line frame binds to the engine after boot and replays the latest state once, in order (C2a2: the window as a camera)', async () => {
     const b = backend();
     const c2d = fakeEngine();
     const e = new RoutingEngine(() => Promise.resolve(b), c2d);
@@ -86,13 +87,21 @@ describe('RoutingEngine (D-ROUTE)', () => {
     expect(b.inner.frames).toHaveLength(1);
     const inner = b.inner.frames[0];
     if (inner === undefined) throw new Error('not bound');
+    // The controller sends the window as the engine camera (plan #68 C2a2 §3.2): on the window,
+    // and again on every later layout input.
+    const camera = {
+      method: 'setCamera',
+      args: [{ view: { lo: 1, hi: 2 }, value: null, band: null }],
+    };
     expect(inner.calls).toEqual([
       { method: 'setSpec', args: [LINE_B] },
       { method: 'setData', args: [D] },
-      { method: 'setTimeWindow', args: [W] },
+      camera,
+      camera,
       { method: 'setTheme', args: ['light'] },
       { method: 'setEvents', args: [[]] },
       { method: 'setSelection', args: [null] },
+      camera,
       { method: 'resize', args: [300, 150, 1] },
     ]);
     expect(transfers).toBe(1);

@@ -9,7 +9,7 @@
  * (one per pool thread) and `events` (one JSON array per animation frame). Main → pool: `pool`.
  * The probe build adds `probe-input` both ways (the worker's decoded records, `e2e:shim-fuzz`).
  */
-import type { DrawnEvent, FrameSummary } from '../api';
+import type { DrawnEvent, FrameSummary, PlotRect, ValueRange } from '../api';
 
 export interface SeriesMessage {
   readonly key: string;
@@ -72,6 +72,13 @@ export interface PoolMessage {
   readonly ptr: number;
 }
 
+/** A presentation's stage as the worker reports it. */
+export interface StageWire {
+  readonly plot: PlotRect;
+  readonly domain: ValueRange | null;
+  readonly labelW: number;
+}
+
 export type RenderEvent =
   | { readonly t: 'a11y'; readonly id: number; readonly ev: FrameSummary }
   | {
@@ -85,6 +92,16 @@ export type RenderEvent =
       readonly seq: number;
       /** The seq of its last applied Resize. */
       readonly rseq: number;
+    }
+  /**
+   * The stage of the frame's last completed presentation of its current Resize (plan #68 C2a2
+   * §3.3): its plot, value domain and value-label band, CSS px; null: no plot. Before its `drawn`.
+   */
+  | {
+      readonly t: 'stage';
+      readonly id: number;
+      readonly rseq: number;
+      readonly stage: StageWire | null;
     }
   /** `frame_create` succeeded: the frame's records may be published (plan #68 C2a1 §3.1). */
   | { readonly t: 'created'; readonly id: number }
