@@ -34,6 +34,12 @@ const BAD: [string, string, string][] = [
   ['browser-external', 'assets/index-a1.js', '__vite-browser-external:node:stream'],
   ['browser-external-nul', 'assets/text-c3.js', '\0__vite-browser-external:node:stream'],
   ['sax-index', 'assets/text-c3.js', '/repo/client/node_modules/parse5-sax-parser/dist/index.js'],
+  // A worker chunk of the engine (review r1): the main bundle is clean.
+  [
+    'worker',
+    'assets/dash-engine-render.worker-d4.js',
+    '\0__vite-browser-external:node:worker_threads',
+  ],
 ];
 
 describe('unit:bundle-modules', () => {

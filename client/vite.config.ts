@@ -1,11 +1,11 @@
 /// <reference types="vitest/config" />
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import optimizeLocales from '@react-aria/optimize-locales-plugin';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
 import { devHeaders, productionHeaders } from './config/headers.ts';
+import { moduleGraphPlugins } from './config/moduleGraph.ts';
 
 /**
  * Modules of the editor chunk (plan #63 Part C §3.6): `src/editor/` except `lang/index.ts` and
@@ -45,27 +45,8 @@ export { default as wasmUrl } from '${gen}dash_core_mt_bg.wasm?url';`;
   };
 }
 
-/**
- * `dash-module-ids` (plan #198 Part 2a §3.6): after writing a build, records `{chunkFile: moduleIds}`
- * in `node_modules/.cache/dash-build/<basename(outDir)>/modules.json` for `check-bundle-modules.ts`
- * (`ci:dep-audit`). The file is outside every output directory, so the signed asset set is unchanged,
- * and each output directory has its own file.
- */
-function dashModuleIds(): Plugin {
-  return {
-    name: 'dash-module-ids',
-    apply: 'build',
-    writeBundle(options, bundle) {
-      const graph: Record<string, string[]> = {};
-      for (const [file, out] of Object.entries(bundle)) {
-        if (out.type === 'chunk') graph[file] = [...out.moduleIds];
-      }
-      const dir = `${root}node_modules/.cache/dash-build/${basename(options.dir ?? 'dist')}`;
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(`${dir}/modules.json`, `${JSON.stringify(graph, null, 1)}\n`);
-    },
-  };
-}
+// `dash-module-ids` (plan #198 Part 2a §3.6): each build's module graph, workers included.
+const moduleIds = moduleGraphPlugins(`${root}node_modules/.cache/dash-build`);
 
 /** Engine modules: their chunks are `dash-engine-*` (`ci:bundle-size` engine row). */
 const ENGINE_MODULE = /\/src\/engine\/wasm\/|dash-engine/;
@@ -75,7 +56,7 @@ const pkg = JSON.parse(readFileSync(`${root}package.json`, 'utf8')) as { version
 const bff = process.env['PULSUS_DASH_DEV_BFF'] ?? 'http://localhost:8080';
 
 export default defineConfig({
-  plugins: [react(), optimizeLocales.vite({ locales: ['en-US'] }), dashEngine(), dashModuleIds()],
+  plugins: [react(), optimizeLocales.vite({ locales: ['en-US'] }), dashEngine(), moduleIds.main],
   resolve: {
     // `findIframes` (plan #198 Part 2a §3.3): `parse5-sax-parser`'s tokenizer driver without its
     // `SAXParser` entry, which extends `node:stream` (pinned at 8.0.1; applies to vitest too).
@@ -111,7 +92,7 @@ export default defineConfig({
   // The engine's workers (plan #68 C1 §3.5): ES modules named `dash-engine-[name]-[hash].js`.
   worker: {
     format: 'es',
-    plugins: () => [dashEngine()],
+    plugins: () => [dashEngine(), moduleIds.worker()],
     rolldownOptions: {
       output: {
         entryFileNames: 'assets/dash-engine-[name]-[hash].js',
