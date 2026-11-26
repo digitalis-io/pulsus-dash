@@ -153,7 +153,8 @@ class RoutingFrame implements ChartFrame {
     this.mode = 'binding';
     void this.engine.backendNow().then((b) => {
       if (this.mode !== 'binding') return;
-      if (b === null) this.bindCanvas2d(this.live);
+      // The latest spec decides (review r1 #1): it may have left `line` while the engine booted.
+      if (b === null || this.state.spec?.kind !== 'line') this.bindCanvas2d(this.live);
       else this.bindWasm(b, this.live);
     });
   }

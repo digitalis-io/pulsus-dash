@@ -177,6 +177,32 @@ describe('RoutingEngine (D-ROUTE)', () => {
     warn.mockRestore();
   });
 
+  it('a frame that leaves line while the engine boots binds Canvas 2D (review r1 #1)', async () => {
+    const b = backend();
+    const c2d = fakeEngine();
+    let resolve: (x: WasmBackend) => void = () => undefined;
+    const e = new RoutingEngine(
+      () =>
+        new Promise<WasmBackend>((r) => {
+          resolve = r;
+        }),
+      c2d,
+    );
+    const canvas = document.createElement('canvas');
+    const f = e.createFrame(canvas, INIT);
+    f.setSpec(LINE_A);
+    f.setData(D);
+    f.setSpec(BARS);
+    resolve(b);
+    await flush();
+    expect(b.inner.createCalls).toHaveLength(0);
+    expect(transfers).toBe(0);
+    expect(c2d.createCalls.map((c) => c.canvas)).toEqual([canvas]);
+    expect(c2d.frames[0]?.last('setSpec')).toEqual([BARS]);
+    expect(c2d.frames[0]?.last('setData')).toEqual([D]);
+    expect(canvas.dataset['engine']).toBe('canvas2d');
+  });
+
   it('a frame disposed before the bind calls nothing', async () => {
     const b = backend();
     const c2d = fakeEngine();
