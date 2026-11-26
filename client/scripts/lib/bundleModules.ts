@@ -1,8 +1,10 @@
 /**
- * The module-graph rule of `ci:dep-audit` (plan #198 Part 2a §3.6; ADR-0024 §4): no chunk of a
+ * The module-graph rules of `ci:dep-audit` (plan #198 Part 2a §3.6; ADR-0024 §4): no chunk of a
  * browser build holds `minimist` (commonmark's CLI dependency), a Node built-in (also as Vite's
  * `__vite-browser-external` id, the empty stand-in a browser build gets for one) or
- * `parse5-sax-parser`'s `SAXParser` entry, which extends `node:stream`.
+ * `parse5-sax-parser`'s `SAXParser` entry, which extends `node:stream`. Part 3a (§3.4; ADR-0014
+ * §8): no Markdown module is in the static closure of `index.html` or the board route, and the
+ * Markdown entry is its own lazy chunk (`markdownInRoute`).
  */
 import type { Finding } from './report.ts';
 
@@ -59,7 +61,7 @@ export function parseGraph(v: unknown): Record<string, string[]> | null {
   return out;
 }
 
-/** Stub (tests first): plan #198 Part 3a §3.4. */
+/** A Vite manifest entry: the fields the Markdown rules follow. */
 export interface ManifestChunk {
   readonly file: string;
   readonly isEntry?: boolean;
@@ -67,15 +69,158 @@ export interface ManifestChunk {
   readonly imports?: readonly string[];
   readonly dynamicImports?: readonly string[];
 }
+/** `<outDir>/.vite/manifest.json`: source key → its chunk. */
 export type Manifest = Readonly<Record<string, ManifestChunk>>;
 
-export function parseManifest(v: unknown): Manifest | null {
-  return typeof v === 'object' && v !== null ? (v as Manifest) : null;
+/**
+ * The Markdown code (plan #198 Part 3a §3.4; ADR-0014 §8): its packages, the renderer and iframe
+ * scanner, and the Text widget's dynamic entry. None may be in the board route's static closure.
+ */
+export const MARKDOWN_MODULES: readonly RegExp[] = [
+  /\/node_modules\/(commonmark|parse5|parse5-sax-parser|entities|mdurl)\//,
+  /\/src\/security\/sanitise\/(markdown\.tsx|findIframes\.ts)$/,
+  /\/src\/widgets\/text\/TextMarkdown\.tsx$/,
+];
+/** The roots whose static closure (manifest `imports`, not `dynamicImports`) is checked. */
+export const ROUTE_ROOTS = ['index.html', 'src/pages/board/BoardPage.tsx'] as const;
+/** The Text widget's dynamic entry: the one chunk the renderer belongs in. */
+export const MARKDOWN_ENTRY = 'src/widgets/text/TextMarkdown.tsx';
+const RENDERER = /\/src\/security\/sanitise\/markdown\.tsx$/;
+
+export type MarkdownRule =
+  | 'markdown-in-route'
+  | 'missing-route-root'
+  | 'bad-manifest-import'
+  | 'unmapped-chunk'
+  | 'missing-markdown-entry';
+
+export interface MarkdownFinding extends Finding {
+  rule: MarkdownRule;
+  /** The chunk file, when the finding is about one. */
+  chunk?: string;
+  /** The module id, for `markdown-in-route`. */
+  module?: string;
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isStrings(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every((x) => typeof x === 'string');
+}
+
+/** Parses a Vite manifest; null when any entry lacks a `file` or has a malformed field. */
+export function parseManifest(v: unknown): Manifest | null {
+  if (!isRecord(v)) return null;
+  const out: Record<string, ManifestChunk> = {};
+  for (const [key, c] of Object.entries(v)) {
+    if (!isRecord(c) || typeof c['file'] !== 'string') return null;
+    const { imports, dynamicImports, isEntry, isDynamicEntry } = c;
+    if (imports !== undefined && !isStrings(imports)) return null;
+    if (dynamicImports !== undefined && !isStrings(dynamicImports)) return null;
+    if (isEntry !== undefined && typeof isEntry !== 'boolean') return null;
+    if (isDynamicEntry !== undefined && typeof isDynamicEntry !== 'boolean') return null;
+    out[key] = {
+      file: c['file'],
+      ...(isEntry === undefined ? {} : { isEntry }),
+      ...(isDynamicEntry === undefined ? {} : { isDynamicEntry }),
+      ...(imports === undefined ? {} : { imports }),
+      ...(dynamicImports === undefined ? {} : { dynamicImports }),
+    };
+  }
+  return out;
+}
+
+/**
+ * The Markdown rules (plan #198 Part 3a §3.4), fail-closed: for each root, its static closure
+ * through manifest `imports` holds no `MARKDOWN_MODULES` id (`markdown-in-route`); a root that is
+ * absent (`missing-route-root`), an import key the manifest lacks (`bad-manifest-import`) or a
+ * closure chunk without a module list (`unmapped-chunk`) is a finding, never a pass. The Markdown
+ * entry must be present, a dynamic entry, and hold the renderer (`missing-markdown-entry`).
+ * Each finding is reported once, in root then walk order.
+ */
 export function markdownInRoute(
-  _manifest: Manifest,
-  _chunks: Readonly<Record<string, readonly string[]>>,
-): Finding[] {
-  return [];
+  manifest: Manifest,
+  chunks: Readonly<Record<string, readonly string[]>>,
+  file = 'manifest.json',
+): MarkdownFinding[] {
+  const out: MarkdownFinding[] = [];
+  const seen = new Set<string>();
+  const once = (key: string, f: MarkdownFinding): void => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(f);
+  };
+  for (const root of ROUTE_ROOTS) {
+    if (manifest[root] === undefined) {
+      once(`root:${root}`, {
+        rule: 'missing-route-root',
+        file,
+        subject: root,
+        message: `the manifest has no ${root}: the route's closure cannot be checked`,
+      });
+      continue;
+    }
+    const visited = new Set<string>();
+    const stack = [root];
+    while (stack.length > 0) {
+      const key = stack.pop() ?? '';
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const c = manifest[key];
+      if (c === undefined) {
+        once(`import:${key}`, {
+          rule: 'bad-manifest-import',
+          file,
+          subject: key,
+          message: `${key} is imported but absent from the manifest: the closure cannot be followed`,
+        });
+        continue;
+      }
+      const ids = chunks[c.file];
+      if (ids === undefined) {
+        once(`unmapped:${c.file}`, {
+          rule: 'unmapped-chunk',
+          file,
+          chunk: c.file,
+          subject: c.file,
+          message: `chunk ${c.file} (of ${key}) has no module list in modules.json`,
+        });
+      } else {
+        for (const module of ids) {
+          if (!MARKDOWN_MODULES.some((re) => re.test(module))) continue;
+          once(`md:${c.file}:${module}`, {
+            rule: 'markdown-in-route',
+            file,
+            chunk: c.file,
+            module,
+            subject: module,
+            message: `chunk ${c.file} holds ${shown(module)} in the static closure of ${root}: Markdown loads only with ${MARKDOWN_ENTRY} (ADR-0014 §8)`,
+          });
+        }
+      }
+      for (const i of [...(c.imports ?? [])].reverse()) stack.push(i);
+    }
+  }
+  const entry = manifest[MARKDOWN_ENTRY];
+  const entryIds = entry === undefined ? undefined : chunks[entry.file];
+  const problem =
+    entry === undefined
+      ? 'is absent from the manifest'
+      : entry.isDynamicEntry !== true
+        ? 'is not a dynamic entry'
+        : !(entryIds ?? []).some((id) => RENDERER.test(id))
+          ? `has a chunk (${entry.file}) without the renderer`
+          : null;
+  if (problem !== null) {
+    out.push({
+      rule: 'missing-markdown-entry',
+      file,
+      subject: MARKDOWN_ENTRY,
+      ...(entry === undefined ? {} : { chunk: entry.file }),
+      message: `${MARKDOWN_ENTRY} ${problem}`,
+    });
+  }
+  return out;
 }
