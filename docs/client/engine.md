@@ -622,7 +622,7 @@ build: `?engine=wasm` opts a page of a pinned build in.
 engine does not boot (the integrity check refuses the wasm twice, a compile error, status 3 or 4,
 or no status in 10 s), its frames stay on Canvas 2D with no notice, as before, and the session is
 marked, so later pages take row 2 and make no engine request. The page's single `load()` promise
-marks at most once. A build without the engine (the test runner's `absent.ts`: `compileEngine`
+marks at most once. A module without the engine (the unit tests' `absent.ts`: `compileEngine`
 throws `EngineAbsent`) is not marked, so building the engine takes effect at the next reload; the
 console still shows `pulsus engine unavailable: …`.
 
@@ -1011,8 +1011,9 @@ runs it before the dev server). The `dash-engine` plugin (`client/config/dashEng
 without both `dash_core_mt.js` and `dash_core_mt_bg.wasm`, `vite build` fails at `buildStart` and
 the dev server refuses to start, with `the chart engine is not built (src/engine/wasm/gen/ is
 missing): run make engine-wasm first` (`gen-probe/` and `make engine-wasm-probe` in the probe
-build), also with `VITE_ENGINE=canvas2d`; there is no opt-out (`ci:engine-built`). Only the test
-runner (`VITEST` set) resolves it to `wasm/absent.ts`; `ci:bundle-size` still reports
+build), also with `VITE_ENGINE=canvas2d` or `VITEST` set; there is no opt-out (`ci:engine-built`).
+Only the unit tests run without it: `client/vitest.config.ts`, which only Vitest reads, uses
+`absentEngine` (`wasm/absent.ts`) in its place; `ci:bundle-size` still reports
 `missing-artefact:engine` for a tree without the engine. The engine's files are
 `assets/dash-engine-*` (the wasm, its workers and adapter chunks). `make engine-wasm-check`
 (`ci:engine-gen`) builds twice and requires byte-equal output, a committed `dash_core_mt.d.ts`

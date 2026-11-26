@@ -30,8 +30,9 @@ and Canvas 2D the fallback, accepting the label gap until #69.
    2D with no notice, and the session is marked (T03-025), so later pages make no engine request.
    A build without the engine (`EngineAbsent`) is not marked.
 3. **Every build and dev server includes the engine.** `vite build` and the dev server refuse to
-   run without `client/src/engine/wasm/gen/`, naming `make engine-wasm`; there is no opt-out. Only
-   the test runner resolves the engine module to `absent.ts`. `ci:bundle-size` already reports
+   run without `client/src/engine/wasm/gen/`, naming `make engine-wasm`; there is no opt-out, whatever the
+   environment. Only the unit tests' own configuration (`client/vitest.config.ts`, which builds and
+   dev servers never read) resolves the engine module to `absent.ts`. `ci:bundle-size` already reports
    `missing-artefact:engine` for a tree without it.
 4. **`VITE_ENGINE=canvas2d` is a renderer override** in a build that still holds the engine. The
    main e2e suite, which runs on host browsers with uncontrolled GPUs, pins Canvas 2D this way

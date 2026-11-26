@@ -1,7 +1,8 @@
 /**
- * The `dash-engine` plugin (plan #256 §3.3, ADR-0031): the engine's glue when it is built, a refusal
- * from `vite build` and the dev server when it is not, and `absent.ts` for the test runner only.
- * `ci:engine-built` runs a real dev server and a real build on a fixture without the engine.
+ * The `dash-engine` plugin (plan #256 §3.3, ADR-0031): the engine's glue when it is built, and a
+ * refusal from `vite build` and the dev server when it is not, whatever the environment (`VITEST`
+ * included). `absent.ts` comes only from `vitest.config.ts` (`absentEngine`). `ci:engine-built` runs
+ * a real dev server and a real build on a fixture without the engine.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createConnection, createServer as netServer } from 'node:net';
@@ -9,7 +10,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build, createServer, type Plugin } from 'vite';
 import { afterEach, describe, expect, it } from 'vitest';
-import { dashEngine, engineAbsentMessage } from './dashEngine.ts';
+import viteConfig from '../vite.config.ts';
+import vitestConfig from '../vitest.config.ts';
+import { absentEngine, dashEngine, engineAbsentMessage } from './dashEngine.ts';
 
 const ROOT = '/r/client/';
 const ID = '\0virtual:dash-engine';
@@ -123,13 +126,35 @@ describe('dash-engine plugin (plan #256 §3.3)', () => {
     expect(engineAbsentMessage(true)).toBe(PROBE);
   });
 
-  it('the test runner: absent.ts, no refusal', async () => {
-    const p = plugin('serve', false, { VITEST: 'true' });
-    expect(() => hook(p, 'configureServer').call(ctx, {})).not.toThrow();
-    expect(() => hook(p, 'buildStart').call(ctx)).not.toThrow();
+  it('VITEST set changes nothing: build, dev server and load still refuse', () => {
+    for (const VITEST of ['true', '1']) {
+      const b = plugin('build', false, { VITEST });
+      expect(() => hook(b, 'buildStart').call(ctx)).toThrow(GEN);
+      expect(() => hook(b, 'load').call(ctx, ID)).toThrow(GEN);
+      const s = plugin('serve', false, { VITEST });
+      expect(() => hook(s, 'configureServer').call(ctx, {})).toThrow(GEN);
+    }
+  });
+
+  it('absentEngine: absent.ts for the unit tests, with no build or server hook', async () => {
+    const p = absentEngine(ROOT);
+    expect(hook(p, 'resolveId').call(ctx, 'virtual:dash-engine')).toBe(ID);
     const src = String(await hook(p, 'load').call(ctx, ID));
     expect(src).toContain(`export * from '${ROOT}src/engine/wasm/absent.ts';`);
     expect(src).toContain(`export { default } from '${ROOT}src/engine/wasm/absent.ts';`);
+    expect(p.buildStart).toBeUndefined();
+    expect(p.configureServer).toBeUndefined();
+  });
+
+  it('the substitution exists only in vitest.config.ts', () => {
+    const names = (plugins: unknown): string[] =>
+      (Array.isArray(plugins) ? plugins.flat(3) : [])
+        .map((x: unknown) =>
+          typeof x === 'object' && x !== null && 'name' in x ? String(x.name) : '',
+        )
+        .filter((n) => n.startsWith('dash-engine'));
+    expect(names(viteConfig.plugins)).toEqual(['dash-engine']);
+    expect(names(vitestConfig.plugins)).toEqual(['dash-engine-absent']);
   });
 });
 
@@ -151,6 +176,44 @@ describe('ci:engine-built (plan #256 §3.3, Acceptance 3)', () => {
     });
     await expect(start).rejects.toThrow(GEN);
     expect(await listening(port)).toBe(false);
+  });
+
+  it('VITEST=1: a dev server and vite build without the engine still refuse', async () => {
+    // The runner sets VITEST in this process; set it to 1 as a user could, and use the default env.
+    const saved = process.env['VITEST'];
+    process.env['VITEST'] = '1';
+    try {
+      const root = fixture({
+        'index.html':
+          '<!doctype html><title>x</title><script type="module" src="/main.js"></script>',
+        'main.js': "import engine from 'virtual:dash-engine';\nconsole.log(engine);\n",
+      });
+      const port = await freePort();
+      const serve = createServer({
+        configFile: false,
+        root,
+        logLevel: 'silent',
+        server: { port, strictPort: true },
+        plugins: [dashEngine({ root: `${root}/` })],
+      }).then(async (s) => {
+        await s.listen();
+        await s.close();
+        return 'served';
+      });
+      await expect(serve).rejects.toThrow(GEN);
+      expect(await listening(port)).toBe(false);
+      const run = build({
+        configFile: false,
+        root,
+        logLevel: 'silent',
+        build: { write: false },
+        plugins: [dashEngine({ root: `${root}/` })],
+      });
+      await expect(run).rejects.toThrow(GEN);
+    } finally {
+      if (saved === undefined) delete process.env['VITEST'];
+      else process.env['VITEST'] = saved;
+    }
   });
 
   it('vite build without the engine fails', async () => {

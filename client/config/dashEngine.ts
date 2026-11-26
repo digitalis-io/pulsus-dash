@@ -6,9 +6,9 @@
  *
  * The engine is the default renderer, so every build and dev server includes it: without its two
  * files `vite build` fails at `buildStart` and the dev server refuses to start, naming the `make`
- * target that builds it. `VITE_ENGINE=canvas2d` is a renderer override, not an opt-out. Only the
- * test runner (`VITEST` set) resolves the module to `src/engine/wasm/absent.ts`: unit tests never
- * load the engine.
+ * target that builds it, whatever the environment. `VITE_ENGINE=canvas2d` is a renderer override,
+ * not an opt-out. The unit tests never load the engine: `vitest.config.ts`, which only Vitest
+ * reads, uses `absentEngine` (`src/engine/wasm/absent.ts`) in place of this plugin.
  */
 import { existsSync } from 'node:fs';
 import type { Plugin } from 'vite';
@@ -16,7 +16,7 @@ import type { Plugin } from 'vite';
 export interface DashEngineOptions {
   /** client/, with a trailing slash. */
   readonly root: string;
-  /** Default `process.env`. Reads VITE_ENGINE_PROBE and VITEST. */
+  /** Default `process.env`. Reads VITE_ENGINE_PROBE. */
   readonly env?: Readonly<Record<string, string | undefined>>;
   /** Default `existsSync`. */
   readonly exists?: (path: string) => boolean;
@@ -36,9 +36,7 @@ export function dashEngine(o: DashEngineOptions): Plugin {
   const env = o.env ?? process.env;
   const exists = o.exists ?? existsSync;
   const probe = env['VITE_ENGINE_PROBE'] === '1';
-  const testRunner = env['VITEST'] !== undefined;
   const gen = `${o.root}src/engine/wasm/${probe ? 'gen-probe' : 'gen'}/`;
-  const absent = `${o.root}src/engine/wasm/absent.ts`;
   const message = engineAbsentMessage(probe);
   // "Engine files": both the glue and its wasm (as plan #68 C1).
   const built = (): boolean =>
@@ -50,25 +48,41 @@ export function dashEngine(o: DashEngineOptions): Plugin {
       command = c.command;
     },
     buildStart() {
-      if (command === 'build' && !testRunner && !built()) this.error(message);
+      if (command === 'build' && !built()) this.error(message);
     },
     configureServer() {
       // Before the server listens: `vite` exits non-zero without serving.
-      if (!testRunner && !built()) throw new Error(message);
+      if (!built()) throw new Error(message);
     },
     resolveId(source) {
       return source === ID ? RESOLVED : null;
     },
     load(source) {
       if (source !== RESOLVED) return null;
-      if (!built()) {
-        if (!testRunner) this.error(message);
-        return `export * from '${absent}';
-export { default } from '${absent}';`;
-      }
+      if (!built()) this.error(message);
       return `export * from '${gen}dash_core_mt.js';
 export { default } from '${gen}dash_core_mt.js';
 export { default as wasmUrl } from '${gen}dash_core_mt_bg.wasm?url';`;
+    },
+  };
+}
+
+/**
+ * `virtual:dash-engine` as `src/engine/wasm/absent.ts`, for the unit tests only: `vitest.config.ts`
+ * is its one user. It has no build or server hook, so it cannot stand in for `dashEngine` anywhere
+ * else.
+ */
+export function absentEngine(root: string): Plugin {
+  const absent = `${root}src/engine/wasm/absent.ts`;
+  return {
+    name: 'dash-engine-absent',
+    resolveId(source) {
+      return source === ID ? RESOLVED : null;
+    },
+    load(source) {
+      if (source !== RESOLVED) return null;
+      return `export * from '${absent}';
+export { default } from '${absent}';`;
     },
   };
 }

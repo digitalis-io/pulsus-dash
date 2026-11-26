@@ -39,7 +39,7 @@ the chart engine is not built (src/engine/wasm/gen/ is missing): run make engine
 ```
 
 (`gen-probe/` and `make engine-wasm-probe` with `VITE_ENGINE_PROBE=1`). There is no opt-out; only
-the unit tests (`npm test`) run without the engine. Rebuild it with `make engine-wasm` after
+the unit tests (`npm test`, through `vitest.config.ts`) run without the engine; setting `VITEST` does not change that. Rebuild it with `make engine-wasm` after
 changing `engine/`.
 
 `npm run preview` serves an `/asset-manifest.json` it computes from the `dist/` it serves (every

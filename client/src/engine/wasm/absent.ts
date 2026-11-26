@@ -1,5 +1,5 @@
 /**
- * `virtual:dash-engine` in the test runner only (`VITEST` set, `config/dashEngine.ts`; plan #256
+ * `virtual:dash-engine` in the unit tests only (`absentEngine` in `vitest.config.ts`; plan #256
  * §3.3): the same exports, none of them usable, because unit tests never load the engine. A build or
  * dev server without the engine refuses to run instead (ADR-0031). The adapter sees
  * `wasmUrl === null` and fails with `EngineAbsent`, which does not mark the session.
