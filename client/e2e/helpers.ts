@@ -1,6 +1,8 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { brushSnapUnit } from '../src/engine/canvas2d/columns.ts';
 import { AXIS_FONT, STAT_FONT } from '../src/engine/canvas2d/layout.ts';
+import { scanLabelInName } from '../src/test/labelInName.ts';
 
 /** 2026-11-19 13:03 London (GMT), the fixed "now" of the suite. */
 export const T = Date.UTC(2026, 10, 19, 13, 3);
@@ -178,4 +180,71 @@ export async function brushTargets(_page: Page, f: Locator, fromMs: number, toMs
   expect(t(x2)).toBeGreaterThanOrEqual(hi - 0.4 * u);
   const y = box.y + plot.y + plot.height / 2;
   return { x1, x2, y, box, plot };
+}
+
+/** A Text panel of the boards API (the widgets spec version; plan #198 Part 3b). */
+export interface TextPanelInput {
+  id: string;
+  title: string;
+  content: string;
+  grid?: [number, number, number, number];
+  /** Code mode with this language; absent = Markdown. */
+  language?: string;
+}
+
+export const textPanelSpec = (p: TextPanelInput) => ({
+  id: p.id,
+  title: p.title,
+  grid: { x: p.grid?.[0] ?? 0, y: p.grid?.[1] ?? 0, w: p.grid?.[2] ?? 12, h: p.grid?.[3] ?? 8 },
+  vis: {
+    kind: 'text',
+    options:
+      p.language === undefined
+        ? { mode: 'markdown', content: p.content }
+        : { mode: 'code', language: p.language, content: p.content },
+  },
+});
+
+/** POSTs a board of Text panels; the uid, or the failure (status and body) as text. */
+export async function postTextBoard(
+  request: APIRequestContext,
+  title: string,
+  panels: readonly TextPanelInput[],
+): Promise<{ uid: string } | { error: string }> {
+  try {
+    const r = await request.post('/api/dash/v1/boards', {
+      data: { spec: { title, panels: panels.map(textPanelSpec), sections: [] } },
+    });
+    if (r.status() !== 201) return { error: `POST board ${String(r.status())}: ${await r.text()}` };
+    return { uid: ((await r.json()) as { uid: string }).uid };
+  } catch (e) {
+    return { error: `POST board: ${String(e)}` };
+  }
+}
+
+/** POSTs a board of Text panels (expects 201) and returns its uid. */
+export async function createTextBoard(
+  request: APIRequestContext,
+  title: string,
+  panels: readonly TextPanelInput[],
+): Promise<string> {
+  const r = await postTextBoard(request, title, panels);
+  if ('error' in r) throw new Error(r.error);
+  return r.uid;
+}
+
+/** A fixed board window (the fake's `W0`) with refresh off, so a board's requests keep one key. */
+export const BOARD_TIME =
+  'from=2026-01-01T00%3A00%3A00.000Z&to=2026-01-01T01%3A00%3A00.000Z&refresh=off';
+
+const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
+
+/** axe's serious and critical violations, as `e2e:a11y-rooms` scans (plus its label-in-name scan). */
+export async function axeSerious(page: Page): Promise<string[]> {
+  const r = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+  const out = r.violations
+    .filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+  out.push(...(await page.evaluate(scanLabelInName, undefined)));
+  return out;
 }

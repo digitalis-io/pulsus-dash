@@ -193,3 +193,49 @@ describe('unit:router-dev-log-stream', () => {
     }
   });
 });
+
+// Plan #198 Part 3b §2: the widget gallery's Text pages (dev and stub builds only).
+describe('unit:widget-gallery-route', () => {
+  it('widget-text: the three Text bodies', async () => {
+    installResizeObserver();
+    renderApp('/t/demo/dev/widgets?page=widget-text');
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Widget gallery' }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-widget-gallery] [data-text-body]')).toHaveLength(3);
+    });
+  });
+
+  it('widget-text-removals: the editor body lists 7 removals', async () => {
+    installResizeObserver();
+    renderApp('/t/demo/dev/widgets?page=widget-text-removals');
+    await waitFor(
+      () => {
+        const lists = document.querySelectorAll('[data-text-removals]');
+        expect(lists).toHaveLength(1);
+        expect(lists[0]?.querySelectorAll('li')).toHaveLength(7);
+      },
+      { timeout: 5_000 },
+    );
+  });
+
+  it('has no widgetGallery route in the http build', () => {
+    const deps: RouterDeps = {
+      api: {} as never,
+      queryClient: {} as never,
+      clock: {} as never,
+      timeZone: 'UTC',
+    };
+    const ids = (routes: readonly RouteObject[]): string[] =>
+      routes.flatMap((r) => [r.id ?? '', ...ids(r.children ?? [])]);
+    expect(ids(createRoutes(deps))).toContain('widgetGallery');
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_API_MODE', 'http');
+    try {
+      expect(ids(createRoutes(deps))).not.toContain('widgetGallery');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});

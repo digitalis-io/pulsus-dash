@@ -144,6 +144,8 @@ export const STUB_CONFLICT_SAVE_KEY = 'pulsus-dash.stub.conflictSave';
 export const STUB_FAIL_STAR_KEY = 'pulsus-dash.stub.failStar';
 export const STUB_QUERY_DELAY_KEY = 'pulsus-dash.stub.queryDelayMs';
 export const STUB_FAIL_QUERY_KEY = 'pulsus-dash.stub.failQuery';
+/** Not read yet (#198 Part 3b stub). */
+export const STUB_BOARDS_KEY = 'pulsus-dash.stub.boards';
 
 /** The most boards `listBoards` and the most starred boards `listStarred` return (as the BFF). */
 const MAX_LISTED_BOARDS = 1000;
