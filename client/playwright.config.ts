@@ -60,7 +60,8 @@ const previewServer = {
 };
 
 // The engine specs run in playwright.engine.config.ts (Chromium on lavapipe, `make engine-e2e`).
-const engineOnly = /(engine-mode-matrix|golden-engine-line|engine-recovery)\.spec\.ts/;
+const engineOnly =
+  /(engine-mode-matrix|golden-engine-line|engine-recovery|engine-selection)\.spec\.ts/;
 
 export default defineConfig({
   testDir: 'e2e',
