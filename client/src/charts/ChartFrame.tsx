@@ -110,8 +110,8 @@ export interface ChartFrameProps {
   ) => void;
   /** A click on the plot with no mark under it: clears the selection (T25 §4.2). */
   readonly onEmptyClick?: () => void;
-  /** Barchart: a click on a bar or on no bar (ADR-0028). */
-  readonly onPick?: (e: PickEvent) => void;
+  /** Barchart: a click on a bar or on no bar, or a brush (ADR-0028, ADR-0029). */
+  readonly onPick?: (e: PickEvent, returnFocus: HTMLElement | null) => void;
 }
 
 interface HoverState {
@@ -390,7 +390,7 @@ export function ChartFrame({
         setMark(m);
       }),
       frame.on('pick', (e) => {
-        latest.current.onPick?.(e);
+        latest.current.onPick?.(e, null);
       }),
       frame.on('brush', (b) => {
         const d = latest.current.dispatch;

@@ -4,6 +4,7 @@
  * member to `InspectorTarget` and a case to `inspectorModel` (T25-002).
  */
 import type { LogLevel } from '../data/logFrame';
+import type { CategoryRow, Mark } from '../data/frames';
 import type { FrameSelection, TimeWindow, Unit } from '../engine/api';
 import type { BoardFilter } from '../state/boardParams';
 import type { ContextSearch } from '../state/contextSearch';
@@ -23,7 +24,19 @@ export interface InspectOrigin {
   readonly unit: Unit | null;
 }
 
-/** I1's targets; #170 adds `stateRun`, #173 `mark`, #177 `flame`. */
+/** A bar's inspect (T25-002, T22 §5.1): the mark, its panel and the window it was reduced over. */
+export interface InspectTarget {
+  readonly panelId: string | null;
+  readonly kind: 'barchart';
+  readonly title: string;
+  readonly mark: Mark;
+  readonly members: CategoryRow['members'];
+  readonly unit: Unit;
+  readonly window: TimeWindow;
+  readonly query: { readonly lang: 'promql' | 'logql'; readonly text: string } | null;
+}
+
+/** I1's targets and #173's `mark`; #170 adds `stateRun`, #177 `flame`. */
 export type InspectorTarget =
   | {
       readonly type: 'point';
@@ -63,7 +76,8 @@ export type InspectorTarget =
       readonly line: string;
       readonly metadata: Labels | null;
       readonly parsed: Labels | null;
-    };
+    }
+  | { readonly type: 'mark'; readonly target: InspectTarget };
 
 /** The page selection: the engine seam's `FrameSelection` (ADR-0025). */
 export type Selection = FrameSelection;

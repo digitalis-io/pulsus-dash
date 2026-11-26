@@ -80,6 +80,7 @@ export function barchartModel(
     readonly rateApplied: boolean;
     readonly options: VisOptions | undefined;
     readonly thresholds: Thresholds | null;
+    readonly base?: Exclude<ExploreResult, { kind: 'string' }> | null;
   },
 ): BarchartModel {
   const b = barchartOptions(o.options);

@@ -147,6 +147,18 @@ export interface BarchartOptions {
   readonly max: number | undefined;
 }
 
+/** Stub (tests first). */
+export function optionValueValid(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  kind: PanelVisKind,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  key: OptionKey,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  v: unknown,
+): boolean {
+  return true;
+}
+
 /** The options `kind` allows, of `o`; undefined when none is left. */
 export function keepOptions(kind: PanelVisKind, o: VisOptions | undefined): VisOptions | undefined {
   if (o === undefined) return undefined;

@@ -31,7 +31,7 @@ function identity(t: InspectorTarget): BoardFilter[] {
   if (t.type === 'logLine') {
     return Object.entries(t.labels).map(([key, value]) => ({ key, value }));
   }
-  if (t.type === 'bucket') return [];
+  if (t.type === 'bucket' || t.type === 'mark') return [];
   const service = t.labels['service_name'];
   if (service !== undefined) return [{ key: 'service_name', value: service }];
   const job = t.labels['job'];
@@ -86,6 +86,8 @@ export function pivotInstant(t: InspectorTarget): number | null {
       return t.tMs;
     case 'bucket':
       return t.tMs;
+    case 'mark':
+      return null;
   }
 }
 

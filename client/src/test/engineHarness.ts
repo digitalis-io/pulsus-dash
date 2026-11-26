@@ -251,10 +251,17 @@ export function gesture(
   return e;
 }
 
-export function key(target: EventTarget, k: string, o: { ctrlKey?: boolean } = {}): KeyboardEvent {
+export function key(
+  target: EventTarget,
+  k: string,
+  o: { ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; metaKey?: boolean } = {},
+): KeyboardEvent {
   const e = new KeyboardEvent('keydown', {
     key: k,
     ctrlKey: o.ctrlKey ?? false,
+    shiftKey: o.shiftKey ?? false,
+    altKey: o.altKey ?? false,
+    metaKey: o.metaKey ?? false,
     bubbles: true,
     cancelable: true,
   });

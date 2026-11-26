@@ -382,3 +382,9 @@ export function barAt(pick: BarPick, p: { x: number; y: number }): BarHit | null
   for (const b of pick.bands) if (c >= b.lo && c < b.hi) return b;
   return null;
 }
+
+/** The band at draw index `i`, or null. Stub (tests first). */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function barByIndex(pick: BarPick, i: number): BarHit | null {
+  return null;
+}

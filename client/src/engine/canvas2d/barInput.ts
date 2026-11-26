@@ -73,7 +73,11 @@ export class BarInput {
     const travel = Math.max(pr.travel, Math.hypot(p.x - pr.x0, p.y - pr.y0));
     if (travel >= DRAG_MIN_PX || pick === null) return;
     const hit = barAt(pick, p);
-    this.emit('pick', { keys: hit === null ? [] : [hit.key], gesture: 'click' });
+    this.emit('pick', {
+      keys: hit === null ? [] : [hit.key],
+      gesture: 'click',
+      source: 'pointer',
+    });
   }
 
   /** `pointercancel`, `lostpointercapture`: the press ends without a pick. */

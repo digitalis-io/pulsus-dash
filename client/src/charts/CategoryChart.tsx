@@ -8,7 +8,8 @@
  * spec and data and does not redraw for it; a 0 × 0 size keeps the last fit.
  */
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
-import type { BarchartSpec, PickEvent } from '../engine/api';
+import type { BarchartSpec, CategoryRow, PickEvent, TimeWindow } from '../engine/api';
+import type { BarContext } from '../vis/barAction';
 import { barLayout } from '../engine/canvas2d/barLayout';
 import { AXIS_FONT } from '../engine/canvas2d/layout';
 import type { Measure } from '../engine/canvas2d/text';
@@ -58,6 +59,23 @@ function noteText(names: boolean, values: boolean): string | null {
   return values ? t('chart.bar.valuesHidden') : null;
 }
 
+/** The bar tooltip's lines (plan #173 Part 3a §3.5). Stub (tests first). */
+export function markLines(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  row: CategoryRow,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  o: {
+    readonly model: BarchartModel;
+    readonly ghost: boolean;
+    readonly anomaly: boolean;
+    readonly context?: Omit<BarContext, 'model'>;
+    readonly window: TimeWindow;
+    readonly timeZone: string;
+  },
+): string[] {
+  return [];
+}
+
 export function CategoryChart({
   model,
   title,
@@ -69,7 +87,13 @@ export function CategoryChart({
   title: string;
   onNarrow: () => void;
   sizeMemo?: { current: FrameSize | null };
-  onPick?: (e: PickEvent) => void;
+  onPick?: (e: PickEvent, returnFocus: HTMLElement | null) => void;
+  context?: Omit<BarContext, 'model'>;
+  ghost?: boolean;
+  anomaly?: boolean;
+  table?: boolean;
+  onTable?: (on: boolean) => void;
+  baselineFailed?: boolean;
 }): JSX.Element {
   const cellRef = useRef<HTMLDivElement>(null);
   const own = useRef<FrameSize | null>(null);

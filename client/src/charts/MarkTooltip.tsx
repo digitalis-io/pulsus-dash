@@ -23,6 +23,7 @@ export function MarkTooltip({
   row: CategoryRow | undefined;
   unit: Unit;
   ghost: boolean;
+  lines?: readonly string[];
   ref?: Ref<HTMLDivElement>;
 }): JSX.Element {
   const shown = mark !== null && row !== undefined;

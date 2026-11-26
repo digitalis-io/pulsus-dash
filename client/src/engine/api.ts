@@ -278,6 +278,7 @@ export interface MarkEvent {
 export interface PickEvent {
   readonly keys: readonly string[];
   readonly gesture: 'click' | 'brush';
+  readonly source: 'pointer' | 'keyboard';
 }
 
 /** The visible canvas was drawn completely at this size (#90, ADR-0019). */

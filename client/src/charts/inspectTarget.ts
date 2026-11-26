@@ -121,5 +121,7 @@ export function selectionOf(t: InspectorTarget): Selection {
       const ms = Number(t.tsNs / 1_000_000n);
       return { keys: [t.streamKey], fromMs: ms, toMs: ms + 1 };
     }
+    case 'mark':
+      return { keys: [], fromMs: null, toMs: null };
   }
 }
