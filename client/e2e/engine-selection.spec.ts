@@ -15,7 +15,15 @@ import type { FrameSummary, HoverEvent, VisSpec } from '../src/engine/api.ts';
 import { synthLines } from '../src/dev/synth.ts';
 import { mulberry32 } from '../src/test/random.ts';
 import { colour, opacity, seriesPalette } from '../src/styles/tokens.ts';
-import { compareImages, decodePng, leg, nativeRender, tierOf, type Rgba } from './engine.ts';
+import {
+  compareImages,
+  decodePng,
+  leg,
+  nativeRender,
+  tierOf,
+  webgpuReportOnly,
+  type Rgba,
+} from './engine.ts';
 import { GALLERY_URL, open } from './helpers.ts';
 
 const T0 = Date.UTC(2026, 10, 19, 12);
@@ -405,6 +413,12 @@ test.describe('e2e:engine-selection', () => {
       browser,
     }, info) => {
       test.setTimeout(240_000);
+      // Four frames of 50 series, twice, take more than the timeout on SwiftShader, which cannot
+      // render in the image while the WebGPU leg is report-only (`engine-legs.json`).
+      test.skip(
+        info.project.name === 'swiftshader' && webgpuReportOnly(),
+        'the WebGPU leg is report-only',
+      );
       // The page at the frame's DPR, four 240 px frames one above the other.
       const context = await browser.newContext({
         deviceScaleFactor: dpr,
