@@ -5,6 +5,10 @@
 //! `Module`) writes `dash_core_mt.js`, `dash_core_mt.d.ts` and `dash_core_mt_bg.wasm`; wasm-opt
 //! `-O3` optimises the module in place. The default output is the git-ignored
 //! `client/src/engine/wasm/gen/`.
+//!
+//! `--probe` (plan #68 C2a1 §3.5) builds the same engine with the `probe` feature
+//! (`engine_probe_input`, `engine_probe_ring_start`) into the git-ignored
+//! `client/src/engine/wasm/gen-probe/`, for the probe build of `e2e:shim-fuzz` only.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -30,9 +34,13 @@ const WASM_OPT_FEATURES: [&str; 7] = [
     "--enable-reference-types",
 ];
 
-/// The default output directory.
-pub fn default_out(root: &Path) -> PathBuf {
-    root.join("../client/src/engine/wasm/gen")
+/// The default output directory: `gen/`, or `gen-probe/` for the probe build.
+pub fn default_out(root: &Path, probe: bool) -> PathBuf {
+    root.join(if probe {
+        "../client/src/engine/wasm/gen-probe"
+    } else {
+        "../client/src/engine/wasm/gen"
+    })
 }
 
 fn tool(root: &Path, key: &str) -> Result<String, String> {
@@ -68,8 +76,8 @@ fn run(cmd: &mut Command) -> Result<(), String> {
 }
 
 /// Builds the engine into `out` (created; existing files replaced). `target` is the cargo
-/// target directory.
-pub fn build(root: &Path, out: &Path, target: &Path) -> Result<(), String> {
+/// target directory; `probe` adds the `probe` feature.
+pub fn build(root: &Path, out: &Path, target: &Path, probe: bool) -> Result<(), String> {
     let nightly = tool(root, "nightly")?;
     let mut cargo = Command::new("cargo");
     cargo
@@ -90,6 +98,9 @@ pub fn build(root: &Path, out: &Path, target: &Path) -> Result<(), String> {
         ])
         .arg(target)
         .env("RUSTFLAGS", MT_RUSTFLAGS);
+    if probe {
+        cargo.args(["--features", "probe"]);
+    }
     for k in [
         "RUSTUP_TOOLCHAIN",
         "RUSTC",

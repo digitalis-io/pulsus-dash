@@ -6,7 +6,12 @@
  * tree is one `probe-in-release` finding. With `--expect-faults` the tree is a fault build and
  * must contain all three site sentinels instead: each missing site is one `fault-site-missing`.
  *
- * Usage: node scripts/probe-absent.ts [--expect-faults] <dist>
+ * The probe build's engine export `engine_probe_input` (plan #68 C2a1 §3.5) in any `.wasm` is one
+ * `probe-in-release` finding in every tree, the fault build's included (it serves the release
+ * engine), unless `--expect-probe`: then the tree is the probe build and a `.wasm` must carry it
+ * (`probe-missing` otherwise).
+ *
+ * Usage: node scripts/probe-absent.ts [--expect-faults] [--expect-probe] <dist>
  * Exit: 0 none, 1 findings, 2 `dist` unreadable.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -16,6 +21,8 @@ import { InputError, runCli, type Finding } from './lib/report.ts';
 /** Joined here so this file is not a hit. */
 const SENTINEL = ['__pulsus_engine', 'fault__'].join('_');
 const HOOKS = ['__dashProbe', SENTINEL].map((h) => Buffer.from(h));
+/** The probe engine's export; joined so this file is not a hit. */
+export const PROBE_EXPORT = ['engine_probe', 'input'].join('_');
 export const FAULT_SITES = ['route', 'boot', 'worker'] as const;
 
 function files(dir: string, root = dir, out: string[] = []): string[] {
@@ -36,12 +43,38 @@ function tree(dist: string): string[] {
   }
 }
 
+/** The probe export in the tree's `.wasm` files: a finding each, or one if `expectProbe` and none. */
+function probeExport(dist: string, list: readonly string[], expectProbe: boolean): Finding[] {
+  const needle = Buffer.from(PROBE_EXPORT);
+  const hits = list.filter(
+    (f) => f.endsWith('.wasm') && readFileSync(join(dist, f)).includes(needle),
+  );
+  if (expectProbe) {
+    return hits.length > 0
+      ? []
+      : [
+          {
+            rule: 'probe-missing',
+            file: dist,
+            subject: PROBE_EXPORT,
+            message: `the probe build's engine has no ${PROBE_EXPORT}`,
+          },
+        ];
+  }
+  return hits.map((f) => ({
+    rule: 'probe-in-release',
+    file: f,
+    subject: PROBE_EXPORT,
+    message: `${PROBE_EXPORT} is in an engine that is not the probe build (T03-024)`,
+  }));
+}
+
 export function checkProbeAbsent(
   dist: string,
   o: { expectFaults?: boolean; expectProbe?: boolean } = {},
 ): Finding[] {
   const list = tree(dist);
-  const findings: Finding[] = [];
+  const findings: Finding[] = probeExport(dist, list, o.expectProbe === true);
   if (o.expectFaults === true) {
     const seen = new Set<string>();
     for (const f of list) {
@@ -76,11 +109,14 @@ export function checkProbeAbsent(
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const expectFaults = args.includes('--expect-faults');
+  const expectProbe = args.includes('--expect-probe');
   const dist = args.find((a) => !a.startsWith('--'));
   void runCli(() => {
     if (dist === undefined) {
-      throw new InputError('usage: node scripts/probe-absent.ts [--expect-faults] <dist>');
+      throw new InputError(
+        'usage: node scripts/probe-absent.ts [--expect-faults] [--expect-probe] <dist>',
+      );
     }
-    return checkProbeAbsent(dist, { expectFaults });
+    return checkProbeAbsent(dist, { expectFaults, expectProbe });
   });
 }
