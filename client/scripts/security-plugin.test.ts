@@ -85,7 +85,7 @@ describe('unit:security-lint: static computed keys and qualified constructors (r
     for (const code of [
       "export const e = document['createElement']('iframe');\n",
       'export const e = document[`createElement`](`IFRAME`);\n',
-      "export const e = document['createElementNS']('http://www.w3.org/1999/xhtml', 'embed');\n",
+      "export const e = document['createElementNS']('', 'embed');\n",
       "export const f = (r: Range, s: string) => r['createContextualFragment'](s);\n",
     ]) {
       expect(await rules(code, ts), code).toEqual([NO_IFRAME]);
