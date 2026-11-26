@@ -1,0 +1,1 @@
+dropped sliver polygon PRK (3 points, 4.5e-12 sq deg)

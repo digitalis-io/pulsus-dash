@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "assets": [
+    {
+      "file": "client/src/vis/geo/data/basemap.json",
+      "sha256": "6e9013b1cd859274019e571c232175d57cd803f8a5c177b90f4df16df411cbe4",
+      "bytes": 138106,
+      "sources": [
+        "ne_110m_admin_0_countries.zip"
+      ]
+    },
+    {
+      "file": "client/src/vis/geo/data/gazetteer.json",
+      "sha256": "911f3c23327325521860d283ad2db045fcdfe745958187a3d683d3d0370ca40f",
+      "bytes": 260350,
+      "sources": [
+        "airports.csv",
+        "cloud-regions.csv",
+        "ne_10m_admin_0_countries.zip",
+        "ne_10m_admin_1_states_provinces.zip",
+        "ne_10m_populated_places_simple.zip"
+      ]
+    }
+  ],
+  "sources": {
+    "airports.csv": "ceba1cef67fb7ddeeb8aebf52cfca29d678f0599fd46cd93b8974f9a6a67ea16",
+    "cloud-regions.csv": "8e20ccbc0391bb11180709fa2e25947e2d6a6f066046a9f1c7e0841b0a84ce51",
+    "ne_10m_admin_0_countries.zip": "ce1ac7036499a0edd641fbc093cd209a98f96a49d2eca8480aaacad35138a7f6",
+    "ne_10m_admin_1_states_provinces.zip": "efc59726337323058f9446210adc96673179cd344e053666ee3d28cb58ba2b05",
+    "ne_10m_populated_places_simple.zip": "2963ee08f7743f13f37d5243acd77a2f7a510e26a36c7e04b920f1b381f2b251",
+    "ne_110m_admin_0_countries.zip": "0f243aeac8ac6cf26f0417285b0bd33ac47f1b5bdb719fd3e0df37d03ea37110"
+  }
+}

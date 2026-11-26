@@ -1,0 +1,65 @@
+{
+  "v": 1,
+  "sources": [
+    {
+      "class": "iata",
+      "dataset": "OurAirports airports",
+      "version": "snapshot",
+      "fileDate": "2026-11-25",
+      "file": "airports.csv",
+      "sha256": "ceba1cef67fb7ddeeb8aebf52cfca29d678f0599fd46cd93b8974f9a6a67ea16",
+      "licence": "public domain",
+      "retrieved": "2026-11-25"
+    },
+    {
+      "class": "cloud ids",
+      "dataset": "PulsusIX cloud region list",
+      "version": null,
+      "fileDate": null,
+      "file": "cloud-regions.csv",
+      "sha256": null,
+      "licence": "AGPL-3.0",
+      "retrieved": "2026-11-25"
+    },
+    {
+      "class": "iso 3166-1",
+      "dataset": "Natural Earth 10m Admin 0 Countries",
+      "version": "5.1.1",
+      "fileDate": "2022-05-09",
+      "file": "ne_10m_admin_0_countries.zip",
+      "sha256": "ce1ac7036499a0edd641fbc093cd209a98f96a49d2eca8480aaacad35138a7f6",
+      "licence": "public domain",
+      "retrieved": "2026-11-25"
+    },
+    {
+      "class": "iso 3166-2",
+      "dataset": "Natural Earth 10m Admin 1 States, Provinces",
+      "version": "5.1.1",
+      "fileDate": "2022-05-09",
+      "file": "ne_10m_admin_1_states_provinces.zip",
+      "sha256": "efc59726337323058f9446210adc96673179cd344e053666ee3d28cb58ba2b05",
+      "licence": "public domain",
+      "retrieved": "2026-11-25"
+    },
+    {
+      "class": "cloud metros",
+      "dataset": "Natural Earth 10m Populated Places simple",
+      "version": "5.1.2",
+      "fileDate": "2022-05-13",
+      "file": "ne_10m_populated_places_simple.zip",
+      "sha256": "2963ee08f7743f13f37d5243acd77a2f7a510e26a36c7e04b920f1b381f2b251",
+      "licence": "public domain",
+      "retrieved": "2026-11-25"
+    },
+    {
+      "class": "outlines",
+      "dataset": "Natural Earth 110m Admin 0 Countries",
+      "version": "5.1.1",
+      "fileDate": "2022-05-09",
+      "file": "ne_110m_admin_0_countries.zip",
+      "sha256": "0f243aeac8ac6cf26f0417285b0bd33ac47f1b5bdb719fd3e0df37d03ea37110",
+      "licence": "public domain",
+      "retrieved": "2026-11-25"
+    }
+  ]
+}
