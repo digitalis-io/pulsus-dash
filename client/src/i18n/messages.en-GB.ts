@@ -744,6 +744,15 @@ export const messages = {
   'import.text.tooLargeNoId':
     'Text panel #{index} is too large to add embedded-page links ({links} links). Shorten or split it in the source and import again.',
 
+  'markdown.newTab': '(opens in a new tab)',
+  'markdown.removal.html': "Line {line}: HTML isn't shown.",
+  'markdown.removal.iframe': 'Embedded page not shown (line {line}): add a link.',
+  'markdown.removal.linkScheme':
+    'Line {line}: a link with an unsupported address is shown as text.',
+  'markdown.removal.image': "Line {line}: an image isn't loaded.",
+  'markdown.removal.unresolved': 'Line {line}: a variable has no value.',
+  'markdown.removal.depth': 'Line {line}: deeply nested content is shown as plain text.',
+
   'state.ok': 'OK',
   'state.watch': 'Watch',
   'state.degraded': 'Degraded',

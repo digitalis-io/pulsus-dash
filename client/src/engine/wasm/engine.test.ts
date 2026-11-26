@@ -345,7 +345,7 @@ describe('the input ring and the created gate (plan #68 C2a1)', () => {
       for (const f of frames) {
         f.setSpec(S);
         f.resize(300, 150, 1);
-        f.setTimeWindow(W);
+        f.setCamera({ view: { lo: W.fromMs, hi: W.toMs }, value: null, band: null });
       }
       expect(w.ring.head()).toBe(start);
       expect(w.inputs()).toBe(0);
@@ -361,7 +361,7 @@ describe('the input ring and the created gate (plan #68 C2a1)', () => {
       expect(w.inputs()).toBe(1);
       if (start !== 0) expect(w.ring.head()).toBeLessThan(start);
       // (b) After created: at once.
-      frames[0]?.setTimeWindow({ fromMs: 5, toMs: 6 });
+      frames[0]?.setCamera({ view: { lo: 5, hi: 6 }, value: null, band: null });
       expect(w.ring.decode().map((r) => [r.kind, r.frame, r.seq, r.f[0]])).toEqual([
         [KIND_CAMERA, 1, 3, 5],
       ]);
@@ -381,8 +381,9 @@ describe('the input ring and the created gate (plan #68 C2a1)', () => {
     expect(w.sent.filter((m) => m['id'] === 3).map((m) => m.t)).toEqual(['create', 'dispose']);
     // (c) A has a published and a pending record, then is disposed.
     a.resize(300, 150, 1);
-    for (let i = 0; i < 1100; i++) z.setTimeWindow({ fromMs: i, toMs: i + 1 });
-    a.setTimeWindow({ fromMs: 1, toMs: 2 });
+    for (let i = 0; i < 1100; i++)
+      z.setCamera({ view: { lo: i, hi: i + 1 }, value: null, band: null });
+    a.setCamera({ view: { lo: 1, hi: 2 }, value: null, band: null });
     const got = vi.fn();
     a.on('drawn', got);
     a.dispose();

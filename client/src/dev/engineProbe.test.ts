@@ -152,7 +152,8 @@ describe('__dashProbe settle (plan #68 C2a1 §3.4)', () => {
     expect(probe.last(na)).toEqual(SUMMARY);
     expect(probe.drawn(na)).toEqual([{ cssWidth: 300, cssHeight: 150, dpr: 1 }]);
 
-    // Resize only: not while pending, nor by a late drawn of the old size.
+    // A resize (with the controller's camera, plan #68 C2a2): not while pending, nor by a late
+    // drawn of the old size.
     fill(ring);
     probe.call(na, 'resize', [400, 150, 1]);
     expect(await settles(probe, na)).toBe(false);
@@ -160,18 +161,24 @@ describe('__dashProbe settle (plan #68 C2a1 §3.4)', () => {
     expect(await settles(probe, na)).toBe(false);
     view.decode();
     ring.flush();
-    expect(view.decode().map((r) => [r.frame, r.seq])).toEqual([[A.id, 3]]);
+    expect(view.decode().map((r) => [r.frame, r.kind, r.seq])).toEqual([
+      [A.id, KIND_CAMERA, 3],
+      [A.id, KIND_RESIZE, 4],
+    ]);
     // `applied` alone does not settle a frame of non-zero size; with its `drawn` it does.
-    applied(A, 3);
+    applied(A, 4);
     expect(await settles(probe, na)).toBe(false);
-    drawn(A, 3, 3, 400);
+    drawn(A, 4, 4, 400);
     expect(await settles(probe, na)).toBe(true);
     // `drawn` alone does not settle either.
     probe.call(nb, 'resize', [500, 150, 1]);
-    expect(view.decode().map((r) => [r.frame, r.seq])).toEqual([[B.id, 3]]);
-    drawn(B, 3, 3, 500);
+    expect(view.decode().map((r) => [r.frame, r.seq])).toEqual([
+      [B.id, 3],
+      [B.id, 4],
+    ]);
+    drawn(B, 4, 4, 500);
     expect(await settles(probe, nb)).toBe(false);
-    applied(B, 3);
+    applied(B, 4);
     expect(await settles(probe, nb)).toBe(true);
     expect(probe.drawn(nb).at(-1)).toEqual({ cssWidth: 500, cssHeight: 150, dpr: 1 });
     expect(probe.producedLog().length).toBeGreaterThan(1024);

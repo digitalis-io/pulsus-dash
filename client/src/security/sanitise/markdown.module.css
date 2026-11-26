@@ -1,0 +1,16 @@
+/* The Markdown renderer's own classes (plan #198 Part 2b §4.1, §4.3). */
+
+/* An over-deep block: its source lines, verbatim, in one text node. */
+.flat {
+  white-space: pre-wrap;
+}
+
+/* The hidden "(opens in a new tab)" of a new-tab link. */
+.srOnly {
+  position: absolute;
+  width: var(--border-hairline);
+  height: var(--border-hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

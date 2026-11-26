@@ -75,7 +75,8 @@ describe('token-lint allowed', () => {
 });
 
 describe('token-lint real tree', () => {
+  // Lints the whole tree (about 4 s alone): the default 5 s is too tight beside the other files.
   it('reports nothing for src/', async () => {
     expect(await findings(clientRoot)).toEqual([]);
-  });
+  }, 30_000);
 });

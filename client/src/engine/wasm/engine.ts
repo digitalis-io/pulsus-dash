@@ -15,7 +15,7 @@
  *
  * The session flag is injected (`markFailed`): this directory imports only `../api` (T03-001).
  */
-import type { ChartFrame, FrameInit } from '../api';
+import type { FrameInit } from '../api';
 import {
   BOOT_TIMEOUT_MS,
   bootFaults,
@@ -75,7 +75,7 @@ export interface Backend {
     canvas: OffscreenCanvas,
     init: FrameInit,
     onFail: (reason: string) => void,
-  ): ChartFrame;
+  ): WasmFrame;
 }
 
 /** Fetches (with integrity) and compiles the engine; never instantiates it here. */
@@ -212,7 +212,7 @@ class EngineHost implements Backend {
     canvas: OffscreenCanvas,
     init: FrameInit,
     onFail: (reason: string) => void,
-  ): ChartFrame {
+  ): WasmFrame {
     const id = this.nextId++;
     const frame = new WasmFrame(this.port, id, canvas, init, onFail);
     this.frames.set(id, { frame, onFail });

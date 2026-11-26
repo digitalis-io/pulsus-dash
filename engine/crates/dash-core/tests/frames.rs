@@ -4,7 +4,9 @@
 //! summary; data errors carry the TS issue codes. Part C2a1 (§4.3, §5 `frames_apply`,
 //! `presentation_capture`, `seq`, `dispose`): input records set the camera and the size, each
 //! presentation reports the state it was submitted with, the acks are one per frame per tick, and
-//! a frame id is never taken twice.
+//! a frame id is never taken twice. Part C2a2 (§3.3, §5 `stage_presented`, `stage_zero_size`): a
+//! completed presentation of the frame's current Resize reports the stage it was submitted with,
+//! once per change, before its `drawn`.
 #[path = "../../../tests-common/fixture.rs"]
 mod fixture;
 
@@ -255,6 +257,7 @@ fn events_have_the_ts_shapes() {
         css: (1118.0, 240.0),
         dpr: 1.0,
         series: 50,
+        stage: None,
     };
     let d = parse(&events::drawn(3, &p, 10.5, 12.0));
     assert_eq!(
@@ -521,4 +524,177 @@ fn a_rejected_camera_still_presents() {
         acks,
         [serde_json::json!({"t": "applied", "id": 1, "seq": 3})]
     );
+}
+
+fn events_of(events: &[String]) -> Vec<Value> {
+    events.iter().map(|e| parse(e)).collect()
+}
+
+/// Builds and submits frame `id`: the presentation, its list's CSS size and its summary.
+fn present(f: &mut Frames, id: u32) -> (Presented, (f64, f64), Value) {
+    let Some((list, a11y)) = f.build(id) else {
+        panic!("no build")
+    };
+    let Some(p) = f.submit(id) else {
+        panic!("no presentation")
+    };
+    (p, list.css, a11y.map_or(Value::Null, |a| parse(&a)))
+}
+
+/// The `stage` events of a completion, and whether each came before the `drawn`.
+fn stages_of(events: &[Value]) -> Vec<Value> {
+    let drawn_at = events.iter().position(|e| e["t"] == "drawn");
+    events
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e["t"] == "stage")
+        .map(|(k, e)| {
+            assert!(
+                drawn_at.is_some_and(|d| k < d),
+                "stage before its drawn: {events:?}"
+            );
+            e.clone()
+        })
+        .collect()
+}
+
+fn stage_json(plot: dash_axes::PlotRect, domain: (f64, f64), label_w: f64) -> Value {
+    norm(&serde_json::json!({
+        "plot": {"x": plot.x, "y": plot.y, "width": plot.width, "height": plot.height},
+        "domain": {"min": domain.0, "max": domain.1},
+        "labelW": label_w,
+    }))
+}
+
+fn domain_of(a: &Value) -> (f64, f64) {
+    (
+        a["valueAxis"]["min"].as_f64().unwrap_or(f64::NAN),
+        a["valueAxis"]["max"].as_f64().unwrap_or(f64::NAN),
+    )
+}
+
+/// Plan #68 C2a2 §5 `stage_presented` (r1 #1, #2): the stage of a completed presentation, never of
+/// a dropped or pending one, null for an empty plot, re-reported only when it changes.
+#[test]
+fn stage_presented() {
+    let (chunk, json) = line50();
+    let mut f = Frames::new();
+    assert!(f.create(1, None));
+    assert!(f.set_spec(1, &json).is_ok());
+    f.set_chunk(1, Some(Arc::new(chunk)));
+    let view = GALLERY_WINDOW;
+    assert_eq!(f.apply(&resize_rec(1, 1, 1118.0, 240.0, 1.0)), Some(1));
+    assert_eq!(f.apply(&camera_rec(1, 2, view, NAN2, 60.0)), Some(1));
+    let (p1, _, a1) = present(&mut f, 1);
+    let e1 = events_of(&f.complete(1, &p1, 1.0, 2.0));
+    let s1 = stages_of(&e1);
+    assert_eq!(s1.len(), 1, "{e1:?}");
+    assert_eq!(
+        (s1[0]["id"].as_u64(), s1[0]["rseq"].as_u64()),
+        (Some(1), Some(1))
+    );
+    let plot = layout_plot(VisKind::Line, 1118.0, 240.0, 60.0);
+    assert_eq!(
+        norm(&s1[0]["stage"]),
+        stage_json(plot, domain_of(&a1), 60.0)
+    );
+
+    // (a) A Resize whose presentation is dropped (Retry): nothing for it; the next one reports.
+    assert_eq!(f.apply(&resize_rec(1, 3, 600.0, 240.0, 1.0)), Some(1));
+    // The summary changes with the first build after the Resize (p2's).
+    let (_p2, _, a3) = present(&mut f, 1);
+    let (p3, _, _) = present(&mut f, 1);
+    let s3 = stages_of(&events_of(&f.complete(1, &p3, 3.0, 4.0)));
+    assert_eq!(s3.len(), 1);
+    assert_eq!(s3[0]["rseq"].as_u64(), Some(3));
+    let plot600 = layout_plot(VisKind::Line, 600.0, 240.0, 60.0);
+    assert_eq!(
+        norm(&s3[0]["stage"]),
+        stage_json(plot600, domain_of(&a3), 60.0)
+    );
+
+    // (b) Awaiting its read-back: nothing until it completes.
+    assert_eq!(f.apply(&resize_rec(1, 4, 900.0, 240.0, 1.0)), Some(1));
+    let (p4, _, a4) = present(&mut f, 1);
+    assert!(stages_of(&events_of(&f.take_applied())).is_empty());
+    let s4 = stages_of(&events_of(&f.complete(1, &p4, 5.0, 6.0)));
+    assert_eq!(s4.len(), 1);
+    let plot900 = layout_plot(VisKind::Line, 900.0, 240.0, 60.0);
+    assert_eq!(
+        norm(&s4[0]["stage"]),
+        stage_json(plot900, domain_of(&a4), 60.0)
+    );
+
+    // (c) An empty plot withdraws the stage; a valid size reports it again.
+    assert_eq!(f.apply(&resize_rec(1, 5, 10.0, 10.0, 1.0)), Some(1));
+    let (p6, css6, _) = present(&mut f, 1);
+    assert_eq!(css6, (10.0, 10.0));
+    let s6 = stages_of(&events_of(&f.complete(1, &p6, 7.0, 8.0)));
+    assert_eq!(s6.len(), 1);
+    assert_eq!(s6[0]["stage"], Value::Null);
+    assert_eq!(s6[0]["rseq"].as_u64(), Some(5));
+    assert_eq!(f.apply(&resize_rec(1, 6, 1118.0, 240.0, 1.0)), Some(1));
+    let (p7, _, a7) = present(&mut f, 1);
+    let s7 = stages_of(&events_of(&f.complete(1, &p7, 9.0, 10.0)));
+    assert_eq!(s7.len(), 1);
+    assert_eq!(
+        norm(&s7[0]["stage"]),
+        stage_json(plot, domain_of(&a7), 60.0)
+    );
+
+    // (d) A NaN band: the measured width; the same stage is not reported again.
+    assert_eq!(f.apply(&camera_rec(1, 7, view, NAN2, f64::NAN)), Some(1));
+    let (p8, _, a8) = present(&mut f, 1);
+    let s8 = stages_of(&events_of(&f.complete(1, &p8, 11.0, 12.0)));
+    assert_eq!(s8.len(), 1);
+    let x = a8["plot"]["x"].as_f64().unwrap_or(f64::NAN);
+    let measured = s8[0]["stage"]["labelW"].as_f64().unwrap_or(f64::NAN);
+    assert_eq!(layout_plot(VisKind::Line, 1118.0, 240.0, measured).x, x);
+    assert_ne!(
+        measured, 60.0,
+        "precondition: the measured band is not the held one"
+    );
+    let (p9, _, _) = present(&mut f, 1);
+    let e9 = events_of(&f.complete(1, &p9, 13.0, 14.0));
+    assert!(stages_of(&e9).is_empty(), "{e9:?}");
+    assert_eq!(e9.iter().filter(|e| e["t"] == "drawn").count(), 1);
+}
+
+/// Plan #68 C2a2 §5 `stage_zero_size` (r3 #4): a completion of an older Resize never reports; the
+/// first completion after any applied Resize always does, also with the same content.
+#[test]
+fn stage_zero_size() {
+    let (chunk, json) = line50();
+    let mut f = Frames::new();
+    assert!(f.create(1, None));
+    assert!(f.set_spec(1, &json).is_ok());
+    f.set_chunk(1, Some(Arc::new(chunk)));
+    assert_eq!(f.apply(&resize_rec(1, 1, 800.0, 240.0, 1.0)), Some(1));
+    assert_eq!(
+        f.apply(&camera_rec(1, 2, GALLERY_WINDOW, NAN2, f64::NAN)),
+        Some(1)
+    );
+    let (p1, _, _) = present(&mut f, 1);
+    let s1 = stages_of(&events_of(&f.complete(1, &p1, 1.0, 2.0)));
+    assert_eq!(s1.len(), 1);
+    let stage1 = s1[0]["stage"].clone();
+    assert!(stage1.is_object());
+    // An r1 submission in flight; then Resize 0×240 (r2): the worker presents nothing at r2.
+    let (late, _, _) = present(&mut f, 1);
+    assert_eq!(f.apply(&resize_rec(1, 3, 0.0, 240.0, 1.0)), Some(1));
+    let Some((list, _)) = f.build(1) else {
+        panic!("no build")
+    };
+    assert_eq!(list.css.0, 0.0, "no presentation at size 0");
+    let e = events_of(&f.complete(1, &late, 3.0, 4.0));
+    assert!(stages_of(&e).is_empty(), "a stale completion: {e:?}");
+    // r3, then r4: each reports S1 with its own rseq.
+    for (seq, at) in [(4u32, 5.0), (5, 7.0)] {
+        assert_eq!(f.apply(&resize_rec(1, seq, 800.0, 240.0, 1.0)), Some(1));
+        let (p, _, _) = present(&mut f, 1);
+        let s = stages_of(&events_of(&f.complete(1, &p, at, at + 1.0)));
+        assert_eq!(s.len(), 1, "rseq {seq}");
+        assert_eq!(s[0]["rseq"].as_u64(), Some(u64::from(seq)));
+        assert_eq!(s[0]["stage"], stage1);
+    }
 }

@@ -342,7 +342,23 @@ gesture ends (300 ms with no wheel, or the pointer is released) the frame emits 
 and `ChartFrame` applies it: the window becomes the Context window (one `setRange` push, so one
 history entry and on a board every panel follows), and a value range becomes the chart's pin. The
 code is in `src/engine/canvas2d/camera.ts` (the math), `input.ts` (input classification) and
-`Canvas2DEngine.ts` (the gesture state machine).
+`src/engine/controller/controller.ts` (the gesture state machine, `FrameController`).
+
+**One controller for both engines** (#68 Part C2a2, [ADR-0030](../../designs/adr/0030-engine-camera-controller-on-main.md)).
+`FrameController` was moved out of `Canvas2DFrame` unchanged: its state (the base window, the view,
+the value view, the gesture, the held band, the right press, the zone, the pointer and the key
+index), its listeners and every method of the gesture machine, with only these substitutions: the
+frame's layer model became `Stage.model()` (`plot`, `valueDomain`, `labelW`, `pickCount`), a layer
+redraw `Stage.redraw()`, a hover update `Stage.hover()`, the click's `select` `Stage.select(p)`, a
+box-band redraw `Stage.boxChanged()`, and the bar chart's input the `BarHooks`. The Canvas 2D frame
+is its stage over its last drawn layer; an engine frame's stage is the engine's last completed
+presentation (`ControlledFrame`, [engine.md](engine.md#the-camera-controller-part-c2a2)). The #93
+tests (`canvas2d/*.test.ts`, `test/cameraKit.ts`, `test/engineHarness.ts`) run unchanged against
+the Canvas 2D frame; `e2e:engine-camera` runs the same cases against engine frames. Two additions
+serve engine frames only: the **committed camera** (the window, value view and band of the last
+external `setSpec` or `setTimeWindow`, or of the last emitted commit or fit) and `abortGesture()`,
+which drops a running gesture when the stage is withdrawn and restores the committed camera, with no
+`commit` or `brush`.
 
 ### Inputs (line, bars, heatmap; stat has none)
 
@@ -758,7 +774,9 @@ script (and `scripts/threshold-draw-probe.ts`) load a CSS module as a class-name
 ## Replacing the engine (#68)
 
 The WASM engine implements the same `ChartEngine` interface and is returned by
-`defaultChartEngine()`; only `engine/index.ts` changes. It implements the threshold lines,
+`defaultChartEngine()`; only `engine/index.ts` changes. Its line frames already run the camera
+controller above (Part C2a2): zoom, pan, axis drags, the band hold and the commits behave as on
+Canvas 2D; hover, select and the box band are drawn from Part C2b on. It implements the threshold lines,
 labels and the stat sparkline (ADR-0022), and the event markers (ADR-0023, as M1 verticals and M9
 glyphs), the selection and the `select` item (ADR-0025), and the bar chart (ADR-0028: the
 `categories` data, `categoryExtent` and `barLayout` exactly, `mark`, `pick` and the drawing; and
