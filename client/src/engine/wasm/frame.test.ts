@@ -5,14 +5,19 @@
  * call, with the caller's values, once no Resize is held or unpublished.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ChartFrame, FrameData, VisSpec } from '../api';
+import type { FrameData, VisSpec } from '../api';
 import { CB, memory, RingView } from '../../test/ringView';
-import { WasmFrame, type CameraState, type FrameRing, type StageModel } from './frame';
+import {
+  WasmFrame,
+  type CameraState,
+  type EngineFrame,
+  type FrameRing,
+  type StageModel,
+} from './frame';
 import type { MainToRender, StageWire } from './protocol';
 import { InputRing } from './ring';
 
 const S: VisSpec = { kind: 'line', title: 'T', unit: { kind: 'none' } };
-const PINNED: VisSpec = { ...S, valueRange: { min: 0, max: 5 } };
 const T = new Float64Array([1, 2]);
 const V = new Float64Array([3, 4]);
 const SERIES: FrameData = {
@@ -132,10 +137,10 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
     const measure = vi.spyOn(performance, 'measure');
     f.setSpec(S);
     f.setData(SERIES);
-    f.setTimeWindow({ fromMs: 0, toMs: 10 });
+    f.setCamera({ view: { lo: 0, hi: 10 }, value: null, band: null });
     f.setTheme('dark');
     // Through the seam's signatures: kept by the routing frame, not sent (C2).
-    const seam: ChartFrame = f;
+    const seam: EngineFrame = f;
     seam.setEvents([]);
     seam.setSelection(null);
     f.resize(300, 150, 2);
@@ -197,24 +202,7 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
     f.resize(300.3, 150, 1);
     f.handle(drawn({ w: Math.fround(300.3), seq: 3, rseq: 3 }));
     expect(got.mock.calls[1]).toEqual([{ cssWidth: 300.3, cssHeight: 150, dpr: 1 }]);
-    f.setTimeWindow({ fromMs: 10, toMs: 20 });
-    expect(ring.published.at(-1)).toMatchObject({
-      kind: 'camera',
-      arg: { view: { lo: 10, hi: 20 }, value: null, band: null },
-    });
-    // A spec with a valid value range pins the idle camera's value; an invalid one does not.
-    f.setSpec(PINNED);
-    expect(ring.published.at(-1)?.arg).toEqual({
-      view: { lo: 10, hi: 20 },
-      value: { min: 0, max: 5 },
-      band: null,
-    });
-    f.setSpec({ ...S, valueRange: { min: 5, max: 5 } });
-    expect(ring.published.at(-1)?.arg).toEqual({
-      view: { lo: 10, hi: 20 },
-      value: null,
-      band: null,
-    });
+    // The camera is the controller's (plan #68 C2a2): the frame sends what it is given.
     f.setCamera({ view: { lo: 1, hi: 2 }, value: null, band: 40 });
     expect(ring.published.at(-1)?.arg).toEqual({ view: { lo: 1, hi: 2 }, value: null, band: 40 });
   });
@@ -266,11 +254,9 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
   });
 });
 
-/** Fills the ring with records of a frame no test frame uses, until one waits. */
+/** Fills the ring with Resize records of a frame no test frame uses, until one waits. */
 function fill(ring: InputRing): void {
-  for (let i = 0; i < 2000 && ring.unpublished(99) === 0; i++) {
-    ring.camera(99, { view: { lo: i, hi: i + 1 }, value: null, band: null });
-  }
+  for (let i = 0; i < 2000 && ring.unpublished(99) === 0; i++) ring.resize(99, 10 + i, 10, 1);
   ring.drop(99);
 }
 

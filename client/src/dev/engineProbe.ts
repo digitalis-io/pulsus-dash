@@ -12,6 +12,13 @@
  * | `last(n)`, `drawn(n)` | the last `a11y` summary; the `drawn` events (the last 100) |
  * | `idle()`, `counters()`, `stats()` | the worker's idle word; head and tail (`>>> 0`); coalesced, `INPUT_OVERFLOW`, bytes published |
  * | `inputLog()`, `producedLog()` | the records the worker decoded (probe build only) and the ones the adapter published |
+ * | `wheel(n, x, y, init)`, `pointer(n, type, x, y, o)` | a wheel (returns `defaultPrevented`) or a pointer or mouse event on the frame's canvas at canvas px, built as `test/engineHarness.ts` builds them (plan #68 C2a2 §3.4) |
+ * | `commits(n)`, `brushes(n)` | the frame's `commit` and `brush` events |
+ * | `fresh(o)` | a new frame's first summary; the frame is then disposed and its canvas removed |
+ * | `id(n)`, `stats().enqueued` | the frame's engine id (its records' `frame`); Camera records enqueued by probe frames |
+ *
+ * Probe frames are `ControlledFrame`s: the camera controller runs on them as on the page's engine
+ * frames (ADR-0030), so the calls' `setTimeWindow` goes through it.
  */
 import type {
   BrushEvent,
@@ -22,6 +29,7 @@ import type {
   TimeWindow,
   VisSpec,
 } from '../engine/api';
+import { ControlledFrame } from '../engine/controlled';
 import type { Backend, EngineProbe, ProbeHost } from '../engine/wasm/engine';
 import { WasmFrame } from '../engine/wasm/frame';
 import type { InputRec } from '../engine/wasm/ring';
@@ -83,10 +91,15 @@ export interface DashProbe {
 }
 
 interface Entry {
-  frame: WasmFrame | null;
+  /** The controlled frame the calls and DOM events drive, and its engine frame. */
+  frame: ControlledFrame | null;
+  inner: WasmFrame | null;
+  canvas: HTMLCanvasElement | null;
   readonly queue: [ProbeCall, unknown][];
   last: FrameSummary | null;
   readonly drawn: DrawnEvent[];
+  readonly commits: CommitEvent[];
+  readonly brushes: BrushEvent[];
 }
 
 const SETTLE_POLL_MS = 5;
@@ -105,7 +118,7 @@ function data(series: readonly ProbeSeries[]): FrameData {
   };
 }
 
-function apply(f: WasmFrame, m: ProbeCall, arg: unknown): void {
+function apply(f: ControlledFrame, m: ProbeCall, arg: unknown): void {
   switch (m) {
     case 'setSpec':
       f.setSpec(arg as VisSpec);
@@ -134,40 +147,93 @@ export function createProbe(o: {
     if (e === undefined) throw new Error(`no probe frame ${String(n)}`);
     return e;
   };
+  let enqueued = 0;
+  /**
+   * A frame on a canvas at (0, 0), above the page: its spec, data, window and size, then
+   * `onA11y` at each summary.
+   */
+  const make = (
+    b: Backend,
+    f: ProbeFrame,
+    e: Entry,
+    id: string,
+    onA11y: (s: FrameSummary) => void,
+  ): void => {
+    const [w, h] = f.size;
+    const canvas = document.createElement('canvas');
+    canvas.style.cssText = `position:fixed;left:0;top:0;width:${String(w)}px;height:${String(h)}px;z-index:2147483647`;
+    document.body.append(canvas);
+    const init = { timeZone: 'UTC', keyTarget: null, id };
+    const inner = b.createFrame(canvas.transferControlToOffscreen(), init, (reason) => {
+      console.warn(`${id} failed: ${reason}`);
+    });
+    if (!(inner instanceof WasmFrame)) throw new Error('not an engine frame');
+    // Every Camera the controller sends is one ring record (bench:shim-input-cost).
+    const setCamera = inner.setCamera.bind(inner);
+    inner.setCamera = (c) => {
+      enqueued += 1;
+      setCamera(c);
+    };
+    const frame = new ControlledFrame(canvas, init, inner);
+    e.frame = frame;
+    e.inner = inner;
+    e.canvas = canvas;
+    frame.on('a11y', (s) => {
+      e.last = s;
+      onA11y(s);
+    });
+    frame.on('drawn', (d) => {
+      e.drawn.push(d);
+      if (e.drawn.length > KEEP_DRAWN) e.drawn.shift();
+    });
+    frame.on('commit', (c) => e.commits.push(c));
+    frame.on('brush', (x) => e.brushes.push(x));
+    frame.setSpec(f.spec);
+    frame.setData(data(f.series));
+    frame.setTimeWindow(f.w);
+    frame.resize(w, h, f.dpr ?? 1);
+  };
+  const blank = (): Entry => ({
+    frame: null,
+    inner: null,
+    canvas: null,
+    queue: [],
+    last: null,
+    drawn: [],
+    commits: [],
+    brushes: [],
+  });
+  /** A point at canvas-relative CSS px `(x, y)`, as client px. */
+  const client = (c: HTMLCanvasElement, x: number, y: number) => {
+    const r = c.getBoundingClientRect();
+    return { clientX: r.left + x, clientY: r.top + y };
+  };
   return {
     frame(f) {
       const n = entries.length;
-      const e: Entry = { frame: null, queue: [], last: null, drawn: [] };
+      const e = blank();
       entries.push(e);
       return o.backend().then(
         (b) =>
           new Promise<number>((resolve) => {
-            const [w, h] = f.size;
-            const canvas = document.createElement('canvas');
-            canvas.style.cssText = `position:fixed;left:0;top:0;width:${String(w)}px;height:${String(h)}px`;
-            document.body.append(canvas);
-            const frame = b.createFrame(
-              canvas.transferControlToOffscreen(),
-              { timeZone: 'UTC', keyTarget: null, id: `probe-${String(n)}` },
-              (reason) => {
-                console.warn(`probe frame ${String(n)} failed: ${reason}`);
-              },
-            );
-            if (!(frame instanceof WasmFrame)) throw new Error('not an engine frame');
-            e.frame = frame;
-            frame.on('a11y', (s) => {
-              e.last = s;
+            make(b, f, e, `probe-${String(n)}`, () => {
               resolve(n);
             });
-            frame.on('drawn', (d) => {
-              e.drawn.push(d);
-              if (e.drawn.length > KEEP_DRAWN) e.drawn.shift();
+            const frame = e.frame;
+            if (frame !== null) for (const [m, arg] of e.queue.splice(0)) apply(frame, m, arg);
+          }),
+      );
+    },
+    fresh(f) {
+      const e = blank();
+      return o.backend().then(
+        (b) =>
+          new Promise<FrameSummary>((resolve) => {
+            make(b, f, e, 'probe-fresh', (s) => {
+              e.frame?.dispose();
+              e.canvas?.remove();
+              resolve(s);
             });
-            frame.setSpec(f.spec);
-            frame.setData(data(f.series));
-            frame.setTimeWindow(f.w);
-            frame.resize(w, h, f.dpr ?? 1);
-            for (const [m, arg] of e.queue.splice(0)) apply(frame, m, arg);
           }),
       );
     },
@@ -181,7 +247,7 @@ export function createProbe(o: {
       const t0 = performance.now();
       return new Promise<void>((resolve, reject) => {
         const poll = (): void => {
-          if (e.frame !== null && e.queue.length === 0 && e.frame.settled()) {
+          if (e.inner !== null && e.queue.length === 0 && e.inner.settled()) {
             resolve();
             return;
           }
@@ -205,17 +271,53 @@ export function createProbe(o: {
         coalesced: h?.ring.stats.coalesced ?? 0,
         overflow: h?.overflow() ?? 0,
         publishedBytes: h?.ring.stats.publishedBytes ?? 0,
-        enqueued: 0,
+        enqueued,
       };
     },
     counters: () => o.host()?.counters() ?? { head: 0, tail: 0 },
-    // Stubs (plan #68 C2a2, tests first).
-    id: () => 0,
-    wheel: () => false,
-    pointer: () => undefined,
-    commits: () => [],
-    brushes: () => [],
-    fresh: () => Promise.reject(new Error('not yet')),
+    id: (n) => entry(n).inner?.id ?? 0,
+    wheel(n, x, y, init) {
+      const c = entry(n).canvas;
+      if (c === null) return false;
+      // As `test/engineHarness.ts` `wheel`.
+      const ev = new WheelEvent('wheel', {
+        ...client(c, x, y),
+        deltaX: init.deltaX ?? 0,
+        deltaY: init.deltaY ?? 0,
+        deltaMode: init.deltaMode ?? 0,
+        shiftKey: init.shiftKey ?? false,
+        ctrlKey: init.ctrlKey ?? false,
+        metaKey: init.metaKey ?? false,
+        bubbles: true,
+        cancelable: true,
+      });
+      c.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    },
+    pointer(n, type, x, y, p = {}) {
+      const c = entry(n).canvas;
+      if (c === null) return;
+      // As `test/engineHarness.ts` `pointer`.
+      const init = {
+        ...client(c, x, y),
+        button: p.button ?? 0,
+        buttons: p.buttons ?? 0,
+        altKey: p.altKey ?? false,
+        ctrlKey: p.ctrlKey ?? false,
+        metaKey: p.metaKey ?? false,
+        pointerType: p.pointerType ?? 'mouse',
+        pointerId: 1,
+        bubbles: true,
+        cancelable: true,
+      };
+      c.dispatchEvent(
+        type === 'dblclick' || type === 'contextmenu'
+          ? new MouseEvent(type, init)
+          : new PointerEvent(type, init),
+      );
+    },
+    commits: (n) => [...entry(n).commits],
+    brushes: (n) => [...entry(n).brushes],
   };
 }
 

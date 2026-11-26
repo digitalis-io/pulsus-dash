@@ -13,6 +13,12 @@
 //! it draws when it is submitted ([`Frames::submit`]), and its `drawn` reports exactly that
 //! ([`Frames::complete`]), whatever was applied while it was in flight. Frame ids are never taken
 //! twice: a `create` at or below the highest id seen is refused.
+//!
+//! Part C2a2 (§3.3): each build keeps its stage (plot, value domain, band), each presentation
+//! captures it at submit, and a completion reports it as `stage` before its `drawn`, only when the
+//! presentation is of the frame's current Resize and its (rseq, stage) differs from the frame's
+//! last reported one: the first completion after any applied Resize always reports, a stale one
+//! never does. A dropped or never-completed submission changes nothing.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -20,7 +26,7 @@ use std::sync::Arc;
 use dash_marks::{DrawList, MarkItem};
 use dash_scene::{
     Band, Camera, PlotCamera, Range64, Size64, StageInfo, Theme, Viewport, VisKind, VisSpec,
-    YRange, build,
+    YRange, build_stage,
 };
 use dash_wire::{Chunk, ChunkBuilder, ChunkError, IdAlloc, IdSpace, SeriesMeta};
 use serde_json::{Value, json};
@@ -112,6 +118,8 @@ struct Frame {
     applied: bool,
     /// Series the last built draw list draws.
     series: u32,
+    /// The stage of the last built draw list.
+    stage: Option<StageInfo>,
 }
 
 impl Frame {
@@ -129,6 +137,7 @@ impl Frame {
             rseq: 0,
             applied: false,
             series: 0,
+            stage: None,
         }
     }
 }
@@ -142,6 +151,8 @@ pub struct Frames {
     highest: u32,
     /// Camera records rejected by `apply`.
     bad: u32,
+    /// Per frame, the (rseq, stage) of its last `stage` event.
+    reported: BTreeMap<u32, (u32, Option<StageInfo>)>,
 }
 
 impl Default for Frames {
@@ -151,6 +162,7 @@ impl Default for Frames {
             ids: IdAlloc::new(IdSpace::Local),
             highest: 0,
             bad: 0,
+            reported: BTreeMap::new(),
         }
     }
 }
@@ -273,17 +285,28 @@ impl Frames {
             css,
             dpr,
             series: f.series,
-            stage: None,
+            stage: f.stage.clone(),
         })
     }
 
-    /// The presentation `p` is complete: its `drawn` (ADR-0019), from `p` only; none for a frame
-    /// gone since, or at size 0.
+    /// The presentation `p` is complete: its `stage` when it is of the frame's current Resize and
+    /// differs from the last reported (rseq, stage), then its `drawn` (ADR-0019), from `p` only;
+    /// none for a frame gone since, or at size 0.
     pub fn complete(&mut self, id: u32, p: &Presented, start_ms: f64, end_ms: f64) -> Vec<String> {
-        if !self.frames.contains_key(&id) || !(p.css.0 > 0.0 && p.css.1 > 0.0) {
+        let Some(f) = self.frames.get(&id) else {
+            return Vec::new();
+        };
+        if !(p.css.0 > 0.0 && p.css.1 > 0.0) {
             return Vec::new();
         }
-        vec![events::drawn(id, p, start_ms, end_ms)]
+        let mut out = Vec::with_capacity(2);
+        let now = (p.rseq, p.stage.clone());
+        if p.rseq == f.rseq && self.reported.get(&id) != Some(&now) {
+            out.push(events::stage(id, p.rseq, p.stage.as_ref()));
+            self.reported.insert(id, now);
+        }
+        out.push(events::drawn(id, p, start_ms, end_ms));
+        out
     }
 
     /// The end of a tick: one `applied` per frame with records applied since the last call.
@@ -348,6 +371,7 @@ impl Frames {
 
     pub fn dispose(&mut self, id: u32) {
         self.frames.remove(&id);
+        self.reported.remove(&id);
     }
 
     /// The frame's data (the Part D seam): `None` clears it.
@@ -464,8 +488,9 @@ impl Frames {
                 .and_then(|c| c.band)
                 .map_or(Band::Measure, Band::Fixed),
         };
-        let (list, summary) = build(&v);
+        let (list, summary, stage) = build_stage(&v);
         f.series = series_of(&list);
+        f.stage = stage;
         let summary = match (&f.spec, summary) {
             (None, _) => None,
             (Some(VisSpec::Unsupported(kind)), _) => f

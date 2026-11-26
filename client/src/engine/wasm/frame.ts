@@ -1,22 +1,23 @@
 /**
- * The main-thread side of one engine frame (plan #68 C1 §3.5, §4.2; C2a1 §4.4; ADR-0019,
- * D-PROTO). Spec, data and theme are messages to the render worker; the camera and the size are
- * input ring records (`ring.ts`), held until the worker reports the frame `created` and then
- * enqueued in the order of their calls; the worker's events come back through `handle`. Series
- * data is cloned (the caller keeps its arrays); heatmap and scalar data are not drawn by the engine
- * yet and go as `null`. Events (markers) and the selection are kept by the routing frame and not
- * sent (C2). Nothing is sent or emitted after `dispose`.
+ * The main-thread side of one engine frame (plan #68 C1 §3.5, §4.2; C2a1 §4.4; C2a2 §3.2, §3.3;
+ * ADR-0019, ADR-0030, D-PROTO). Spec, data and theme are messages to the render worker; the camera
+ * and the size are input ring records (`ring.ts`), held until the worker reports the frame
+ * `created` and then enqueued in the order of their calls; the worker's events come back through
+ * `handle`. The camera comes only from `setCamera`: `ControlledFrame` runs the camera controller
+ * on the main thread and sends it. Series data is cloned (the caller keeps its arrays); heatmap and
+ * scalar data are not drawn by the engine yet and go as `null`. Events (markers) and the selection
+ * are kept by the routing frame and not sent (C2b). Nothing is sent or emitted after `dispose`.
  *
  * | Call or event | Behaviour |
  * |---|---|
- * | `setTimeWindow(w)` | the idle camera: view = the window, value = the spec's valid line `valueRange` (else auto), band measured |
- * | `setSpec(s)` | a message; with a window, the idle camera again |
+ * | `setCamera(c)` | a Camera record (view, value: null = auto, band: null = measured) |
+ * | `setSpec(s)` | a message |
+ * | `stage` | `stage()` is the last completed presentation's: only an event of the latest `resize()` call counts (none while a Resize is held or unpublished, and only for that call's seq); every `resize()` blocks it until then; a zero size makes it null at once. `onStage` on every change |
  * | Camera, Resize before `created` | held, the latest per kind; on `created` enqueued in call order |
  * | `drawn` | only for the latest `resize()` call: none while a Resize is held or unpublished, and only when the event's `rseq` is that call's seq; reported with the caller's values, never at 0, with its `chart-draw` measure |
  * | `applied`, `drawn` seqs | extended to 53 bits against the frame's last published seq: the acks `settled()` compares |
  */
 import type {
-  ChartFrame,
   EventMarker,
   FrameData,
   FrameEvents,
@@ -24,12 +25,11 @@ import type {
   FrameSelection,
   PlotRect,
   ThemeName,
-  TimeWindow,
   ValueRange,
   VisSpec,
 } from '../api';
 import { REC_RESIZE } from './layout.gen';
-import type { FrameEvent, MainToRender, SeriesMessage } from './protocol';
+import type { FrameEvent, MainToRender, SeriesMessage, StageWire } from './protocol';
 import { extendSeq } from './ring';
 
 /** The engine camera a Camera record carries: null value = auto, null band = measured. */
@@ -93,24 +93,40 @@ function series(data: FrameData): SeriesMessage[] | null {
   }));
 }
 
-/** A line spec's `valueRange` when it is finite with min < max: the idle camera's value. */
-function pin(spec: VisSpec | null): ValueRange | null {
-  if (spec?.kind !== 'line' || spec.valueRange === undefined) return null;
-  const { min, max } = spec.valueRange;
-  return Number.isFinite(min) && Number.isFinite(max) && min < max ? { min, max } : null;
-}
+const sameStage = (a: StageModel | null, b: StageModel | null): boolean =>
+  a === b ||
+  (a !== null &&
+    b !== null &&
+    a.plot.x === b.plot.x &&
+    a.plot.y === b.plot.y &&
+    a.plot.width === b.plot.width &&
+    a.plot.height === b.plot.height &&
+    a.labelW === b.labelW &&
+    a.pickCount === b.pickCount &&
+    (a.valueDomain === b.valueDomain ||
+      (a.valueDomain !== null &&
+        b.valueDomain !== null &&
+        a.valueDomain.min === b.valueDomain.min &&
+        a.valueDomain.max === b.valueDomain.max)));
+
+/** The controller's view of a reported stage (no picking until C2b). */
+const stageOf = (w: StageWire | null): StageModel | null =>
+  w === null ? null : { plot: w.plot, valueDomain: w.domain, labelW: w.labelW, pickCount: 0 };
 
 /** Resize seqs kept for `drawn`. */
 const KEEP_RESIZES = 8;
 
 type Size = readonly [number, number, number];
 
-export class WasmFrame implements ChartFrame, EngineFrame {
+export class WasmFrame implements EngineFrame {
   private readonly listeners = new Map<keyof FrameEvents, Set<Listener>>();
   private disposed = false;
   private kind: VisSpec['kind'] = 'line';
-  private spec: VisSpec | null = null;
-  private window: TimeWindow | null = null;
+  /** The last completed presentation's stage, and its listeners (plan #68 C2a2 §3.3). */
+  private stageNow: StageModel | null = null;
+  private readonly stageCbs = new Set<(s: StageModel | null) => void>();
+  /** Set by every `resize()` call; cleared by a `stage` or `drawn` of that call's seq. */
+  private stageBlocked = false;
   private ring: FrameRing | null = null;
   /** Before `created`: the latest Camera and Resize, in the order of their last call. */
   private readonly held = new Map<'camera' | 'resize', (r: FrameRing) => void>();
@@ -152,19 +168,11 @@ export class WasmFrame implements ChartFrame, EngineFrame {
 
   setSpec(spec: VisSpec): void {
     this.kind = spec.kind;
-    this.spec = spec;
     this.post({ t: 'spec', id: this.id, json: JSON.stringify(spec) });
-    if (this.window !== null) this.setTimeWindow(this.window);
   }
 
   setData(data: FrameData): void {
     this.post({ t: 'data', id: this.id, series: series(data) });
-  }
-
-  /** The idle camera of the window (#93 §3.4; C2a2 moves it to the camera controller). */
-  setTimeWindow(w: TimeWindow): void {
-    this.window = w;
-    this.setCamera({ view: { lo: w.fromMs, hi: w.toMs }, value: pin(this.spec), band: null });
   }
 
   setCamera(c: CameraState): void {
@@ -191,6 +199,10 @@ export class WasmFrame implements ChartFrame, EngineFrame {
     if (this.disposed) return;
     const size: Size = [cssWidth, cssHeight, dpr];
     this.size = size;
+    // The stage on screen is not this size's until its presentation reports (plan #68 C2a2 §3.3);
+    // the worker draws nothing at a zero size, so the stage goes at once.
+    this.stageBlocked = true;
+    if (!(cssWidth > 0 && cssHeight > 0)) this.setStage(null);
     this.record('resize', (r) => {
       this.resizeUnpublished = true;
       r.resize(this.id, size[0], size[1], size[2]);
@@ -198,11 +210,29 @@ export class WasmFrame implements ChartFrame, EngineFrame {
   }
 
   stage(): StageModel | null {
-    return null;
+    return this.stageNow;
   }
 
   onStage(cb: (s: StageModel | null) => void): () => void {
-    return () => cb;
+    if (this.disposed) return () => undefined;
+    this.stageCbs.add(cb);
+    return () => {
+      this.stageCbs.delete(cb);
+    };
+  }
+
+  private setStage(s: StageModel | null): void {
+    if (sameStage(s, this.stageNow)) return;
+    this.stageNow = s;
+    for (const cb of [...this.stageCbs]) cb(s);
+  }
+
+  /** An event of presentation `rseq` is of the latest `resize()` call (and unblocks the stage). */
+  private current(rseq: number): boolean {
+    if (this.held.has('resize') || this.resizeUnpublished) return false;
+    if (extendSeq(this.lastSeq, rseq) !== this.lastRseq) return false;
+    this.stageBlocked = false;
+    return true;
   }
 
   /** The worker created the frame: its held records go to the ring, in call order. */
@@ -269,12 +299,14 @@ export class WasmFrame implements ChartFrame, EngineFrame {
         this.applied = Math.max(this.applied, extendSeq(this.lastSeq, ev.seq));
         return;
       case 'created':
+        return;
       case 'stage':
+        if (!this.current(ev.rseq)) return;
+        this.setStage(stageOf(ev.stage));
         return;
       case 'drawn': {
         this.drawnSeq = Math.max(this.drawnSeq, extendSeq(this.lastSeq, ev.seq));
-        if (this.held.has('resize') || this.resizeUnpublished) return;
-        if (extendSeq(this.lastSeq, ev.rseq) !== this.lastRseq) return;
+        if (!this.current(ev.rseq)) return;
         const size = this.resizes.get(this.lastRseq);
         if (size === undefined) return;
         const [w, h, dpr] = size;
@@ -303,6 +335,7 @@ export class WasmFrame implements ChartFrame, EngineFrame {
     this.disposed = true;
     this.held.clear();
     this.listeners.clear();
+    this.stageCbs.clear();
   }
 
   dispose(): void {
@@ -312,5 +345,6 @@ export class WasmFrame implements ChartFrame, EngineFrame {
     this.post({ t: 'dispose', id: this.id });
     this.disposed = true;
     this.listeners.clear();
+    this.stageCbs.clear();
   }
 }

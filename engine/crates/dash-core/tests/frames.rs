@@ -601,8 +601,9 @@ fn stage_presented() {
 
     // (a) A Resize whose presentation is dropped (Retry): nothing for it; the next one reports.
     assert_eq!(f.apply(&resize_rec(1, 3, 600.0, 240.0, 1.0)), Some(1));
-    let (_p2, _, _) = present(&mut f, 1);
-    let (p3, _, a3) = present(&mut f, 1);
+    // The summary changes with the first build after the Resize (p2's).
+    let (_p2, _, a3) = present(&mut f, 1);
+    let (p3, _, _) = present(&mut f, 1);
     let s3 = stages_of(&events_of(&f.complete(1, &p3, 3.0, 4.0)));
     assert_eq!(s3.len(), 1);
     assert_eq!(s3[0]["rseq"].as_u64(), Some(3));
