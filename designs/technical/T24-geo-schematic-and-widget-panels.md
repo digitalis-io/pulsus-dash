@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-26 |
+| **Version** | 1.14-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -229,14 +229,14 @@ T24-087, step 1b T24-088 to T24-095, and step 2 T24-096 to T24-099; VIZ-129 stay
 | Requirement | Satisfied by (§) | Verification (T05 gate) |
 |---|---|---|
 | [VIZ-031](../product/05-visualisation-catalogue.md#viz-031--3d-only-when-it-encodes-a-dimension), [VIZ-086](../product/05-visualisation-catalogue.md#viz-086--true-3d-only) | §4.1 (T24-001, T24-003) | `unit:board-spec-widgets`; `golden:widget-gallery` |
-| [VIZ-053](../product/05-visualisation-catalogue.md#viz-053--widgets-available) (Text and Clock rows) | §4.1 (T24-002, T24-008 to T24-012), §5.1 | `e2e:widget-text`; `e2e:widget-clock` |
-| [VIZ-054](../product/05-visualisation-catalogue.md#viz-054--markdown-and-html-are-always-sanitised) | §4.1 (T24-004, T24-006, T24-007), §4.2 | `unit:markdown-nodes`; `fuzz:markdown-nodes`; `e2e:widget-text-xss` |
-| [VIZ-056](../product/05-visualisation-catalogue.md#viz-056--no-arbitrary-iframes) | §4.1 (T24-005, T24-006, T24-016), §5.4 | `unit:markdown-iframe`; `unit:find-iframes`; `unit:import-text-iframe`; `fuzz:markdown-nodes`; `e2e:widget-text-xss` |
+| [VIZ-053](../product/05-visualisation-catalogue.md#viz-053--widgets-available) (Text and Clock rows) | §4.1 (T24-002, T24-008 to T24-012, T24-014), §5.1, §5.2a | `e2e:widget-text`; `e2e:widget-clock` |
+| [VIZ-054](../product/05-visualisation-catalogue.md#viz-054--markdown-and-html-are-always-sanitised) | §4.1 (T24-004, T24-006, T24-007, T24-018), §4.2 | `unit:markdown-nodes`; `fuzz:markdown-nodes`; `e2e:widget-text-xss`; `unit:xss-e2e-cases` |
+| [VIZ-056](../product/05-visualisation-catalogue.md#viz-056--no-arbitrary-iframes) | §4.1 (T24-005, T24-006, T24-016), §5.4 | `unit:markdown-iframe`; `unit:find-iframes`; `unit:import-text-iframe`; `fuzz:markdown-nodes`; `e2e:widget-text-xss`; `unit:xss-e2e-cases` |
 | [VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity) | §4.1 (T24-003), §5.1 | `unit:board-spec-widgets` |
 | [VIZ-060](../product/05-visualisation-catalogue.md#viz-060--standard-panel-types-import-11) (Text and Clock rows) | §4.4 (T24-016), §5.4 | `unit:import-text-iframe`; `unit:import-size-error` |
 | [VIZ-065](../product/05-visualisation-catalogue.md#viz-065--auto-vis-rules) | §4.1 (T24-002: never auto-picked) | `e2e:widget-text` (no query) |
 | [VIZ-066](../product/05-visualisation-catalogue.md#viz-066--table-view-and-csv-for-every-vis), [VIZ-068](../product/05-visualisation-catalogue.md#viz-068--screen-reader-summary-per-viewport) | §4.1 (T24-002, T24-009, T24-017) | `e2e:widget-a11y` |
-| [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) | §4.1 (T24-013, T24-015), §10 | `golden:widget-gallery` |
+| [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) | §4.1 (T24-013, T24-015), §10 | `golden:widget-gallery`; `unit:widget-gallery-route` |
 | [VL-012](../product/08-visual-language.md#vl-012--numbers-for-humans) | §4.1 (T24-012) | `unit:clock-countdown`; `unit:countdown-due` |
 | [VL-014](../product/08-visual-language.md#vl-014--purposeful-motion-only), [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) | §4.1 (T24-015) | `e2e:widget-clock` |
 | [T08-009](T08-dom-component-kit.md#t08-009--no-iframes), [T08-011](T08-dom-component-kit.md#t08-011--markdown-cannot-produce-html) (refined) | §4.1 (T24-004, T24-006) | `unit:markdown-nodes`; `unit:markdown-iframe` |
@@ -333,7 +333,10 @@ lists one i18n line per removal (`removalMessage`); `logRemovals` does one
 **MUST** — `$name`/`${name}` (`VARIABLE_REF`) and `{{entity}}` are replaced after parsing, in `text`
 nodes and destinations only (destinations: `encodeURIComponent`, then T24-005). Code and `__` macros
 stay literal. Unresolved references stay literal and log `unresolved`. `{{entity}}` is
-`useContextEntity()` (`null` for now).
+`useContextEntity()` (`null` for now). A Markdown-mode Text's references join the board's variables
+after the data panels' (in panel order, without duplicates), so the filter bar offers them; code
+mode and the other widgets add none. The renderer gets only the set variables the content
+references, so another variable's change renders no Text.
 
 #### T24-009 — Structure
 **MUST** — Heading n → `<h{min(n+3,6)}>`. The body is `role="region"` labelled by the title, with
@@ -367,10 +370,14 @@ only.
 
 #### T24-014 — Widget states
 **MUST** — An empty Text shows "This text panel is empty" (view) or "Write Markdown" (edit). Invalid
-options never render.
+options never render: the view validates first with the save's own rules (`widgetVisErrors`, §5.2a)
+and then neither renders nor loads the renderer. On a board it says "This text can't be shown:
+‹reason›"; the editor's preview says "Preview unavailable: ‹reason›" in a status that describes the
+region, and the field shows the same reason.
 
 #### T24-015 — Look
-**MUST** — Inter 14/22 (Compact 13/20), code in JetBrains Mono; clock tabular figures at 32/24/18 px
+**MUST** — Inter 14/22 (Compact 13/20; the Text widget uses the Compact metrics until VL-013 sets the
+density), code in JetBrains Mono; clock tabular figures at 32/24/18 px
 (1 / 2–4 / more zones); a 4 px grid, 16 px padding and hairline rows. The only motion is a 150 ms
 crossfade, cut under reduced motion.
 
@@ -1402,6 +1409,52 @@ Dependencies ([ADR-0024](../adr/0024-markdown-runtime-dependencies.md)): `depend
 plus `entities`, `mdurl`, `minimist`; pins `commonmark` 0.31.2, `parse5` 8.1.1 (moves from
 devDependencies), `parse5-sax-parser` 8.0.1; `@types/commonmark` as a dev dependency.
 
+### 5.2a Text view, registry and actions (`client/src/widgets/`, `pages/board/`; #198 Part 3a)
+
+```ts
+// widgets/text/TextBody.tsx (board route chunk; imports no sanitiser module, types aside)
+export const loadTextMarkdown = () => import('./TextMarkdown');
+export type RegionName = { labelledBy: string } | { label: string };
+export const TextBody: MemoExoticComponent<(p: { panel: WidgetPanelSpec; name: RegionName;
+  editing: boolean; context: 'board' | 'preview' }) => ReactElement>;
+export function textVars(all: ReadonlyMap<string, string>, o: TextOptions): ReadonlyMap<string, string>;
+// widgets/text/TextMarkdown.tsx: the one dynamic entry, the only importer of sanitise/markdown
+export function TextContent(p: { panelId: string; options: TextOptions; vars: ReadonlyMap<string, string> }): ReactElement;
+export function TextRemovals(p: { options: TextOptions; vars: ReadonlyMap<string, string> }): ReactElement | null;
+// boards/spec.ts: checkBoardSpec of a one-panel probe board, the /vis errors relative to the panel
+export function widgetVisErrors(panel: WidgetPanelSpec): FieldError[];
+// widgets/text/textVis.ts: keeps original's stored representation (absent defaults stay absent)
+export function textVis(o: TextOptions, original: WidgetPanelSpec['vis'] | undefined): WidgetPanelSpec['vis'];
+// widgets/registry.tsx
+export interface WidgetDef { kind: WidgetKind; label: MessageId; editTitle: MessageId;
+  size: { w: number; h: number }; newVis(): WidgetPanelSpec['vis']; Editor: ComponentType<WidgetEditorBodyProps> }
+export const WIDGETS: WidgetRegistry;                        // { defs: [TEXT_DEF] }, menu order
+export const WidgetRegistryContext: Context<WidgetRegistry>; // default WIDGETS
+// boards/editorState.ts
+| { type: 'addWidget'; vis: WidgetPanelSpec['vis']; size: { w: number; h: number }; grid?: GridRef }
+| { type: 'updateWidget'; id: string; patch: { title?: string; vis?: WidgetPanelSpec['vis'] } }
+```
+
+**States.** The body is one region in every state (T24-009), named by the frame's heading on a
+board and "Preview: ‹title or Text›" in the editor. In order: `invalid` (`widgetVisErrors` ≠ [];
+T24-014), `empty`, `loading`, `error` (the entry failed; no retry) and `content`. Options and
+variables reach `TextContent` through `useDeferredValue` (M0). The tab stop is set while
+`scrollHeight > clientHeight`, measured by one `ResizeObserver` on the region and its content and
+after every commit that changes the state, the options or the variables (T24-017).
+
+**Module rules.** No Markdown module (the five packages, `markdown.tsx`, `findIframes.ts`,
+`TextMarkdown.tsx`) may be in the static closure of `index.html` or `BoardPage`; a missing root, a
+dangling import, an unmapped chunk or a missing, static or empty entry also fails
+([T05](T05-testing-and-performance.md) §7.1, `ci:dep-audit`). The entry's chunk is a lazy chunk of at
+most 120 KB.
+
+**Registry and actions.** "Add widget" (the toolbar and each section header) lists the registry's
+defs and dispatches `addWidget(def.newVis(), def.size)`, which shares `addPanel`'s path (the panel
+cap, the first free cell, a collapsed section opens) and selects the panel. A widget's menu has
+Edit panel iff its kind has a def; the widget editor shows Title and the def's `Editor`, and
+`updateWidget` applies only to a widget of the patch's kind. Both actions are edits (none while
+saving). A test, or a later kind, provides another registry through the context.
+
 ### 5.3 Wall clock (`client/src/state/wallClock.ts`)
 
 ```ts
@@ -1585,9 +1638,17 @@ AnnotationCreate: + entity? { binding: slug of a binding in the org, kind, attrs
 Annotation: + entity (required: { id: EntityId, binding: slug, kind, ident: (string | null)[] in schema order } | null)
 /annotations get: + kind[] ≤ 4 (any-of) · tag[] ≤ 8 (all-of) · entity[] ≤ 16 EntityIds (any-of) · orgWide (only with entity)
   · beforeAt + beforeId (both or neither) → 400 annotations.‹param›.invalid
+  # a repeated value, an upper-case id, a repeated orgWide / beforeAt / beforeId, or orgWide without entity → 400;
+  # a missing cursor partner is reported on the missing one's pointer (beforeId alone → /beforeAt)
 AnnotationList: + applied (required: { kinds?, tags?, entity?, orgWide?, before? }: what was applied)
   · next (required: { at, id } | null) · orgWideHidden (required: integer ≥ 0, or null when scoped)
+all three routes: + 403 scope_denied: "data scope denied" (unset or uncompilable scope, no fields), or
+  "outside your data scope" with one field: /entity annotations.entity.scope or /entity annotations.scope
 ```
+
+`orgWideHidden` is a count of the organisation-wide rows in `base` that an entity filter without
+`orgWide` excluded (0 with no entity filter); the statement always computes it, and the BFF sends
+null when the scope is not full (where it is always 0, because `P` admits no organisation-wide row).
 
 `limit` stays 1–500 (default 500). The list reads `limit + 1` rows: more than `limit` → the extra row
 is trimmed, `next` = the last kept row's `(at, id)`, and `truncated` = `next ≠ null`.
@@ -1962,16 +2023,16 @@ WITH base AS (SELECT id, at, end_at, kind, text, tags, entity_key, entity FROM a
     AND ($scope_full OR entity_key IS NOT NULL AND EXISTS (           -- the data scope P, fail closed
       SELECT 1 FROM jsonb_array_elements($scope) c
       WHERE c->>'k' = a.entity->>'kind'
-        AND (c->'b' IS NULL OR c->'b' ? (a.entity->>'binding_id'))
+        AND (c->'b' IS NULL OR c->'b' @> jsonb_build_array(a.entity->>'binding_id'))
         AND NOT EXISTS (SELECT 1 FROM jsonb_each(c->'a') kv
-                        WHERE NOT coalesce(kv.value ? (a.entity->'attrs'->>kv.key), false))))
+                        WHERE NOT kv.value @> jsonb_build_array(a.entity->'attrs'->>kv.key))))
     AND at <= $to AND at >= $from - interval '31 days' AND coalesce(end_at, at) >= $from   -- the overlap set
     AND (cardinality($kinds::text[]) = 0 OR kind = ANY ($kinds)) AND tags @> $tags::text[]),
 f AS (SELECT * FROM base
   WHERE cardinality($ents::text[]) = 0 OR entity_key = ANY ($ents) OR ($org_wide AND entity_key IS NULL)),
-st AS (SELECT CASE WHEN $scope_full THEN count(*) FILTER (
-         WHERE cardinality($ents::text[]) > 0 AND NOT $org_wide AND entity_key IS NULL) END AS org_wide_hidden
-       FROM base)                                                     -- NULL when scoped
+st AS (SELECT count(*) FILTER (
+         WHERE cardinality($ents::text[]) > 0 AND NOT $org_wide AND entity_key IS NULL) AS org_wide_hidden
+       FROM base)                                                     -- the BFF sends null when scoped
 SELECT st.org_wide_hidden, h.* FROM st
 LEFT JOIN LATERAL (SELECT * FROM f WHERE NOT $has_before OR (at, id) < ($before_at, $before_id)
                    ORDER BY at DESC, id DESC LIMIT $lim) h ON true
@@ -1984,7 +2045,10 @@ ORDER BY h.at DESC NULLS LAST, h.id DESC;   -- the all-NULL sentinel exists only
 ```
 
 `annotations_at (org_id, at)` serves the keyset order; the 31-day lower bound on `at` is exact
-because a range is at most 31 days (T11 §4.4).
+because a range is at most 31 days (T11 §4.4). `P` uses `@>` with `jsonb_build_array` (not `?`, which
+sqlc reads as a parameter), and a missing attribute gives `[null]`, which no allowed list contains;
+the compiled `$scope` never holds a JSON `null`. `P` is byte-identical in the list and the delete
+statement.
 
 **Part E, step 1a.** The two assets (§5.12) are static files committed in the client tree and
 built into the client like any other asset, so they are in the signed manifest of
@@ -2014,6 +2078,34 @@ link, a reload and history reproduce them; they are never stored and never sent 
 The Markdown and parse5 code loads as lazy chunks within the ADR-0014 §8 budgets (ADR-0024).
 Report-only: `bench:markdown-render` (64 KiB ≤ 16 ms p95) and `bench:clock-tick` (20 Clocks × 12 zones
 ≤ 2 ms per tick).
+
+#198 Part 3b: `bench:text-widget-render` measures the Text widget in Chromium on the production
+stub build. Board P holds 6 Text panels (4 × the gallery's 2 KiB runbook, a 16 KiB and a 64 KiB
+`benchInput`, each with a `$env` line, no data panel). Steps: `open` (a new context), `var` (5
+filter-bar changes of `env`, each a memo miss), `type16` and `type64` (10 and 5 characters typed in
+the editors). Per step it reports the uncached render (`markdown:render:<bucket>` measures, stub and
+dev builds only; `le4k`, `le16k`, `le64k` by UTF-8 bytes) as p50, p95 and max, the main-thread tasks
+over 16 ms and the event-latency p95. Report-only; `LONG_TASK_GATE=enforce` fails a `le4k` or
+`le16k` render p95 or long task over 16 ms, or a `le64k` render p95 over 16 ms.
+
+Measured at landing (ms; Chromium in the pinned e2e container on a shared workstation, not the
+reference lab; the four runbook copies share one memo entry):
+
+| Step | `le4k` p50 / p95 (n) | `le16k` p50 / p95 (n) | `le64k` p50 / p95 (n) | Tasks over 16 ms (worst) | Event latency p95 |
+|---|---|---|---|---|---|
+| `open` | 6.8 / 6.8 (1) | 11.5 / 11.5 (1) | 19.0 / 19.0 (1) | 9 (104.4 ms) | — |
+| `var` | 0.6 / 2.2 (5) | 4.0 / 13.9 (5) | 16.4 / 18.4 (5) | 64 (67.1 ms) | 111.4 ms (click) |
+| `type16` | — | 2.8 / 9.5 (10) | — | 43 (78.5 ms) | 81.0 ms (keydown) |
+| `type64` | — | — | 10.8 / 35.6 (5) | 41 (117.0 ms) | 70.3 ms (keydown) |
+
+M1 is triggered (the `le64k` render p95 is over 16 ms in every step), and so is M2 (`type16` has
+tasks up to 78.5 ms while its `le16k` render p95 is 9.5 ms). Each becomes a follow-up issue.
+
+| Rung | Trigger | Design |
+|---|---|---|
+| M0 (Part 3a) | — | Deferred values, the narrowed variables key, one memoised `TextContent` per panel |
+| M1 | `le64k` or `le16k` render p95 > 16 ms | Content over 8 KiB is parsed and walked in a module worker inside the Markdown chunk. `renderMarkdown` splits into `planMarkdown` (the same walk, producing serialisable records and removals) and `planToReact`. The key is unchanged, and the previous output stays until the result arrives |
+| M2 | A commit long task over 16 ms while the render p95 is ≤ 16 ms | Commit the top-level blocks in slices of ≤ 200 elements per frame, in a transition |
 
 Part B1: list widgets render plain DOM, without virtualisation (1 000 rows fit). Report-only:
 `bench:widget-lists` (a 1 000-row re-render ≤ 16 ms p95).
@@ -2130,15 +2222,28 @@ Written first in the implementation issues. Origin `https://dash.test`; all fail
 | `unit:security-lint` | scripts/security-plugin.test.ts | `ESLint.lintText` snippets | `security/no-iframe` (`ci:no-iframe`) on JSX `iframe`/`frame`/`frameset`/`object`/`embed`, `createElement` of those (any case), `srcDoc` and `srcdoc` assignment, `new DOMParser` (also `window.DOMParser`), `.createContextualFragment(`, static computed keys included; `security/no-html-sink` on `innerHTML`/`outerHTML`/`insertAdjacentHTML` in every spelling; `security/markdown-boundary` on commonmark outside `sanitise/`, parse5 or the alias outside `findIframes.ts`, `HtmlRenderer`/`XmlRenderer`, `minimist`, bare `parse5-sax-parser` outside its test; the full config applies both | VIZ-056, T08-009 |
 | `unit:bundle-modules` | scripts/check-bundle-modules.test.ts, config/moduleGraph.test.ts | graph fixtures (one a worker chunk); a probe build whose worker extends `node:stream` | `minimist`, `node:` (with or without NUL), `__vite-browser-external`, `SAXParser`'s entry → one `forbidden-module` each, exit 1; clean → exit 0; missing → exit 2 | ADR-0024 |
 | `unit:sanitise-bundle` | scripts/sanitise-bundle.test.ts | Vite build of a probe lazily importing the sanitiser | no forbidden module; lazy chunk ≤ 100 000 bytes brotli 11; a probe extending `node:stream` `Transform` is caught | ADR-0024, ADR-0014 §8 |
+| `unit:text-widget` | widgets/text/TextBody.test.tsx | `env=prod`; `# R`, a link, `Env $env`; code `promql`; `''`, `'  '` in view and edit; the removal-redaction input; a rejecting entry | `h4` "R"; a new-tab `a` with the three `rel` values; "Env prod"; `<pre><code data-lang="promql">` literal; empty / "Write Markdown" with no chunk load; `logRemovals` once with `[linkScheme]`; the load-failed text | T24-008, T24-014 |
+| `unit:text-region` | same | each state, on a board and in the preview, titles `Runbook` and `''` | the board name "Runbook" in every state; "Preview: Runbook", "Preview: Text"; `data-text-state` | T24-009 |
+| `unit:text-overflow` | same | `clientHeight` 100, `scrollHeight` the content's length; 50 → 200 → 50, exactly 101 and 100; a `$env` value grows and shrinks; a resize | `tabIndex` 0 after each growth and at 101, absent after each shrink and at 100, with no region resize; the resize measures | T24-017 |
+| `unit:text-invalid` | same + `widgetVisErrors` | 65 537-byte content; `language` in Markdown mode; the `invalid.json` text rows | the renderer and the entry never called; preview status "Preview unavailable: Use at most 65 536 bytes." described by the region; board text; the rows' fields without the panel prefix | T24-014 |
+| `unit:text-widget-vars` | same | `env` changes, then an unrelated `zone` | one memo miss and the new text; then no `TextContent` render and no lookup | T24-008 |
+| `unit:board-variables` | boards/variables.test.ts | a query with `$env`; Markdown `$region ${env}`; code `$x`; a clock | `['env', 'region']` | T24-008 |
+| `unit:widget-add` | boards/editorState.test.ts | `addWidget`: top, a collapsed section, a data vis, 200 panels, a full grid; `updateWidget`: same kind, other kind, no vis, a data panel; while saving | added 6 × 6, selected, the section open; unchanged; `board.fullPanels`; `board.full`; patched; unchanged; title only; unchanged; ignored | VIZ-053 |
+| `unit:widget-editor` | pages/board/WidgetEditor.test.tsx | Edit panel on p-1; Content; Code; Markdown; a 65 537-byte paste; Remove; Done | "Edit text panel"; the panel and preview follow; Plain text; no `language` after Markdown; `content.tooLong` under Content and in the preview, no render; the removal list; focus to Add panel / the menu | T24-007, T24-014 |
+| `unit:widget-spec-roundtrip`, `unit:text-vis-roundtrip` | BoardWidgets.test.tsx, widgets/text/textVis.test.ts | `v5-widgets.json`: edit and type back; Discard; Save; refetch. p-3 without options typed and deleted | clean after typing back; Discard gives the head; the PUT is the fixture with one change, the other panels byte-equal; p-3 stays without options | T24-002, T24-003 |
+| `unit:widget-registry-generic` | BoardWidgets.test.tsx | a context with `TEXT_DEF` and a test-only clock def | the menu lists both; the def's `newVis` and size; its editor title and body; the saved vis; Edit panel on the stored clock | §5.2a |
+| `unit:bundle-modules` (Markdown) | scripts/check-bundle-modules.test.ts | manifests: Markdown only through `dynamicImports`; in a route chunk; no root; a dangling import; an unmapped chunk; no, static or empty entry; no manifest | [] and exit 0; exactly one finding each, exit 1; exit 2 | ADR-0014 §8, ADR-0024 |
 | `unit:clock-format` | widgets/clock/format.test.ts | 12:34:56Z, Context London, en-GB | Tokyo `21:34` `Thu 26 Nov` `UTC+09:00` night; New York `07:34` `UTC−05:00` day; Auckland `01:34` `Fri 27 Nov` `+1 day` night; UTC `12:34` `UTC` day; `h12` Tokyo `9:34 pm` | T24-010, 013 |
 | `unit:clock-countdown` | same | `to` 14:49:56Z, 12:35:38Z, 12:34:56Z, 12:22:56Z, +2 d 3 h | `in 2 h 15 min`, `in 42 s`, `since 21:34 (0 s)`, `since 21:22 (12 min)`, `in 2 d 3 h`; `hide` + past → no row | T24-012 |
 | `unit:countdown-due` | state/wallClock.test.ts | `to` fixed; r in ms | r → (text, due, next): 125 000 (`2 min`, +5 001, `1 min`); 120 000 (`2 min`, +1, `1 min`, announced); 960 000 (`16 min`, +1, `15 min`, announced); 60 000 (`1 min`, +1, `59 s`); 1 000 (`1 s`, +1, `now`); 1 (+1, `since … (0 s)`, announced); after-`to` e 59 999 (+1 → `1 min`). Property (200 s → −130 s, 137 ms steps): text changes exactly at due | T24-011, 012 |
 | `unit:wall-clock` | same | fake timers; zone + countdown | one timer at earliest due; hidden at r = 90 s → none; visible at 30 s → all notified, `in 30 s` announced once; last unsubscribe clears | T24-011 |
-| `e2e:widget-text` | e2e/widgets.spec.ts | `"# R\n[S](https://s.test)\nEnv $env"`, env=prod | `h4`; `_blank` link; env=dev → "Env dev", no query | VIZ-053 |
-| `e2e:widget-text-xss` | same | `unit:markdown-nodes` input + iframe line; payloads set `window.__xss` | `__xss` unset; no CSP violation or page error; no `iframe`; removals `[html, html, iframe]` | VIZ-054, 056 |
+| `e2e:widget-text` | e2e/widgets.spec.ts | `"# R\n[S](https://s.test)\nEnv $env"` through the boards API, env=prod; then Edit board → Add widget → Text → `# Added` → Done → Save → reload (#198 Part 3b) | `h4`; `_blank` link with the three `rel` values; env=dev → "Env dev", no query; the region named by the title; after reload, `h4` "Added" | VIZ-053, T24-008, T24-009 |
+| `e2e:widget-text-xss` | same | (a) `unit:markdown-nodes` input + iframe line; payloads and a wrapped `alert` set `window.__xss`. (b) the whole corpus from `fixtures/xss-e2e-cases.json` (generated from the corpus: `digest`, `skip`, the `<img>` request paths), one case per fresh context (service workers blocked) on its own one-panel board, against the committed per-browser load baseline recorded from a twin board. (c) canaries c1–c12 (#198 Part 3b §4.2) | (a) `__xss` unset; no finding after the consumed Trusted Types canary; no `iframe`; the editor lists `[html, html, iframe]`. (b) the list equals the generated one; the twin's key → count map equals the baseline; per case `checkInvariants` on the rendered DOM, the `<img>` paths equal the case's, no `iframe`/`script`/`object`/`embed`/`frame`/`base`/`link`/`meta`/`form`, `__xss` unset, the document's CSP equals `CSP` exactly, the Trusted Types canary consumed, no request beyond the baseline, no image outside the case's list or loaded twice, no CSP or Trusted Types violation, console line, page error or service worker. (c) each canary gives exactly its findings | VIZ-054, 056, T18-013, T24-018 |
 | `e2e:widget-clock` | same | `page.clock` 12:34:56Z; Tokyo, NY; countdown to 12:35:56Z; reduced motion too | `in 1 min`, silent; +1 s `in 59 s`; +59 s `since 21:35 (0 s)`, announced; no transition if reduced | T24-012, VL-016 |
-| `e2e:widget-a11y` | same | both, view/edit | axe clean; T24-017 order; "Tokyo, 21:34, Thu 26 Nov, night, UTC+09:00" | T24-017, VIZ-066, 068 |
-| `golden:widget-gallery` | e2e/widget-gallery.spec.ts | 5 pages × dark/light/grey, fixed clock | CI baseline (0.1, ≤ 0.2 %) | VIZ-069, 067 |
+| `e2e:widget-a11y` | same | both, view/edit; Text (#198 Part 3b): an overflowing Text with two links and a short Text in view mode, then the editor | axe clean; T24-017 order (Text: panel menu → region → link 1 → link 2; the short region not tabbable); the preview region "Preview: ‹title›" and an over-limit content's "Preview unavailable" status; "Tokyo, 21:34, Thu 26 Nov, night, UTC+09:00" | T24-017, T24-009, T24-014, VIZ-066, 068 |
+| `golden:widget-gallery` | e2e/widget-gallery.spec.ts | 5 pages × dark/light/grey, fixed clock: `widget-text` and `widget-text-removals` from #198 Part 3b (`dev/widgets?page=`), the three Clock pages in A2; grey is CSSOM `grayscale(1)` on dark | baselines generated in the pinned e2e container (0.1, ≤ 0.2 %); a reload gives the same pixels | VIZ-069, 067, T24-015 |
+| `unit:xss-e2e-cases` | scripts/gen-xss-e2e-cases.test.ts | `--check` against the committed list; a baseline map with one count incremented (c13); one case's source changed under its id (c14); the image extraction rows and one case per skip reason (#198 Part 3b §5) | exit 0, one changed expectation → exit 1; c13 names that key, c14 that id's digest; the extracted paths; the reasons | VIZ-054, T24-018 |
+| `unit:widget-gallery-route` | src/app/router.test.tsx | `/t/demo/dev/widgets?page=widget-text`, then `…removals`; the http build | 3 `[data-text-body]`; 1 `[data-text-removals]` with 7 items; no route in the http build | VIZ-069 |
 
 Markdown inputs for the rows above (one per line, as written in the test):
 
@@ -2150,7 +2255,8 @@ V  vars {env:'prod', q:'a b&c', u:'javascript:x'}; Env $env ${env} $missing $__f
 ```
 
 `ci:dep-audit` and `ci:no-iframe` still pass. Report-only: `bench:markdown-render` (50 distinct 64 KiB
-inputs, every memo lookup a miss: the uncached p95 ≤ 16 ms), `bench:clock-tick` (20 Clocks × 12 zones ≤ 2 ms per tick). No itest until A3. Every gate is in
+inputs, every memo lookup a miss: the uncached p95 ≤ 16 ms), `bench:text-widget-render` (§7, #198
+Part 3b), `bench:clock-tick` (20 Clocks × 12 zones ≤ 2 ms per tick). No itest until A3. Every gate is in
 [T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue).
 
 Fixtures `api/fixtures/import/text-iframe.json` (all pass in a prototype; ⏎ is a newline, a leading
@@ -2327,14 +2433,14 @@ No scope above covers an organisation-wide row; full scope covers every row.
 
 | Test | File | Setup | Expected | Covers |
 |---|---|---|---|---|
-| `unit:entity-id` | annotations/entityid_test.go + `wire/fixtures/json/entity-id.json` (full UUIDs) | The T12 §4.5 vectors; `{}`; name `''`; namespace `''`; an extra key (`service.version`); kind `spaceship`; a pod without its namespace; name `1` (a number); env `prod` vs `stage` | Every T12 §4.5 id; the rest → 400 `annotations.entity.invalid` | T12-010 |
-| `itest:annotations-entity` | store/annotations_itest_test.go | C in org A; org B with a checkout@e1 change | `entity=` checkout@e1 → c1, `orgWideHidden` 3; checkout@e2 → c3; + payments@e1 → c6, c2, c1; checkout@e1 + `orgWide` → c7, c4, c1, c9; `kind` deploy + config → c6, c2, c1, c5, c9; `tag=pr:4411` → c2; payments@e1 + `flag` → `[]`; B sees none of A; bad parameters → the §5.9 400s | T24-030, T24-031 |
+| `unit:entity-id` | entity/entity_test.go + `wire/fixtures/json/entity-id.json` (full UUIDs) | The T12 §4.5 vectors; `{}`; name `''`; namespace `''`; an extra key (`service.version`); kind `spaceship`; a pod without its namespace; name `1` (a number); env `prod` vs `stage` | Every T12 §4.5 id; the rest → 400 `annotations.entity.invalid` | T12-010 |
+| `itest:annotations-entity` | annotations/annotations_itest_test.go | C in org A; org B with a checkout@e1 change | `entity=` checkout@e1 → c1, `orgWideHidden` 3; checkout@e2 → c3; + payments@e1 → c6, c2, c1; checkout@e1 + `orgWide` → c7, c4, c1, c9; `kind` deploy + config → c6, c2, c1, c5, c9; `tag=pr:4411` → c2; payments@e1 + `flag` → `[]`; B sees none of A; bad parameters → the §5.9 400s | T24-030, T24-031 |
 | `itest:annotations-scope` (+ `unit:change-scope-text`) | same (+ widgets/changeFeed/scope.test.ts) | C + c10 + c11; P_eu, P_shop, unset | Full → 10 rows; P_eu in pages of 3 → `[c11, c6, c2]`, `[c1, c5]`; P_shop → c11, c6, c2, with c11's text and tag unchanged and its entity `service shop / payments`; P_shop with `entity=` checkout@e1 → `[]` and the body has `"orgWideHidden": null`; c10 and checkout@e2 are in no structured field, page, cursor, count, CSV entity cell or Inspector fact (the free-text Tags fact excluded); unset → 403; P_shop creates checkout@e1 → 403 `annotations.entity.scope`, no entity → 403 `annotations.scope`, payments@e1 → 201 | T12-018 |
 | `itest:annotations-scope-compile` | same | Env created via `deployment.environment`, via `deployment.environment.name` and via both (`prod`); `prod` vs `stage`. The entities table above; S1–S6, T1–T3 | Env → `f8bdae9d-e739-228c-dd0e-317933242944`, attrs `{deployment.environment.name: prod}` each time; the conflict → 400; each scope covers exactly the entities listed above on create, list, markers, delete and CSV; the SQL predicate = `ScopeCovers` on every entity; `entity` and `entity_key` are set or NULL together | T12-010, T12-018 |
 | `itest:annotations-delete-scope` | same | P_shop deletes c1 (out of scope), an absent id, then c2; unset | c1 and the absent id → identical 404s, c1 kept, no audit; c2 → 204 and one audit event; unset → 403, no SQL | T12-018 |
 | `itest:annotations-keyset` | same; `limit=3` | (a) p1; insert n1 and n2; p2; p3. (b) p1; p2; delete c5 alone; p3. (c) `limit=500` | (a) p1 c7, c4, c3 (`next` 12:21:30 / c3); p2 c6, c2, c1; p3 n2, c5, c9 (`next` null); n1 absent; no id twice. (b) p3 c9. (c) one page of 8. One SELECT per page | T24-032 |
 | `itest:annotations-entity-validate` (I7) | same | Schema 5 with every row's `entity` and `entity_key` paired; apply the I7 migration | `pg_constraint.convalidated` true; an INSERT with only one of the two fails | T11-013 |
-| `itest:annotations-old-binary` | CI job in I5 | The **previous release** binary (schema 4) beside N on schema 5 | It starts; its answers have no `applied`; its create with `entity` → 400; N reads its rows with `entity: null` | T24-038, T11-015 |
+| `itest:annotations-old-binary` | `make itest-old-binary` (local; skips once the previous release has migration 5) | The **previous release** binary (schema 4) beside N on schema 5 | It starts; its answers have no `applied`; its create with `entity` → 400; N reads its rows with `entity: null` | T24-038, T11-015 |
 | `unit:change-source` | widgets/changeFeed/source.test.tsx | A counting stub; a line panel and an unfiltered feed | Concurrent mounts → 1 request; a later mount → 0; Refresh → 1; a failed refresh → the markers' notice and the feed stale; a new window → the feed hides the old rows and the markers keep theirs; an `e` → its own key | T24-030 |
 | `unit:change-pager` | widgets/changeFeed/pager.test.ts | C in pages of 3; cap 5; one page of 500; stubs 1 900 + 150 and 1 500 + 500 (`next` null, then set) | Pages of 3: 3 requests, 8 rows, "all 3 pages loaded · may have changed while loading", setsize −1; after p1 `truncated` + Load older, setsize −1; page 500 → `100 %`, setsize 8; cap 5 → c7, c4, c3, c6, c2, capped; 1 900 + 150 → 2 000, capped; 1 500 + 500 with `next` null → complete, with `next` set → capped | T24-032, T24-036 |
 | `unit:change-snapshot` | same | 2 pages of 3; a refresh whose page 0 lacks c7 and renames c4 "INC-2041 resolved"; a failing refresh; a key change | `[c4′, c3, c6]` with the older request aborted, CSV and facts matching; failure → rows kept, stale; the old key never rendered | T24-033 |
@@ -2817,7 +2923,7 @@ Implementation issues, filed after this design merges:
 | A2 — Clock | §5.3, editor, gallery `widget-clock-1`, `widget-clock-4`, `widget-clock-countdown` | A1 | T24-010–015, T24-017 |
 | A3 — Image proxy | T18-014 route, rewrite | T18 §4.9 egress guard | T18-014 |
 
-A1 needs #173 (board spec v3) and ships the widgets version, v5. It is split in three parts
+A1 needs #173 (board spec v3) and ships the widgets version, v5. It is split in five parts
 (recorded on #198):
 
 | Part | Scope | Gates |
@@ -2825,7 +2931,10 @@ A1 needs #173 (board spec v3) and ships the widgets version, v5. It is split in 
 | 1, landed | the widgets version (§5.1) in OpenAPI, Go and TS, the zone rules, the panel union (`isWidgetPanel` guards every `query` read), a widget frame showing "not available yet", and the old-binary gate run for every spec version change | `unit:board-spec-widgets`, `unit:board-spec`, `itest:board-crud`, `itest:board-zones-grandfathered`, `itest:board-spec-old-binary` |
 | 2a, landed | [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) dependencies and the `parse5-sax-parser/feedback` alias; `classifyUrl`, `toWellFormed`, `findIframes`, the import conversion (§5.4); the `security` ESLint rules (`ci:no-iframe`, the import boundary); the module-graph check on every audited build and the sanitiser size probe (≤ 100 000 bytes brotli) | `unit:classify-url`, `unit:well-formed`, `unit:find-iframes`, `unit:import-text-iframe`, `unit:import-size-error`, `unit:security-lint`, `unit:bundle-modules`, `unit:sanitise-bundle`, `ci:dep-audit` |
 | 2b, landed | the renderer (§5.2: `renderMarkdown`, `renderCode`, removals with `depth`, interpolation, the §4.2 walk and flat source lines), the generated XSS corpus and its `--check` gate, an independent URL checker and `checkInvariants`, `fuzz:markdown-nodes` (with the import inverse), `bench:markdown-render` (uncached, report-only); the renderer joins the sanitiser size probe | `unit:markdown-*`, `unit:removal-redaction`, `unit:markdown-xss-corpus`, `unit:xss-corpus-current`, `fuzz:markdown-nodes`, `unit:sanitise-bundle` |
-| 3, after 1, 2a and 2b | the Text view, its editor and removal list, adding a widget, the gallery | the §10 Text e2e and golden rows |
+| 3a, landed | the Text view (§5.2a: `TextBody`, the lazy `TextMarkdown` entry, the states and the region, validation first, the overflow tab stop, M0), `widgetVisErrors`, the widget editor with the Text body and the removal list, `textVis`, the registry as a context, `addWidget` / `updateWidget`, "Add widget" and Edit panel, Text variables on the board, the Markdown module rules and the parse5 and commonmark allowlist strings | `unit:text-*`, `unit:widget-add`, `unit:widget-editor`, `unit:widget-spec-roundtrip`, `unit:text-vis-roundtrip`, `unit:widget-registry-generic`, `unit:board-variables`, `unit:bundle-modules`, `ci:dep-audit`, `ci:bundle-size` |
+| 3b, landed | the widget gallery (`dev/widgets?page=widget-text`, `widget-text-removals`), the goldens, the e2e (the whole XSS corpus in the browser, one case per context against a committed per-browser load baseline and a generated per-case image list, with canaries), the render measures and `bench:text-widget-render` with the M1 and M2 triggers (§7) | `e2e:widget-text`, `e2e:widget-text-xss`, `e2e:widget-a11y` (Text), `golden:widget-gallery` (Text), `unit:xss-e2e-cases`, `unit:widget-gallery-route`, `bench:text-widget-render` (report-only) |
+
+A1 has landed: Parts 1 to 3b.
 
 The implementation writes
 `docs/client/widgets.md` (behaviour, Markdown, URLs, import, Clock) and updates
@@ -2965,3 +3074,6 @@ None.
 | 1.9-rc | 2026-11-26 | #216 Part 1 (I2): §5.0 the board-list version landed as v6. §5.5: the rules table (shared `sort` and `mode` per kind, with the reader guards; `query` search-only with the gateway's Cc rule and no minimum; `tag` present iff tag mode; `limit` a whole JSON number 1–50; an invalid mode skips the mode rules). §5.7: `BoardListMode`, `BoardListItem`, the old-server decoding and the stub's filter and truncation; ref rows; `withStale`, `listSetSize`, `repairActive`, `ListTable`/`listCsv`, `boardRowName`, `rankingCaption`, `boardListTable`, `boardListFacts`, `import/boardList.ts`. T24-026: both suffixes. §4.6: the note order. §11: I2 split into Part 1 (spec, API, pure modules) and Part 2 (the view, editor and the rest) |
 | 1.10-rc | 2026-11-26 | #198 Part 2a (A1): §5.2 `toWellFormed` before classification, `IframeHit` with `offset` (in `findIframes.ts`), and the SAX half through `ParserFeedbackSimulator` via the `parse5-sax-parser/feedback` alias, because `SAXParser` needs `node:stream`. §5.4 step 3: line ends as commonmark splits them, `\r` inserted after a lone `\r`, the ascending `inserted` order. §10: f11 (CRLF and CR) and f12 (a list item and a block quote); `unit:well-formed`, `unit:security-lint`, `unit:bundle-modules`, `unit:sanitise-bundle`. §11: A1 Part 2 split into 2a (landed) and 2b |
 | 1.11-rc | 2026-11-26 | #198 Part 2b (A1): §5.2 the `depth` removal kind, `removalMessage`, `sourceLines`, `MAX_DEPTH` and `toWellFormed` on the source, the values and the entity. §4.2: the tight-list paragraph, `start` only when not 1, the tree walk (post-order, explicit stack) with the pre-scan and the cost table; an over-deep block shows its whole source lines (verbatim, terminators kept) in one span with one `depth`. T24-007: `depth`. T24-018: `/api` and `/auth` images count as external (byte-level decoding, at most three rounds, invalid UTF-8 counted as a route); `ai` external and mailto links are text with host or address until the T18 §4.10 interstitial. §8: no Trusted Types policy. §10: the fuzz sets gain `span`, `class`, `aria-hidden` and depth ≤ `MAX_DEPTH`; the new unit rows, the corpus rows; the uncached bench. §11: Part 2b landed |
+| 1.12-rc | 2026-11-26 | #198 Part 3a (A1): new §5.2a (the Text view `TextBody` and its lazy `TextMarkdown` entry, the states, `widgetVisErrors`, `textVis`, the registry and its context, `addWidget` and `updateWidget`, the module rules). T24-008: a Markdown Text's references join the board's variables. T24-014: the view validates first; the preview shows "Preview unavailable". T24-015: the Text widget uses the Compact metrics until VL-013. §10: the Part 3a unit rows. §11: A1 Part 3 split into 3a (landed) and 3b |
+| 1.13-rc | 2026-11-26 | #198 Part 3b (A1): §7 `bench:text-widget-render` (the `markdown:render:<bucket>` measures in stub and dev builds, board P, the steps, the measured numbers) and the M0, M1 and M2 rungs with their triggers. §10: `e2e:widget-text` adds the Add widget flow and the named region; `e2e:widget-text-xss` runs the whole corpus in the browser (the generated case list with digests, skip reasons and image request paths; one case per fresh context against a committed per-browser load baseline; the exact CSP; a Trusted Types canary) with canaries; `e2e:widget-a11y` gains the Text rows; `golden:widget-gallery` lands the two Text pages; new `unit:xss-e2e-cases` and `unit:widget-gallery-route`. §11: Part 3b landed, A1 landed |
+| 1.14-rc | 2026-11-26 | #222 (part B2, I5): §5.9 `orgWide` only with `entity`, repeated values, upper-case ids and repeated single parameters → 400, a missing cursor partner reported on its own pointer; the 403 bodies (`scope_denied`, "data scope denied" without fields, "outside your data scope" with `/entity` `annotations.entity.scope` or `annotations.scope`); `orgWideHidden` is a count the BFF sends null when scoped. §6: `P` with `@>` and `jsonb_build_array`, byte-identical in list and delete; `org_wide_hidden` computed unconditionally. §10.2: `unit:entity-id` in `entity/entity_test.go`, the itests in `annotations/annotations_itest_test.go`, and `itest:annotations-old-binary` runs by `make itest-old-binary` (local) |

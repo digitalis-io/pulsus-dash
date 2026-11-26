@@ -1,12 +1,14 @@
 /**
  * unit:bundle-modules (plan #198 Part 2a §3.6, §5; ADR-0024 §4): no chunk of a build holds
- * `minimist`, a Node built-in (also as Vite's browser-external id) or `SAXParser`'s entry.
+ * `minimist`, a Node built-in (also as Vite's browser-external id) or `SAXParser`'s entry. Part 3a
+ * (§3.4; ADR-0014 §8): no Markdown module is in the static closure of `index.html` or `BoardPage`,
+ * and the check fails closed on a manifest it cannot follow.
  */
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { forbiddenModules } from './lib/bundleModules.ts';
+import { forbiddenModules, markdownInRoute, parseManifest } from './lib/bundleModules.ts';
 
 const clientRoot = fileURLToPath(new URL('..', import.meta.url));
 const fixtures = fileURLToPath(new URL('./__fixtures__/bundle-modules/', import.meta.url));
@@ -18,10 +20,19 @@ function graph(name: string): Record<string, string[]> {
   >;
 }
 
+function manifest(name: string) {
+  const m = parseManifest(
+    JSON.parse(readFileSync(`${fixtures}${name}/.vite/manifest.json`, 'utf8')) as unknown,
+  );
+  if (m === null) throw new Error(`${name}: not a manifest`);
+  return m;
+}
+
+/** The CLI on fixture builds: each name is an output directory under the fixtures. */
 function cli(...dirs: string[]): { status: number | null; stderr: string } {
   const r = spawnSync(
     process.execPath,
-    ['scripts/check-bundle-modules.ts', '--cache', fixtures, ...dirs],
+    ['scripts/check-bundle-modules.ts', '--cache', fixtures, ...dirs.map((d) => `${fixtures}${d}`)],
     { cwd: clientRoot, encoding: 'utf8' },
   );
   return { status: r.status, stderr: r.stderr };
@@ -65,5 +76,52 @@ describe('unit:bundle-modules', () => {
 
   it('checks every named build: one bad build fails the run', () => {
     expect(cli('clean', 'minimist').status).toBe(1);
+  });
+});
+
+const MARKDOWN_BAD: [string, string, Record<string, string>][] = [
+  [
+    'markdown-in-route',
+    'markdown-in-route',
+    { chunk: 'assets/shared-s2.js', module: '/repo/client/node_modules/commonmark/lib/index.js' },
+  ],
+  ['no-route-root', 'missing-route-root', { subject: 'src/pages/board/BoardPage.tsx' }],
+  ['bad-import', 'bad-manifest-import', { subject: '_gone.js' }],
+  ['unmapped-chunk', 'unmapped-chunk', { chunk: 'assets/BoardPage-b1.js' }],
+  ['no-markdown-entry', 'missing-markdown-entry', { subject: 'src/widgets/text/TextMarkdown.tsx' }],
+  [
+    'markdown-entry-static',
+    'missing-markdown-entry',
+    { subject: 'src/widgets/text/TextMarkdown.tsx' },
+  ],
+  [
+    'markdown-entry-empty',
+    'missing-markdown-entry',
+    { chunk: 'assets/TextMarkdown-m1.js', subject: 'src/widgets/text/TextMarkdown.tsx' },
+  ],
+];
+
+describe('unit:bundle-modules (Markdown in the route, plan #198 Part 3a §3.4)', () => {
+  it('Markdown reached only through dynamic imports → no finding, exit 0', () => {
+    expect(markdownInRoute(manifest('markdown-lazy'), graph('markdown-lazy'))).toEqual([]);
+    expect(markdownInRoute(manifest('clean'), graph('clean'))).toEqual([]);
+    expect(cli('markdown-lazy').status).toBe(0);
+  });
+
+  for (const [name, rule, at] of MARKDOWN_BAD) {
+    it(`${name} → exactly one ${rule}, exit 1`, () => {
+      const f = markdownInRoute(manifest(name), graph(name));
+      expect(f).toHaveLength(1);
+      expect(f[0]).toMatchObject({ rule, ...at });
+      const r = cli(name);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`error[${rule}]`);
+    });
+  }
+
+  it('a build without a manifest → exit 2', () => {
+    const r = cli('no-manifest');
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('manifest');
   });
 });

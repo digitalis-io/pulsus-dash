@@ -246,12 +246,54 @@ reader that forgets the widgets:
 | `PanelFrame` | any panel: a widget renders `WidgetFrame`, a data panel `DataPanelFrame` (today's body) |
 | `PanelEditor`, `PanelPreview` | a data panel only: `BoardPage` opens the editor, and sets the edited run, only when `edit` and the selected panel `isDataPanel` |
 | `updatePanel` (`editorState.ts`) | a `PanelPatch` of a data panel's title, query or vis; on a widget only the title applies |
-| `boardVariables` (`variables.ts`) | data panels only: a widget has no variables |
+| `boardVariables` (`variables.ts`) | the data panels' queries, then the Markdown Text panels' content (Part 3a, below) |
 | `HttpApi` `toBoard` | the wire spec: a widget kind becomes a `WidgetPanelSpec`; a data panel without a query is a `badResponse` |
 
 `checkBoardSpec` checks the v5 rules as the server does, in the same order and with the same
 pointers and keys ([the widgets page](widgets.md#validation)); the client does not know which zones
 exist, so `w-zone-unknown` is the one `invalid.json` row whose `client_fields` (none) differ.
+
+### Text widgets and the widget registry (#198 Part 3a)
+
+Part 3a draws Text panels and lets the board add and edit widgets through one registry
+([the widgets page](widgets.md#text-widget-part-3a)).
+
+**Add widget.** In Edit mode, `AddWidgetMenu` (`pages/board/AddWidgetMenu.tsx`) follows Add panel
+in the toolbar ("Add widget") and in each section header ("Add widget to ‹section›"). It is a
+`MenuTrigger` button listing the defs of `WidgetRegistryContext` by label, disabled while busy.
+Choosing one dispatches `addWidget` with the def's `newVis()` and `size` (and the section's grid
+from a section header). The reducer selects the new panel, so the widget editor opens.
+
+**The reducer** (`boards/editorState.ts`):
+
+```ts
+type WidgetPatch = { title?: string; vis?: WidgetPanelSpec['vis'] };
+| { type: 'addWidget'; vis: WidgetPanelSpec['vis']; size: { w: number; h: number }; grid?: GridRef }
+| { type: 'updateWidget'; id: string; patch: WidgetPatch }
+```
+
+| Action | Rule |
+|---|---|
+| `addWidget` | Shares `addPanel`'s path (`addAt(s, grid, size, make)`): at `MAX_PANELS` it announces `board.fullPanels`; with no `firstFree(size)` cell `board.full`; a collapsed section opens; it adds `{id: nextPanelId, title: '', grid, vis}` and selects it. A data `vis.kind` changes nothing |
+| `updateWidget` | `{...p, ...patch}` on a widget whose kind equals `patch.vis?.kind`, or with no vis in the patch; otherwise nothing changes |
+| `updatePanel` | unchanged: on a widget only `title` applies |
+
+Both are in `EDITS`, so neither applies while a save is in flight. The reducer needs no registry:
+the caller passes the def's vis and size.
+
+**The widget editor.** `BoardPage` keeps `dialogPanel` for data panels and adds `dialogWidget`: Edit
+mode, a selected panel, `isWidgetPanel`, and a def for its kind in the registry. It renders
+`WidgetEditor` (`pages/board/WidgetEditor.tsx`) with the def, the panel's pointer, the last save's
+fields, the mirrored status line and `original`, the head's vis of the panel (undefined for a new
+panel). `onChange` dispatches `updateWidget`, Remove panel `removePanel`, and Done `select(null)`.
+Focus then follows the panel editor's rule (`focusAfterEditor`): the panel's menu, or Add panel when
+the panel is gone. A widget's panel menu has Edit panel only when its kind has a def (Clock and
+the board list keep Duplicate and Remove).
+
+**Text variables (T24-008).** `boardVariables` lists the data panels' references first, as before.
+After them come the references in each Markdown-mode Text's `content`, in panel order and without
+duplicates. Code mode and other widgets add none. A Text panel's body passes only the referenced,
+set variables to the renderer (`textVars`), so a change to another variable renders no Text panel.
 
 ### Board list pages and filters (#216 Part 1)
 
@@ -443,9 +485,9 @@ routed through the app's router) and Copy query. Duplicate and Remove dispatch `
 code points, announced in the live region) or `removePanel` (focus then moves to Add panel); both
 are disabled while a save is in flight.
 
-A widget's menu has **Duplicate** and **Remove** only (T24-002): no Edit panel (Part 3 adds it for
-Text), Open in Explore, Copy query or Full screen. A duplicated widget keeps its `vis` and has no
-`query`.
+A widget's menu has **Edit panel** when its kind has a registry def (Text, #198 Part 3a), then
+**Duplicate** and **Remove** (T24-002): no Open in Explore, Copy query or Full screen. A duplicated
+widget keeps its `vis` and has no `query`.
 
 ## The panel editor's Query field (§3.8, §4.4)
 
@@ -648,6 +690,10 @@ failing 0.05 "SLO breach").
   [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-002, T24-003, §5.1;
   [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) VIZ-053
   (staged), VIZ-057.
+- Text widgets, Add widget and the widget editor (#198 Part 3a):
+  [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-008, T24-014, §5.2a;
+  [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) VIZ-053 (the
+  Text row); [T08](../../designs/technical/T08-dom-component-kit.md) T08-011.
 - Board tags (#215): [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-029
   and §5.5; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v3 upcast).
 - Board spec v3 and the pending kinds (#173 Parts 1 and 2):

@@ -909,8 +909,21 @@ describe('HttpApi planning (plan #112 A.7, A.11)', () => {
 describe('HttpApi annotations (plan #64 Part C §3.5)', () => {
   it('listAnnotations', async () => {
     const list = {
-      items: [{ id: 'a1', at: 1, end_at: null, kind: 'deploy', text: 'v2.31', tags: ['ci'] }],
+      items: [
+        {
+          id: 'a1',
+          at: 1,
+          end_at: null,
+          kind: 'deploy',
+          text: 'v2.31',
+          tags: ['ci'],
+          entity: null,
+        },
+      ],
       truncated: false,
+      applied: {},
+      next: null,
+      orgWideHidden: 0,
     };
     const ok = api(() => Promise.resolve(json(200, list)));
     expect(await ok.api.listAnnotations('demo', { fromMs: 1, toMs: 2 })).toEqual(list);

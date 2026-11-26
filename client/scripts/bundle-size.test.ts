@@ -30,6 +30,7 @@ const LAZY = [
   ['src/pages/SignedOutPage.tsx', 'assets/SignedOutPage-x.js'],
   ['src/shell/TimeRangeDialog.tsx', 'assets/TimeRangeDialog-x.js'],
   ['src/pages/board/BoardGrid.tsx', 'assets/BoardGrid-x.js'],
+  ['src/widgets/text/TextMarkdown.tsx', 'assets/TextMarkdown-x.js'],
 ] as const;
 
 interface Overrides {

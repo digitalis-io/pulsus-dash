@@ -1,7 +1,7 @@
 /**
  * A board section (plan #61 Part C §4.2, Appendix C-A §A.11; SRF-016, T07-012): a heading whose
  * button discloses the section's grid, the panel count and, in Edit mode, the title field, Add
- * panel and Remove section. A collapsed section renders no grid, so its panels mount no frame and
+ * panel, Add widget (plan #198 Part 3a §4.4) and Remove section. A collapsed section renders no grid, so its panels mount no frame and
  * never query.
  */
 import { useId, type ReactNode } from 'react';
@@ -11,6 +11,8 @@ import { Button } from '../../kit/Button';
 import { cx } from '../../kit/cx';
 import { Icon } from '../../kit/Icon';
 import { TextField } from '../../kit/TextField';
+import type { WidgetDef } from '../../widgets/registry';
+import { AddWidgetMenu } from './AddWidgetMenu';
 import styles from './Board.module.css';
 
 export interface BoardSectionProps {
@@ -25,6 +27,8 @@ export interface BoardSectionProps {
   onToggle: () => void;
   onTitle: (title: string) => void;
   onAddPanel: () => void;
+  /** A widget kind from the section's Add widget. */
+  onAddWidget: (def: WidgetDef) => void;
   onRemove: () => void;
   /** The section grid; rendered only when not collapsed. */
   children: ReactNode;
@@ -46,6 +50,7 @@ export function BoardSection({
   onToggle,
   onTitle,
   onAddPanel,
+  onAddWidget,
   onRemove,
   children,
 }: BoardSectionProps) {
@@ -93,6 +98,11 @@ export function BoardSection({
               <Icon name="plus" />
               {t('board.addPanel')}
             </Button>
+            <AddWidgetMenu
+              label={t('section.addWidget', { title })}
+              busy={busy}
+              onAdd={onAddWidget}
+            />
             <Button
               aria-label={t('section.remove', { title })}
               isDisabled={busy}

@@ -140,6 +140,102 @@
     {
       "url": "http://fb.me/use-check-prop-types",
       "reason": "error text of the production prop-types shim (Edit-mode chunk)"
+    },
+    {
+      "url": "http://www.w3.org/1999/xhtml",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "http://www.w3.org/2000/xmlns/",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "http://www.ibm.com/data/dtd/v11/ibmxhtml1-transitional.dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//advasoft",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//as//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//ietf//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//metrius//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//microsoft//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//netscape",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//o",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//softquad",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//softquad//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//spyglass//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//sq//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//sun",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//w3c//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//w3o//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//,-//webtechs//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//en//",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//silmaril//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//w3c//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "//w3o//dtd",
+      "reason": "parse5 namespace/DOCTYPE string (Markdown chunk)"
+    },
+    {
+      "url": "http://commonmark.org/xml/1.0",
+      "reason": "commonmark XML renderer namespace string (Markdown chunk)"
     }
   ],
   "installScripts": []

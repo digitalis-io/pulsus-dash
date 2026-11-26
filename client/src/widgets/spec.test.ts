@@ -64,6 +64,7 @@ describe('unit:widget-spec', () => {
     ]);
     expect(panels.filter(isDataPanel).map((p) => p.id)).toEqual(['p-5']);
     expect([...WIDGET_KINDS].sort()).toEqual(['boardList', 'clock', 'text']);
-    expect([...PENDING_WIDGETS].sort()).toEqual(['boardList', 'clock', 'text']);
+    // Text draws from plan #198 Part 3a.
+    expect([...PENDING_WIDGETS].sort()).toEqual(['boardList', 'clock']);
   });
 });

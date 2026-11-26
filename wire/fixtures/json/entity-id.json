@@ -1,0 +1,391 @@
+{
+  "description": "EntityId vectors (T12-010, T12 §4.5, T24 §10.2 unit:entity-id): canonicalisation, canonical length and id per binding.",
+  "bindings": {
+    "e1": {
+      "id": "00000000-0000-4000-8000-0000000000e1",
+      "slug": "prod-eu"
+    },
+    "e2": {
+      "id": "00000000-0000-4000-8000-0000000000e2",
+      "slug": "prod-us"
+    }
+  },
+  "valid": [
+    {
+      "name": "checkout@e1",
+      "binding": "e1",
+      "kind": "service",
+      "attrs": {
+        "service.name": "checkout"
+      },
+      "canonLen": 38,
+      "ident": [
+        null,
+        "checkout"
+      ],
+      "canonical": {
+        "service.name": "checkout"
+      },
+      "id": "bb7487bd-100d-a998-e0f0-3c65f11da1a7",
+      "canonHex": "0110000000000000400080000000000000e1010773657276696365000108636865636b6f7574"
+    },
+    {
+      "name": "checkout@e2",
+      "binding": "e2",
+      "kind": "service",
+      "attrs": {
+        "service.name": "checkout"
+      },
+      "canonLen": 38,
+      "ident": [
+        null,
+        "checkout"
+      ],
+      "canonical": {
+        "service.name": "checkout"
+      },
+      "id": "3d1d4695-d757-d5f8-d6bf-c1b134128742"
+    },
+    {
+      "name": "payments@e1",
+      "binding": "e1",
+      "kind": "service",
+      "attrs": {
+        "service.name": "payments",
+        "service.namespace": "shop"
+      },
+      "canonLen": 43,
+      "ident": [
+        "shop",
+        "payments"
+      ],
+      "canonical": {
+        "service.name": "payments",
+        "service.namespace": "shop"
+      },
+      "id": "854bc89f-5785-b55c-398b-87a03d62a7d9"
+    },
+    {
+      "name": "payments@e1 reversed",
+      "binding": "e1",
+      "kind": "service",
+      "attrs": {
+        "service.namespace": "shop",
+        "service.name": "payments"
+      },
+      "canonLen": 43,
+      "ident": [
+        "shop",
+        "payments"
+      ],
+      "canonical": {
+        "service.name": "payments",
+        "service.namespace": "shop"
+      },
+      "id": "854bc89f-5785-b55c-398b-87a03d62a7d9"
+    },
+    {
+      "name": "gateway@e1",
+      "binding": "e1",
+      "kind": "service",
+      "attrs": {
+        "service.name": "gateway"
+      },
+      "canonLen": 37,
+      "ident": [
+        null,
+        "gateway"
+      ],
+      "canonical": {
+        "service.name": "gateway"
+      },
+      "id": "af71dde5-5f66-4d0b-7ba4-e96eba601d3c"
+    },
+    {
+      "name": "env prod via deployment.environment.name",
+      "binding": "e1",
+      "kind": "environment",
+      "attrs": {
+        "deployment.environment.name": "prod"
+      },
+      "canonLen": 37,
+      "ident": [
+        "prod"
+      ],
+      "canonical": {
+        "deployment.environment.name": "prod"
+      },
+      "id": "f8bdae9d-e739-228c-dd0e-317933242944"
+    },
+    {
+      "name": "env prod via deployment.environment",
+      "binding": "e1",
+      "kind": "environment",
+      "attrs": {
+        "deployment.environment": "prod"
+      },
+      "canonLen": 37,
+      "ident": [
+        "prod"
+      ],
+      "canonical": {
+        "deployment.environment.name": "prod"
+      },
+      "id": "f8bdae9d-e739-228c-dd0e-317933242944"
+    },
+    {
+      "name": "env prod via both",
+      "binding": "e1",
+      "kind": "environment",
+      "attrs": {
+        "deployment.environment.name": "prod",
+        "deployment.environment": "prod"
+      },
+      "canonLen": 37,
+      "ident": [
+        "prod"
+      ],
+      "canonical": {
+        "deployment.environment.name": "prod"
+      },
+      "id": "f8bdae9d-e739-228c-dd0e-317933242944"
+    },
+    {
+      "name": "env stage",
+      "binding": "e1",
+      "kind": "environment",
+      "attrs": {
+        "deployment.environment": "stage"
+      },
+      "canonLen": 38,
+      "ident": [
+        "stage"
+      ],
+      "canonical": {
+        "deployment.environment.name": "stage"
+      },
+      "id": "ac9609b4-95c1-1f31-60b9-bd315336ed95"
+    },
+    {
+      "name": "service name a x 98",
+      "binding": "e1",
+      "kind": "service",
+      "attrs": {
+        "service.name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "canonLen": 128,
+      "ident": [
+        null,
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "canonical": {
+        "service.name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "id": "a8e1fb45-80e1-e472-a1ed-ab67c5b576d4"
+    },
+    {
+      "name": "service name a x 99",
+      "binding": "e1",
+      "kind": "service",
+      "attrs": {
+        "service.name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "canonLen": 129,
+      "ident": [
+        null,
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "canonical": {
+        "service.name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "id": "95750f96-d723-0643-f7f3-8e724cf14590"
+    },
+    {
+      "name": "service name a x 209",
+      "binding": "e1",
+      "kind": "service",
+      "attrs": {
+        "service.name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "canonLen": 240,
+      "ident": [
+        null,
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "canonical": {
+        "service.name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "id": "23c110a8-13f7-a9fa-317a-43225690cf0d"
+    },
+    {
+      "name": "service name a x 210",
+      "binding": "e1",
+      "kind": "service",
+      "attrs": {
+        "service.name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "canonLen": 241,
+      "ident": [
+        null,
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "canonical": {
+        "service.name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "id": "8dbfe8f1-be3c-3fd1-0494-267a7a1e3f64"
+    },
+    {
+      "name": "pod",
+      "binding": "e1",
+      "kind": "pod",
+      "attrs": {
+        "k8s.cluster.name": "prod-eu-1",
+        "k8s.namespace.name": "shop",
+        "k8s.pod.name": "checkout-7d9f"
+      },
+      "canonLen": 55,
+      "ident": [
+        "prod-eu-1",
+        "shop",
+        "checkout-7d9f"
+      ],
+      "canonical": {
+        "k8s.cluster.name": "prod-eu-1",
+        "k8s.namespace.name": "shop",
+        "k8s.pod.name": "checkout-7d9f"
+      },
+      "id": "970888cf-821c-14c3-0155-320ca949dd19"
+    },
+    {
+      "name": "cluster A",
+      "binding": "e1",
+      "kind": "cluster",
+      "attrs": {
+        "k8s.cluster.name": "prod-eu-1"
+      },
+      "canonLen": 38,
+      "ident": [
+        "prod-eu-1"
+      ],
+      "canonical": {
+        "k8s.cluster.uid": "prod-eu-1"
+      },
+      "id": "9454e37d-718e-a60b-cea1-8827d683c0d7"
+    },
+    {
+      "name": "cluster B",
+      "binding": "e1",
+      "kind": "cluster",
+      "attrs": {
+        "k8s.cluster.uid": "c-9f2"
+      },
+      "canonLen": 34,
+      "ident": [
+        "c-9f2"
+      ],
+      "canonical": {
+        "k8s.cluster.uid": "c-9f2"
+      },
+      "id": "136e6b87-b494-b7ea-7873-c976399bcfff"
+    },
+    {
+      "name": "workload",
+      "binding": "e1",
+      "kind": "workload",
+      "attrs": {
+        "k8s.cluster.name": "c",
+        "k8s.namespace.name": "ns",
+        "$k8s.workload_kind": "Deployment",
+        "$k8s.workload_name": "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
+      },
+      "canonLen": 306,
+      "ident": [
+        "c",
+        "ns",
+        "Deployment",
+        "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
+      ],
+      "canonical": {
+        "k8s.cluster.name": "c",
+        "k8s.namespace.name": "ns",
+        "$k8s.workload_kind": "Deployment",
+        "$k8s.workload_name": "wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"
+      },
+      "id": "ef38677d-0910-f997-7822-cc2ebf03d9ad"
+    }
+  ],
+  "invalid": [
+    {
+      "name": "service {}",
+      "kind": "service",
+      "attrs": {}
+    },
+    {
+      "name": "name empty",
+      "kind": "service",
+      "attrs": {
+        "service.name": ""
+      }
+    },
+    {
+      "name": "namespace empty",
+      "kind": "service",
+      "attrs": {
+        "service.name": "checkout",
+        "service.namespace": ""
+      }
+    },
+    {
+      "name": "extra service.version",
+      "kind": "service",
+      "attrs": {
+        "service.name": "checkout",
+        "service.version": "1.0"
+      }
+    },
+    {
+      "name": "kind spaceship",
+      "kind": "spaceship",
+      "attrs": {
+        "service.name": "checkout"
+      }
+    },
+    {
+      "name": "pod without k8s.namespace.name",
+      "kind": "pod",
+      "attrs": {
+        "k8s.cluster.name": "prod-eu-1",
+        "k8s.pod.name": "checkout-7d9f"
+      }
+    },
+    {
+      "name": "name a number",
+      "kind": "service",
+      "attrs": {
+        "service.name": 1
+      }
+    },
+    {
+      "name": "env prod vs stage",
+      "kind": "environment",
+      "attrs": {
+        "deployment.environment.name": "prod",
+        "deployment.environment": "stage"
+      }
+    },
+    {
+      "name": "name of 257 a",
+      "kind": "service",
+      "attrs": {
+        "service.name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "name with U+0000",
+      "kind": "service",
+      "attrs": {
+        "service.name": "a\u0000"
+      }
+    }
+  ]
+}

@@ -6,7 +6,13 @@ import { coverageText } from '../vis/reduce';
 import { NOW_MS, S } from '../widgets/boardList/fixtures';
 import { boardSnapshot } from '../widgets/boardList/rows';
 import { listSetSize } from '../widgets/lists/snapshot';
-import { STUB_FAIL_QUERY_KEY, STUB_QUERY_DELAY_KEY, StubApi, type StubBoard } from './StubApi';
+import {
+  STUB_BOARDS_KEY,
+  STUB_FAIL_QUERY_KEY,
+  STUB_QUERY_DELAY_KEY,
+  StubApi,
+  type StubBoard,
+} from './StubApi';
 import { ApiError, BoardConflictError, type BoardSpec, type LogsRequest } from './types';
 
 async function kindOf(p: Promise<unknown>): Promise<string> {
@@ -220,6 +226,57 @@ describe('stub boards', () => {
     expect(conflict).toBeInstanceOf(BoardConflictError);
     expect((conflict as BoardConflictError).current.etag).toBe('2');
     expect((await api.saveBoard('demo', 'b-1', '2', spec)).changed).toBe(true);
+  });
+});
+
+describe('stub boards from storage (plan #198 Part 3b)', () => {
+  afterEach(() => {
+    localStorage.removeItem(STUB_BOARDS_KEY);
+  });
+  const board = (uid: string, title: string): StubBoard => ({
+    uid,
+    title,
+    updatedAt: '2026-11-19T12:00:00.000Z',
+    spec: { title, panels: [], sections: [] },
+  });
+
+  it('adds the valid boards of pulsus-dash.stub.boards to the seed', async () => {
+    localStorage.setItem(
+      STUB_BOARDS_KEY,
+      JSON.stringify([
+        board('b-bench', 'Bench'),
+        board('b-1', 'Taken uid'),
+        board('b-bad', ''),
+        { uid: 'b-shape' },
+        board('b-bench', 'Second of a uid'),
+      ]),
+    );
+    const api = new StubApi();
+    const uids = (await api.listBoards('demo')).items.map((b) => b.uid).sort();
+    expect(uids).toEqual(['b-1', 'b-2', 'b-3', 'b-bench']);
+    expect((await api.getBoard('demo', 'b-bench')).title).toBe('Bench');
+    expect((await api.getBoard('demo', 'b-1')).title).not.toBe('Taken uid');
+  });
+
+  it('HTTP builds never read the key', async () => {
+    localStorage.setItem(STUB_BOARDS_KEY, JSON.stringify([board('b-bench', 'Bench')]));
+    const get = vi.spyOn(Storage.prototype, 'getItem');
+    vi.stubEnv('VITE_API_MODE', 'http');
+    try {
+      const api = new StubApi();
+      expect(get.mock.calls.map(([k]) => k)).not.toContain(STUB_BOARDS_KEY);
+      expect((await api.listBoards('demo')).items.map((b) => b.uid)).not.toContain('b-bench');
+    } finally {
+      vi.unstubAllEnvs();
+      get.mockRestore();
+    }
+  });
+
+  it('adds none for anything but an array', async () => {
+    localStorage.setItem(STUB_BOARDS_KEY, '{"uid":"b-x"}');
+    expect((await new StubApi().listBoards('demo')).items).toHaveLength(3);
+    localStorage.setItem(STUB_BOARDS_KEY, 'not json');
+    expect((await new StubApi().listBoards('demo')).items).toHaveLength(3);
   });
 });
 

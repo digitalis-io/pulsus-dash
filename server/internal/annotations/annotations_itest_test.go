@@ -7,7 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
+	"github.com/digitalis-io/pulsus-dash/server/internal/entity"
 	"github.com/digitalis-io/pulsus-dash/server/internal/store"
 	"github.com/digitalis-io/pulsus-dash/server/internal/store/storetest"
 )
@@ -59,7 +63,7 @@ func newEnv(t *testing.T, c storetest.Cluster) *env {
 }
 
 func (e *env) rc(org core.OrgID) *core.RequestCtx {
-	return &core.RequestCtx{Org: org, Actor: core.LocalActor(), RequestID: "itest-1"}
+	return &core.RequestCtx{Org: org, Actor: core.LocalActor(), RequestID: "itest-1", Scope: core.FullTenantScope()}
 }
 
 func (e *env) newOrg(t *testing.T, slug string) core.OrgID {
@@ -86,11 +90,11 @@ func (e *env) create(t *testing.T, org core.OrgID, a core.NewAnnotation) core.An
 
 func (e *env) list(t *testing.T, org core.OrgID, from, to time.Time, limit int) ([]core.Annotation, bool) {
 	t.Helper()
-	items, truncated, err := e.svc.ListAnnotations(itestCtx(t), e.rc(org), from, to, limit)
+	page, err := e.svc.ListAnnotations(itestCtx(t), e.rc(org), from, to, limit, core.AnnotationFilter{})
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	return items, truncated
+	return page.Items, page.Next != nil
 }
 
 func ids(items []core.Annotation) []uuid.UUID {
@@ -240,7 +244,7 @@ func TestAnnotationsAudit(t *testing.T) {
 			if got := strings.Join(actions, ","); got != "annotation.create,annotation.delete" {
 				t.Fatalf("actions = %s, want annotation.create,annotation.delete", got)
 			}
-			a := `{"id":"` + x.ID.String() + `","at":1767227400000,"end_at":1767227460000,"kind":"config","text":"flags","tags":["ci"]}`
+			a := `{"id":"` + x.ID.String() + `","at":1767227400000,"end_at":1767227460000,"kind":"config","text":"flags","tags":["ci"],"entity":null}`
 			if !sameJSON(t, evs[0].Diff, `[{"op":"add","path":"","value":`+a+`}]`) {
 				t.Errorf("create diff = %s", evs[0].Diff)
 			}
@@ -287,6 +291,584 @@ func TestAnnotationsChecks(t *testing.T) {
 			}
 			if code := appInsertCode(t, e.db.AppURL, e.org, "2026-01-01T00:31:00Z", "deploy"); code != "" {
 				t.Errorf("valid row: SQLSTATE %q, want success", code)
+			}
+		})
+	}
+}
+
+// The T24 §10.2 fixtures: bindings, entities, the changes of fixture C and the scopes.
+var (
+	winFrom = time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	winTo   = winFrom.Add(time.Hour)
+	bindE1  = uuid.MustParse("00000000-0000-4000-8000-0000000000e1")
+	bindE2  = uuid.MustParse("00000000-0000-4000-8000-0000000000e2")
+)
+
+// cid is change cN's id: 00000000-0000-4000-8000- + N as 12 decimal digits.
+func cid(n int) uuid.UUID { return uuid.MustParse(fmt.Sprintf("00000000-0000-4000-8000-%012d", n)) }
+
+type fixtureEntity struct {
+	binding string
+	kind    string
+	attrs   map[string]string
+}
+
+var fixtureEntities = map[string]fixtureEntity{
+	"checkout@e1": {"prod-eu", "service", map[string]string{"service.name": "checkout"}},
+	"checkout@e2": {"prod-us", "service", map[string]string{"service.name": "checkout"}},
+	"payments@e1": {"prod-eu", "service", map[string]string{"service.name": "payments", "service.namespace": "shop"}},
+	"gateway@e1":  {"prod-eu", "service", map[string]string{"service.name": "gateway"}},
+	"pod":         {"prod-eu", "pod", map[string]string{"k8s.cluster.name": "prod-eu-1", "k8s.namespace.name": "shop", "k8s.pod.name": "checkout-7d9f"}},
+	"env prod":    {"prod-eu", "environment", map[string]string{"deployment.environment.name": "prod"}},
+	"env stage":   {"prod-eu", "environment", map[string]string{"deployment.environment": "stage"}},
+	"cluster A":   {"prod-eu", "cluster", map[string]string{"k8s.cluster.name": "prod-eu-1"}},
+	"cluster B":   {"prod-eu", "cluster", map[string]string{"k8s.cluster.uid": "c-9f2"}},
+}
+
+// newEntity canonicalises a fixture entity as the gateway does.
+func newEntity(t *testing.T, f fixtureEntity) *core.NewEntity {
+	t.Helper()
+	raw := map[string]json.RawMessage{}
+	for k, v := range f.attrs {
+		b, _ := json.Marshal(v)
+		raw[k] = b
+	}
+	c, err := entity.Canonicalise(f.kind, raw)
+	if err != nil {
+		t.Fatalf("canonicalise %+v: %v", f, err)
+	}
+	return &core.NewEntity{Binding: f.binding, CanonicalEntity: c}
+}
+
+type change struct {
+	n       int
+	kind    core.AnnotationKind
+	at, end string // HH:MM:SS on 2026-11-26; end "" = a point
+	text    string
+	tags    []string
+	entity  string // a fixtureEntities name, "" = organisation-wide
+}
+
+func hms(s string) time.Time {
+	t, err := time.Parse("2006-01-02 15:04:05", "2026-11-26 "+s)
+	if err != nil {
+		panic(err)
+	}
+	return t.UTC()
+}
+
+var fixtureC = []change{
+	{1, core.AnnotationDeploy, "12:10:00", "", "checkout v2.31", []string{"pr:4402"}, "checkout@e1"},
+	{2, core.AnnotationConfig, "12:19:02", "", "payments.psp.timeout 5000→2000", []string{"pr:4411"}, "payments@e1"},
+	{3, core.AnnotationFlag, "12:21:30", "", "new-checkout-flow 10%→50%", nil, "checkout@e2"},
+	{4, core.AnnotationNote, "12:23:00", "12:40:00", "INC-2041 mitigation window", nil, ""},
+	{5, core.AnnotationDeploy, "11:50:00", "12:05:00", "gateway v1.8 rollout", nil, "gateway@e1"},
+	{6, core.AnnotationConfig, "12:19:02", "", "payments.retry 3→1", nil, "payments@e1"},
+	{7, core.AnnotationNote, "12:30:00", "", `=HYPERLINK("a")`, nil, ""},
+	{8, core.AnnotationDeploy, "11:20:00", "11:40:00", "checkout v2.30", nil, "checkout@e1"},
+	{9, core.AnnotationConfig, "11:30:00", "12:00:00", "edge cache ttl 60→30", nil, ""},
+}
+
+var scopeAdds = []change{
+	{10, core.AnnotationNote, "12:35:00", "", "rollback near checkout@e2", nil, ""},
+	{11, core.AnnotationConfig, "12:33:00", "", "retries raised after checkout@e2 timeouts", []string{"rel:checkout-prod-us"}, "payments@e1"},
+}
+
+func shopClause() core.ScopeClause {
+	return core.ScopeClause{Attrs: map[string][]string{"service.namespace": {"shop"}}}
+}
+
+var (
+	scopeEU   = core.ScopedTenant(core.ScopeClause{Bindings: []uuid.UUID{bindE1}})
+	scopeShop = core.ScopedTenant(shopClause())
+)
+
+// seedBindings inserts the fixture bindings e1 (prod-eu) and, with both, e2 (prod-us) into org
+// (superuser SQL).
+func (e *env) seedBindings(t *testing.T, org core.OrgID, both bool) {
+	t.Helper()
+	ins := "INSERT INTO tenant_bindings (org_id, id, slug, datasource_url) VALUES ($1, $2, $3, 'http://pulsusdb.test')"
+	storetest.Exec(t, e.db.SuperURL, ins, uuid.UUID(org), bindE1, "prod-eu")
+	if both {
+		storetest.Exec(t, e.db.SuperURL, ins, uuid.UUID(org), bindE2, "prod-us")
+	}
+}
+
+// rcScope is a request context of org with the given scope.
+func (e *env) rcScope(org core.OrgID, s core.DataScope) *core.RequestCtx {
+	rc := e.rc(org)
+	rc.Scope = s
+	return rc
+}
+
+// createChange creates c through the service with full scope, under cN's id.
+func (e *env) createChange(t *testing.T, org core.OrgID, c change) core.Annotation {
+	t.Helper()
+	n := core.NewAnnotation{At: hms(c.at), Kind: c.kind, Text: c.text, Tags: c.tags}
+	if n.Tags == nil {
+		n.Tags = []string{}
+	}
+	if c.end != "" {
+		n.EndAt = ptr(hms(c.end))
+	}
+	if c.entity != "" {
+		n.Entity = newEntity(t, fixtureEntities[c.entity])
+	}
+	id := cid(c.n)
+	e.svc.newID = func() (uuid.UUID, error) { return id, nil }
+	defer func() { e.svc.newID = core.NewID }()
+	got, err := e.svc.CreateAnnotation(itestCtx(t), e.rc(org), n)
+	if err != nil {
+		t.Fatalf("create c%d: %v", c.n, err)
+	}
+	return got
+}
+
+// fixtureEnv is a migrated database with the bindings in org A and fixture C (plus extra).
+func fixtureEnv(t *testing.T, c storetest.Cluster, extra ...change) *env {
+	t.Helper()
+	e := newEnv(t, c)
+	e.seedBindings(t, e.org, true)
+	for _, ch := range append(append([]change{}, fixtureC...), extra...) {
+		e.createChange(t, e.org, ch)
+	}
+	return e
+}
+
+func (e *env) page(t *testing.T, rc *core.RequestCtx, limit int, f core.AnnotationFilter) core.AnnotationPage {
+	t.Helper()
+	p, err := e.svc.ListAnnotations(itestCtx(t), rc, winFrom, winTo, limit, f)
+	if err != nil {
+		t.Fatalf("list %+v: %v", f, err)
+	}
+	return p
+}
+
+// names is the items as c‹N› (n‹N› for the keyset inserts), in order.
+func names(items []core.Annotation) string {
+	out := make([]string, 0, len(items))
+	for _, a := range items {
+		v, _ := strconv.Atoi(a.ID.String()[24:])
+		switch v {
+		case 20:
+			out = append(out, "n1")
+		case 21:
+			out = append(out, "n2")
+		default:
+			out = append(out, fmt.Sprintf("c%d", v))
+		}
+	}
+	return "[" + strings.Join(out, ", ") + "]"
+}
+
+func entID(name string) uuid.UUID {
+	return map[string]uuid.UUID{
+		"checkout@e1": uuid.MustParse("bb7487bd-100d-a998-e0f0-3c65f11da1a7"),
+		"checkout@e2": uuid.MustParse("3d1d4695-d757-d5f8-d6bf-c1b134128742"),
+		"payments@e1": uuid.MustParse("854bc89f-5785-b55c-398b-87a03d62a7d9"),
+	}[name]
+}
+
+func hidden(p core.AnnotationPage) string {
+	if p.OrgWideHidden == nil {
+		return "nil"
+	}
+	return fmt.Sprint(*p.OrgWideHidden)
+}
+
+// itest:annotations-entity (T24-030, T24-031): the entity, organisation-wide, kind and tag
+// filters over fixture C, and tenancy.
+func TestAnnotationsEntity(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e := fixtureEnv(t, c)
+			b := e.newOrg(t, "org-b")
+			e.seedBindings(t, b, false)
+			e.createChange(t, b, change{50, core.AnnotationDeploy, "12:10:00", "", "org b checkout", nil, "checkout@e1"})
+			rc := e.rc(e.org)
+			ents := func(n ...string) []uuid.UUID {
+				out := []uuid.UUID{}
+				for _, x := range n {
+					out = append(out, entID(x))
+				}
+				return out
+			}
+			cases := []struct {
+				name   string
+				f      core.AnnotationFilter
+				want   string
+				hidden string
+			}{
+				{"checkout@e1", core.AnnotationFilter{Entities: ents("checkout@e1")}, "[c1]", "3"},
+				{"checkout@e2", core.AnnotationFilter{Entities: ents("checkout@e2")}, "[c3]", "3"},
+				{"+ payments@e1", core.AnnotationFilter{Entities: ents("checkout@e1", "payments@e1")}, "[c6, c2, c1]", "3"},
+				{"checkout@e1 + orgWide", core.AnnotationFilter{Entities: ents("checkout@e1"), OrgWide: true}, "[c7, c4, c1, c9]", "0"},
+				{"deploy + config", core.AnnotationFilter{Kinds: []core.AnnotationKind{core.AnnotationDeploy, core.AnnotationConfig}}, "[c6, c2, c1, c5, c9]", "0"},
+				{"tag pr:4411", core.AnnotationFilter{Tags: []string{"pr:4411"}}, "[c2]", "0"},
+				{"payments@e1 + flag", core.AnnotationFilter{Entities: ents("payments@e1"), Kinds: []core.AnnotationKind{core.AnnotationFlag}}, "[]", "0"},
+				{"unfiltered", core.AnnotationFilter{}, "[c7, c4, c3, c6, c2, c1, c5, c9]", "0"},
+			}
+			for _, tc := range cases {
+				p := e.page(t, rc, 500, tc.f)
+				if got := names(p.Items); got != tc.want || hidden(p) != tc.hidden || p.Next != nil {
+					t.Errorf("%s = %s orgWideHidden %s next %v, want %s and %s, no next", tc.name, got, hidden(p), p.Next, tc.want, tc.hidden)
+				}
+			}
+			p := e.page(t, e.rc(b), 500, core.AnnotationFilter{})
+			if got := names(p.Items); got != "[c50]" {
+				t.Errorf("org B = %s, want only its row [c50]", got)
+			}
+			p = e.page(t, e.rc(b), 500, core.AnnotationFilter{Entities: ents("checkout@e1")})
+			if got := names(p.Items); got != "[c50]" || p.Items[0].Entity == nil || p.Items[0].Entity.ID != entID("checkout@e1") {
+				t.Errorf("org B checkout@e1 = %s, want [c50] with the same EntityId", got)
+			}
+		})
+	}
+}
+
+// T12-010, T12-018: with full scope an entity-backed create is stored and listed canonical.
+func TestAnnotationsFullScopeEntity(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e := newEnv(t, c)
+			e.seedBindings(t, e.org, true)
+			got := e.createChange(t, e.org, change{1, core.AnnotationDeploy, "12:10:00", "", "checkout v2.31", nil, "checkout@e1"})
+			want := `{"id":"bb7487bd-100d-a998-e0f0-3c65f11da1a7","binding":"prod-eu","kind":"service","ident":[null,"checkout"]}`
+			if b, _ := json.Marshal(JSON(got)["entity"]); !sameJSON(t, b, want) {
+				t.Errorf("created entity = %s, want %s", b, want)
+			}
+			if got.Entity == nil || got.Entity.BindingID != bindE1 {
+				t.Errorf("created entity %+v, want binding id e1", got.Entity)
+			}
+			p := e.page(t, e.rc(e.org), 500, core.AnnotationFilter{})
+			if len(p.Items) != 1 {
+				t.Fatalf("listed %s, want [c1]", names(p.Items))
+			}
+			if b, _ := json.Marshal(JSON(p.Items[0])["entity"]); !sameJSON(t, b, want) {
+				t.Errorf("listed entity = %s, want %s", b, want)
+			}
+			if k := storetest.QueryString(t, e.db.SuperURL, "SELECT coalesce(entity_key, 'NULL') FROM annotations WHERE id = $1", cid(1)); k != "bb7487bd-100d-a998-e0f0-3c65f11da1a7" {
+				t.Errorf("entity_key = %s", k)
+			}
+			if n := storetest.QueryInt(t, e.db.SuperURL, "SELECT count(*) FROM audit_events WHERE org_id = $1 AND action = 'annotation.create'", uuid.UUID(e.org)); n != 1 {
+				t.Errorf("%d annotation.create events, want 1", n)
+			}
+		})
+	}
+}
+
+// counts is the organisation's annotation rows and audit events.
+func (e *env) counts(t *testing.T) string {
+	t.Helper()
+	return storetest.QueryString(t, e.db.SuperURL, "SELECT (SELECT count(*) FROM annotations WHERE org_id = $1) || '/' || (SELECT count(*) FROM audit_events WHERE org_id = $1)", uuid.UUID(e.org))
+}
+
+// body is a page as the gateway would answer it, the structured fields only once c11's free text
+// and tags are blanked.
+func body(t *testing.T, p core.AnnotationPage) string {
+	t.Helper()
+	items := []map[string]any{}
+	for _, a := range p.Items {
+		m := JSON(a)
+		if a.ID == cid(11) {
+			m["text"], m["tags"] = "", []string{}
+		}
+		items = append(items, m)
+	}
+	var next any
+	if p.Next != nil {
+		next = map[string]any{"at": p.Next.At.UnixMilli(), "id": p.Next.ID.String()}
+	}
+	b, err := json.Marshal(map[string]any{"items": items, "next": next, "orgWideHidden": p.OrgWideHidden})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// itest:annotations-scope (T12-018): scoped lists, pages and creates over C + c10 + c11.
+func TestAnnotationsScope(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e := fixtureEnv(t, c, scopeAdds...)
+			if p := e.page(t, e.rc(e.org), 500, core.AnnotationFilter{}); len(p.Items) != 10 {
+				t.Errorf("full scope = %s, want 10 rows", names(p.Items))
+			}
+			eu := e.rcScope(e.org, scopeEU)
+			p1 := e.page(t, eu, 3, core.AnnotationFilter{})
+			if got := names(p1.Items); got != "[c11, c6, c2]" || p1.Next == nil || !p1.Next.At.Equal(hms("12:19:02")) || p1.Next.ID != cid(2) {
+				t.Fatalf("P_eu p1 = %s next %+v, want [c11, c6, c2] next (12:19:02, c2)", got, p1.Next)
+			}
+			p2 := e.page(t, eu, 3, core.AnnotationFilter{Before: p1.Next})
+			if got := names(p2.Items); got != "[c1, c5]" || p2.Next != nil {
+				t.Errorf("P_eu p2 = %s next %+v, want [c1, c5] next null", got, p2.Next)
+			}
+			shop := e.rcScope(e.org, scopeShop)
+			ps := e.page(t, shop, 500, core.AnnotationFilter{})
+			if got := names(ps.Items); got != "[c11, c6, c2]" || ps.OrgWideHidden != nil {
+				t.Errorf("P_shop = %s orgWideHidden %s, want [c11, c6, c2] nil", got, hidden(ps))
+			} else if c11 := ps.Items[0]; c11.Text != scopeAdds[1].text || !reflect.DeepEqual(c11.Tags, scopeAdds[1].tags) {
+				t.Errorf("c11 = %q %v, want its text and tags as authored", c11.Text, c11.Tags)
+			}
+			pe := e.page(t, shop, 500, core.AnnotationFilter{Entities: []uuid.UUID{entID("checkout@e1")}})
+			if got := names(pe.Items); got != "[]" || pe.OrgWideHidden != nil {
+				t.Errorf("P_shop checkout@e1 = %s orgWideHidden %s, want [] nil", got, hidden(pe))
+			}
+			for name, b := range map[string]string{"P_eu p1": body(t, p1), "P_eu p2": body(t, p2), "P_shop": body(t, ps), "P_shop e": body(t, pe)} {
+				for _, banned := range []string{"3d1d4695-d757-d5f8-d6bf-c1b134128742", cid(10).String(), "prod-us"} {
+					if strings.Contains(b, banned) {
+						t.Errorf("%s body holds %s: %s", name, banned, b)
+					}
+				}
+			}
+			if _, err := e.svc.ListAnnotations(itestCtx(t), e.rcScope(e.org, core.DataScope{}), winFrom, winTo, 500, core.AnnotationFilter{}); !errors.Is(err, core.ErrScopeDenied) {
+				t.Errorf("unset list = %v, want ErrScopeDenied", err)
+			}
+			before := e.counts(t)
+			n := core.NewAnnotation{At: hms("12:50:00"), Kind: core.AnnotationDeploy, Text: "x", Tags: []string{}}
+			n.Entity = newEntity(t, fixtureEntities["checkout@e1"])
+			_, err := e.svc.CreateAnnotation(itestCtx(t), shop, n)
+			var se *core.ScopeError
+			if !errors.As(err, &se) || se.Pointer != "/entity" || se.Key != "annotations.entity.scope" {
+				t.Errorf("P_shop create checkout@e1 = %v, want ScopeError /entity annotations.entity.scope", err)
+			}
+			n.Entity = nil
+			if _, err := e.svc.CreateAnnotation(itestCtx(t), shop, n); !errors.As(err, &se) || se.Key != "annotations.scope" {
+				t.Errorf("P_shop create without an entity = %v, want ScopeError annotations.scope", err)
+			}
+			if after := e.counts(t); after != before {
+				t.Errorf("rows/audit %s → %s after refused creates", before, after)
+			}
+			n.Entity = newEntity(t, fixtureEntities["payments@e1"])
+			if got, err := e.svc.CreateAnnotation(itestCtx(t), shop, n); err != nil || got.Entity == nil || got.Entity.ID != entID("payments@e1") {
+				t.Errorf("P_shop create payments@e1 = %+v, %v; want created", got, err)
+			}
+		})
+	}
+}
+
+// compileScopes are the T24 §10.2 scopes S1–S5, T1–T3, P_eu and P_shop with the entities each
+// covers.
+var compileScopes = []struct {
+	name   string
+	scope  core.DataScope
+	covers []string
+}{
+	{"S1", core.ScopedTenant(core.ScopeClause{Bindings: []uuid.UUID{bindE2}}, shopClause()), []string{"checkout@e2", "payments@e1"}},
+	{"S2", core.ScopedTenant(core.ScopeClause{Bindings: []uuid.UUID{bindE1}, Attrs: map[string][]string{"service.name": {"checkout", "gateway"}}}), []string{"checkout@e1", "gateway@e1"}},
+	{"S3", core.ScopedTenant(core.ScopeClause{Attrs: map[string][]string{"k8s.namespace.name": {"shop"}}}), []string{"pod"}},
+	{"S4", core.ScopedTenant(core.ScopeClause{Attrs: map[string][]string{"service.namespace": {"shop", ""}}}), []string{"payments@e1"}},
+	{"S5", core.ScopedTenant(core.ScopeClause{Attrs: map[string][]string{"service.name": {"checkout"}}}), []string{"checkout@e1", "checkout@e2"}},
+	{"T1", core.ScopedTenant(core.ScopeClause{Attrs: map[string][]string{"deployment.environment.name": {"prod"}, "deployment.environment": {"stage"}}}), []string{}},
+	{"T2", core.ScopedTenant(core.ScopeClause{Attrs: map[string][]string{"deployment.environment.name": {"prod", "stage"}, "deployment.environment": {"prod", "dev"}}}), []string{"env prod"}},
+	{"T3", core.ScopedTenant(core.ScopeClause{Attrs: map[string][]string{"k8s.cluster.name": {"prod-eu-1"}}}), []string{"pod", "cluster A"}},
+	{"P_eu", scopeEU, []string{"checkout@e1", "payments@e1", "gateway@e1", "pod", "env prod", "env stage", "cluster A", "cluster B"}},
+	{"P_shop", scopeShop, []string{"payments@e1"}},
+}
+
+// entityOrder is the order of the entities' rows in the window (newest first).
+var entityOrder = []string{"checkout@e1", "checkout@e2", "payments@e1", "gateway@e1", "pod", "env prod", "env stage", "cluster A", "cluster B"}
+
+// itest:annotations-scope-compile (T12-010, T12-018): each scope lists, creates and deletes
+// exactly the entities it covers, and the SQL predicate agrees with ScopeCovers.
+func TestAnnotationsScopeCompile(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e := newEnv(t, c)
+			e.seedBindings(t, e.org, true)
+			// One row per entity, one minute apart, newest first in entityOrder; env prod three
+			// more times, via each attribute and both.
+			byID := map[uuid.UUID]string{}
+			for i, name := range entityOrder {
+				a := e.createChange(t, e.org, change{i + 1, core.AnnotationDeploy, fmt.Sprintf("12:%02d:00", 50-i), "", name, nil, name})
+				byID[a.ID] = name
+			}
+			for i, attrs := range []map[string]string{{"deployment.environment.name": "prod"}, {"deployment.environment": "prod"},
+				{"deployment.environment.name": "prod", "deployment.environment": "prod"}} {
+				n := core.NewAnnotation{At: hms(fmt.Sprintf("12:0%d:30", 5-i)), Kind: core.AnnotationNote, Text: "env", Tags: []string{}}
+				n.Entity = newEntity(t, fixtureEntity{"prod-eu", "environment", attrs})
+				got, err := e.svc.CreateAnnotation(itestCtx(t), e.rc(e.org), n)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got.Entity == nil || got.Entity.ID != uuid.MustParse("f8bdae9d-e739-228c-dd0e-317933242944") ||
+					!reflect.DeepEqual(got.Entity.Attrs, map[string]string{"deployment.environment.name": "prod"}) {
+					t.Errorf("env prod via %v = %+v", attrs, got.Entity)
+				}
+				byID[got.ID] = "env prod"
+			}
+			for _, s := range compileScopes {
+				rc := e.rcScope(e.org, s.scope)
+				_, clauses, _ := s.scope.AnnotationScope()
+				compiled, err := entity.CompileScope(clauses)
+				if err != nil {
+					t.Fatalf("%s: %v", s.name, err)
+				}
+				p := e.page(t, rc, 500, core.AnnotationFilter{})
+				listed := map[string]int{}
+				for _, a := range p.Items {
+					listed[byID[a.ID]]++
+					if !entity.ScopeCovers(false, compiled, a.Entity) {
+						t.Errorf("%s lists %s, which ScopeCovers does not cover", s.name, byID[a.ID])
+					}
+				}
+				want := map[string]int{}
+				for _, n := range s.covers {
+					want[n] = 1
+					if n == "env prod" {
+						want[n] = 4
+					}
+				}
+				if !reflect.DeepEqual(listed, want) {
+					t.Errorf("%s lists %v, want %v", s.name, listed, want)
+				}
+				for _, name := range entityOrder {
+					covered := slices.Contains(s.covers, name)
+					n := core.NewAnnotation{At: hms("12:58:00"), Kind: core.AnnotationFlag, Text: "probe", Tags: []string{}, Entity: newEntity(t, fixtureEntities[name])}
+					got, err := e.svc.CreateAnnotation(itestCtx(t), rc, n)
+					var se *core.ScopeError
+					switch {
+					case covered && err != nil:
+						t.Errorf("%s create %s = %v, want created", s.name, name, err)
+					case !covered && (!errors.As(err, &se) || se.Key != "annotations.entity.scope"):
+						t.Errorf("%s create %s = %v, want annotations.entity.scope", s.name, name, err)
+					}
+					if covered && err == nil {
+						if !entity.ScopeCovers(false, compiled, got.Entity) {
+							t.Errorf("%s created %s, which ScopeCovers does not cover", s.name, name)
+						}
+						if err := e.svc.DeleteAnnotation(itestCtx(t), rc, got.ID); err != nil {
+							t.Errorf("%s delete its %s = %v", s.name, name, err)
+						}
+					}
+					if !covered {
+						var base uuid.UUID
+						for id, n := range byID {
+							if n == name {
+								base = id
+								break
+							}
+						}
+						if err := e.svc.DeleteAnnotation(itestCtx(t), rc, base); !errors.Is(err, core.ErrNotFound) {
+							t.Errorf("%s delete %s = %v, want ErrNotFound", s.name, name, err)
+						}
+					}
+				}
+			}
+			if n := storetest.QueryInt(t, e.db.SuperURL, "SELECT count(*) FROM annotations WHERE (entity_key IS NULL) <> (entity IS NULL)"); n != 0 {
+				t.Errorf("%d unpaired rows, want 0", n)
+			}
+		})
+	}
+}
+
+// itest:annotations-delete-scope (T12-018, T11-017): a delete outside the scope is the same 404
+// as an absent id, with no audit; inside it deletes with one audit event.
+func TestAnnotationsDeleteScope(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e := fixtureEnv(t, c)
+			shop := e.rcScope(e.org, scopeShop)
+			before := e.counts(t)
+			err1 := e.svc.DeleteAnnotation(itestCtx(t), shop, cid(1))
+			fresh, _ := core.NewID()
+			err2 := e.svc.DeleteAnnotation(itestCtx(t), shop, fresh)
+			if !errors.Is(err1, core.ErrNotFound) || !errors.Is(err2, core.ErrNotFound) || err1.Error() != err2.Error() {
+				t.Errorf("P_shop delete c1 = %v, absent = %v; want the same ErrNotFound", err1, err2)
+			}
+			if after := e.counts(t); after != before {
+				t.Errorf("rows/audit %s → %s after refused deletes", before, after)
+			}
+			if err := e.svc.DeleteAnnotation(itestCtx(t), shop, cid(2)); err != nil {
+				t.Fatalf("P_shop delete c2 = %v, want nil", err)
+			}
+			rows := storetest.QueryRows(t, e.db.SuperURL, "SELECT diff::text FROM audit_events WHERE org_id = $1 AND action = 'annotation.delete'", uuid.UUID(e.org))
+			if len(rows) != 1 || !strings.Contains(rows[0][0], "854bc89f-5785-b55c-398b-87a03d62a7d9") {
+				t.Errorf("annotation.delete events = %v, want one with c2's entity", rows)
+			}
+			before = e.counts(t)
+			if err := e.svc.DeleteAnnotation(itestCtx(t), e.rcScope(e.org, core.DataScope{}), cid(1)); !errors.Is(err, core.ErrScopeDenied) {
+				t.Errorf("unset delete = %v, want ErrScopeDenied", err)
+			}
+			if after := e.counts(t); after != before {
+				t.Errorf("rows/audit %s → %s after an unset delete", before, after)
+			}
+		})
+	}
+}
+
+// itest:annotations-keyset (T24-032): pages by (at, id) over fixture C under inserts and deletes.
+func TestAnnotationsKeyset(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			e := fixtureEnv(t, c)
+			rc := e.rc(e.org)
+			p1 := e.page(t, rc, 3, core.AnnotationFilter{})
+			if got := names(p1.Items); got != "[c7, c4, c3]" || p1.Next == nil || !p1.Next.At.Equal(hms("12:21:30")) || p1.Next.ID != cid(3) {
+				t.Fatalf("(a) p1 = %s next %+v, want [c7, c4, c3] next (12:21:30, c3)", got, p1.Next)
+			}
+			e.createChange(t, e.org, change{20, core.AnnotationDeploy, "12:45:00", "", "n1", nil, ""})
+			e.createChange(t, e.org, change{21, core.AnnotationDeploy, "12:05:00", "", "n2", nil, ""})
+			p2 := e.page(t, rc, 3, core.AnnotationFilter{Before: p1.Next})
+			p3 := e.page(t, rc, 3, core.AnnotationFilter{Before: p2.Next})
+			if got := names(p2.Items); got != "[c6, c2, c1]" || p2.Next == nil {
+				t.Errorf("(a) p2 = %s next %+v, want [c6, c2, c1] with a next", got, p2.Next)
+			}
+			if got := names(p3.Items); got != "[n2, c5, c9]" || p3.Next != nil {
+				t.Errorf("(a) p3 = %s next %+v, want [n2, c5, c9] next null", got, p3.Next)
+			}
+			seen := map[uuid.UUID]bool{}
+			for _, a := range append(append(append([]core.Annotation{}, p1.Items...), p2.Items...), p3.Items...) {
+				if seen[a.ID] || a.ID == cid(20) {
+					t.Errorf("(a) %s twice or n1 listed", a.ID)
+				}
+				seen[a.ID] = true
+			}
+
+			f := fixtureEnv(t, c)
+			rc = f.rc(f.org)
+			if all := f.page(t, rc, 500, core.AnnotationFilter{}); len(all.Items) != 8 || all.Next != nil {
+				t.Errorf("(c) limit 500 = %s next %+v, want 8 rows next null", names(all.Items), all.Next)
+			}
+			q1 := f.page(t, rc, 3, core.AnnotationFilter{})
+			q2 := f.page(t, rc, 3, core.AnnotationFilter{Before: q1.Next})
+			if err := f.svc.DeleteAnnotation(itestCtx(t), rc, cid(5)); err != nil {
+				t.Fatal(err)
+			}
+			if q2.Next == nil {
+				t.Fatalf("(b) p2 = %s without a next", names(q2.Items))
+			}
+			if q3 := f.page(t, rc, 3, core.AnnotationFilter{Before: q2.Next}); names(q3.Items) != "[c9]" || q3.Next != nil {
+				t.Errorf("(b) p3 = %s next %+v, want [c9] next null", names(q3.Items), q3.Next)
+			}
+
+		})
+	}
+}
+
+// A stored entity that does not decode, or whose id is not its entity_key, is a store error (503
+// at the gateway): the list fails, and a delete fails and rolls back with no audit event.
+func TestAnnotationsCorruptEntity(t *testing.T) {
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			for name, entity := range map[string]string{
+				"undecodable": `{"id": 1}`,
+				"id mismatch": `{"id":"3d1d4695-d757-d5f8-d6bf-c1b134128742","binding":"prod-eu","binding_id":"00000000-0000-4000-8000-0000000000e1","kind":"service","ident":[null,"checkout"],"attrs":{"service.name":"checkout"}}`,
+			} {
+				e := newEnv(t, c)
+				e.seedBindings(t, e.org, true)
+				e.createChange(t, e.org, fixtureC[0])
+				storetest.Exec(t, e.db.SuperURL, "UPDATE annotations SET entity = $1::jsonb WHERE id = $2", entity, cid(1))
+				if _, err := e.svc.ListAnnotations(itestCtx(t), e.rc(e.org), winFrom, winTo, 500, core.AnnotationFilter{}); err == nil || errors.Is(err, core.ErrNotFound) {
+					t.Errorf("%s: list = %v, want a store error", name, err)
+				}
+				before := e.counts(t)
+				if err := e.svc.DeleteAnnotation(itestCtx(t), e.rc(e.org), cid(1)); err == nil || errors.Is(err, core.ErrNotFound) {
+					t.Errorf("%s: delete = %v, want a store error", name, err)
+				}
+				if after := e.counts(t); after != before {
+					t.Errorf("%s: rows/audit %s → %s, want the delete rolled back", name, before, after)
+				}
 			}
 		})
 	}
