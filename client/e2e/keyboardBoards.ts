@@ -641,7 +641,8 @@ export function boardSteps(s: Script) {
         // Auto reads "Auto (<vis>)" once the panel has a result (plan #64 §3.8).
         for (const [i, kind] of kinds.entries()) {
           await s.on(/^button "\w+( chart)?( \(\w+\))? Visualisation"$/);
-          await expect(page.getByRole('listbox')).toBeVisible();
+          // By name: a bar chart's preview and panel add their mirror listboxes.
+          await expect(page.getByRole('listbox', { name: 'Visualisation' })).toBeVisible();
           await press('Home');
           for (let k = 0; k < i; k++) await press('ArrowDown');
           await press('Enter');
