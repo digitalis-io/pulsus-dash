@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-26 |
+| **Version** | 1.12-rc · 2026-11-26 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -1318,6 +1318,12 @@ the version that adds `legacyAuto`, whatever its number) is marked `legacyAuto` 
 existing vis until the panel is edited and saved (the editor previews row 8 first), so no stored
 board switches silently. Explore does not apply row 8 yet. The acceptance is unchanged.
 
+*Staging (#173 Part 3b, [T22](../technical/T22-value-categorical-and-table-panels.md#45-auto-vis-table-5-13-and-import-viz-060) §4.5):*
+row 11 fires in Explore only, which stores nothing. Board `auto` panels keep the pre-bars set
+(the bar chart is chosen in the editor) until map-sync's `legacyAuto`
+([T24-099](../technical/T24-geo-schematic-and-widget-panels.md#t24-099--auto-vis-row-8-import), #237)
+covers rows 8 and 11 together.
+
 ## 13. Accessibility of data vis
 
 #### VIZ-066 — Table view and CSV for every vis
@@ -1515,6 +1521,7 @@ board.
 | 1.9-rc | 2026-11-25 | #184 step 1b: VIZ-067 identity per group for grouped spatial marks, and its acceptance covers every series or group; Table 5-8 Markers: target 10⁵, 5 000 drawn in the 2D core; VIZ-044 staging (markers in step 1b, symbol and rotation from fields in part G; T24) |
 | 1.10-rc | 2026-11-25 | #184 step 2: VIZ-047 note (sync through `map=*`, the bounds filter as the `geo=` map area, the panels it filters and those it does not yet); VIZ-065 row 8 staging (a synchronous label test after rows 5–7; `legacyAuto` keeps stored boards; not in Explore yet); VIZ-060 Geomap staging (the T24 §4.19 mapping at M-UI3, the corpus at M-UI5; T24) |
 | 1.11-rc | 2026-11-26 | #215: VIZ-065 row 8 and the VIZ-060 Geomap import name the map-sync board spec version (T24 §5.0) instead of v8: every panel stored before it keeps its existing vis (`legacyAuto`) |
+| 1.12-rc | 2026-11-26 | #173 Part 3b: VIZ-065 row 11 staging (Explore only; board `auto` panels keep the pre-bars set until `legacyAuto` covers rows 8 and 11, T24-099) |
 
 ## Resolved during formalisation
 
