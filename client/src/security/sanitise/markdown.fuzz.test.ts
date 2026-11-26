@@ -10,7 +10,10 @@ import { parseFragment, type DefaultTreeAdapterTypes } from 'parse5';
 import { createElement, Fragment } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { convertImportedText } from './importText';
+import { Parser, type Node } from 'commonmark';
+import { findIframes } from './findIframes';
+import { convertImportedText, embeddedLinkLabel, markdownLink } from './importText';
+import { classifyUrl } from './url';
 import { renderMarkdown, type RenderPolicy } from './markdown';
 import { checkInvariants, type TElement, type TNode } from './testInvariants';
 import { BREAKOUTS, DEEP, HTML, IMAGES, NESTED_DESTS, SCHEMES, UNICODE, VALUES } from './xssCorpus';
@@ -93,6 +96,54 @@ function check(src: string, entity: string | null, policy: RenderPolicy): string
   return checkInvariants(fromParse5(parseFragment(html)), policy);
 }
 
+const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
+
+/**
+ * The UTF-8 size the import conversion gives `src`, computed here from the T24 §5.4 steps (not by
+ * `convertImportedText`): the input, plus per top-level block holding a usable iframe a blank
+ * line, its links joined by spaces and a line end, a line end more unless the next line is blank or
+ * it is the end, and one more line end first at an end without a final terminator.
+ */
+function convertedBytes(src: string): number {
+  const doc = new Parser().parse(src);
+  const links = new Map<Node, string[]>();
+  const add = (top: Node, iframeSrc: string | null): void => {
+    const c = iframeSrc === null ? null : classifyUrl(iframeSrc, APP);
+    if (c?.kind !== 'local' && c?.kind !== 'external') return;
+    links.set(top, [...(links.get(top) ?? []), markdownLink(embeddedLinkLabel(c.host), c.href)]);
+  };
+  const topOf = (n: Node): Node => {
+    let t = n;
+    while (t.parent !== null && t.parent.type !== 'document') t = t.parent;
+    return t;
+  };
+  const w = doc.walker();
+  for (let e = w.next(); e !== null; e = w.next()) {
+    const n = e.node;
+    if (!e.entering) continue;
+    if (n.type === 'html_block') for (const h of findIframes(n.literal ?? '')) add(topOf(n), h.src);
+    if (n.type === 'paragraph' || n.type === 'heading') {
+      let html = '';
+      const inner = n.walker();
+      for (let x = inner.next(); x !== null; x = inner.next()) {
+        if (x.entering && x.node.type === 'html_inline') html += x.node.literal ?? '';
+      }
+      for (const h of findIframes(html)) add(topOf(n), h.src);
+    }
+  }
+  const lines = src.match(/[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+$/g) ?? [];
+  let total = utf8Bytes(src);
+  for (const [top, ls] of links) {
+    const last = top.sourcepos[1][0];
+    const atEof = last >= lines.length;
+    const next = lines[last] ?? '';
+    const endsOpen = atEof && !/[\r\n]$/.test(src);
+    const blankNext = /^[ \t]*(?:\r\n|\r|\n)?$/.test(next);
+    total += (endsOpen ? 1 : 0) + 1 + utf8Bytes(ls.join(' ')) + 1 + (atEof || blankNext ? 0 : 1);
+  }
+  return total;
+}
+
 function inverse(out: string, inserted: readonly { offset: number; text: string }[]): string {
   let s = out;
   for (const x of inserted) s = s.slice(0, x.offset) + s.slice(x.offset + x.text.length);
@@ -112,20 +163,31 @@ describe('fuzz:markdown-nodes', () => {
         for (const v of check(src, entity, policy)) failures.push(`#${String(i)} ${policy}: ${v}`);
       }
       const imp = convertImportedText(src, 'markdown', APP);
+      const size = convertedBytes(src);
       if (imp.ok) {
         if (inverse(imp.content, imp.inserted) !== src)
           failures.push(`#${String(i)} import inverse`);
+        if (utf8Bytes(imp.content) !== size)
+          failures.push(`#${String(i)} import size ${String(size)}`);
         for (const v of check(imp.content, entity, 'board'))
           failures.push(`#${String(i)} import: ${v}`);
-      } else {
-        // An input is at most 40 tokens (a few KB) and each link is shorter than it, so no
-        // conversion can pass the limit: a sizeLimit here is below 65 536 bytes.
-        const bytes = new TextEncoder().encode(src).length * (imp.links + 2);
-        if (bytes <= LIMIT) failures.push(`#${String(i)} sizeLimit below ${String(LIMIT)} bytes`);
+      } else if (size <= LIMIT) {
+        failures.push(`#${String(i)} sizeLimit at ${String(size)} bytes`);
       }
     }
     expect(failures).toEqual([]);
     // A renderer that drops everything passes the invariants trivially: most inputs render.
     expect(rendered).toBeGreaterThan(INPUTS);
   }, 300_000);
+
+  it('the size check on both sides of the limit (T24 §10 f6)', () => {
+    const b = (xs: number): string =>
+      `<iframe src="https://x.test/"></iframe>\n${'x'.repeat(xs)}\n`;
+    const at = convertImportedText(b(65_442), 'markdown', APP);
+    expect(convertedBytes(b(65_442))).toBe(LIMIT);
+    expect(at.ok && utf8Bytes(at.content)).toBe(LIMIT);
+    const over = convertImportedText(b(65_443), 'markdown', APP);
+    expect(convertedBytes(b(65_443))).toBe(LIMIT + 1);
+    expect(over).toEqual({ ok: false, reason: 'sizeLimit', links: 1 });
+  });
 });
