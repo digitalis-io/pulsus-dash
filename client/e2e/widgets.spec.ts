@@ -411,10 +411,9 @@ test.describe('Text widget', () => {
       checked += 1;
       for (const o of out) failures.push(`${e.id}: ${o}`);
     });
-    info.annotations.push({
-      type: 'e2e:widget-text-xss corpus',
-      description: `${String(checked)} of ${String(committed.length)} cases checked (${String(committed.length - eligible.length)} skipped) in ${String(Math.round((Date.now() - started) / 1000))} s`,
-    });
+    const summary = `${String(checked)} of ${String(committed.length)} cases checked (${String(committed.length - eligible.length)} skipped) in ${String(Math.round((Date.now() - started) / 1000))} s`;
+    info.annotations.push({ type: 'e2e:widget-text-xss corpus', description: summary });
+    console.info(`e2e:widget-text-xss corpus (${project}): ${summary}`);
     expect(failures).toEqual([]);
     expect(checked).toBe(eligible.length);
   });

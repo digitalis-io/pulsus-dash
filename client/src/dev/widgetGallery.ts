@@ -20,7 +20,7 @@ export function widgetGalleryPage(raw: string | null): WidgetGalleryPage {
 /** The values of the gallery's board variables. */
 export const WIDGET_GALLERY_VARS: ReadonlyMap<string, string> = new Map([['env', 'prod']]);
 
-/** A 2 KiB runbook: headings, lists, a quote, code and links (local and external). */
+/** A 2 KiB runbook: headings, lists, a quote, code and links (local and `mailto:`). */
 export const RUNBOOK = [
   '# Checkout runbook ($env)',
   '',
@@ -37,6 +37,7 @@ export const RUNBOOK = [
   '- Rate: `sum by (job) (rate(http_requests_total[5m]))`',
   '- Errors: `sum(rate(http_requests_total{code=~"5.."}[5m]))`',
   '- Latency: `histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))`',
+  '- Saturation: `max by (instance) (process_open_fds / process_max_fds)`',
   '',
   '> The p95 is the number the customers feel. A healthy p95 with a bad p99 means a slow',
   '> dependency for a few requests, not an overloaded service.',
@@ -46,15 +47,29 @@ export const RUNBOOK = [
   '- Roll back the last deploy from the release tool.',
   '- Shed the recommendations call: it is optional on the checkout path.',
   '- Scale the API tier by two replicas; the database is rarely the limit.',
+  '- Turn off the promotions banner, which calls the pricing service on every page.',
   '',
   '```promql',
   'sum by (instance) (rate(process_cpu_seconds_total{job="checkout"}[5m]))',
   '```',
   '',
+  '## After the incident',
+  '',
+  '1. Confirm the error ratio has been below *0.5 %* for thirty minutes before you stand down.',
+  '2. Note the start, the detection, the mitigation and the end times in the incident record.',
+  '3. Link the deploy, the config change or the dependency that caused it, with the evidence.',
+  '4. Open follow-up issues for every alert that fired late, fired twice or did not fire at all.',
+  '',
+  '## Known noisy signals',
+  '',
+  '- The **cart-sync** job retries for five minutes after a cache flush; its errors are expected.',
+  '- Latency doubles during the nightly report export between 02:00 and 02:20 UTC.',
+  '- A single pod restart shows as a short gap in the rate panel, not as an outage.',
+  '',
   '---',
   '',
-  'See the [vendor status page](https://status.example.test/) before escalating an outage, and the',
-  '[escalation policy](/t/demo/boards) for who to call. Write up every page within two working days.',
+  'Mail the [payments on-call](mailto:payments-oncall@example.test) before escalating an outage, and',
+  'read the [escalation policy](/t/demo/boards) for who to call. Write up every page within two days.',
   '',
 ].join('\n');
 
@@ -69,7 +84,8 @@ const QUERY = [
 
 /**
  * The editor body's content: an HTML block, inline HTML, an iframe, a `javascript:` link, an
- * external image, an unset variable and a 31-deep quote, one removal each.
+ * image under `/api` (counted as external, T24-018), an unset variable and a 31-deep quote, one
+ * removal each. No absolute URL: the build's origin check allows none in app code.
  */
 export const REMOVALS = [
   '# Release notes',
@@ -78,11 +94,11 @@ export const REMOVALS = [
   '',
   'Deploys are <b>frozen</b> until Friday.',
   '',
-  '<iframe src="https://status.example.test/embed"></iframe>',
+  '<iframe src="/status/embed"></iframe>',
   '',
   'Open the [console](javascript:alert(1)) for details.',
   '',
-  '![Status](https://status.example.test/badge.png)',
+  '![Status](/api/status/badge.png)',
   '',
   'Owner: $missing',
   '',
