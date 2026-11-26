@@ -9,7 +9,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Locator, type Page, type Request } from '@playwright/test';
-import { seriesColourIndex } from '../src/engine/canvas2d/palette.ts';
+import { seriesColourIndex } from '../src/engine/canvas2d/seriesColour.ts';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
 import { createBoard, deleteBoard, type PanelInput } from './boardApi.ts';
 import { fakeRequests, sec } from './fake.ts';
