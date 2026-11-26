@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.9-rc · 2026-11-26 |
+| **Version** | 1.10-rc · 2026-11-26 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -1337,7 +1337,11 @@ Go decides validity; the upcaster from the immediately preceding version (the ta
 export type UrlClass = { kind: 'local'; href: string; host: string } | { kind: 'external'; href: string; host: string }
   | { kind: 'mailto'; href: string } | { kind: 'rejected' };
 export const URL_FORBIDDEN = /[\u0000- \u007F-\u009F\\]/;
-export function classifyUrl(raw: string, appOrigin: string): UrlClass;
+export function classifyUrl(raw: string, appOrigin: string): UrlClass; // raw passes toWellFormed first
+export function toWellFormed(s: string): string; // lone surrogates → U+FFFD (ES2023 has no String.prototype.toWellFormed)
+// findIframes.ts
+export interface IframeHit { readonly offset: number; readonly line: number; readonly src: string | null } // offset: UTF-16 start
+export function findIframes(html: string): readonly IframeHit[];
 // markdown.tsx
 export type RenderPolicy = 'board' | 'ai';
 export type RemovalKind = 'html' | 'iframe' | 'linkScheme' | 'image' | 'unresolved';
@@ -1345,7 +1349,6 @@ export interface Removal { readonly kind: RemovalKind; readonly line: number } /
 export function renderMarkdown(src: string, env: { vars: ReadonlyMap<string, string>; entity: string | null },
   opts: { policy: RenderPolicy; appOrigin: string; headingOffset?: number /* 3 */ }): { node: ReactNode; removals: readonly Removal[] };
 export function renderCode(src: string, language: CodeLanguage): ReactNode;
-export function findIframes(html: string): readonly { line: number; src: string | null }[];
 export function logRemovals(panelId: string, removals: readonly Removal[]): void;
 ```
 
@@ -1354,7 +1357,11 @@ Both options are required.
 **`findIframes`** returns the **union**, de-duplicated by start offset and sorted, of (a) the `iframe`
 elements in the `parse5.parse` tree (template content included) and (b) the `iframe` start-tag tokens
 from `parse5-sax-parser`; both with `sourceCodeLocationInfo`, spec attribute decoding and the first
-duplicate `src` (or `null`).
+duplicate `src` (or `null`). The tokens come from the package's `ParserFeedbackSimulator` (the
+tokenizer driver `SAXParser` wraps) through the Vite alias `parse5-sax-parser/feedback` →
+`dist/parser-feedback-simulator.js`, because `SAXParser` extends `Transform` from `node:stream`,
+which browsers lack; `unit:find-iframes` checks that its tokens equal `SAXParser`'s and that the
+file imports no `node:` module.
 
 **Rule:** a destination is recovered if either the spec tree or the spec tokenizer sees an iframe start
 tag. Each covers the other's gap (tree: `<select><iframe>`; SAX: `<select><title><select><iframe>`);
@@ -1398,7 +1405,11 @@ no notes. Otherwise one parse:
    line, then `htmlNotRendered {count}`.
 3. A top-level block's links (space-joined) are inserted at E, just after its last line's newline:
    `"\n" + links + "\n"`, plus `"\n"` before a non-blank next line, with a leading `"\n"` at EOF
-   without a newline. The iframe HTML stays (it is dropped at render).
+   without a newline. Lines split on `\r\n`, `\n` or `\r`, as commonmark does; after a lone `\r` the
+   inserted line ends are `\r`, since a `\n` there would join it as one CRLF and put the links
+   inside the block. The iframe HTML stays (it is dropped at render). `inserted` is ascending by
+   offset (a UTF-16 index in the input): removing the entries in that order, each at its offset,
+   gives the input.
 4. `markdownLink` escapes label punctuation; `<dest>` has `&` → `&amp;` and `<`, `>`, `\` escaped.
 5. **Size:** if the result exceeds 65 536 UTF-8 bytes it returns `{ok: false, reason: 'sizeLimit',
    links: n}`. The importer omits that panel, imports the rest, and adds a `TextImportError`
@@ -2071,6 +2082,7 @@ Written first in the implementation issues. Origin `https://dash.test`; all fail
 |---|---|---|---|---|
 | `unit:board-spec-widgets` | spec.test.ts, validate_test.go | fixtures | valid → none; text + `query` → `board.panel.query.forbidden`; line without → `.required`; clock `depth` → `unknownKey`; 13 zones, `tz:'Mars/Base'` → `zones.invalid` (`Mars/Base` in Go only, on a new spec: the client checks the form, and its row carries `client_fields` `[]`); duplicate zone → `.duplicate`; 65 537 bytes → `content.tooLong`; `to:'2026-11-26 14:00'` → `countdown.invalid`; TS = Go; the version before upcasts | T24-003, VIZ-031, 057 |
 | `unit:classify-url` | sanitise/url.test.ts | strings | rejected: `/\t/evil.test`, `/a/../..//evil.test`, `/.//evil`, `/\\evil.test`, `//evil.test`, ` /x`, `/x\u0085`, `https://u:p@x.test/`, `JaVaScRiPt:x`, `data:,x`, `boards/b1`; local: `/boards/b1?x=1#h`, `/%5Cevil.test` (unchanged); external: `HTTPS://X.TEST` → `https://x.test/`; mailto: `mailto:o@x.test` | T24-005 |
+| `unit:well-formed` | sanitise/url.test.ts | `'a\uD800'`, `'\uDC00b'`, `'😀'`, `''` | `'a�'`, `'�b'`, unchanged, `''`; in `classifyUrl`, a lone surrogate in an accepted path → `%EF%BF%BD`, in a host → rejected | T24-005, T24-008 |
 | `unit:markdown-links` | sanitise/markdown.test.tsx | inputs L (below) | a → text + `linkScheme`; t → `/%09/e.test`; b, d, e → new-tab `<a>` | T24-005 |
 | `unit:markdown-nodes` | same | `"<script>alert(1)</script>\n\n<img src=x onerror=alert(2)>\n\n**ok**"`; `# A\n###### F\n1000000. x` | DOM `<p><strong>ok</strong></p>`, removals `[{html,1},{html,3}]`; `<h4>`, `<h6>`, `<ol start="999999">` | VIZ-054, T24-009 |
 | `unit:markdown-iframe` | same | `<iframe src="https://s.test/"></iframe>`; `<div>t<iframe src="/b"></iframe></div>`; `a <script>'<iframe src="/b">'</script>` | nothing rendered; removals `[iframe]`, `[iframe]`, `[html]` | T24-006 |
@@ -2079,8 +2091,11 @@ Written first in the implementation issues. Origin `https://dash.test`; all fail
 | `unit:removal-redaction` | same | `[x](javascript:fetch('https://u:hunter2@e.test/?token=abc'))`; `<a href="https://e.test/?token=abc">` | `[{linkScheme,1}]`, `[{html,1}]`; editor text and `console.debug` JSON lack `hunter2`, `token`, `e.test` | T24-007 |
 | `fuzz:markdown-nodes` | sanitise/markdown.fuzz.test.ts | 10 000 inputs (seed 20261125), both policies, import | tags ⊆ §4.2; attributes ⊆ `href target rel src alt loading start data-lang`; URLs re-classify; `ai` no `img`; import inverse | VIZ-054, 056 |
 | `unit:find-iframes` | sanitise/findIframes.test.ts | `<iframe data-src="a" src="b">`, `<iframe title='src="x"'>`, `<iframe src="b" SRC="c">`, `<iframe src="?a&copy=1">`, `<!-- x --!><iframe src=y>`, `<!--><iframe src=z>`, `<select>`/`<table>`/`<frameset>`/`<template>`/`<svg>`/`<select><title><select>` + `<iframe src=w>`; then `<script>`, `<textarea>`, `<title>`, `<style>`, `<xmp>`, `<plaintext>`, `<![CDATA[`, `<?x`, `</ ` before `<iframe src=x>` | `b`, `null`, `b`, `?a&copy=1`, `y`, `z`, `w` ×6; none for the rest or `<svg><![CDATA[…]]>`; no duplicates | T24-006 |
-| `unit:import-text-iframe` | sanitise/importText.test.ts | f1, f3–f10 | exact `inserted`, `notes`; removing `inserted` gives the input byte-for-byte; hrefs f1 `https://x.test/a)b?q=%5B1%5D&r=%3C2%3E`, f3 `https://x.test/?a=&copy;&b=&#169;&c=&amp;d&e=1`, f5 as listed; f4/f6–f10 as listed | VIZ-056, T24-016 |
+| `unit:import-text-iframe` | sanitise/importText.test.ts | f1, f3–f12 | exact `inserted`, `notes`; removing `inserted` gives the input byte-for-byte; hrefs f1 `https://x.test/a)b?q=%5B1%5D&r=%3C2%3E`, f3 `https://x.test/?a=&copy;&b=&#169;&c=&amp;d&e=1`, f5 as listed; f4/f6–f10 as listed; f11 f1's notes and link texts, each a `link` node; f12 each link after its top-level block, the next paragraph a `paragraph` | VIZ-056, T24-016 |
 | `unit:import-size-error` | same | 65 500-byte panel "Payroll", `src` with `?token=SECRET123` | error `{kind:'textTooLargeForLinks', panelIndex, sourceId, links:1}`; JSON and message lack `SECRET123`, `Payroll` | T24-016 |
+| `unit:security-lint` | scripts/security-plugin.test.ts | `ESLint.lintText` snippets | `security/no-iframe` (`ci:no-iframe`) on JSX `iframe`/`frame`/`frameset`/`object`/`embed`, `createElement` of those (any case), `srcDoc`, `new DOMParser`, `.createContextualFragment(`; `security/markdown-boundary` on commonmark outside `sanitise/`, parse5 or the alias outside `findIframes.ts`, `HtmlRenderer`/`XmlRenderer`, `minimist`, bare `parse5-sax-parser` outside its test; the full config applies both | VIZ-056, T08-009 |
+| `unit:bundle-modules` | scripts/check-bundle-modules.test.ts | graph fixtures | `minimist`, `node:` (with or without NUL), `__vite-browser-external`, `SAXParser`'s entry → one `forbidden-module` each, exit 1; clean → exit 0; missing → exit 2 | ADR-0024 |
+| `unit:sanitise-bundle` | scripts/sanitise-bundle.test.ts | Vite build of a probe lazily importing the sanitiser | no forbidden module; lazy chunk ≤ 100 000 bytes brotli 11; a probe extending `node:stream` `Transform` is caught | ADR-0024, ADR-0014 §8 |
 | `unit:clock-format` | widgets/clock/format.test.ts | 12:34:56Z, Context London, en-GB | Tokyo `21:34` `Thu 26 Nov` `UTC+09:00` night; New York `07:34` `UTC−05:00` day; Auckland `01:34` `Fri 27 Nov` `+1 day` night; UTC `12:34` `UTC` day; `h12` Tokyo `9:34 pm` | T24-010, 013 |
 | `unit:clock-countdown` | same | `to` 14:49:56Z, 12:35:38Z, 12:34:56Z, 12:22:56Z, +2 d 3 h | `in 2 h 15 min`, `in 42 s`, `since 21:34 (0 s)`, `since 21:22 (12 min)`, `in 2 d 3 h`; `hide` + past → no row | T24-012 |
 | `unit:countdown-due` | state/wallClock.test.ts | `to` fixed; r in ms | r → (text, due, next): 125 000 (`2 min`, +5 001, `1 min`); 120 000 (`2 min`, +1, `1 min`, announced); 960 000 (`16 min`, +1, `15 min`, announced); 60 000 (`1 min`, +1, `59 s`); 1 000 (`1 s`, +1, `now`); 1 (+1, `since … (0 s)`, announced); after-`to` e 59 999 (+1 → `1 min`). Property (200 s → −130 s, 137 ms steps): text changes exactly at due | T24-011, 012 |
@@ -2133,6 +2148,11 @@ f7 lines 1–13 (blank between): <![CDATA[<iframe src="https://c1.test/">]]> · 
    <?x <iframe src="https://p1.test/"> ?> · a <?x <iframe src="https://p2.test/"> ?> b · <!DOCTYPE <iframe src="https://d.test/">> ·
    <div></ <iframe src="https://b.test/">x</div> · <div><!--><iframe src="https://after.test/"></div>
    only insert: after 13, after.test; notes [{iframeToLink,13,after.test},{htmlNotRendered,7}]
+f11 f1 with \r\n line ends, and with \r: f1's notes and link texts after the ends of lines 1 and 6
+   (after a lone \r the inserted line ends are \r); each link a link node; inverse exact
+f12 1 - <iframe src="https://li.test/"></iframe>⏎2 para one⏎3⏎4 > <iframe src="https://bq.test/"></iframe>⏎5 para two⏎
+   links after 1 and 4, each ⏎…⏎⏎; top-level list, paragraph (link), paragraph, block_quote, paragraph (link), paragraph;
+   notes [{iframeToLink,1,li.test},{iframeToLink,4,bq.test},{htmlNotRendered,2}]
 ```
 
 ### 10.1 Part B1 tests
@@ -2769,8 +2789,9 @@ A1 needs #173 (board spec v3) and ships the widgets version, v5. It is split in 
 | Part | Scope | Gates |
 |---|---|---|
 | 1, landed | the widgets version (§5.1) in OpenAPI, Go and TS, the zone rules, the panel union (`isWidgetPanel` guards every `query` read), a widget frame showing "not available yet", and the old-binary gate run for every spec version change | `unit:board-spec-widgets`, `unit:board-spec`, `itest:board-crud`, `itest:board-zones-grandfathered`, `itest:board-spec-old-binary` |
-| 2 | the renderer (§5.2), the import conversion (§5.4), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) dependencies | the §10 sanitiser and import rows |
-| 3, after 1 and 2 | the Text view, its editor and removal list, adding a widget, the gallery | the §10 Text e2e and golden rows |
+| 2a, landed | [ADR-0024](../adr/0024-markdown-runtime-dependencies.md) dependencies and the `parse5-sax-parser/feedback` alias; `classifyUrl`, `toWellFormed`, `findIframes`, the import conversion (§5.4); the `security` ESLint rules (`ci:no-iframe`, the import boundary); the module-graph check on every audited build and the sanitiser size probe (≤ 100 000 bytes brotli) | `unit:classify-url`, `unit:well-formed`, `unit:find-iframes`, `unit:import-text-iframe`, `unit:import-size-error`, `unit:security-lint`, `unit:bundle-modules`, `unit:sanitise-bundle`, `ci:dep-audit` |
+| 2b, after 2a | the renderer (§5.2: `renderMarkdown`, `renderCode`, removals, interpolation), the XSS corpus, an independent URL checker, `fuzz:markdown-nodes` (with the import inverse), `bench:markdown-render` | the other §10 sanitiser rows |
+| 3, after 1, 2a and 2b | the Text view, its editor and removal list, adding a widget, the gallery | the §10 Text e2e and golden rows |
 
 The implementation writes
 `docs/client/widgets.md` (behaviour, Markdown, URLs, import, Clock) and updates
@@ -2908,3 +2929,4 @@ None.
 | 1.7-rc | 2026-11-26 | #215 (part B1, I1): §5.5 splits the spec change: tags at the next free spec version in I1 (#215), with the client's validator; the `boardList` kind and options, Go and TS, in I2 (#216) after #198. T24-029 and §9: old binaries cannot move "a head saved at the tags version or later" (was "a v5 head"); §6 likewise. §10.1: fixture S adds "Ledger" `[finance, team:payments]`, `itest:board-find` adds the exact-tag and `q`+`tag` cases, the board-tag cases of `unit:board-spec-board-list` are in I1, the itest files are named, and `itest:board-tags-old-binary` runs by `make itest-old-binary` (local). §11: the I1 and I2 rows. New §5.0 (board spec version order): every spec change takes the next free version, with an upcaster from the version before; the versions are named by change (tags, widgets, board-list, change-feed, geomap, map-sync), with v4–v9 if they land in that order (tags v4 landed, so #198's widgets version is v5); §1, §3, §4, §5.1, §5.8, §5.15, §6, §9, §10 and §11 use the names, fixtures are `v‹N›-‹change›.json`, and gate IDs keep their labels; every upcast is from the immediately preceding version, the change-feed and geomap versions depend on no other version and map-sync depends only on geomap, and the auto-vis tests and the import name "before the map-sync version" and "the map-sync version or later"; the widgets version is v5 only if no other spec change lands first |
 | 1.8-rc | 2026-11-26 | #198 Part 1 (A1): §5.0 the widgets version landed as v5. §5.1: the zone rule replaces "loadable by `time.LoadLocation`": the form on every parse, existence in Go on writes only against the build's zone set (the toolchain's `zoneinfo.zip` names, generated), a zone the head holds kept on a save; `language` in code mode only; a duplicate zone is the same `tz`; a widget's `thresholds` and `legend` are `board.json.unknownKey`; the `countdown.to` grammar; `v5-widgets.json`. §9: a stored zone is always readable. §10: `Mars/Base` is Go only (`client_fields`). §11: A1 is split in Parts 1–3 |
 | 1.9-rc | 2026-11-26 | #216 Part 1 (I2): §5.0 the board-list version landed as v6. §5.5: the rules table (shared `sort` and `mode` per kind, with the reader guards; `query` search-only with the gateway's Cc rule and no minimum; `tag` present iff tag mode; `limit` a whole JSON number 1–50; an invalid mode skips the mode rules). §5.7: `BoardListMode`, `BoardListItem`, the old-server decoding and the stub's filter and truncation; ref rows; `withStale`, `listSetSize`, `repairActive`, `ListTable`/`listCsv`, `boardRowName`, `rankingCaption`, `boardListTable`, `boardListFacts`, `import/boardList.ts`. T24-026: both suffixes. §4.6: the note order. §11: I2 split into Part 1 (spec, API, pure modules) and Part 2 (the view, editor and the rest) |
+| 1.10-rc | 2026-11-26 | #198 Part 2a (A1): §5.2 `toWellFormed` before classification, `IframeHit` with `offset` (in `findIframes.ts`), and the SAX half through `ParserFeedbackSimulator` via the `parse5-sax-parser/feedback` alias, because `SAXParser` needs `node:stream`. §5.4 step 3: line ends as commonmark splits them, `\r` inserted after a lone `\r`, the ascending `inserted` order. §10: f11 (CRLF and CR) and f12 (a list item and a block quote); `unit:well-formed`, `unit:security-lint`, `unit:bundle-modules`, `unit:sanitise-bundle`. §11: A1 Part 2 split into 2a (landed) and 2b |
