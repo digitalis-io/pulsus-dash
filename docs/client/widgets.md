@@ -9,14 +9,13 @@ and error, is on [the boards API page](../server/boards-api.md#widgets-text-and-
 user's view is [Boards](../user/boards.md#widgets).
 
 **Coming later.** This version draws the **Text** widget, adds it from "Add widget" and edits it
-in the widget editor (#198 Part 3a, [below](#text-widget-part-3a)) and draws a stored **Board
-list** (#216 Part 2a, [below](#board-list)); the Clock still shows
+in the widget editor (#198 Part 3a, [below](#text-widget-part-3a)), and draws, adds and edits the
+**Board list** (#216 Parts 2a and 2b, [below](#board-list)); the Clock still shows
 "This widget isn't available in this version yet." #198 Part 2a added the sanitiser's URL
 classifier, iframe finder and import conversion ([below](#sanitiser-modules-part-2a)) and Part 2b
 the Markdown renderer ([below](#markdown-renderer-part-2b)), which the Text widget now uses. Part
 3b added the widget gallery, the browser tests (the whole XSS corpus in three engines) and the
-render bench ([below](#text-browser-tests-part-3b)). The Clock view follows with A2; adding a Board
-list and its editor follow with #216 Part 2b.
+render bench ([below](#text-browser-tests-part-3b)). The Clock view follows with A2.
 
 | Module | Role |
 |---|---|
@@ -24,14 +23,15 @@ list and its editor follow with #216 Part 2b.
 | `src/widgets/spec.ts` | `WIDGET_KINDS`, `PENDING_WIDGETS`, `isWidgetKind`, `isWidgetPanel`, `isDataPanel`, `textOptions`, `clockOptions` |
 | `src/widgets/WidgetBody.tsx` | the widget's body: a Text's `TextBody`, else "not available" for a pending kind |
 | `src/pages/board/WidgetFrame.tsx` | the widget's panel chrome on a board |
-| `src/widgets/registry.tsx` | `WidgetDef`, `WidgetRegistry`, `WIDGETS`, `TEXT_DEF`, `WidgetRegistryContext`, `useWidgetDef` (Part 3a) |
+| `src/widgets/registry.tsx` | `WidgetDef`, `WidgetRegistry`, `WIDGETS`, `TEXT_DEF`, `BOARD_LIST_DEF` (#216 Part 2b), `WidgetRegistryContext`, `useWidgetDef` (Part 3a) |
 | `src/widgets/text/TextBody.tsx` | `TextBody`, `textVars`, `loadTextMarkdown`: the Text view in the board route's chunk (Part 3a) |
 | `src/widgets/text/TextMarkdown.tsx` | `TextContent`, `TextRemovals`: the one dynamic entry that imports the renderer (Part 3a) |
 | `src/widgets/text/ChunkBoundary.tsx`, `TextEditorBody.tsx`, `textVis.ts`, `Text.module.css` | the entry's error boundary, the editor body, the vis writer and the styles (Part 3a) |
 | `src/pages/board/WidgetEditor.tsx`, `AddWidgetMenu.tsx` | the widget editor dialog and the "Add widget" menu (Part 3a) |
 | `src/boards/spec.ts`, `src/boards/options.ts` | the v5 and v6 rules of `checkBoardSpec`; the option tables |
 | `src/widgets/lists/` | the list widgets' snapshot, focus repair, table and CSV (shared with the change feed) |
-| `src/widgets/boardList/` | the board list's options, rows, facts and test fixtures |
+| `src/widgets/boardList/` | the board list's options, rows, facts, view, editor body (`BoardListEditorBody.tsx`, `boardListVis.ts`) and test fixtures |
+| `src/widgets/lists/useDebounced.ts` | `useDebounced(value, ms)`: the editor preview's draft (#216 Part 2b) |
 | `src/import/boardList.ts` | a dashboard list panel's options as a board list |
 | `src/security/sanitise/url.ts` | `classifyUrl`, `URL_FORBIDDEN`, `toWellFormed` (Part 2a) |
 | `src/security/sanitise/findIframes.ts`, `feedback.d.ts` | `findIframes` and the type of the `parse5-sax-parser/feedback` alias (Part 2a) |
@@ -135,9 +135,10 @@ search, or the boards with one tag. Part 1 (#216) shipped the spec, the API page
 ([the panel runtime](boards.md#board-list-pages-and-filters-216-part-1)) and the pure modules below.
 Part 2a draws a stored board list ([the view](#the-board-list-view-part-2a)): its sources, rows,
 Show more, states, keys and focus, announcements, meter, the Shift+T table and CSV, the gallery
-pages, the browser tests and the bench. **Part 2b** adds "Add widget → Board list", its editor body,
-the board tags field and the user page; until then a board list has no Edit panel (its menu is
-Show as table, Duplicate and Remove).
+pages, the browser tests and the bench. Part 2b adds "Add widget → Board list" and its editor
+([the editor](#the-board-list-editor-part-2b)); the board's own tags field is on
+[the panel runtime page](boards.md#board-tags-215). A board list's Panel menu is Edit panel, Show
+as table, Duplicate and Remove.
 
 **Options** (`widgets/boardList/options.ts`, the spec on
 [the boards API page](../server/boards-api.md#board-list-boardlist-v6)): `boardListOptions(o)` gives
@@ -189,7 +190,7 @@ used"), the dropped or cut tags and search text, the clamp, "Links keep the time
 `keepTime: false`, and "Option ‹key› not mapped" for every other key, sorted.
 
 **Mixed versions.** A tab of the previous release meets a v6 board as a bad response; a v5 server
-refuses a board list on a write (`board.vis.kind.invalid`). No client adds one before Part 2b.
+refuses a board list on a write (`board.vis.kind.invalid`).
 
 ### The board list view (Part 2a)
 
@@ -289,6 +290,61 @@ path: `coverage unknown`, Starred and Recent rows as sent, search filtered by ti
 with "tags unknown", tag mode the notice. A new server's `tagsStale` makes the meter read
 `tags not yet known for k boards`.
 
+### The board list editor (Part 2b)
+
+`BOARD_LIST_DEF` (`widgets/registry.tsx`) puts **Board list** after Text in "Add widget": a 4 × 8
+panel with `{kind: 'boardList'}` (the T24 §5.5 defaults: Starred, 10 rows, the default order) that
+opens in **Edit board list**. Its body, `BoardListEditorBody` (`widgets/boardList/`), sits below
+Title:
+
+| Control | Kit | Writes |
+|---|---|---|
+| Preview | a group named by its visible caption "Preview"; inside, a 240 px (`--size-chart`) `inert` box with `BoardListBody` `preview` over `useDebounced(panel, SEARCH_COMMIT_MS)` | nothing |
+| Show | `SegmentedControl` Starred · Recent · Search · Tag | the mode; leaving search keeps no query, leaving tag no tag, entering tag keeps the stored tag (none: the live "Use one valid tag, in tag mode only.") |
+| Search text (search) | `TextField`, mono, no `maxLength` (it counts UTF-16 units) | the text as typed (untrimmed; the view trims), unless it holds a Cc character ("Search text cannot contain control characters") or more than 100 code points ("Use up to 100 characters …") |
+| Tag (tag) | `TextField`, mono | the tag; empty is none |
+| Rows | `TextField`, `inputMode="numeric"` | a whole number from 1 to 50 (`/^\d{1,2}$/`); else "Use a whole number from 1 to 50." |
+| Order | `Select` Default · Use during incidents | the sort; with the ranking unavailable (`CAPABILITIES`) the caption "Ranking by use during incidents is available with investigations (M-UI4)" shows under it |
+
+Each help line ("Boards whose title contains this text or that carry it as a tag", "One tag, such
+as team:payments", "1 to 50; Show more adds as many again") describes its field
+(`aria-describedby`). A field's error is its local error first, then the draft's live one
+(`widgetVisErrors` at `/vis/options/<key>`), then the last save's (`<pointer>/vis/options/<key>`).
+Read-only (a save in flight) disables every control.
+
+**The vis writer.** `boardListVis(options, original)` (`boardListVis.ts`) writes the head's stored
+representation, as `textVis` does, so an edit typed back leaves the draft clean:
+
+| Key | Written when |
+|---|---|
+| `mode` | `original.options` has it, or it is not `starred` |
+| `query` | search mode, and the head has it or it is not `''` |
+| `tag` | tag mode with a tag (there is no default) |
+| `limit` | the head has it, or it is not 10 |
+| `sort` | the head has it, or it is not `default` |
+
+`options` is left out when the head had none and no key is written. Every import result
+(`importBoardList`, I1–I9) reads back unchanged through `boardListOptions`.
+
+**Local texts.** Search text and Rows each hold a local text, seeded from the option and seeded
+again when the option changes to a value the text does not give (Discard, a remote head). A text
+that cannot be written stays shown with its error and never reaches the draft. The body reports
+the first such message through `onLocalInvalid` (`WidgetEditorBodyProps`; null when none and on
+unmount; Text never calls it). `WidgetEditor` then disables Done and leads its status line
+(`role="status"`) with the message. `BoardPage` keeps it as `editorInvalid` and refuses `save()`,
+the Save button and ⌘S / Ctrl+S alike, with "Fix the highlighted field in the panel editor first"
+on the status line and no request. Esc or the dialog's close drops the local text, as any editor
+close does; the draft keeps its last valid options.
+
+**The preview.** `useDebounced(value, ms)` (`widgets/lists/useDebounced.ts`) gives its first value
+at once and each later one `ms` after the last change, so typing the search costs one request per
+250 ms pause. With `preview`, `BoardListBody` sends every mode through `FixedBoardList` (a search
+list reads `q` = its trimmed query), so the preview registers no Escape or Inspector provider and the
+board's own search field keeps its Esc step. `BoardListView` then draws the rows as plain `<li>`
+text (title, uid suffix, chips and time; no link, no tab stop) with no search field, Show more,
+Retry, summary or live region, the meter as plain text, and no Shift+T. The fetch, states and
+snapshot are the same as on the board.
+
 ### Board list: gallery, browser tests and bench
 
 **Gallery** (stub and dev builds; `dev/boardListGallery.ts`, which imports types and the fixtures
@@ -325,6 +381,15 @@ each render and measures `boardList:render` per commit in the stub and dev build
 timing entries); the p50, p95
 and max go to stdout and `test-results/widget-lists.json` (no samples fails the run).
 `LONG_TASK_GATE=enforce` fails a p95 over 16 ms; a miss is the cue to virtualise the rows.
+
+**Part 2b browser tests** (same spec). `e2e:widget-board-list (add flow)`: on an empty board, Edit
+board → Add widget → Board list → Show Search, Search text `check`, Rows `5` (the preview shows 2
+rows) → Done → Tags → `team:payments` Return → Save → "Saved"; after a reload the list shows 2 rows
+and its field reads `check`, and the boards API returns `tags: ["team:payments"]` and the options
+`{mode: 'search', query: 'check', limit: 5}`. `e2e:widget-lists-a11y (editor)`: axe over the editor
+with a populated preview and over the tags popover of a board with two tags (Firefox skips axe, as
+above); the Tab order Title → Show → Search text → Rows → Order → Remove panel → Done; in the
+popover the chips' × then the input, and Esc back to the trigger.
 
 ## Text widget (Part 3a)
 
@@ -443,18 +508,19 @@ back therefore leaves the draft clean, so Save is disabled again (the app has no
 interface WidgetDef {
   kind: WidgetKind; label: MessageId; editTitle: MessageId;
   size: { w: number; h: number }; newVis(): WidgetPanelSpec['vis'];
-  Editor: ComponentType<WidgetEditorBodyProps>; // {panel, title, pointer, fields, readOnly, original, onVis}
+  Editor: ComponentType<WidgetEditorBodyProps>; // {panel, title, pointer, fields, readOnly, original, onVis, onLocalInvalid?}
 }
-const WIDGETS: WidgetRegistry = { defs: [TEXT_DEF] }; // order = menu order
+const WIDGETS: WidgetRegistry = { defs: [TEXT_DEF, BOARD_LIST_DEF] }; // order = menu order
 ```
 
-`TEXT_DEF` adds a 6 × 6 panel with `{kind: 'text', options: {mode: 'markdown', content: ''}}`.
+`TEXT_DEF` adds a 6 × 6 panel with `{kind: 'text', options: {mode: 'markdown', content: ''}}`;
+`BOARD_LIST_DEF` a 4 × 8 one with `{kind: 'boardList'}` ([the editor](#the-board-list-editor-part-2b)).
 The board reads the registry from `WidgetRegistryContext` (default `WIDGETS`):
 - "Add widget" lists `defs` by label and dispatches `addWidget(def.newVis(), def.size)`;
 - a widget's panel menu has Edit panel iff `useWidgetDef(kind)` finds a def;
 - `BoardPage` opens `WidgetEditor` with the def's `Editor` for a selected widget that has one.
 
-To add a kind (the Board list in #216 Part 2): write its editor body against
+To add a kind (as the Board list did in #216 Part 2b): write its editor body against
 `WidgetEditorBodyProps`, add a def with its label, title, size and `newVis`, and append it to
 `WIDGETS.defs`. No reducer or page change is needed. A test can provide another registry through
 the context, as `unit:widget-registry-generic` does with a test-only kind.
@@ -988,6 +1054,9 @@ violations of a rendered tree:
 | `unit:widget-registry-generic` | `BoardWidgets.test.tsx`: a context with `TEXT_DEF` and a test-only clock def: the menu, its 4 × 3 `newVis`, its editor's title and checkbox, the saved vis, and Edit panel on the stored clock |
 | `unit:board-spec-board-list` | `src/boards/spec.test.ts`: `v6-board-list.json` and its SHA-256, the 14 `bl-` rows with their texts, the bounds, `boardListOptions`; `BoardWidgets.test.tsx`: a stored v6 board, five lists not available, one query |
 | `unit:board-list-rows` | `src/widgets/boardList/rows.test.ts` (fixtures B and S in `fixtures.ts`) |
+| `unit:board-list-vis` | `src/widgets/boardList/boardListVis.test.ts`: the §3.1 rows, a head key kept at its default, search → tag and tag → recent, the I1–I9 round trip |
+| `unit:board-list-editor`, `unit:board-spec-board-list` (editor leg), `unit:board-list-preview` | `src/widgets/boardList/BoardListEditorBody.test.tsx` (the editor over a draft, fake timers): Show, the help, one `q=check` request 250 ms after the last key, the tag error, Rows `0`, `51`, `2.5`, `x`, Order and its caption, read-only; a TAB character kept local with Done disabled and no request carrying it; the inert, control-free preview; `BoardWidgets.test.tsx`: the same on a board, with the board's Esc step intact after the editor closes |
+| `unit:board-list-editor-invalid`, `unit:board-list-editor-length`, `unit:widget-registry` | `BoardWidgets.test.tsx`: Done and ⌘S blocked while Search text or Rows is invalid, Esc dropping the text; 100 emoji saved and 101 blocked; Add widget → Text, Board list, the 4 × 8 panel at the first free cell, a valid saved spec, Edit panel first in its menu |
 | `unit:list-coverage` | `src/widgets/lists/snapshot.test.ts` |
 | `unit:list-table-csv` | `src/widgets/lists/table.test.ts`: the guard block, B, S, `unknown` tags, the facts |
 | `unit:list-keyboard` (pure) | `src/widgets/lists/focus.test.ts` |
@@ -1017,7 +1086,8 @@ violations of a rendered tree:
   furniture), T24-003 (widget spec), §5.0 and §5.1 (the widgets version), T24-020 to T24-026 and
   T24-028 (list widgets, the board list's sources, rows, ranking, snapshot and meter, keys, table,
   CSV, facts and import), T24-029 (old servers), §4.6 and §5.5 to §5.7 (the board-list version and
-  modules), §11 (the parts); Part 2a: T24-005 (URL classification), T24-006 (`findIframes`),
+  modules), §11 (the parts); #216 Part 2b: §5.2a (the registry's `BOARD_LIST_DEF`), §5.7 (the
+  editor body and `boardListVis`), T24-021 (the editor's search text), T24-029 (the tags field); Part 2a: T24-005 (URL classification), T24-006 (`findIframes`),
   T24-016 and §5.4 (import), §5.2; Part 2b: T24-004 (one renderer), T24-005 (links), T24-006
   (iframes), T24-007 (removals), T24-008 (interpolation), T24-009 (headings), T24-018 (policies),
   §4.2 (the node table and the walk), §7 (the bench), §10 (the tests); Part 3a: T24-001, T24-002,
