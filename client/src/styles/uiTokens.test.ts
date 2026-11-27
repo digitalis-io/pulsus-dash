@@ -4,7 +4,7 @@
  * surface beneath them first.
  */
 import { describe, expect, it } from 'vitest';
-import { colour } from './tokens';
+import { colour, opacity } from './tokens';
 
 type Theme = 'dark' | 'light';
 type Rgb = readonly [number, number, number];
@@ -46,6 +46,25 @@ function luminance(c: Rgb): number {
 function ratio(a: Rgb, b: Rgb): number {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
   return (hi + 0.05) / (lo + 0.05);
+}
+
+/** A token opacity; fails the test (an assertion) when the key is absent. */
+function alphaOf(key: string): number {
+  const v = (opacity as Record<string, number | undefined>)[key];
+  expect(v, `opacity.${key}`).toBeDefined();
+  return v ?? 0;
+}
+
+/** `c` at alpha `a` over the opaque `bg` (the tint pattern's pseudo-element, #282 Part 2a). */
+function tint(theme: Theme, bg: string, c: string, a: number): Rgb {
+  const base = stack(theme, bg);
+  const [r, g, b] = rgba(hexOf(theme, c));
+  return [r * a + base[0] * (1 - a), g * a + base[1] * (1 - a), b * a + base[2] * (1 - a)];
+}
+
+/** An opaque token `fg` on a tinted composite. */
+function onTint(theme: Theme, fg: string, under: Rgb): number {
+  return ratio(over(hexOf(theme, fg), under), under);
 }
 
 const THEMES: readonly Theme[] = ['dark', 'light'];
@@ -147,6 +166,56 @@ describe('unit:ui-token-contrast', () => {
           expect(r, `${theme}: ${st} on ${bg} (was ${String(before)})`).toBeGreaterThanOrEqual(min);
         });
       }
+    });
+  }
+
+  // #282 Part 2a: tinted tags and chips (VL-009; labels in `text`, never state colour on a tint).
+  const STATE_KEYS = ['ok', 'watch', 'degraded', 'failing', 'unknown'] as const;
+  const LEVELS = ['critical', 'error', 'warn', 'info', 'debug', 'trace', 'unknown'] as const;
+  for (const theme of THEMES) {
+    it(`${theme}: a state tag's glyph and label on its tint`, () => {
+      for (const st of STATE_KEYS) {
+        const under = tint(theme, 'surface-1', st, alphaOf('tag'));
+        expect(onTint(theme, st, under), `${theme}: ${st} glyph on its tag`).toBeGreaterThanOrEqual(
+          3,
+        );
+        expect(
+          onTint(theme, 'text', under),
+          `${theme}: text on the ${st} tag`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it(`${theme}: a log level tag's text on its tint`, () => {
+      for (const lv of LEVELS) {
+        const under = tint(theme, 'surface-1', `level-${lv}`, alphaOf('tag'));
+        expect(
+          onTint(theme, 'text', under),
+          `${theme}: text on level-${lv}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it(`${theme}: legend chips keep their text and state glyphs on every series tint`, () => {
+      for (let n = 1; n <= 8; n++) {
+        const under = tint(theme, 'surface-1', `series-${String(n)}`, alphaOf('chip'));
+        for (const fg of ['text', 'text-muted']) {
+          expect(
+            onTint(theme, fg, under),
+            `${theme}: ${fg} on series-${String(n)}`,
+          ).toBeGreaterThanOrEqual(4.5);
+        }
+        for (const st of ['watch', 'degraded', 'failing']) {
+          expect(
+            onTint(theme, st, under),
+            `${theme}: ${st} on series-${String(n)}`,
+          ).toBeGreaterThanOrEqual(3);
+        }
+      }
+    });
+
+    it(`${theme}: the board status glyph (failing) on the canvas`, () => {
+      pair(theme, ['canvas', 'failing'], ['canvas'], 3);
     });
   }
 });

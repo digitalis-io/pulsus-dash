@@ -267,6 +267,10 @@ describe('board stat tile (#64 Part B §4.4)', () => {
       return;
     }
     expect(chipEl).toHaveAttribute('data-state', chip);
+    // unit:stat-tag (#282 Part 2a §4.4): the chip is a tag in the panel header, after the title.
+    const titles = p.querySelector('h3')?.parentElement;
+    expect(chipEl !== null && titles?.contains(chipEl) === true, 'chip in the header').toBe(true);
+    expect(chipEl?.closest('[data-stat-stack]') ?? null).toBeNull();
     expect(textEl?.textContent).toBe(text);
     expect(textEl?.hasAttribute('data-crossed')).toBe(crossed);
   });

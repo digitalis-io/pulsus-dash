@@ -22,6 +22,7 @@ export const REST_B_FILES: readonly string[] = [
   'a11y-rooms.spec.ts',
   'app-layout.spec.ts',
   'asset-origin.spec.ts',
+  'board-chrome.spec.ts',
   'board-edit.spec.ts',
   'board-prefs.spec.ts',
   'board-promql.spec.ts',

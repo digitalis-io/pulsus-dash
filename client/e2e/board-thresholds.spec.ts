@@ -8,6 +8,15 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
 import { BOARDS_API, createBoard, deleteBoard, type PanelInput } from './boardApi.ts';
+import { colour } from '../src/styles/tokens.ts';
+
+type SeriesKey = `series-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}`;
+
+/** `rgb(r, g, b)` of a `#RRGGBB` token, as computed styles print it. */
+function rgb(hex: string): string {
+  const b = (i: number): number => parseInt(hex.slice(i, i + 2), 16);
+  return `rgb(${String(b(1))}, ${String(b(3))}, ${String(b(5))})`;
+}
 
 const FROM = '2026-01-01T00:00:00.000Z';
 const TO = '2026-01-01T01:00:00.000Z';
@@ -125,6 +134,29 @@ test.describe('e2e:board-thresholds (fake)', () => {
     // The 4-row panel: a compact legend, reached by keyboard from its header.
     const compact = short.locator('[data-panel-legend="compact"]');
     await expect(compact.locator('[data-legend-item]')).toHaveCount(3);
+    // e2e:legend-chips (#282 Part 2a §4.5): each item is a 24 px chip tinted with its series colour.
+    const items = compact.locator('[data-legend-item]');
+    for (let i = 0; i < 3; i++) {
+      const item = items.nth(i);
+      const n = await item.getAttribute('data-series');
+      expect(n, `item ${String(i)} data-series`).not.toBeNull();
+      const chip = await item.evaluate((e) => {
+        const s = getComputedStyle(e);
+        const b = getComputedStyle(e, '::before');
+        return {
+          height: e.getBoundingClientRect().height,
+          radius: s.borderTopLeftRadius,
+          tint: b.backgroundColor,
+          opacity: b.opacity,
+        };
+      });
+      expect(chip.height, `item ${String(i)} height`).toBeGreaterThanOrEqual(24);
+      expect(chip.radius, `item ${String(i)} radius`).toBe('4px');
+      expect(chip.tint, `item ${String(i)} tint`).toBe(
+        rgb(colour.dark[`series-${n ?? ''}` as SeriesKey]),
+      );
+      expect(chip.opacity, `item ${String(i)} opacity`).toBe('0.12');
+    }
     await short.getByRole('button', { name: 'Panel menu: Short' }).focus();
     // Until focus is on a legend item: Firefox also stops on the scrolling list itself.
     for (let i = 0; i < 60; i++) {

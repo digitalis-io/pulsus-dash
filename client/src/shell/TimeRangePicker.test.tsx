@@ -37,6 +37,35 @@ describe('picker quick range', () => {
   });
 });
 
+// IA-020 as amended (#282 Part 2a): five presets inline before the trigger.
+describe('unit:quick-presets', () => {
+  const NAMES = ['Last 15 minutes', 'Last 1 hour', 'Last 6 hours', 'Last 24 hours', 'Last 7 days'];
+
+  it('shows five presets, checks the current one and sets the range', async () => {
+    const { router, user } = renderApp('/t/demo/boards?from=now-6h&to=now&refresh=off');
+    const group = await screen.findByRole('radiogroup', { name: 'Quick range' });
+    const radios = within(group).getAllByRole('radio');
+    expect(radios.map((r) => r.getAttribute('aria-label') ?? r.textContent)).toEqual(NAMES);
+    expect(within(group).getByRole('radio', { name: 'Last 6 hours' })).toBeChecked();
+    expect(within(group).getByRole('radio', { name: 'Last 6 hours' })).toHaveTextContent('6h');
+    expect(group.closest('[role="group"]')).toHaveAccessibleName('Time range');
+    await user.click(within(group).getByRole('radio', { name: 'Last 1 hour' }));
+    await waitFor(() => {
+      expect(router.state.location.search).toContain('from=now-1h&to=now');
+    });
+    expect(within(group).getByRole('radio', { name: 'Last 1 hour' })).toBeChecked();
+    const dialog = await openPicker(user);
+    expect(dialog).toBeInTheDocument();
+  });
+
+  it('checks none for an absolute range', async () => {
+    const abs = `from=${enc('2026-11-18T09:00:00.000Z')}&to=${enc('2026-11-18T10:00:00.000Z')}`;
+    renderApp(`/t/demo/boards?${abs}`);
+    const group = await screen.findByRole('radiogroup', { name: 'Quick range' });
+    for (const r of within(group).getAllByRole('radio')) expect(r).not.toBeChecked();
+  });
+});
+
 describe('picker validation', () => {
   it('marks From invalid with the unit named, keeps the URL and focuses From', async () => {
     const { router, user } = renderApp('/t/demo/boards');

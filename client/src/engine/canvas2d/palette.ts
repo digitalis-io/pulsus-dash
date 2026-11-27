@@ -88,3 +88,8 @@ export function rampIndex(count: number, maxCount: number): number | null {
   if (!(count > 0) || !(maxCount > 0)) return null;
   return Math.min(8, Math.floor((9 * count) / maxCount));
 }
+
+/** '#RRGGBB' + alpha → '#RRGGBBAA' (alpha clamped to 0..1, rounded to a byte, uppercase). Stub. */
+export function withAlpha(hex: string, _alpha: number): string {
+  return hex;
+}

@@ -133,6 +133,18 @@ export function recordingContext(): RecordingContext {
     rect: rec('rect'),
     clip: rec('clip'),
     setLineDash: rec('setLineDash'),
+    /**
+     * A linear gradient (#282 Part 2a): records `createLinearGradient(x0, y0, x1, y1)` and each of
+     * its `addColorStop(offset, colour)` calls; a fill with it records `gradient-or-pattern`.
+     */
+    createLinearGradient(x0: number, y0: number, x1: number, y1: number): CanvasGradient {
+      rec('createLinearGradient')(x0, y0, x1, y1);
+      return {
+        addColorStop(offset: number, c: string) {
+          rec('addColorStop')(offset, c);
+        },
+      } as CanvasGradient;
+    },
     /** A pattern object that remembers its tile; a fill with it records `gradient-or-pattern`. */
     createPattern(image: CanvasImageSource, repetition: string | null): CanvasPattern {
       rec('createPattern')(image, repetition);
