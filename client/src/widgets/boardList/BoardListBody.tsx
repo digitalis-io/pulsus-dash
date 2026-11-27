@@ -7,8 +7,8 @@
  *
  * `BoardListCore` reads the model (`useBoardList`), owns Shift+T (not in a text field), the keys
  * (`useListKeys`) and the announcements (`useListAnnouncer`), and renders `BoardListView`. In the
- * stub and dev builds (not http) it marks each render and measures `boardList:render` per commit
- * (`bench:widget-lists`).
+ * stub and dev builds (not http), under the bench's flag, it marks each render and measures
+ * `boardList:render` per commit (`bench:widget-lists`).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { WidgetPanelSpec } from '../../api/types';
@@ -38,8 +38,20 @@ export interface BoardListBodyProps {
   onTable: (on: boolean) => void;
 }
 
-/** Render timing for `bench:widget-lists`: the stub and dev builds only. */
-const BENCH = import.meta.env.DEV || import.meta.env['VITE_API_MODE'] !== 'http';
+/**
+ * Render timing for `bench:widget-lists`: the stub and dev builds only, and only while the bench
+ * has set `localStorage['pulsus-dash.bench.boardList']` to `1` before the page loads, so no other
+ * session accumulates timing entries.
+ */
+function benchOn(): boolean {
+  if (!(import.meta.env.DEV || import.meta.env['VITE_API_MODE'] !== 'http')) return false;
+  try {
+    return localStorage.getItem('pulsus-dash.bench.boardList') === '1';
+  } catch {
+    return false;
+  }
+}
+const BENCH = benchOn();
 const RENDER_MARK = 'boardList:render:start';
 const COUNT = new Intl.NumberFormat('en-GB');
 
@@ -84,6 +96,7 @@ function BoardListCore(p: CoreProps): ReactElement {
   // A search the user committed: its first ok or empty answer is announced (T24-025).
   const target = useRef<string | null>(null);
   const seenKey = useRef(listKey);
+  const seenQ = useRef(q);
   const { phase, mode } = model;
   const settledText =
     snapshot === null || (phase !== 'ok' && phase !== 'empty')
@@ -95,13 +108,16 @@ function BoardListCore(p: CoreProps): ReactElement {
           : t('boardList.count', { n: COUNT.format(snapshot.rows.length) });
   useEffect(() => {
     if (seenKey.current !== listKey) {
+      // Only a key the user's commit made (a new `q`) is announced, not a tenant change.
+      const committed = seenQ.current !== q;
       seenKey.current = listKey;
-      target.current = typed && mode === 'search' ? listKey : null;
+      seenQ.current = q;
+      target.current = typed && committed && mode === 'search' ? listKey : null;
     }
     if (target.current !== listKey || settledText === null) return;
     target.current = null;
     announce(settledText);
-  }, [listKey, typed, mode, settledText, announce]);
+  }, [listKey, q, typed, mode, settledText, announce]);
 
   // Shift+T flips the table (native listener: the root is no control of its own).
   const tableRef = useRef({ table, onTable });
@@ -145,7 +161,9 @@ function BoardListCore(p: CoreProps): ReactElement {
   }, [table, activeKey]);
 
   useLayoutEffect(() => {
-    if (BENCH) performance.measure('boardList:render', RENDER_MARK);
+    if (!BENCH) return;
+    performance.measure('boardList:render', RENDER_MARK);
+    performance.clearMarks(RENDER_MARK);
   });
 
   return (

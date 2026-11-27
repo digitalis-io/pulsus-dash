@@ -12,6 +12,7 @@ import {
   LIST_TIME,
   listPanel,
   listRoot,
+  liveText,
   meterText,
   renderLists,
   rowNames,
@@ -99,5 +100,36 @@ describe('unit:board-list-key', () => {
     expect(seen.filter((s) => s.includes('/t/acme/'))).toEqual([]);
     expect(inPanel('p-1').getByText("Couldn't load boards")).toBeInTheDocument();
     expect(meterText('p-1')).toBe('unavailable');
+  });
+
+  it('a tenant change after a typed search announces nothing', async () => {
+    const { api, calls } = deferredApi();
+    const h = renderLists({
+      api,
+      tenant: 'acme',
+      panels: [listPanel('p-1', 'One', { mode: 'search', query: '' })],
+    });
+    await tick();
+    calls[0]?.resolve(findS({}));
+    await tick();
+    const field = inPanel('p-1').getByRole('textbox', { name: 'Search boards' });
+    act(() => {
+      fireEvent.change(field, { target: { value: 'check' } });
+    });
+    await tick(250);
+    calls.at(-1)?.resolve(findS({ q: 'check' }));
+    await tick();
+    expect(liveText('p-1')).toBe('2 boards');
+    await tick(3000);
+    await act(async () => {
+      await h.router.navigate(`/t/beta/board/pay?${LIST_TIME}`);
+    });
+    await tick();
+    const beta = calls.at(-1);
+    expect(beta?.tenant).toBe('beta');
+    beta?.resolve(findS({ q: 'ledger' }));
+    await tick(3000);
+    expect(rowNames('p-1')).toHaveLength(1);
+    expect(liveText('p-1')).toBe('2 boards');
   });
 });
