@@ -116,11 +116,11 @@ fn layout_new_units() {
     let rows = fixture::load("layout.json");
     let new: Vec<&Value> = rows
         .iter()
-        .filter(|r| r["id"].as_str().is_some_and(|id| id.starts_with("unit-")))
+        .filter(|r| r["case"].as_str().is_some_and(|c| c.starts_with("unit-")))
         .collect();
     assert_eq!(new.len(), 10, "layout.json rows of the new units");
     for r in new {
-        let what = r["id"].as_str().unwrap_or_default();
+        let what = r["case"].as_str().unwrap_or_default();
         let unit: Unit = match serde_json::from_value(r["unit"].clone()) {
             Ok(u) => u,
             Err(e) => panic!("{what}: unit {}: {e}", r["unit"]),

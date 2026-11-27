@@ -34,7 +34,7 @@ fn moves_between_scenes() {
     };
     let v = viewport(
         chunk_of(&[1.0, 2.0]),
-        LineSpec::new(Unit::Bytes),
+        LineSpec::new(Unit::bytes()),
         window,
         Band::Measure,
     );

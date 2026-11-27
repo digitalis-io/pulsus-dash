@@ -55,7 +55,7 @@ fn out_of_range_form() {
         (1e21, &Unit::None, "1e+21"),
         (2.5e22, &Unit::None, "2.5e+22"),
         (1e-4, &ns, "1e-13 s"),
-        (1e22, &Unit::Bytes, "1e+22 B"),
+        (1e22, &Unit::bytes(), "1e+22 B"),
         (5e21, &rps, "5e+21 rps"),
         (1e19, &Unit::Percentunit, "1e+21 %"),
         (1e-13, &Unit::None, "1e-13"),

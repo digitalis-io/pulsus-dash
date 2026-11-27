@@ -126,7 +126,7 @@ fn entry(which: GalleryLine) -> (u32, u32, u32, &'static str, f64, f64, bool, Un
             8e8,
             2e8,
             false,
-            Unit::Bytes,
+            Unit::bytes(),
         ),
         GalleryLine::LineExtreme => (9, 1, 1440, "near_limit_values", 0.0, 1.0, false, Unit::None),
     }
