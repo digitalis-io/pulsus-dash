@@ -32,6 +32,8 @@ export interface PlanInputs {
   readonly kind: 'range' | 'instant';
   readonly stepMs: number;
   readonly rate: boolean;
+  /** The request window, to − from, of `$__range`, `$__range_s` and `$__range_ms`; absent or ≤ 0 = none. */
+  readonly rangeMs?: number;
 }
 
 export type MetricTypes = Readonly<Record<string, MetricKind>>;
@@ -138,6 +140,28 @@ const DURATION_UNITS = [
   ['s', 1_000],
 ] as const;
 
+/**
+ * The window of `$__range` and `$__range_s` (#291), as Go `prom.RangeSeconds`: `rangeMs` rounded
+ * to the nearest whole second, a half second up, and at least 1 s. `$__range_ms` is `rangeMs`.
+ */
+export function rangeSeconds(rangeMs: number): number {
+  return Math.max(1, Math.floor((rangeMs + 500) / 1000));
+}
+
+/** The range macros of `rangeMs` (#291): `$__range`, `$__range_s` and `$__range_ms`. */
+export function rangeMacros(rangeMs: number): {
+  readonly range: string;
+  readonly rangeS: string;
+  readonly rangeMs: string;
+} {
+  const s = rangeSeconds(rangeMs);
+  return { range: formatDuration(s * 1000), rangeS: String(s), rangeMs: String(rangeMs) };
+}
+
+/** The refusal of a range macro without a window (#291), as Go's. */
+export const NO_WINDOW_MESSAGE =
+  '$__range, $__range_s and $__range_ms need a time window, and the request has none';
+
 /** The largest of d, h, m, s that divides `ms` (> 0), else `<ms>ms`. */
 export function formatDuration(ms: number): string {
   for (const [unit, size] of DURATION_UNITS) {
@@ -206,14 +230,27 @@ function at(segs: readonly Segment[], total: number, s: number): number | null {
 interface Macros {
   readonly interval: Uint8Array;
   readonly rateInterval: Uint8Array;
+  readonly range: Uint8Array;
+  readonly rangeS: Uint8Array;
+  readonly rangeMs: Uint8Array;
 }
 
-const PLACEHOLDERS: Macros = { interval: encoder.encode('1s'), rateInterval: encoder.encode('1s') };
+const PLACEHOLDERS: Macros = {
+  interval: encoder.encode('1s'),
+  rateInterval: encoder.encode('1s'),
+  range: encoder.encode('1s'),
+  rangeS: encoder.encode('1'),
+  rangeMs: encoder.encode('1'),
+};
 
-function macrosAt(stepMs: number): Macros {
+function macrosAt(stepMs: number, rangeMs: number): Macros {
+  const r = rangeMacros(rangeMs);
   return {
     interval: encoder.encode(formatDuration(stepMs)),
     rateInterval: encoder.encode(formatDuration(rateWindowMs(stepMs))),
+    range: encoder.encode(r.range),
+    rangeS: encoder.encode(r.rangeS),
+    rangeMs: encoder.encode(r.rangeMs),
   };
 }
 
@@ -227,6 +264,8 @@ interface Substitution {
   /** Row 7b: distinct, first-reference order. */
   readonly unrepresentable: readonly string[];
   readonly macro: boolean;
+  /** A range macro is referenced (#291). */
+  readonly rangeMacro: boolean;
   readonly bytes: Uint8Array;
   readonly segs: readonly Segment[];
 }
@@ -487,6 +526,7 @@ function substitute(
   const memo = new ValueMemo();
   let size = 0;
   let macro = false;
+  let rangeMacro = false;
   let copyFrom = 0;
   const flush = (to: number) => {
     if (to <= copyFrom) return;
@@ -531,6 +571,9 @@ function substitute(
       } else if (ref.name === '__rate_interval') {
         value = m.rateInterval;
         macro = true;
+      } else if (ref.name === '__range' || ref.name === '__range_s' || ref.name === '__range_ms') {
+        value = ref.name === '__range' ? m.range : ref.name === '__range_s' ? m.rangeS : m.rangeMs;
+        rangeMacro = true;
       } else if (!ref.name.startsWith('__') && ref.name.length <= MAX_NAME_LEN) {
         value = vars.get(ref.name) ?? null;
         isVar = value !== null;
@@ -579,7 +622,7 @@ function substitute(
       o += p.length;
     }
   }
-  return { size, missing, unrepresentable, macro, bytes, segs };
+  return { size, missing, unrepresentable, macro, rangeMacro, bytes, segs };
 }
 
 const pointerToken = (s: string): string => s.replace(/~/g, '~0').replace(/\//g, '~1');
@@ -653,7 +696,10 @@ function isHistogram(n: string, t: MetricTypes): boolean {
   return k === 'histogram' || k === 'unknown';
 }
 
-/** Prepare: rows 1–5, 7, 7b (plan #118 §4.3), 8 and 9 of §3.1, the placeholder substitution (plan #112 §4.1). */
+/**
+ * Prepare: rows 1–5, 7, 7b (plan #118 §4.3), 8, 8b (a range macro without a window, #291) and 9 of
+ * §3.1, the placeholder substitution (plan #112 §4.1).
+ */
 export function prepare(i: PlanInputs): Prepared | StubPlanError {
   const raw = encoder.encode(i.query);
   const bad = checkInputs(i, raw.length);
@@ -686,6 +732,9 @@ export function prepare(i: PlanInputs): Prepared | StubPlanError {
       'field.required',
       'step_ms is required for $__interval and $__rate_interval',
     );
+  const rangeMs = i.rangeMs ?? 0;
+  if (count.rangeMacro && rangeMs <= 0)
+    return inputError('/query', 'query.no_window', NO_WINDOW_MESSAGE);
   if (count.size > MAX_EXPANDED_BYTES) return PROCESSING_CAP;
   const substituted = decoder.decode(substitute(raw, vars, PLACEHOLDERS, true).bytes);
   const expanded = new Map<number, Substitution | StubPlanError>();
@@ -694,7 +743,7 @@ export function prepare(i: PlanInputs): Prepared | StubPlanError {
   const sub = (stepMs: number): Substitution | StubPlanError => {
     let s = expanded.get(stepMs);
     if (s === undefined) {
-      const m = macrosAt(stepMs);
+      const m = macrosAt(stepMs, rangeMs);
       s =
         substitute(raw, vars, m, false).size > MAX_EXPANDED_BYTES
           ? PROCESSING_CAP

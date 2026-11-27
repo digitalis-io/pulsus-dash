@@ -69,6 +69,7 @@ subsections below up to [Fixtures](#fixtures) describe the PromQL module.
 | `vars` | at most 64 names, each `^[A-Za-z_][A-Za-z0-9_]{0,63}$`; each value at most 4 096 bytes | names checked in byte order |
 | `rate` (range) | boolean, default `true` | the rate chip |
 | `step_ms` (instant) | 1 000 to 86 400 000 | the step of `$__interval`, `$__rate_interval` and the rate rewrite; without it an instant query is not rated |
+| `from`, `to` (range) | the route's bounds | the window `to − from` of `$__range`, `$__range_s` and `$__range_ms` ([below](#range-macros)); the instant body has no window |
 | substituted text | 2 MiB (2 097 152 bytes, the request-body limit) | the processing cap, counted before the text is built: in `Prepare` with the placeholder macros, and again in `Plan` with the macros at the resolved step (a `1500ms` is longer than the `1s` placeholder) |
 | planned text | 65 536 bytes | checked on the final planned text only |
 
@@ -101,6 +102,8 @@ when a rewrite would shrink it.
    |---|---|
    | `$__interval` | the step, as a duration (`30s` at 30 000 ms) |
    | `$__rate_interval` | the rate window of the step (below) |
+   | `$__range` | the window, as a duration of whole seconds ([range macros](#range-macros)) |
+   | `$__range_s`, `$__range_ms` | the window in whole seconds, and in milliseconds, as integers |
    | any other `$__…`, or a name longer than 64 | itself, unchanged |
    | a name in `vars`, inside `"…"` or `'…'` | the value, encoded by the table below |
    | a name in `vars`, inside `` `…` `` | the value verbatim; a backtick, a CR or U+FFFD in it is refused (row 7b) |
@@ -137,11 +140,11 @@ when a rewrite would shrink it.
    (before tenant resolution, the metric-types read and any upstream request). That is a
    backtick, a CR or U+FFFD inside a `` `…` `` string (a backtick would end it, Go's raw-string
    unquote drops a CR, and the upstream lexer refuses U+FFFD), or an LF or a CR inside a comment
-   (either would end it). A step macro's text is a duration and is never checked. Missing
+   (either would end it). A macro's text is a duration or a number and is never checked. Missing
    variables (row 7) are reported first, and row 7b comes before the `step_ms` row.
 
-   `Prepare` substitutes every macro as the placeholder `1s`, so the selectors are known before
-   the step is.
+   `Prepare` substitutes every macro as a placeholder (`1s` for the durations, `1` for
+   `$__range_s` and `$__range_ms`), so the selectors are known before the step is.
 2. **Shape.** The substituted text is parsed with the upstream PromQL parser
    (`github.com/prometheus/prometheus/promql/parser`): its top-level bare selector (a metric name
    with no offset, `@`, `anchored` or `smoothed`), every metric name, whether it calls
@@ -162,6 +165,30 @@ when a rewrite would shrink it.
    that divides it: 5 s gives `1m`, 30 s gives `2m`, 60 s gives `4m`, 1 h gives `4h`, 45 s gives
    `3m`.
 4. **Size.** A planned text over 65 536 bytes is refused with 413 and the full plan.
+
+### Range macros
+
+`$__range`, `$__range_s` and `$__range_ms` (#291) are the request's window, `to − from`, not the
+grid: the grid's start is aligned down to the step, the window is what the user chose. They do
+not depend on the step, so the same window gives the same text at any step.
+
+| Macro | Becomes | 6 h window | 1 500 ms | 400 ms | 90 499 ms |
+|---|---|---|---|---|---|
+| `$__range` | the seconds below as a duration: the largest of `d`, `h`, `m`, `s` that divides it | `6h` | `2s` | `1s` | `90s` |
+| `$__range_s` | the window rounded to the nearest whole second, a half second up, and at least 1 | `21600` | `2` | `1` | `90` |
+| `$__range_ms` | the window in milliseconds, exactly | `21600000` | `1500` | `400` | `90499` |
+
+So `sum(increase(x_total[$__range]))` on a 6 h board is sent as `sum(increase(x_total[6h]))`, and
+a window of a year as `[365d]`. A sub-second window is `1s`, never a zero range. The macros take
+part in the processing cap and the planned-text limit as the step macros do: `Prepare` counts
+them as their placeholders, `CheckCap` and `Plan` at their values, and a planned text that the
+window makes longer than 65 536 bytes is refused with 413 and the plan.
+
+Only the range route has a window. The instant body has `at` and no `from` or `to`, so a range
+macro in an instant query is refused before any I/O with 400 `/query` `query.no_window`, with or
+without `step_ms` (the refusal table). The Go planner takes the window as `Inputs.RangeMs`; a
+caller with an instant query and a window (the alert evaluator, with its rule's range) gets the
+macros, and they need no step.
 
 ### What `planned` says
 
@@ -191,6 +218,7 @@ The first refusal wins, in this order. Pointers escape `~` as `~0` and `/` as `~
 | referenced variables without a value | 400 | one `/vars/<name>`, `variable.missing` per name, first reference first | `no value for variable $a, $b` |
 | a referenced value that cannot be written where it is referenced | 400 | one `/vars/<name>`, `variable.unrepresentable` per name, first reference first | `the value of variable $a, $b cannot be written where it is referenced` |
 | a macro in an instant query without `step_ms` | 400 | `/step_ms`, `field.required` | `step_ms is required for $__interval and $__rate_interval` |
+| a range macro without a window (every instant query) | 400 | `/query`, `query.no_window` | `$__range, $__range_s and $__range_ms need a time window, and the request has none` |
 | the substituted text over 2 MiB | 413 | `/query`, `query.too_large_to_plan` | `the substituted query is over 2097152 bytes, the most the server processes`; `hint.reason: processing_cap`, no `planned` |
 | LogQL only (row 9b): a `#` outside strings in the substituted or the planned text | 400 | `/query`, `query.invalid` | `unexpected '#' at byte <N>: LogQL has no comments`; `hint.position.offset` is N, the `#` in the raw text; no `planned` ([below](#row-9b-a-top-level--is-refused)) |
 | the planned text over 65 536 bytes | 413 | `/query`, `query.sent_too_large` | `the planned query is over 65536 bytes`; the full `planned` (`bytes` is `len(planned.query)`) |
@@ -363,7 +391,8 @@ its `$` inside `"…"`:
 | Reference | Becomes |
 |---|---|
 | `$__interval`, `$__rate_interval` | the step, and PromQL's rate window at the step (`max(4 × step, step + 15 s, 60 s)`, so one board means one window); `1s` in `Prepare` |
-| any other `$__…` (`$__auto`, `$__range`), or a name longer than 64 | itself, unchanged; PulsusDB refuses it with a mapped position |
+| `$__range`, `$__range_s`, `$__range_ms` | the window `to − from` of the range or volume request, by the PromQL rule ([range macros](#range-macros)); `1s`, `1` and `1` in `Prepare` |
+| any other `$__…` (`$__auto`), or a name longer than 64 | itself, unchanged; PulsusDB refuses it with a mapped position |
 | a name in `vars`, inside `"…"` | the value, encoded by the table below |
 | a name in `vars`, inside `` `…` `` | the value verbatim; a backtick or CR in it is refused (row 7b) |
 | a name in `vars`, outside strings | the value verbatim: it is query text by intent (`$q` with `q={app="x"}`) |

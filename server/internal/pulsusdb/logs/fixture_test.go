@@ -121,6 +121,8 @@ type fxCase struct {
 		Vars   map[string]string `json:"vars"`
 		Kind   string            `json:"kind"`
 		StepMs int64             `json:"step_ms"`
+		// RangeMs is the request window (to − from); 0 or absent = none.
+		RangeMs int64 `json:"range_ms"`
 	} `json:"inputs"`
 	Substituted *text      `json:"substituted"`
 	Want        *fxWant    `json:"want"`
@@ -135,7 +137,7 @@ func (c fxCase) inputs() Inputs {
 	if c.Inputs.Kind == "volume" {
 		k = KindVolume
 	}
-	return Inputs{Query: string(c.Inputs.Query), Vars: c.Inputs.Vars, Kind: k, StepMs: c.Inputs.StepMs}
+	return Inputs{Query: string(c.Inputs.Query), Vars: c.Inputs.Vars, Kind: k, StepMs: c.Inputs.StepMs, RangeMs: c.Inputs.RangeMs}
 }
 
 type fxClassify struct {

@@ -2327,7 +2327,7 @@
    "name": "S9 not variables",
    "from": "#64 S9",
    "inputs": {
-    "query": "$__range x $1 $",
+    "query": "$__auto x $1 $",
     "vars": {},
     "kind": "range",
     "step_ms": 5000,
@@ -2342,9 +2342,9 @@
     "value_type": "unknown"
    },
    "planned": {
-    "query": "$__range x $1 $",
-    "expanded": "$__range x $1 $",
-    "bytes": 15,
+    "query": "$__auto x $1 $",
+    "expanded": "$__auto x $1 $",
+    "bytes": 14,
     "value_type": "unknown",
     "rate_candidate": false,
     "rate_applied": false,
@@ -2357,8 +2357,8 @@
      0
     ],
     [
-     15,
-     15
+     14,
+     14
     ]
    ]
   },
@@ -6072,6 +6072,262 @@
      null
     ]
    ]
+  },
+  {
+   "name": "RG1 range macro on a 6 h window",
+   "from": "issue #291",
+   "inputs": {
+    "query": "sum(increase(x_total[$__range]))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true,
+    "range_ms": 21600000
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(increase(x_total[6h]))",
+    "expanded": "sum(increase(x_total[6h]))",
+    "bytes": 26,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   },
+   "to_source": [
+    [
+     21,
+     21
+    ],
+    [
+     22,
+     21
+    ],
+    [
+     23,
+     29
+    ],
+    [
+     26,
+     32
+    ]
+   ]
+  },
+  {
+   "name": "RG2 range in seconds",
+   "from": "issue #291",
+   "inputs": {
+    "query": "vector($__range_s)",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true,
+    "range_ms": 21600000
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "vector(21600)",
+    "expanded": "vector(21600)",
+    "bytes": 13,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "RG3 braced range in milliseconds",
+   "from": "issue #291",
+   "inputs": {
+    "query": "vector(${__range_ms})",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true,
+    "range_ms": 21600000
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "vector(21600000)",
+    "expanded": "vector(21600000)",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "RG4 sub-second window is at least 1 s",
+   "from": "issue #291",
+   "inputs": {
+    "query": "count_over_time(x[$__range]) + $__range_s + $__range_ms",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true,
+    "range_ms": 400
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "count_over_time(x[1s]) + 1 + 400",
+    "expanded": "count_over_time(x[1s]) + 1 + 400",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "RG5 half a second rounds up",
+   "from": "issue #291",
+   "inputs": {
+    "query": "count_over_time(x[$__range]) + $__range_s + $__range_ms",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true,
+    "range_ms": 1500
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "count_over_time(x[2s]) + 2 + 1500",
+    "expanded": "count_over_time(x[2s]) + 2 + 1500",
+    "bytes": 33,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "RG6 just under half a second rounds down",
+   "from": "issue #291",
+   "inputs": {
+    "query": "count_over_time(x[$__range]) + $__range_s + $__range_ms",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true,
+    "range_ms": 90499
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "count_over_time(x[90s]) + 90 + 90499",
+    "expanded": "count_over_time(x[90s]) + 90 + 90499",
+    "bytes": 36,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "RG7 a year",
+   "from": "issue #291",
+   "inputs": {
+    "query": "count_over_time(x[$__range]) + $__range_s + $__range_ms",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true,
+    "range_ms": 31536000000
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "count_over_time(x[365d]) + 31536000 + 31536000000",
+    "expanded": "count_over_time(x[365d]) + 31536000 + 31536000000",
+    "bytes": 49,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "RG8 a window of whole hours and a millisecond",
+   "from": "issue #291",
+   "inputs": {
+    "query": "count_over_time(x[$__range]) + $__range_s + $__range_ms",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 15000,
+    "rate": true,
+    "range_ms": 21600001
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "count_over_time(x[6h]) + 21600 + 21600001",
+    "expanded": "count_over_time(x[6h]) + 21600 + 21600001",
+    "bytes": 41,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 15000
+   }
+  },
+  {
+   "name": "RG9 range macro, instant without a window",
+   "from": "issue #291",
+   "inputs": {
+    "query": "sum(increase(x_total[$__range]))",
+    "vars": {},
+    "kind": "instant",
+    "step_ms": 60000,
+    "rate": true,
+    "range_ms": 0
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "$__range, $__range_s and $__range_ms need a time window, and the request has none",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.no_window"
+     }
+    ]
+   }
+  },
+  {
+   "name": "RG10 range in seconds, instant without a step or window",
+   "from": "issue #291",
+   "inputs": {
+    "query": "vector($__range_s)",
+    "vars": {},
+    "kind": "instant",
+    "step_ms": 0,
+    "rate": true,
+    "range_ms": 0
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "$__range, $__range_s and $__range_ms need a time window, and the request has none",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.no_window"
+     }
+    ]
+   }
   }
  ],
  "kind_of": [

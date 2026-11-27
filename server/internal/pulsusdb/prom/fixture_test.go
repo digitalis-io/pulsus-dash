@@ -130,7 +130,9 @@ type fxCase struct {
 		Vars   map[string]string `json:"vars"`
 		Kind   string            `json:"kind"`
 		StepMs int64             `json:"step_ms"`
-		Rate   bool              `json:"rate"`
+		// RangeMs is the request window (to − from); 0 or absent = none.
+		RangeMs int64 `json:"range_ms"`
+		Rate    bool  `json:"rate"`
 	} `json:"inputs"`
 	Types      map[string]MetricKind `json:"types"`
 	NeedsTypes *bool                 `json:"needs_types"`
@@ -151,7 +153,7 @@ func (c fxCase) inputs() Inputs {
 	if c.Inputs.Kind == "instant" {
 		k = KindInstant
 	}
-	return Inputs{Query: string(c.Inputs.Query), Vars: c.Inputs.Vars, Kind: k, Rate: c.Inputs.Rate, StepMs: c.Inputs.StepMs}
+	return Inputs{Query: string(c.Inputs.Query), Vars: c.Inputs.Vars, Kind: k, Rate: c.Inputs.Rate, StepMs: c.Inputs.StepMs, RangeMs: c.Inputs.RangeMs}
 }
 
 type fxFunction struct {

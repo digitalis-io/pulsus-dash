@@ -43,6 +43,9 @@ type Inputs struct {
 	Rate  bool
 	// StepMs is the base step: range, the PromGrid step; instant, step_ms or 0.
 	StepMs int64
+	// RangeMs is the request window, to − from, for $__range, $__range_s and $__range_ms: range,
+	// the request's; instant, 0 (the request carries no window).
+	RangeMs int64
 }
 
 // Planned is a plan: the text sent to PulsusDB and the facts the client reads.
@@ -157,6 +160,19 @@ func FormatDuration(ms int64) string {
 	return strconv.FormatInt(ms, 10) + "ms"
 }
 
+// RangeSeconds is the window of $__range and $__range_s (#291): rangeMs rounded to the nearest
+// whole second, a half second up, and at least 1 s, so a sub-second window is never a zero range.
+// $__range_ms is rangeMs itself.
+func RangeSeconds(rangeMs int64) int64 {
+	return max(1, (rangeMs+500)/1000)
+}
+
+// noWindow is the refusal of a range macro without a window (#291): the request has no from and
+// to (an instant query), so $__range has no value.
+func noWindow() *PlanError {
+	return inputError("/query", "query.no_window", "$__range, $__range_s and $__range_ms need a time window, and the request has none")
+}
+
 // Prepared is a query checked, substituted with placeholder macros and classified.
 type Prepared struct {
 	in          Inputs
@@ -230,9 +246,9 @@ func processingCap() *PlanError {
 		Fields:  []FieldError{{Pointer: "/query", MessageKey: "query.too_large_to_plan"}}}
 }
 
-// Prepare checks the inputs, substitutes the variables (each macro as the placeholder "1s"),
-// reads the shape and classifies it: rows 1–5, 7, 7b (plan #118 §4.3), 8 and 9 of §3.1, before
-// any I/O.
+// Prepare checks the inputs, substitutes the variables (each macro as its placeholder: "1s" for
+// a duration, "1" for $__range_s and $__range_ms), reads the shape and classifies it: rows 1–5, 7,
+// 7b (plan #118 §4.3), 8, 8b (a range macro without a window, #291) and 9 of §3.1, before any I/O.
 func Prepare(in Inputs) (*Prepared, *PlanError) {
 	if e := checkInputs(in); e != nil {
 		return nil, e
@@ -248,6 +264,9 @@ func Prepare(in Inputs) (*Prepared, *PlanError) {
 	}
 	if count.macro && in.StepMs == 0 {
 		return nil, inputError("/step_ms", "field.required", "step_ms is required for $__interval and $__rate_interval")
+	}
+	if count.rangeMacro && in.RangeMs <= 0 {
+		return nil, noWindow()
 	}
 	if count.size > MaxExpandedBytes {
 		return nil, processingCap()
@@ -299,13 +318,13 @@ func isHistogram(n string, t MetricTypes) bool {
 // text. It is pure: the routes call it right after resolving the step, before tenant resolution or
 // any metadata read; Plan repeats it.
 func (p *Prepared) CheckCap(stepMs int64) *PlanError {
-	if substitute(p.in.Query, p.in.Vars, macrosAt(stepMs), false).size > MaxExpandedBytes {
+	if substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), false).size > MaxExpandedBytes {
 		return processingCap()
 	}
 	return nil
 }
 
-// Plan substitutes the macros at stepMs, reads the shape, applies the rewrites and the size
+// Plan substitutes the step macros at stepMs and the range macros from the window, reads the shape, applies the rewrites and the size
 // limit: rows 6, 9 (the processing cap at the resolved step) and 10 of §3.1 (plan #112 §4.1).
 func (p *Prepared) Plan(stepMs int64, types MetricTypes) (Planned, *PlanError) {
 	if (p.in.Kind == KindRange && stepMs <= 0) || stepMs < 0 {
@@ -315,7 +334,7 @@ func (p *Prepared) Plan(stepMs int64, types MetricTypes) (Planned, *PlanError) {
 	if pe := p.CheckCap(stepMs); pe != nil {
 		return Planned{}, pe
 	}
-	sub := substitute(p.in.Query, p.in.Vars, macrosAt(stepMs), true)
+	sub := substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), true)
 	expanded := sub.text
 	shape := ShapeOf(expanded)
 	out := Planned{Query: expanded, Expanded: expanded, ValueType: shape.ValueType, StepMs: stepMs, sub: sub.segs,
