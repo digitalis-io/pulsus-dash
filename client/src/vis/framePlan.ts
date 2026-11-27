@@ -5,11 +5,12 @@
  * and stat; on a heatmap it keeps the full view's axis and fills only that series' row.
  */
 import type { FrameData, ScalarFrame, SeriesFrame } from '../data/frames';
-import type { Unit, VisKind, VisSpec } from '../engine/api';
+import type { VisKind, VisSpec } from '../engine/api';
 import { MAX_STEPS } from '../data/step';
 import { MAX_SERIES } from '../engine/canvas2d/Canvas2DEngine';
 import type { ExploreResult } from './autovis';
 import { histogramBuckets, isHistogram, isolateBucket } from './histogram';
+import type { PanelUnits } from './units';
 
 export type FramePlan =
   | { readonly spec: VisSpec; readonly data: FrameData; readonly notice: null }
@@ -78,10 +79,14 @@ export function canIsolate(vis: VisKind | null, r: ExploreResult): boolean {
   return r.kind === 'series' && vis !== null && (vis !== 'heatmap' || isHistogram(r.series));
 }
 
+/**
+ * `units` are the panel's resolved units (`panelUnits`, T22-015): `value` on line, bars and stat,
+ * the heatmap's bucket bounds `value` and its counts `count`.
+ */
 export function framePlan(
   vis: VisKind,
   r: ExploreResult,
-  o: { readonly isolatedKey: string | null; readonly title: string; readonly rateApplied: boolean },
+  o: { readonly isolatedKey: string | null; readonly title: string; readonly units: PanelUnits },
 ): FramePlan {
   // A geomap is planned by `vis/geo/plan.ts` (T24-088), never here.
   if (vis === 'geomap') return { spec: null, data: null, notice: 'geomap' };
@@ -89,9 +94,9 @@ export function framePlan(
   // A bar chart is planned by `vis/barchart.ts` (ADR-0028): Explore draws it from its model, and
   // this line plan only carries the unit of the Inspector's origin.
   if (vis === 'barchart') return framePlan('line', r, o);
-  const unit: Unit = o.rateApplied ? { kind: 'suffix', suffix: '/s' } : { kind: 'none' };
   const { title } = o;
-  const heat: VisSpec = { kind: 'heatmap', title, unit: { kind: 'none' }, countUnit: unit };
+  const unit = o.units.value;
+  const heat: VisSpec = { kind: 'heatmap', title, unit, countUnit: o.units.count };
   const spec: VisSpec =
     vis === 'bars'
       ? { kind: 'bars', title, unit, stacking: 'normal', categoryLabel: '', categoryOrder: [] }

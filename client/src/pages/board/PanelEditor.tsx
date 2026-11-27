@@ -8,8 +8,8 @@
  * the save status is mirrored at its foot. For PromQL the Query field is the PromQL editor with the
  * metric picker (plan #64 §3.8, A.10): the text goes to the draft on every change and runs on Run,
  * the Run keys or leaving the field; the dialog owns the preview's run, which shares the board
- * panel's key (the run text and the panel's width). After Visualisation come Thresholds and Legend
- * (plan #64 Part B §3.10); every vis edit merges into the panel's `vis`, so a kind change keeps
+ * panel's key (the run text and the panel's width). After Visualisation come Unit (#290), Thresholds
+ * and Legend (plan #64 Part B §3.10); every vis edit merges into the panel's `vis`, so a kind change keeps
  * them, and keeps only the options and values the new kind allows (`withKind`, board spec v3). A
  * bar chart has its options field in place of Legend (plan #173 Part 3b §4.5). A stored kind this
  * version does not draw (`PENDING_KINDS`) shows as a disabled option. They change the spec, not the
@@ -21,7 +21,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type { DataPanelSpec, DataVisKind, FieldError, QueryLang } from '../../api/types';
 import type { PanelPatch } from '../../boards/editorState';
 import { panelView } from '../../boards/panelRun';
-import { fieldMessage, kindFieldMessage } from '../../boards/fieldMessages';
+import { fieldMessage, kindFieldMessage, unitsUnsupported } from '../../boards/fieldMessages';
 import { PENDING_KINDS, withKind } from '../../boards/options';
 import { usePanelWidth } from '../../boards/panelWidths';
 import { usePanelRun } from '../../boards/usePanelRun';
@@ -40,6 +40,7 @@ import { PanelPreview } from './PanelFrame';
 import { PanelLogqlField } from './PanelLogqlField';
 import { PanelQueryField } from './PanelQueryField';
 import { ThresholdsField } from './ThresholdsField';
+import { UnitField } from './UnitField';
 
 const LANGS: readonly { id: QueryLang; label: MessageId }[] = [
   { id: 'promql', label: 'editor.lang.promql' },
@@ -118,14 +119,15 @@ const PENDING_LABELS: Readonly<Partial<Record<DataVisKind, MessageId>>> = {
 };
 
 /**
- * Thresholds and Legend (§3.10); for a bar chart, Thresholds and its options field instead of
- * Legend (plan #173 Part 3b §4.5). Memoised, with stable props from the editor, so an edit
+ * Unit (#290 §4.4, every data kind but logs), Thresholds and Legend (§3.10); for a bar chart,
+ * Thresholds and its options field instead of Legend (plan #173 Part 3b §4.5). Memoised, with stable props from the editor, so an edit
  * elsewhere in the dialog (title, language, query) does not render them again
  * (`bench:rooms-long-tasks`).
  */
 const VisExtras = memo(function VisExtras({
   vis,
   unit,
+  rateApplied,
   fields,
   pointer,
   readOnly,
@@ -133,6 +135,8 @@ const VisExtras = memo(function VisExtras({
 }: {
   vis: DataPanelSpec['vis'];
   unit: Unit;
+  /** The preview's query was rated: the Unit field's hint (#290 §4.4). */
+  rateApplied: boolean;
   /** The field errors under the panel's `/vis`. */
   fields: readonly FieldError[];
   pointer: string;
@@ -141,10 +145,23 @@ const VisExtras = memo(function VisExtras({
 }) {
   const errorAt = (suffix: string): string | null => {
     const f = fields.find((x) => x.pointer === `${pointer}${suffix}`);
-    return f === undefined ? null : fieldMessage(f.messageKey);
+    if (f === undefined) return null;
+    // An older server's refusal of the unit (#290 §4.4), as the board shows it.
+    return unitsUnsupported(f) ? t('board.save.unitsUnsupported') : fieldMessage(f.messageKey);
   };
   return (
     <>
+      {vis.kind !== 'logs' && (
+        <div className={cx(styles['editorWide'])}>
+          <UnitField
+            vis={vis}
+            rateApplied={rateApplied}
+            errorAt={(suffix) => errorAt(`/vis/unit${suffix}`)}
+            readOnly={readOnly}
+            onVis={onVis}
+          />
+        </div>
+      )}
       <div className={cx(styles['editorWide'])}>
         <ThresholdsField
           value={vis.thresholds}
@@ -366,6 +383,7 @@ export function PanelEditor({
             <VisExtras
               vis={panel.vis}
               unit={stableUnit}
+              rateApplied={outcome?.planned.rateApplied === true}
               fields={visErrors}
               pointer={pointer}
               readOnly={readOnly}

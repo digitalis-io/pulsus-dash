@@ -1,7 +1,7 @@
 /**
  * The text of a field error (plan #61 Part B §3.5, Appendix B-A §A.3): `message_key` → the
  * catalogue id `field.<key>` (T08-027). Unknown keys fall back to the generic "could not be read".
- * A save's errors read through `saveFieldMessage` (an older server's geomap or tags refusal).
+ * A save's errors read through `saveFieldMessage` (an older server's geomap, tags or units refusal).
  */
 import type { BoardSpec, FieldError } from '../api/types';
 import { messages } from '../i18n/messages.en-GB';
@@ -27,6 +27,7 @@ const KIND_POINTER = /^(?:\/sections\/(\d+))?\/panels\/(\d+)\/vis\/kind$/;
 export function saveFieldMessage(spec: BoardSpec, f: FieldError): string {
   if (geomapUnsupported(spec, f)) return t('board.save.geomapUnsupported');
   if (tagsUnsupported(f)) return t('board.save.tagsUnsupported');
+  if (unitsUnsupported(f)) return t('board.save.unitsUnsupported');
   return fieldMessage(f.messageKey);
 }
 
@@ -57,7 +58,14 @@ export function tagsUnsupported(f: FieldError): boolean {
   return f.pointer === '/tags' && f.messageKey === 'board.json.unknownKey';
 }
 
-/** Stub (tests first, #290). */
-export function unitsUnsupported(_f: FieldError): boolean {
-  return false;
+const UNIT_POINTER = /^(?:\/sections\/\d+)?\/panels\/\d+\/vis\/unit$/;
+
+/**
+ * Whether `f` is an older server's refusal of a panel unit (#290 §4.4): a server before the units
+ * version answers `board.json.unknownKey` at a panel's `…/vis/unit`, shown as "This server does not
+ * support panel units yet". (A units-version server refuses a unit only on a widget, which the
+ * client's own check blocks before the save.)
+ */
+export function unitsUnsupported(f: FieldError): boolean {
+  return f.messageKey === 'board.json.unknownKey' && UNIT_POINTER.test(f.pointer);
 }

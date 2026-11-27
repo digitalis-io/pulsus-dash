@@ -11,7 +11,7 @@ const W = { fromMs: Date.UTC(2026, 10, 19, 12), toMs: Date.UTC(2026, 10, 19, 13)
 
 function model(r: ExploreResult, options?: VisOptions): BarchartModel {
   if (r.kind === 'string') throw new Error('series only');
-  return barchartModel(r, { title: 'Versions', rateApplied: false, options, thresholds: null });
+  return barchartModel(r, { title: 'Versions', unit: { kind: 'none' }, options, thresholds: null });
 }
 
 function ctx(m: BarchartModel, o: Partial<Omit<BarContext, 'model'>> = {}): BarContext {

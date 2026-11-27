@@ -34,6 +34,7 @@ import type { AutoVis, VisKind, VisParam } from '../../vis/autovis';
 import { barAction, type BarContext } from '../../vis/barAction';
 import type { BarchartModel } from '../../vis/barchart';
 import type { FramePlan } from '../../vis/framePlan';
+import { panelUnits } from '../../vis/units';
 import pageStyles from '../pages.module.css';
 import { CompletenessNotice } from './CompletenessNotice';
 import styles from './Explore.module.css';
@@ -104,10 +105,10 @@ export function ResultCard({ chartRef, ...p }: ResultCardProps): JSX.Element {
   const empty = p.q === '';
   const rateCandidate = shown?.planned.rateCandidate === true;
   const sent = shown !== null && shown.planned.query !== shown.text ? shown.planned.query : null;
-  const unitOf =
-    shown?.planned.rateApplied === true
-      ? ({ kind: 'suffix', suffix: '/s' } as const)
-      : ({ kind: 'none' } as const);
+  // Explore stores no unit (T22-015): `/s` after the rate rewrite, else none; a heatmap's table
+  // rows are its bucket series, in the count unit.
+  const units = panelUnits(undefined, p.vis ?? 'line', shown?.planned.rateApplied === true);
+  const tableUnit = p.vis === 'heatmap' ? units.count : units.value;
   // The Inspector's origin (T25 §5): Explore's query is `q`.
   const q = p.q;
   const chartUnit = p.plan?.spec?.unit ?? null;
@@ -214,7 +215,7 @@ export function ResultCard({ chartRef, ...p }: ResultCardProps): JSX.Element {
           isolatedKey={p.isolatedKey}
           onIsolate={p.onIsolate}
           swatches={p.vis !== 'heatmap'}
-          unit={unitOf}
+          unit={tableUnit}
           caption={t('explore.table.caption')}
           columns={TABLE_COLUMNS}
           maxRows={TABLE_ROWS}

@@ -17,6 +17,7 @@ import {
 import type { ExploreResult } from './autovis';
 import { countFloat64 } from '../test/allocations';
 import { canIsolate, framePlan, MAX_GRID_CELLS, SCALAR_KEY, type FramePlan } from './framePlan';
+import { panelUnits } from './units';
 
 const I = Infinity;
 const NONE = { kind: 'none' } as const;
@@ -47,7 +48,7 @@ const plan = (
   framePlan(vis, r, {
     isolatedKey: o.isolatedKey ?? null,
     title: 'T',
-    rateApplied: o.rateApplied ?? false,
+    units: panelUnits(undefined, vis, o.rateApplied ?? false),
   });
 
 /** The plan with Float64Arrays as plain arrays (NaN compares equal), after the validity check. */
@@ -293,12 +294,16 @@ describe('unit:frame-plan', () => {
 
 describe('framePlan: geomap (#234 Part 3 §4.7)', () => {
   it('is planned by vis/geo/, never here: no spec, no data, the geomap notice', () => {
-    expect(framePlan('geomap', B(), { isolatedKey: null, title: 'T', rateApplied: false })).toEqual(
-      {
-        spec: null,
-        data: null,
-        notice: 'geomap',
-      },
-    );
+    expect(
+      framePlan('geomap', B(), {
+        isolatedKey: null,
+        title: 'T',
+        units: panelUnits(undefined, 'geomap', false),
+      }),
+    ).toEqual({
+      spec: null,
+      data: null,
+      notice: 'geomap',
+    });
   });
 });
