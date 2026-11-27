@@ -26,6 +26,13 @@
   white-space: nowrap;
 }
 
+/* Null rows (a list with no snapshot): the state text in place of the grid. */
+.empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
 /* The scroller: a sticky header row, then the virtual rows placed by `translateY`. */
 .grid {
   position: relative;

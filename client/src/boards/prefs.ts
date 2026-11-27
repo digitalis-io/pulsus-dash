@@ -83,9 +83,17 @@ function isAbort(e: unknown): boolean {
   return typeof e === 'object' && e !== null && 'name' in e && e.name === 'AbortError';
 }
 
-/** A failure after which the server may still have committed the view. */
+/**
+ * A failure after which the server may still have committed the view: an abort, `network`,
+ * `unknown`, or `unavailable` (a 503, plan #216 Part 2a).
+ */
 function isAmbiguous(e: unknown): boolean {
-  return isAbort(e) || isApiError(e, 'network') || isApiError(e, 'unknown');
+  return (
+    isAbort(e) ||
+    isApiError(e, 'network') ||
+    isApiError(e, 'unknown') ||
+    isApiError(e, 'unavailable')
+  );
 }
 
 export function createBoardPrefs(
