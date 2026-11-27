@@ -173,4 +173,56 @@ test.describe('e2e:csp-violations (engine)', () => {
       expect(console).toEqual([]);
     });
   });
+
+  /**
+   * Plan #68 C2d2 (ADR-0033): the single-thread engine under the same policy. Its ST render
+   * worker is admitted; the page then cannot start any other worker script: a string URL is
+   * refused by the Trusted Types sink and a second `pulsus-engine` policy cannot be made.
+   */
+  test('the ST engine boots with no CSP or Trusted Types violation; no other worker starts', async ({
+    page,
+  }, info) => {
+    test.skip(info.project.name !== 'lavapipe', 'lavapipe only');
+    test.setTimeout(90_000);
+    await page.addInitScript(() => {
+      window.__cspViolations = [];
+      document.addEventListener('securitypolicyviolation', (e) => {
+        window.__cspViolations.push(`${e.violatedDirective} ${e.blockedURI}`);
+      });
+    });
+    const workers: string[] = [];
+    page.on('worker', (w) => workers.push(w.url()));
+    await open(page, `${GALLERY_URL}&engine=wasm&mode=st`);
+    const html = page.locator('html');
+    await expect(html).toHaveAttribute('data-dash-status', '2');
+    await expect(html).toHaveAttribute('data-dash-mode', 'st');
+    for (const c of await page.locator('[data-gallery-id^="line-"] canvas:not([data-retired])').all())
+      await expect(c).toHaveAttribute('data-engine', 'wasm-webgl2');
+    expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
+    expect(await page.evaluate(() => window.__cspViolations), 'ST gallery').toEqual([]);
+    expect(workers.filter((u) => /render-st\.worker/.test(u))).toHaveLength(1);
+    const before = workers.length;
+    const r = await page.evaluate(() => {
+      const out: string[] = [];
+      try {
+        new Worker('/assets/other.js', { type: 'module' });
+        out.push('string: started');
+      } catch (e) {
+        out.push(`string: ${(e as Error).name}`);
+      }
+      try {
+        const tt = (globalThis as unknown as {
+          trustedTypes: { createPolicy(n: string, r: unknown): unknown };
+        }).trustedTypes;
+        tt.createPolicy('pulsus-engine', { createScriptURL: (u: string) => u });
+        out.push('policy: made');
+      } catch (e) {
+        out.push(`policy: ${(e as Error).name}`);
+      }
+      return out;
+    });
+    expect(r).toEqual(['string: TypeError', 'policy: TypeError']);
+    await page.waitForTimeout(500);
+    expect(workers.length).toBe(before);
+  });
 });

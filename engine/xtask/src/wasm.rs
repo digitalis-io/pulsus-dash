@@ -34,6 +34,44 @@ const WASM_OPT_FEATURES: [&str; 7] = [
     "--enable-reference-types",
 ];
 
+/// The arguments of one engine build (plan #68 C2d2 §3.1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuildArgs {
+    /// `cargo +nightly` arguments after the toolchain, before `--target-dir`.
+    pub cargo: Vec<String>,
+    pub rustflags: String,
+    pub wasm_opt: Vec<&'static str>,
+    pub out_name: &'static str,
+}
+
+/// The build of `st` (stub: the MT build).
+pub fn build_args(st: bool, probe: bool) -> BuildArgs {
+    let _ = st;
+    let mut cargo: Vec<String> = [
+        "build",
+        "--locked",
+        "--profile",
+        "wasm-release",
+        "--target",
+        "wasm32-unknown-unknown",
+        "--package",
+        "dash-core",
+        "-Z",
+        "build-std=panic_abort,std",
+    ]
+    .map(String::from)
+    .to_vec();
+    if probe {
+        cargo.extend(["--features".to_owned(), "probe".to_owned()]);
+    }
+    BuildArgs {
+        cargo,
+        rustflags: MT_RUSTFLAGS.to_owned(),
+        wasm_opt: WASM_OPT_FEATURES.to_vec(),
+        out_name: OUT_NAME,
+    }
+}
+
 /// The default output directory: `gen/`, or `gen-probe/` for the probe build.
 pub fn default_out(root: &Path, probe: bool) -> PathBuf {
     root.join(if probe {

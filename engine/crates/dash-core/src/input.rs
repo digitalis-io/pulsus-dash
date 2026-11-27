@@ -183,6 +183,12 @@ pub fn drain(w: &impl Words, out: &mut Vec<Decoded>) -> Result<(), Bad> {
     result
 }
 
+/// Plan #68 C2d2 §3.2: one ST input batch (stub).
+pub fn drain_batch(bytes: &[u8], out: &mut Vec<Decoded>) -> Result<(), Bad> {
+    let _ = (bytes, out);
+    Ok(())
+}
+
 /// Called when the worker has nothing else to do: idle := 1 (SeqCst); if head ≠ tail (SeqCst)
 /// then idle := 0 and true (tick again), else false (sleep until the `input` message).
 pub fn before_sleep(w: &impl Words) -> bool {

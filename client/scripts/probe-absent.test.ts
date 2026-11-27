@@ -21,6 +21,13 @@ function dist(files: Record<string, string | Buffer>): string {
 
 const SENTINEL = '__pulsus_engine_' + 'fault__';
 const WASM = Buffer.from([0, 0x61, 0x73, 0x6d, 1, 0, 0, 0]);
+/** Plan #68 C2d2: the probe build's ST engine, with every probe export. */
+const ST_PROBE = {
+  'assets/dash-engine-st-s.wasm': Buffer.concat([
+    WASM,
+    Buffer.from(['input', 'synth', 'chunk'].map((e) => 'engine_probe_' + e).join('')),
+  ]),
+};
 const CLEAN = {
   'index.html': '<!doctype html>',
   'assets/index-a.js': 'export const a = 1;',
@@ -89,7 +96,7 @@ describe('ci:probe-absent (T03-024)', () => {
       ['probe-in-release', 'engine_probe_input'],
     ]);
     // The probe build must carry it (and, since plan #68 C2d1, engine_probe_synth).
-    const missing = checkProbeAbsent(dist({ ...CLEAN, ...sites }), {
+    const missing = checkProbeAbsent(dist({ ...CLEAN, ...sites, ...ST_PROBE }), {
       expectFaults: true,
       expectProbe: true,
     });
@@ -104,7 +111,7 @@ describe('ci:probe-absent (T03-024)', () => {
       Buffer.from('engine_probe_' + 'chunk'),
     ]);
     expect(
-      checkProbeAbsent(dist({ ...CLEAN, ...sites, 'assets/dash-engine-b.wasm': both }), {
+      checkProbeAbsent(dist({ ...CLEAN, ...sites, ...ST_PROBE, 'assets/dash-engine-b.wasm': both }), {
         expectFaults: true,
         expectProbe: true,
       }),
@@ -133,6 +140,7 @@ describe('ci:probe-absent (T03-024)', () => {
       dist({
         ...CLEAN,
         ...sites,
+        ...ST_PROBE,
         'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(INPUT)]),
       }),
       { expectFaults: true, expectProbe: true },
@@ -146,6 +154,7 @@ describe('ci:probe-absent (T03-024)', () => {
         dist({
           ...CLEAN,
           ...sites,
+          ...ST_PROBE,
           'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(INPUT + SYNTH + CHUNK)]),
         }),
         { expectFaults: true, expectProbe: true },
@@ -160,5 +169,44 @@ describe('ci:probe-absent (T03-024)', () => {
     expect(r.map((f) => [f.rule, f.file, f.subject])).toEqual([
       ['probe-in-release', 'assets/dash-engine-b.wasm', CHUNK],
     ]);
+  });
+  it('both engines: a sentinel only in the ST wasm of a release tree; a probe tree without the ST probe (plan #68 C2d2)', () => {
+    const INPUT = 'engine_probe_' + 'input';
+    const all = ['input', 'synth', 'chunk'].map((e) => 'engine_probe_' + e).join('');
+    const release = checkProbeAbsent(
+      dist({
+        ...CLEAN,
+        'assets/dash-engine-mt-m.wasm': WASM,
+        'assets/dash-engine-st-s.wasm': Buffer.concat([WASM, Buffer.from(INPUT)]),
+      }),
+    );
+    expect(release.map((f) => [f.rule, f.file, f.subject])).toEqual([
+      ['probe-in-release', 'assets/dash-engine-st-s.wasm', INPUT],
+    ]);
+    const sites = {
+      'assets/r.js': `x("${SENTINEL}:route")`,
+      'assets/b.js': `x("${SENTINEL}:boot")`,
+      'assets/w/x.js': `x("${SENTINEL}:worker")`,
+    };
+    const mt = { 'assets/dash-engine-mt-m.wasm': Buffer.concat([WASM, Buffer.from(all)]) };
+    // The MT probe engine alone: the ST engine of the probe build carries none of them.
+    const noSt = checkProbeAbsent(
+      dist({ ...CLEAN, ...sites, ...mt, 'assets/dash-engine-st-s.wasm': WASM }),
+      { expectFaults: true, expectProbe: true },
+    );
+    expect(noSt.map((f) => f.rule)).toEqual(['probe-missing', 'probe-missing', 'probe-missing']);
+    expect(noSt.every((f) => f.subject.endsWith('(st)'))).toBe(true);
+    // No ST engine at all in a probe tree is missing too.
+    const absent = checkProbeAbsent(dist({ ...CLEAN, ...sites, ...mt }), {
+      expectFaults: true,
+      expectProbe: true,
+    });
+    expect(absent.length).toBeGreaterThan(0);
+    expect(
+      checkProbeAbsent(dist({ ...CLEAN, ...sites, ...mt, ...ST_PROBE }), {
+        expectFaults: true,
+        expectProbe: true,
+      }),
+    ).toEqual([]);
   });
 });

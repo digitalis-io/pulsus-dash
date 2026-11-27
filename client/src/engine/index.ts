@@ -17,6 +17,18 @@ import { chooseEngine, probe } from './select';
 
 let engine: ChartEngine | null = null;
 
+/** Plan #68 C2d2 §3.3 (stub). */
+export type EngineMode =
+  | { readonly mode: 'mt' }
+  | { readonly mode: 'st'; readonly reason: 'isolation' | 'waitAsync' | 'forced' }
+  | { readonly mode: 'canvas2d' };
+export function engineMode(): EngineMode | null {
+  return null;
+}
+export function onEngineMode(_cb: (m: EngineMode | null) => void): () => void {
+  return () => undefined;
+}
+
 export function defaultChartEngine(): ChartEngine {
   if (engine !== null) return engine;
   const canvas2d = new Canvas2DEngine();

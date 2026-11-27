@@ -361,3 +361,32 @@ export class InputRing {
     return true;
   }
 }
+
+/** Stub (plan #68 C2d2 §3.2). */
+export class BatchRing {
+  readonly stats = {
+    coalesced: 0,
+    publishedBytes: 0,
+    selects: 0,
+    overflow: 0,
+    batches: 0,
+    batchesInFlightMax: 0,
+  };
+  produced: InputRec[] | null = null;
+  constructor(
+    _post: (buf: ArrayBuffer, len: number) => void,
+    _o: RingOptions & { readonly raf?: (cb: () => void) => void } = {},
+  ) {}
+  camera(_f: number, _c: CameraState): void {}
+  resize(_f: number, _w: number, _h: number, _d: number): void {}
+  overlay(_f: number, _o: OverlayState): void {}
+  select(_f: number, _x: number, _y: number): void {}
+  onPublish(_f: number, _cb: (kind: number, seq: number) => void): void {}
+  unpublished(_f: number): number {
+    return 0;
+  }
+  drop(_f: number): void {}
+  flush(): void {}
+  close(): void {}
+  acked(_buf: ArrayBuffer, _depth = 1): void {}
+}

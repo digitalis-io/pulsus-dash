@@ -39,6 +39,12 @@ export function chooseEngine(p: Probe): EngineChoice {
   return { kind: 'wasm', forceT2: mode === 't2' };
 }
 
+/** Plan #68 C2d2 §3.3 (stub). */
+export type StReason = 'isolation' | 'waitAsync' | 'forced';
+export function stReason(_p: Probe): StReason {
+  return 'isolation';
+}
+
 /** The capability bits of T03 §9.1, from this page. */
 export function probe(failedThisSession: boolean): Probe {
   const g = globalThis as typeof globalThis & { crossOriginIsolated?: boolean };

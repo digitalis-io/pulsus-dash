@@ -414,3 +414,127 @@ describe('the input ring and the created gate (plan #68 C2a1)', () => {
     expect(w.sent.filter((m) => m['id'] === 1).map((m) => m.t)).toEqual(['create', 'dispose']);
   });
 });
+
+/** Plan #68 C2d2: an ST render worker (its own memory; status without `memory`). */
+class FakeStWorker extends FakeWorker {
+  override status(status = 2): void {
+    this.message({ t: 'status', status, adapter: 'llvmpipe', cb: CB });
+  }
+  batches(): Msg[] {
+    return this.sent.filter((m) => m.t === 'input-batch');
+  }
+}
+
+/** The kinds and frames of an `input-batch`'s records. */
+function batchRecords(m: Msg | undefined): [number, number][] {
+  if (m === undefined) return [];
+  const d = new DataView(m['buf'] as ArrayBuffer, 0, m['len'] as number);
+  const out: [number, number][] = [];
+  for (let at = 0; at < d.byteLength; ) {
+    const kind = d.getUint8(at);
+    out.push([kind, d.getUint32(at + (kind === KIND_RESIZE ? 36 : 16), true)]);
+    at += d.getUint16(at + 2, true);
+  }
+  return out;
+}
+
+const waitFor = async (ok: () => boolean): Promise<void> => {
+  for (let i = 0; i < 100 && !ok(); i++) await sleep(10);
+};
+
+describe('the ST backend (plan #68 C2d2 §3.3)', () => {
+  it('compiles the ST engine, starts no pool, and sends input in batches acknowledged by the worker', async () => {
+    const render: FakeStWorker[] = [];
+    const pools: FakeWorker[] = [];
+    const compiled: string[] = [];
+    const p = loadBackend({
+      forceT2: false,
+      mode: 'st',
+      markFailed: () => undefined,
+      compile: (mode) => {
+        compiled.push(mode);
+        return Promise.resolve(MODULE);
+      },
+      spawnRender: () => {
+        const w = new FakeStWorker();
+        render.push(w);
+        return w;
+      },
+      spawnPool: () => {
+        const w = new FakeWorker();
+        pools.push(w);
+        return w;
+      },
+      timeoutMs: 10_000,
+    });
+    await flush();
+    expect(compiled).toEqual(['st']);
+    const w = render[0];
+    if (w === undefined) throw new Error('no render worker');
+    expect(w.sent[0]).toMatchObject({ t: 'boot', mode: 'st' });
+    expect(w.sent[0]).not.toHaveProperty('pool');
+    w.status();
+    const b = await p;
+    expect(document.documentElement.dataset['dashMode']).toBe('st');
+    expect(pools).toHaveLength(0);
+    const f = b.createFrame(canvas(), INIT, () => {});
+    f.resize(300, 150, 1);
+    f.setCamera({ view: { lo: 1, hi: 2 }, value: null, band: null });
+    w.created(1);
+    await waitFor(() => w.batches().length > 0);
+    expect(w.batches()).toHaveLength(1);
+    expect(batchRecords(w.batches()[0])).toEqual([
+      [KIND_RESIZE, 1],
+      [KIND_CAMERA, 1],
+    ]);
+    // No ack: the next camera waits.
+    f.setCamera({ view: { lo: 3, hi: 4 }, value: null, band: null });
+    await sleep(60);
+    expect(w.batches()).toHaveLength(1);
+    // The worker's input-ack returns the buffer: the next batch goes.
+    w.message({ t: 'input-ack', buf: w.batches()[0]?.['buf'], depth: 1, bad: 0 });
+    await waitFor(() => w.batches().length > 1);
+    expect(batchRecords(w.batches()[1])).toEqual([[KIND_CAMERA, 1]]);
+    // No shared-ring wake-ups in ST.
+    expect(w.inputs()).toBe(0);
+    expect(pools).toHaveLength(0);
+
+    // A restart (a trap after a draw) builds a new batch ring on the new worker.
+    w.drawn(1);
+    w.trap();
+    await flush();
+    const w2 = render[1];
+    if (w2 === undefined) throw new Error('no restart');
+    expect(w2.sent[0]).toMatchObject({ t: 'boot', mode: 'st' });
+    w2.status();
+    await flush();
+    const g = b.createFrame(canvas(), INIT, () => {});
+    g.setCamera({ view: { lo: 5, hi: 6 }, value: null, band: null });
+    w2.created(1);
+    await waitFor(() => w2.batches().length > 0);
+    // The new ring's first batch, though the old ring's batch was never acked.
+    expect(batchRecords(w2.batches()[0])).toEqual([[KIND_CAMERA, 1]]);
+    expect(pools).toHaveLength(0);
+  });
+
+  it('a failed ST boot rejects loadBackend (markOnFailure then marks the session)', async () => {
+    const render: FakeStWorker[] = [];
+    const p = loadBackend({
+      forceT2: false,
+      mode: 'st',
+      markFailed: () => undefined,
+      compile: () => Promise.resolve(MODULE),
+      spawnRender: () => {
+        const w = new FakeStWorker();
+        render.push(w);
+        return w;
+      },
+      spawnPool: () => new FakeWorker(),
+      timeoutMs: 10_000,
+    });
+    await flush();
+    render[0]?.status(4);
+    await expect(p).rejects.toThrow();
+    expect(document.documentElement.dataset['dashStatus']).toBe('4');
+  });
+});
