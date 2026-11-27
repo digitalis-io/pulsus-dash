@@ -105,6 +105,9 @@ test.describe('e2e:board-thresholds (fake)', () => {
   test('e2e:board-thresholds-legend', async ({ page, request }, info) => {
     test.setTimeout(120_000);
     uid = await createBoard(request, `E7 ${info.project.name} ${crypto.randomUUID()}`, E7_PANELS);
+    // The current board spec version (BoardSchemaVersion): the server stamps it on every write.
+    const fresh = await request.get(`${BOARDS_API}/${uid}`);
+    const { schema_version: current } = (await fresh.json()) as { schema_version: number };
     await page.goto(boardUrl(uid));
     const memory = panel(page, 'Memory');
     const short = panel(page, 'Short');
@@ -184,7 +187,7 @@ test.describe('e2e:board-thresholds (fake)', () => {
       schema_version: number;
       spec: { panels: { vis: unknown }[] };
     };
-    expect(body.schema_version).toBe(6);
+    expect(body.schema_version).toBe(current);
     expect(body.spec.panels[0]?.vis).toEqual({
       kind: 'line',
       thresholds: {
