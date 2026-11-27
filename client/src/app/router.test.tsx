@@ -135,9 +135,9 @@ describe('gallery route', () => {
     act(() => {
       resizeAll(600, 240);
     });
-    expect(screen.getAllByRole('slider')).toHaveLength(10);
-    expect(document.querySelectorAll('canvas')).toHaveLength(18);
-    expect(engine.frames).toHaveLength(18);
+    expect(screen.getAllByRole('slider')).toHaveLength(12);
+    expect(document.querySelectorAll('canvas')).toHaveLength(20);
+    expect(engine.frames).toHaveLength(20);
   });
 });
 

@@ -24,7 +24,10 @@ import {
 } from './engine.ts';
 import { decodePng } from './png.ts';
 
-/** Plan #68 C2c1 adds the layer pages (thresholds, events: `dash-golden render` reads `layer.json`). */
+/**
+ * Plan #68 C2c1 adds the layer pages (thresholds, events: `dash-golden render` reads `layer.json`);
+ * #282 Part 2b the shaded `line-area` and `line-area-manual`.
+ */
 const PAGES = [
   'line-1',
   'line-50',
@@ -33,6 +36,9 @@ const PAGES = [
   'line-extreme',
   'line-thresholds',
   'line-events',
+  // #282 Part 2b (ADR-0036): the shaded pages.
+  'line-area',
+  'line-area-manual',
 ] as const;
 const FROM = Date.UTC(2026, 10, 19, 12);
 const TO = Date.UTC(2026, 10, 19, 13);
