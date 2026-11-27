@@ -5,7 +5,7 @@
  * it over its last drawn layer; `ControlledFrame` over the engine's last completed presentation.
  */
 import type { FrameEvents, PlotRect, ValueRange } from '../api';
-import type { WheelLatch } from '../canvas2d/input';
+import type { WheelLatch } from './input';
 
 export interface Point {
   readonly x: number;

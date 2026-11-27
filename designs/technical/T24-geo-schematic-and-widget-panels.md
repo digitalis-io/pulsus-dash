@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.18-rc · 2026-11-27 |
+| **Version** | 1.19-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -836,7 +836,10 @@ no place. `geoFrame.shown` holds the indices of the `shown` rows.
   zMin)); no shown row → (20, 0, zMin); then contained.
 - **Wheel** (over the plot only; `wheelZoom: false` → the page scrolls): Δz = −log2(factor); a
   `panX` wheel pans by its fraction × the width (contained); a `null` wheel is ignored. A drag pans
-  ([INT-003](../product/03-interaction-model.md#int-003--inertia)); a right drag box-fits;
+  ([INT-003](../product/03-interaction-model.md#int-003--inertia)) and a release faster than 0.3 px/ms
+  continues with the T02-022 spring, its initial velocity the release velocity v (the displacement
+  over the last 80 ms of moves): offset(t) = D − (D + (ωD − v)t)e^(−ωt), ω = 0.0194 ms⁻¹, D = 2v/ω
+  (no overshoot; 2 % of D is left at t ≈ 267 ms, where it lands on D); a right drag box-fits;
   Alt+drag emits `geoBrush`; a double-click zooms ×2, or fits a cluster's members when on a cluster.
 - **Anchor** ([INT-002](../product/03-interaction-model.md#int-002--cursor-anchored-zoom)): the
   lat/lon under the pointer stays under it unless containment shifts the view (the drift equals the
@@ -1865,7 +1868,11 @@ that names each dataset and its version (`make go-licenses` appends `build.py --
 The seam additions are [ADR-0027](../adr/0027-geomap-frame-seam.md)'s, verbatim (every field
 `readonly`): `VisKind` `'geomap'`, `GeoView`, `GeoBounds`, `GeoMapSpec`, the `geo` `FrameData` and
 `HoverItem` members, `GeoCommitEvent`, `GeoBrushEvent`, `GeoMarksEvent`, `setFocusMark`, `cameraKey`
-and `FrameSummary.geo`. The host and the plan:
+and `FrameSummary.geo`. The marks use two more tokens (`design/tokens.toml`, T24-090):
+`pattern-ink` (pattern strokes over a fill) dark `#0B0D10A6`, light `#FFFFFFB3`, and `category-other`
+(the aggregate's fill, [T21-003](T21-time-and-distribution-panels.md#t21-003--encoded-twice),
+[T22-004](T22-value-categorical-and-table-panels.md#t22-004--colour-and-identity)) dark `#8A919C`,
+light `#6B7280`. The host and the plan:
 
 ```ts
 export interface GeoMapFrameProps { panelId: string; title: string; unit: Unit; options: GeomapOptions;
@@ -2770,15 +2777,15 @@ draw `shown` → `draw`; k01 group 9, groups[0] pattern `dots`, or the other mem
 | `unit:geo-rows` | vis/geo/frame.test.ts | G with and without thresholds; the invalid sets | the statuses block; G → null; each invalid set → its detail | T24-089 |
 | `unit:geo-identity` | vis/geo/frame.test.ts | G, H (+h9), H′, A, O, Q, D, U, one row, S | the groups block (k08–k18 → other (11)); the rest as written (ids, labels, patterns, colours, keys; labels distinct) | VIZ-067, T22-004, T24-090 |
 | `unit:geo-basemap-draw` | engine/canvas2d/geo/basemap.test.ts | 1a's RT and ANT outputs (§10.3), apart; a recording context | RT: Alpha's square is one `fill('nonzero')` path, winding (1,1) ±1 and the hole (3,3) 0; 4 coast and 1 border stroke (once, 0.5 px). ANT: 1 coast, 0 border, no stroke on y = ±8505 or x = ±18000 | VIZ-046, T24-091 |
-| `unit:geo-radius-project` | engine/canvas2d/geo/marks.test.ts | G; min 2 max 4; the projections | the radii block; the project block ±1e−12 | T24-090, T24-091 |
-| `unit:geo-camera` | engine/canvas2d/geo/camera.test.ts | the camera block; a 159 × 200 plot | the camera block; `tooSmall` | INT-002, T24-091 |
-| `unit:geo-ownership` | engine/canvas2d/geo/camera.test.ts | G at fit, no commit; data k05, k06; pan +100 px (a commit); data G; a new title; view (10,10,4); view = the camera | refit (19.59791091785336, 120.995, 3.971846219329485); lon 129.95726302107312, lat and zoom the same; kept; kept; moves; no move | T24-091 |
-| `unit:geo-keys-engine` | engine/canvas2d/geo/input.test.ts | G, the surface focused, `setFocusMark('k05')`; every case from fit | `+` → z 3.6218728064801105, k05 fixed; `+` then `-` → 2.6218728064801105; `0` → fit; Shift+→ → +256 px; a wheel deltaX 100 → lon 54.84247413793099; a `null` wheel, other elements → none | T24-091 |
-| `unit:geo-inertia` | engine/canvas2d/geo/input.test.ts | G at fit, fake clock; a fling (pointer released while moving); a fling then a pointer-down during the decay | the view keeps panning after release with the shared T02 inertia and settles in 300 ± 50 ms with no overshoot; exactly one `geoCommit` (`gesture: 'pan'`), emitted after it settles, none during the decay; the pointer-down stops the motion on the next frame and the gesture still commits once | INT-003, T24-091 |
+| `unit:geo-radius-project` | engine/controller/geo/marks.test.ts | G; min 2 max 4; the projections | the radii block; the project block ±1e−12 | T24-090, T24-091 |
+| `unit:geo-camera` | engine/controller/geo/camera.test.ts | the camera block; a 159 × 200 plot | the camera block; `tooSmall` | INT-002, T24-091 |
+| `unit:geo-ownership` | engine/controller/geo/camera.test.ts | G at fit, no commit; data k05, k06; pan +100 px (a commit); data G; a new title; view (10,10,4); view = the camera | refit (19.59791091785336, 120.995, 3.971846219329485); lon 129.95726302107312, lat and zoom the same; kept; kept; moves; no move | T24-091 |
+| `unit:geo-keys-engine` | engine/controller/geo/input.test.ts | G, the surface focused, `setFocusMark('k05')`; every case from fit | `+` → z 3.6218728064801105, k05 fixed; `+` then `-` → 2.6218728064801105; `0` → fit; Shift+← → −256 px, Shift+→ stops at the world's east edge (+135.84 px, contained); a wheel deltaX 100 → lon 54.84247413793099; a `null` wheel, other elements → none | T24-091 |
+| `unit:geo-inertia` | engine/controller/geo/input.test.ts | G at fit, fake clock; a fling (pointer released while moving); a fling then a pointer-down during the decay | the view keeps panning after release with the shared T02 inertia and settles in 300 ± 50 ms with no overshoot; exactly one `geoCommit` (`gesture: 'pan'`), emitted after it settles, none during the decay; the pointer-down stops the motion on the next frame and the gesture still commits once | INT-003, T24-091 |
 | `unit:geo-host` | charts/GeoMapFrame.test.tsx | G; (a) commit C; (b) option view (10,10,4); (c) commit D; (d) option null; (e) commit E and a new title; (f) an engine swap | 3 subscriptions; spec.view (a) C, (b) (10,10,4), moves, (c) D, (d) null, refits, (e) E kept; (f) 3 disposers, frame 2 at E, which gets `setFocusMark('k05')`; (b) then a swap → (10,10,4); no event after dispose | T24-088 |
 | `unit:geo-select-hover` | charts/ChartFrame.inspect.test.tsx | G at fit, a T25 host | `select` at cluster:k03 → `{type:'geo', kind:'cluster', id:'cluster:k03', rows k01–k04, k08}` and those keys selected; `hover` on k05 → `{geo_country_iso_code="jp"}` / `60 ms · ok` / `Japan` | INT-034, T24-088 |
 | `unit:geo-plan` | vis/geo/plan.test.ts | (a) loading, no basemap; (b) failed, 0 rows; (c) G with k12 `ok`, no basemap; (d) G, no basemap; (e) G at 100 × 100; (f) 0 rows; (g) k09–k11, k15; (h) G | loading; error; invalid `value`; mapDataUnavailable with 18 rows; tooSmall; empty; noneShown; ok | T24-088 |
-| `unit:geo-marks` | engine/canvas2d/geo/pick.test.ts | G at fit and Z2–6, `cluster:false`, shuffled input; the tie; the crossfade; the strings | at fit: the draw ids, members, centres ±0.01 px, radii ±0.001, the keyboard order, each pick → its id; the tie → k21; the old-only crossfade point → none; Z2–6: cluster ids and member counts; the order line | VIZ-044, T24-091 |
+| `unit:geo-marks` | engine/controller/geo/pick.test.ts | G at fit and Z2–6, `cluster:false`, shuffled input; the tie; the crossfade; the strings | at fit: the draw ids, members, centres ±0.01 px, radii ±0.001, the keyboard order, each pick → its id; the tie → k21; the old-only crossfade point → none; Z2–6: cluster ids and member counts; the order line | VIZ-044, T24-091 |
 | `unit:geo-coverage` | vis/reduce.test.ts | G, `truncated`, the warnings `shard 3 timed out` and `series limit 500 reached`; Cap | the meter block; Narrow; the popover lists the 2 warnings; Cap: c0000 (min) and c5002 (max) kept, c0001–c4998 kept, c4999–c5001 `capped` | VIZ-027, T22-006 |
 | `unit:board-spec-geomap` | boards/spec.test.ts, validate_test.go | `{}`; size {min:1}, {min:5,max:4}; `colour:'state'` without thresholds; groupBy `1x`; view zoom 15, lon 180; `depth` | the defaults; size ×2, colour, groupBy and view ×2 invalid; unknownKey; TS = Go | VIZ-057, §5.15 |
 | `e2e:geomap-offline` | e2e/geomap.spec.ts | no rows, view (53.34, −6.25, 6), 1024 × 512, dark, every other origin aborted | `getImageData` at DPR 1: (432,256) = dark `map-land`, (560,256) = `map-water`, ±2 per channel; 0 requests to another origin | VIZ-046 |
@@ -2813,7 +2820,7 @@ G3        fit (30.733727227695173, 65.875, 3.1774065828117646): k01 (48.00,56.74
           pan 200 px north → k06 out, list k01, k05, setsize −1; pan until none in view → placeholder "No marks in view · Fit"
 repair    (a) cluster:k03, view (50.45, 3.94, 5) → list k01, k04, k02, k03 → k03; (b) k01, back to fit → cluster:k03;
           (c) k06, refetch without k06 (camera kept) → cluster:k03, cluster:k07, k05, k14 → k14, "{iata="sin"}, 40 ms, ok, Singapore is no longer shown"
-keys      on button k05: Shift+→ → centre +256 px; `+` → zoom 3.6218728064801105, k05 fixed; `0` → fit; a parent sees none
+keys      on button k05: Shift+← → centre −256 px (Shift+→ is contained at +135.84 px); `+` → zoom 3.6218728064801105, k05 fixed; `0` → fit; a parent sees none
 brush     (300,80)–(500,200) at fit → select [k01, k02, k03, k04, k08]; `[]` → no change
 targets   O2 legend `other (3)` → select [q7, q8, q9, q10], aggregate members `"other (2)"` {env: "other (2)"} [q7] · `e8` {env: "e8"} [q8, q10]
           · `e9` {env: "e9"} [q9]; entry `e8` → select [q8, q10], group `group:{"present":true,"value":"e8"}` rows `{env="e8"}` (q8),
@@ -3150,4 +3157,5 @@ None.
 | 1.15-rc | 2026-11-26 | #231 (part E step 1a, E1): §5.11 the `types.ts` interfaces, `GeoData`, `geoLoader`, the `aliases.ts` exports (`normKey`, `GEO_AUTO_RULES`, `GEO_ALIAS_KEYS`), the decoders in `decode.ts` re-exported by `assets.ts`, the URLs of `urls.ts` and the `geo-assets` build input. §5.12: the assets' keys are in the listed order (`v`, `q`, then the data members), not sorted, as the §10.3 RT bytes already were. §5.13: the shapes of `sources.json` and `manifest.json`, and `--notices`; the cloud list's coverage rule (each provider's published list, azure restricted-access regions included) and the example rows reconciled with the lists of 2026-11-26 (gcp `europe-west1` is St. Ghislain; a country or state location becomes a curated city) |
 | 1.16-rc | 2026-11-27 | #173 Part 3b ([T22](T22-value-categorical-and-table-panels.md) §4.5): T24-099 (§4.1) — the map-sync spec version's `legacyAuto` covers auto-vis rows 8 and 11 together: pre-map-sync panels keep the legacy set, panels saved at map-sync or later get both rows; #237 implements it, and #173 adds no spec version |
 | 1.17-rc | 2026-11-27 | #234 Part 1 (E2): §5.0 the geomap version landed as v7 (before the change-feed version, so the change-feed and map-sync versions take the next free numbers). §5.15: `GeoGroup` gains `memberLabels` (the final labels, parallel to `members`) and `GeoRowSet` `groupBy`; `geoRowSet` takes the result's `source` and the panel's `Thresholds` (lines lack the direction) and `validateGeoRows` takes `Thresholds \| null`; a null and an absent `groupBy` or `view` are one stored value. §5.16: `GeoInspectorTarget` gains `set`. T24-091: the `map-water`, `map-land`, `map-coast` and `map-border` values (the light strokes in the hairline ink) |
-| 1.18-rc | 2026-11-27 | #216 Part 2a (I2): the Board list view. T24-021: Esc's clear commits `''` at once. T24-023: the clamp of the shown count is kept per answer (an empty answer starts again at `limit`). T24-025: the count is announced only for a search the user committed; a row's chips and time are its link's description. T24-026: the facts are the list's description; the table caption `‹n› boards · ‹d› shown` and "Show list (Shift+T)". §4.5: the failed-refresh notice shows the rows' fetch time. §5.7: the Part 2a modules. §11: Part 2a landed, Part 2b next |
+| 1.18-rc | 2026-11-27 | #234 Part 2 (E2): T24-091 records the inertia's release velocity as the spring's initial velocity (D = 2v/ω), which T02-022's rest form does not fix. §5.14 names the mark tokens `pattern-ink` and `category-other` with their values. §10.4: the File column of `unit:geo-radius-project`, `unit:geo-camera`, `unit:geo-ownership`, `unit:geo-keys-engine`, `unit:geo-inertia` and `unit:geo-marks` moves from `engine/canvas2d/geo/` to `engine/controller/geo/` (the renderer-free half any engine reuses, [ADR-0031](../adr/0031-gpu-engine-default-renderer.md); gate IDs unchanged). §10.4 and §10.5 keys: at G's fit the world's east edge is 135.84 px from the centre, so containment caps Shift+→; the 256 px pan is Shift+← |
+| 1.19-rc | 2026-11-27 | #216 Part 2a (I2): the Board list view. T24-021: Esc's clear commits `''` at once. T24-023: the clamp of the shown count is kept per answer (an empty answer starts again at `limit`). T24-025: the count is announced only for a search the user committed; a row's chips and time are its link's description. T24-026: the facts are the list's description; the table caption `‹n› boards · ‹d› shown` and "Show list (Shift+T)". §4.5: the failed-refresh notice shows the rows' fetch time. §5.7: the Part 2a modules. §11: Part 2a landed, Part 2b next |

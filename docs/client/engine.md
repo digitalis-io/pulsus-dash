@@ -656,6 +656,45 @@ One routing frame per `ChartFrame`, bound on its first spec:
   and a notice reads "Recovered from an error: this chart uses the basic renderer." Dispose removes
   what the routing frame created; ChartFrame removes its own canvas. No component changed.
 
+### The geomap on Canvas 2D (#234 Part 2)
+
+The routing engine binds every kind but line to Canvas 2D, so a `geomap` spec always gets a
+`Canvas2DFrame` ([ADR-0031](../../designs/adr/0031-gpu-engine-default-renderer.md)). That frame
+delegates the kind to a scene in its own chunk
+([ADR-0027](../../designs/adr/0027-geomap-frame-seam.md), [geomap](geomap.md#the-map-in-the-canvas-2d-engine-234-part-2)):
+
+- **Lazy load.** The first `geomap` spec calls `loadGeoModule()`: one shared promise for the page,
+  kept once it resolves; a rejection clears it, so the next `geomap` spec, on this frame or another,
+  imports again. The frame logs the failure once (`pulsus map renderer unavailable: …`) and stays
+  blank with no `drawn`; Part 3's host shows the status. `Canvas2DOptions.loadGeo` replaces the
+  loader in tests (`geoModuleLoader(imp)` builds one over any import).
+- **Generation guard.** Each load takes `geoGen + 1`; leaving `geomap` and `dispose` bump `geoGen`.
+  A module that resolves for an old generation, a disposed frame or another kind is kept (cached)
+  and attaches nothing: no scene, no listener, no event.
+- **Delegation.** The frame stores every input and forwards it to the scene: `setSpec`,
+  `setData` (the `geo` frame data), `setSelection`, `setTheme`, `resize`, `setFocusMark` and
+  `cameraKey`. On attach it replays the spec, data, theme, size, selection and focus mark. A
+  camera key sent before the scene exists is dropped (it acts on the map shown). `setTimeWindow` and
+  `setEvents` are stored and draw nothing. Until the scene exists the frame paints `map-water` and emits no `drawn`, so the host's
+  pending state stays.
+- **Drawing.** No layer cache: each frame the scene paints the visible canvas, the frame emits the
+  `chart-draw` measure (`kind: 'geomap'`, `series` = the marks; `bench:geomap-markers` reads it in
+  Part 3), `a11y` when the summary's JSON changed, `chart-present` and `drawn`, and schedules
+  another frame while an ease, a fling or a crossfade runs.
+- **Input.** The scene's `GeoController` listens on the canvas (pointer, wheel, double-click,
+  context menu) and on the key target (keydown); the shared time `FrameController` does not listen
+  on a geomap, as on a stat. Leaving `geomap` disposes the scene and its listeners before the time
+  camera listens again, and clears a hover it showed.
+- **What a GPU engine reuses.** `engine/controller/geo/` (projection, camera, marks, pick and
+  `GeoController`) imports no renderer: its listener, wheel and latch helpers are in
+  `engine/controller/input.ts` (re-exported by `canvas2d/input.ts` and `canvas2d/gesture.ts`); a GPU geomap supplies a `GeoStage` (its marks, the shown
+  rows' positions, a member's position and `redraw`) and replaces `engine/canvas2d/geo/`'s painter.
+  `engine/controller/inertia.ts` is the T02-022 spring, for any camera that flings.
+
+The seam additions it implements are Part 1's: `setFocusMark`, `cameraKey`, `FrameSummary.geo` and
+the `geoCommit`, `geoBrush` and `geoMarks` events. The marks use `pattern-ink` and
+`category-other` from `design/tokens.toml`.
+
 ### Workers and memory
 
 The main thread never instantiates the module (T03-003). It fetches the wasm with the SHA-384 of
