@@ -1,6 +1,6 @@
 /*
  * The Board list editor body (plan #216 Part 2b §4.1; T24-015): the preview on top, a panel body's
- * box at the chart height (240 px) under a muted caption, then the two-column field grid with the
+ * box at the chart height (240 px), with a panel body's padding, under a muted caption, then the two-column field grid with the
  * Text editor's spacing. The preview is inert: it shows the draft and takes no input.
  */
 .previewGroup {
@@ -19,6 +19,7 @@
   display: grid;
   height: var(--size-chart);
   overflow: hidden;
+  padding: var(--space-3);
   border: var(--border-hairline) solid var(--hairline);
   border-radius: var(--radius);
   background: var(--surface-1);
