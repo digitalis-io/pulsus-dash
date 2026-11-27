@@ -5,7 +5,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { key, pointer, wheel } from '../../../test/engineHarness';
-import { ctlKit, pxOf, type CtlKit } from '../../../test/geoKit';
+import { ctlKit, frameOf, pxOf, type CtlKit } from '../../../test/geoKit';
+import { G } from '../../../vis/geo/fixtures/series';
 import type { GeoView } from '../../api';
 import { spring } from '../inertia';
 import { camOf } from './camera';
@@ -58,15 +59,40 @@ describe('unit:geo-keys-engine', () => {
     expect(k.commits.map((c) => c.gesture)).toEqual(['keys', 'keys']);
   });
 
-  it('0 fits (from fit and after a zoom), one fit commit each', () => {
+  it('0 fits after a zoom with one fit commit; from fit it moves nothing and commits nothing', () => {
     const k = keys();
     key(k.keyTarget, '0');
     close(k.ctl.view, FIT);
+    expect(k.commits).toEqual([]);
     key(k.keyTarget, '+');
     key(k.keyTarget, '0');
     close(k.ctl.view, FIT);
-    expect(k.commits.map((c) => c.gesture)).toEqual(['fit', 'keys', 'fit']);
-    close(k.commits[2]?.view ?? FIT, FIT);
+    expect(k.commits.map((c) => c.gesture)).toEqual(['keys', 'fit']);
+    close(k.commits[1]?.view ?? FIT, FIT);
+  });
+
+  it('no commit when the view does not move: zoom in at 14, a pan held by containment', () => {
+    const k = ctlKit({ spec: { motion: 'cut', view: { lat: 10, lon: 10, zoom: 14 } } });
+    const v = k.ctl.view;
+    key(k.keyTarget, '+');
+    expect(k.ctl.view).toEqual(v);
+    // Already at the east edge: Shift+→ stays put.
+    const f = keys();
+    key(f.keyTarget, 'ArrowRight', { shiftKey: true });
+    expect(f.commits).toHaveLength(1);
+    const edge = f.ctl.view;
+    key(f.keyTarget, 'ArrowRight', { shiftKey: true });
+    expect(f.ctl.view).toEqual(edge);
+    expect(f.commits).toHaveLength(1);
+    expect(k.commits).toEqual([]);
+  });
+
+  it('a data-following camera keeps following after a key that moved nothing', () => {
+    const k = keys({ focus: false });
+    key(k.keyTarget, '0');
+    k.setData(frameOf(G().filter((s) => s.key === 'k05' || s.key === 'k06')));
+    expect(k.ctl.view.lon).toBeCloseTo(120.995, 9);
+    expect(k.commits).toEqual([]);
   });
 
   it('Shift+← moves the centre −256 px, Shift+↓ +128 px; Shift+→ stops at the world edge', () => {
@@ -259,6 +285,17 @@ describe('unit:geo-ease-origin', () => {
     pointer(k.canvas, 'pointerup', 512, 256);
     k.run(400);
     expect(k.commits).toHaveLength(1);
+  });
+
+  it('an ease stopped before it moves commits nothing', () => {
+    const k = ctlKit();
+    key(k.keyTarget, '+');
+    // No frame has advanced it: the pose is still the start.
+    pointer(k.canvas, 'pointerdown', 512, 256);
+    pointer(k.canvas, 'pointerup', 512, 256);
+    close(k.ctl.view, FIT);
+    expect(k.run(400)).toBe(false);
+    expect(k.commits).toEqual([]);
   });
 
   it('a key ease runs 200 ms and commits at its end', () => {

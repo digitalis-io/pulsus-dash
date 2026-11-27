@@ -673,9 +673,9 @@ delegates the kind to a scene in its own chunk
   and attaches nothing: no scene, no listener, no event.
 - **Delegation.** The frame stores every input and forwards it to the scene: `setSpec`,
   `setData` (the `geo` frame data), `setSelection`, `setTheme`, `resize`, `setFocusMark` and
-  `cameraKey`. On attach it replays the spec, data, theme, size, selection, focus mark and any
-  camera keys sent while loading (at most 8). `setTimeWindow` and `setEvents` are stored and draw
-  nothing. Until the scene exists the frame paints `map-water` and emits no `drawn`, so the host's
+  `cameraKey`. On attach it replays the spec, data, theme, size, selection and focus mark. A
+  camera key sent before the scene exists is dropped (it acts on the map shown). `setTimeWindow` and
+  `setEvents` are stored and draw nothing. Until the scene exists the frame paints `map-water` and emits no `drawn`, so the host's
   pending state stays.
 - **Drawing.** No layer cache: each frame the scene paints the visible canvas, the frame emits the
   `chart-draw` measure (`kind: 'geomap'`, `series` = the marks; `bench:geomap-markers` reads it in
@@ -686,7 +686,8 @@ delegates the kind to a scene in its own chunk
   on a geomap, as on a stat. Leaving `geomap` disposes the scene and its listeners before the time
   camera listens again, and clears a hover it showed.
 - **What a GPU engine reuses.** `engine/controller/geo/` (projection, camera, marks, pick and
-  `GeoController`) imports no renderer; a GPU geomap supplies a `GeoStage` (its marks, the shown
+  `GeoController`) imports no renderer: its listener, wheel and latch helpers are in
+  `engine/controller/input.ts` (re-exported by `canvas2d/input.ts` and `canvas2d/gesture.ts`); a GPU geomap supplies a `GeoStage` (its marks, the shown
   rows' positions, a member's position and `redraw`) and replaces `engine/canvas2d/geo/`'s painter.
   `engine/controller/inertia.ts` is the T02-022 spring, for any camera that flings.
 

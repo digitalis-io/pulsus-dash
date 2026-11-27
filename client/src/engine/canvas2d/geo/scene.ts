@@ -8,8 +8,8 @@
  * the box or brush band. It emits `hover`, `select`, `geoCommit`, `geoBrush` and `geoMarks`, and
  * returns the frame summary of each draw.
  *
- * `geoMarks` (ADR-0027 (4)) goes out unconditionally on the first draw, after each `geoCommit`, on
- * new data and on a level change; after any other draw only when its payload (level, then each mark's
+ * `geoMarks` (ADR-0027 (4)) goes out unconditionally right after each `geoCommit` (one per commit,
+ * drawn or not), and on the first draw, on new data and on a level change; after any other draw only when its payload (level, then each mark's
  * id, kind, keys and in-view flag, in keyboard order) differs from the last one sent.
  */
 import { EMPTY_BASEMAP } from '../../../data/frames';
@@ -127,7 +127,7 @@ class Scene implements GeoScene {
   private lastDrawn: Level | null = null;
   private fade: { from: Level; start: number } | null = null;
   private moving = false;
-  /** The next draw sends `geoMarks` whatever its payload (first draw, commit, new data). */
+  /** The next draw sends `geoMarks` whatever its payload (first draw, new data). */
   private forceMarks = true;
   private lastMarks: GeoMarksEvent | null = null;
   private disposed = false;
@@ -141,8 +141,9 @@ class Scene implements GeoScene {
     );
     const emit: Emit = (e, ev) => {
       if (this.disposed) return;
-      if (e === 'geoCommit') this.forceMarks = true;
       d.emit(e, ev);
+      // Each commit is followed by its own `geoMarks`, at once (ADR-0027 (4)).
+      if (e === 'geoCommit') this.marksAfterCommit();
     };
     this.ctl = new GeoController(
       d.canvas,
@@ -298,7 +299,8 @@ class Scene implements GeoScene {
     const box = this.ctl.box;
     if (box !== null) paintBand(ctx, box, c);
     ctx.restore();
-    this.emitMarks(lv, prev === null || levelChanged);
+    // A level change is forced unless a commit already sent this level's marks.
+    this.emitMarks(lv, prev === null || (levelChanged && this.lastMarks?.level !== lv.z));
     this.lastDrawn = lv;
     return this.summary(lv);
   }
@@ -373,6 +375,14 @@ class Scene implements GeoScene {
     return next;
   }
 
+  /** The marks as of the committed camera: sent unconditionally after a `geoCommit`. */
+  private marksAfterCommit(): void {
+    const lv = this.currentLevel();
+    if (lv === null) return;
+    placeInto(lv.marks, this.ctl.camera, this.w, this.h, lv.x, lv.y);
+    this.emitMarks(lv, true);
+  }
+
   /** The selected keys while the selection is relevant (a key among the loaded rows'), else null. */
   private selectedKeys(f: GeoFrame): ReadonlySet<string> | null {
     const sel = this.selection;
@@ -385,7 +395,7 @@ class Scene implements GeoScene {
     return keys;
   }
 
-  /** ADR-0027 (4): forced on the first draw, a commit, new data and a level change; else on change. */
+  /** ADR-0027 (4): forced after a commit, on the first draw, new data and a level change; else on change. */
   private emitMarks(lv: Level, levelChanged: boolean): void {
     const force = this.forceMarks || levelChanged;
     this.forceMarks = false;

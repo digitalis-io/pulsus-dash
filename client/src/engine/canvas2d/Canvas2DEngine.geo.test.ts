@@ -11,6 +11,7 @@ import {
   pointer,
   seriesData,
   seriesFrame,
+  wheel,
   type Harness,
 } from '../../test/engineHarness';
 import { frameOf, geoSpec, pxOf } from '../../test/geoKit';
@@ -254,6 +255,28 @@ describe('unit:geo-scene-lifecycle', () => {
     expect(imp).toHaveBeenCalledTimes(2);
   });
 
+  it('a camera key before the scene is ready is a no-op; after it, it moves the map', async () => {
+    const d = deferred();
+    const h = geoHarness(d.load);
+    h.frame.setSpec(geoSpec({ motion: 'cut' }));
+    h.frame.setData(geoData());
+    expect(() => {
+      h.frame.cameraKey('in');
+    }).not.toThrow();
+    d.resolve(await loadGeoModule());
+    await settle();
+    // Attached, but no size yet: still a no-op.
+    h.frame.cameraKey('in');
+    h.frame.resize(1024, 512, 1);
+    h.flush();
+    expect(h.geoEvents).toEqual(['geoMarks']);
+    expect(Math.abs((h.a11y.at(-1)?.geo?.view.zoom ?? 0) - FIT.zoom)).toBeLessThan(1e-9);
+    h.frame.cameraKey('in');
+    h.flush();
+    expect(h.geoEvents).toEqual(['geoMarks', 'geoCommit', 'geoMarks']);
+    expect(Math.abs((h.a11y.at(-1)?.geo?.view.zoom ?? 0) - (FIT.zoom + 1))).toBeLessThan(1e-9);
+  });
+
   it('until the module resolves the frame paints map-water and emits no drawn', () => {
     const d = deferred();
     const h = geoHarness(d.load);
@@ -447,6 +470,31 @@ describe('unit:geo-marks-emit', () => {
     expect(order).toEqual(['commit', 'marks']);
     expect(h.marks).toHaveLength(2);
     expect(h.marks[1]).toEqual(h.marks[0]);
+  });
+
+  it('(g) a wheel commit at idle, after its last draw: one geoMarks, and a draw follows', async () => {
+    const h = await atFit();
+    wheel(h.canvas, 512, 256, { deltaX: 20 });
+    h.flush();
+    const drawn = h.drawn.length;
+    const marks = h.marks.length;
+    h.advance(300);
+    expect(h.geoEvents.slice(-2)).toEqual(['geoCommit', 'geoMarks']);
+    expect(h.marks).toHaveLength(marks + 1);
+    expect(h.queued()).toBeGreaterThan(0);
+    h.flush();
+    expect(h.drawn.length).toBeGreaterThan(drawn);
+    expect(h.marks).toHaveLength(marks + 1);
+  });
+
+  it('(h) two commits before a draw: two geoMarks', async () => {
+    const h = await atFit();
+    const marks = h.marks.length;
+    h.frame.cameraKey('panLeft');
+    h.frame.cameraKey('panDown');
+    expect(h.geoEvents.slice(-4)).toEqual(['geoCommit', 'geoMarks', 'geoCommit', 'geoMarks']);
+    h.flush();
+    expect(h.marks).toHaveLength(marks + 2);
   });
 
   it('(f) setData with an equal copy of G: exactly one, unchanged', async () => {

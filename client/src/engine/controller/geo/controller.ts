@@ -12,8 +12,14 @@
  * Any new pointer-down, wheel or camera key first stops a running ease or inertia at its pose.
  */
 import type { CameraKey, GeoCommitEvent, GeoMapSpec, GeoView, PlotRect } from '../../api';
-import { listen, type Handler } from '../../canvas2d/gesture';
-import { DRAG_MIN_PX, PAGE_WHEEL_LATCH_MS, WHEEL_IDLE_MS, wheelIntent } from '../../canvas2d/input';
+import {
+  DRAG_MIN_PX,
+  listen,
+  PAGE_WHEEL_LATCH_MS,
+  WHEEL_IDLE_MS,
+  wheelIntent,
+  type Handler,
+} from '../input';
 import { FLING_MIN_SPEED, releaseVelocity, spring, springEnd, type MoveSample } from '../inertia';
 import type { ControllerDeps, Point } from '../stage';
 import {
@@ -72,6 +78,8 @@ interface Ease {
 
 interface Fling {
   readonly kind: 'fling';
+  /** The pose at the press: the gesture commits only if the view moved from it. */
+  readonly from: Cam;
   readonly base: Cam;
   readonly vx: number;
   readonly vy: number;
@@ -309,7 +317,7 @@ export class GeoController {
     this.cam = this.flingPose(m, t);
     if (done || (!m.liveX && !m.liveY)) {
       this.motion = null;
-      this.commit('pan');
+      this.commit('pan', m.from);
       return false;
     }
     return true;
@@ -380,7 +388,7 @@ export class GeoController {
   }
 
   private endEase(m: Ease): void {
-    if (m.origin === 'user' && m.gesture !== null) this.commit(m.gesture);
+    if (m.origin === 'user' && m.gesture !== null) this.commit(m.gesture, m.from);
     else this.settled = this.cam;
   }
 
@@ -421,13 +429,19 @@ export class GeoController {
     if (m === null) return;
     this.motion = null;
     if (m.kind === 'ease') this.endEase(m);
-    else this.commit('pan');
+    else this.commit('pan', m.from);
     this.stage.redraw();
   }
 
-  private commit(gesture: Gesture): void {
+  /**
+   * A gesture that began at `from` ended: when the view moved, it is committed (`geoCommit`, the
+   * data stops refitting) and a draw follows; an unmoved view commits nothing.
+   */
+  private commit(gesture: Gesture, from: Cam): void {
+    if (sameCam(this.cam, from)) return;
     this.settled = this.cam;
     this.follow = false;
+    this.stage.redraw();
     this.deps.emit('geoCommit', {
       view: viewOf(this.cam),
       bounds: boundsOf(this.cam, this.w, this.h),
@@ -436,14 +450,15 @@ export class GeoController {
   }
 
   /** A release at (vx, vy) px/ms: the inertia, or its end offset at once under `cut`. */
-  private fling(vx: number, vy: number): void {
+  private fling(vx: number, vy: number, from: Cam): void {
     if (this.spec?.motion === 'cut') {
       this.cam = panPx(this.cam, -springEnd(vx), -springEnd(vy), this.w, this.h);
-      this.commit('pan');
+      this.commit('pan', from);
       return;
     }
     this.motion = {
       kind: 'fling',
+      from,
       base: this.cam,
       vx,
       vy,
@@ -505,7 +520,7 @@ export class GeoController {
     if (g === null) return;
     this.deps.clearTimer(g.timer);
     this.wheel = null;
-    if (!sameCam(this.cam, g.start)) this.commit('wheel');
+    this.commit('wheel', g.start);
   }
 
   private onWheel(e: WheelEvent): void {
@@ -624,8 +639,8 @@ export class GeoController {
         g.samples.push({ t: now, x: p.x, y: p.y });
         this.cam = panPx(g.cam0, -(p.x - g.x0), -(p.y - g.y0), w, h);
         const v = releaseVelocity(g.samples, now);
-        if (Math.hypot(v.vx, v.vy) > FLING_MIN_SPEED) this.fling(v.vx, v.vy);
-        else if (!sameCam(this.cam, g.cam0)) this.commit('pan');
+        if (Math.hypot(v.vx, v.vy) > FLING_MIN_SPEED) this.fling(v.vx, v.vy, g.cam0);
+        else this.commit('pan', g.cam0);
         break;
       }
       case 'box': {

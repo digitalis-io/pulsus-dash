@@ -435,8 +435,9 @@ engine commits.
 - **Keys** on the key target only (not from its children, no Ctrl, ⌘ or Alt): `+`/`=` zoom in, `-`
   out, about the focus mark (`setFocusMark`) when its centre is in view, else the centre; `0` fits;
   Shift+arrows pan 25 % of the plot. They are prevented and still propagate. `cameraKey(k)` does
-  the same for the mark list. Each key commits once (`keys`, or `fit` for `0`), at the end of its
-  ease.
+  the same for the mark list. A key that moves the view commits once (`keys`, or `fit` for `0`), at
+  the end of its ease. A key sent while the map is still loading, or before it has a size, does
+  nothing: keys act on the map shown and are not queued (the scene loads in milliseconds).
 - **Eases and reduced motion.** Keys, fit, box, double-click and a changed `spec.view` ease 200 ms
   (ease-out cubic; a zoom re-anchors every frame). With `motion: 'cut'` (set by the host under
   reduced motion) they land at once, and a fling lands at its end offset at once. A new
@@ -448,7 +449,9 @@ engine commits.
   camera; a resize raises the zoom to zMin and contains it.
 
 The summary's `geo` is the committed view and its bounds, the level, and the mark and cluster
-counts. Events: `geoCommit {view, bounds, gesture}` once per moving gesture.
+counts. Events: `geoCommit {view, bounds, gesture}` once per gesture that moved the view. A gesture
+that leaves the view where it began (a zoom in at 14, a pan held by containment, `0` at the fit, an
+ease stopped before its first frame) commits nothing, and a data-following camera keeps following.
 
 ### Marks
 
@@ -481,8 +484,9 @@ counts. Events: `geoCommit {view, bounds, gesture}` once per moving gesture.
   marks without one are drawn at `dimmed` and the marks with one get a 2 px `focus` ring; only
   foreign keys dim nothing. The focus mark has its own 2 px ring 3 px outside the mark.
 - **`geoMarks`** `{level, marks}`: every mark of the level in keyboard order with its id, kind,
-  keys and whether its centre is in the plot. It goes out on the first draw, after each commit, on
-  new data and on a level change, and after any other draw only when that payload changed.
+  keys and whether its centre is in the plot. It goes out right after each commit (one per commit,
+  also for a wheel commit at idle with no draw pending), on the first draw, on new data and on a
+  level change, and after any other draw only when that payload changed.
 
 **Limits.** At most 5 000 drawn rows (the cap above); no wrap across ±180° (a Pacific view ends at
 the world's edge); no spiderfying of a cluster at zoom 14.
