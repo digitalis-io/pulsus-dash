@@ -1,6 +1,7 @@
 /**
- * `InspectorHost` (T25-001, T25-006, T25-007, T25-012; plan #192 §4.1, §4.2): one per page. It owns
- * the selection, the Inspector sheet and the page's one Esc ladder; kinds reach it only through
+ * `InspectorHost` (T25-001, T25-006, T25-007, T25-012, T25 §4.8; plan #192 §4.1, §4.2, plan #234
+ * Part 4 §4.2): one per page. It owns the selection, the Inspector sheet with the open request's
+ * navigation stack, and the page's one Esc ladder; kinds reach it only through
  * `useInspector()` (null without a host: kinds then neither inspect nor select). State is in memory
  * only and dies with the page (a route, tenant or board change); refreshes and window changes keep
  * it. The registries are `Map`s in refs: last wins, and a disposer removes only its own entry.
@@ -24,16 +25,17 @@ import { useShellRoute } from '../shell/useShellRoute';
 import type { BoardFilter } from '../state/boardParams';
 import { useTimeContext } from '../state/useTimeContext';
 import { activePanelId, ladderSkips } from './escape';
-import { Inspector } from './Inspector';
+import { Inspector, type InspectorNav } from './Inspector';
 import styles from './Inspector.module.css';
 import { resolveGeoMembers } from '../vis/geo/targets';
 import type { MemberList } from './members';
 import { inspectorModel } from './model';
-import { INITIAL_INSPECTOR, inspectorReducer } from './store';
+import { INITIAL_INSPECTOR, inspectorReducer, topOf, viewKey } from './store';
 import type {
   InspectorEnv,
   InspectOrigin,
   InspectRequest,
+  NavView,
   Selection,
   SelectionSource,
 } from './types';
@@ -99,11 +101,13 @@ function closeTarget(req: InspectRequest, doc: Document): HTMLElement | null {
 }
 
 /**
- * The one polite region: at most one write per 500 ms, the latest text wins. Keyed by tenant by the
- * host, so a tenant change drops its text and its pending write.
+ * The one polite region: one write per `viewKey` change, at most one per 500 ms, the latest text
+ * wins; a text equal to the last one is cleared and rewritten on the next frame, so it is read
+ * again (T25-008). Keyed by tenant by the host, so a tenant change drops its text and its pending
+ * write.
  */
-function LiveRegion({ text, seq }: { text: string | null; seq: number }) {
-  const live = useLiveText(text, seq);
+function LiveRegion({ text, viewKey }: { text: string | null; viewKey: string }) {
+  const live = useLiveText(text, viewKey);
   return (
     <p aria-live="polite" className={cx(styles['srOnly'])} data-inspector-live="">
       {live}
@@ -111,32 +115,50 @@ function LiveRegion({ text, seq }: { text: string | null; seq: number }) {
   );
 }
 
-function useLiveText(text: string | null, seq: number): string {
+function useLiveText(text: string | null, viewKey: string): string {
   const [live, setLive] = useState('');
+  const shown = useRef('');
   const last = useRef(-Infinity);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const frame = useRef<number | null>(null);
   const pending = useRef('');
+  /** Shows `x`; the same text again is cleared first and rewritten on the next frame. */
+  const write = useCallback((x: string): void => {
+    if (frame.current !== null) {
+      cancelAnimationFrame(frame.current);
+      frame.current = null;
+    }
+    last.current = Date.now();
+    if (x !== shown.current) {
+      shown.current = x;
+      setLive(x);
+      return;
+    }
+    setLive('');
+    frame.current = requestAnimationFrame(() => {
+      frame.current = null;
+      setLive(x);
+    });
+  }, []);
   useEffect(() => {
     if (text === null) return;
     pending.current = text;
-    const now = Date.now();
     if (timer.current !== null) return;
-    const wait = last.current + LIVE_MS - now;
+    const wait = last.current + LIVE_MS - Date.now();
     if (wait <= 0) {
-      last.current = now;
-      setLive(text);
+      write(text);
       return;
     }
     timer.current = setTimeout(() => {
       timer.current = null;
-      last.current = Date.now();
-      setLive(pending.current);
+      write(pending.current);
     }, wait);
-    // One write per inspect: `seq` changes even when the text does not.
-  }, [text, seq]);
+    // One write per view: `viewKey` changes even when the text does not.
+  }, [text, viewKey, write]);
   useEffect(
     () => () => {
       if (timer.current !== null) clearTimeout(timer.current);
+      if (frame.current !== null) cancelAnimationFrame(frame.current);
     },
     [],
   );
@@ -197,12 +219,13 @@ export function InspectorHost({
         };
       },
       resolveMembers(panelId, runId) {
-        // A geo target's members come from the open request's own snapshot (T25 §4.9): no
-        // instance holds them, so every mount of the panel answers alike.
+        // A geo view's members come from the open request's top view, its own snapshot (T25
+        // §4.8, §4.9): no instance holds them, so every mount of the panel answers alike.
         if (runId.startsWith('geo:')) {
-          const req = latest.current.state.req;
-          if (req?.target.type !== 'geo' || req.origin.panelId !== panelId) return null;
-          return resolveGeoMembers(req.target.target, runId);
+          const s = latest.current.state;
+          const top = topOf(s);
+          if (top?.type !== 'geo' || s.req?.origin.panelId !== panelId) return null;
+          return resolveGeoMembers(top.target, runId);
         }
         return members.current.get(panelId)?.at(-1)?.r(runId) ?? null;
       },
@@ -256,6 +279,13 @@ export function InspectorHost({
       const provider = id === null ? undefined : escapes.current.get(id)?.p;
       const pre = provider?.pre() ?? null;
       let step: (() => void) | null = pre;
+      // A deeper view pops before the selection clears (T25-007, T25 §4.8).
+      if (step === null && s.req !== null && s.nav.length > 0) {
+        const to = s.nav.length - 1;
+        step = () => {
+          dispatch({ type: 'pop', to });
+        };
+      }
       if (step === null && s.selection !== null) {
         step = () => {
           dispatch({ type: 'select', sel: null });
@@ -283,9 +313,38 @@ export function InspectorHost({
     () => ({ tenant, ctx: { search, filters }, timeZone, capabilities: CAPABILITIES }),
     [tenant, search, filters, timeZone],
   );
-  const model = useMemo(
-    () => (current.req === null ? null : inspectorModel(current.req, env)),
-    [current.req, env],
+  // The top view, rendered at its depth (T25 §4.8): every view is built from the request's own
+  // snapshot, so a refresh never changes it.
+  const { req, nav, seq } = current;
+  const model = useMemo(() => {
+    if (req === null) return null;
+    const target = nav.at(-1)?.target ?? req.target;
+    return inspectorModel({ ...req, target }, env, nav.length);
+  }, [req, nav, env]);
+  const rootHeading = useMemo(
+    () => (req === null || nav.length === 0 ? null : inspectorModel(req, env).heading),
+    [req, nav.length, env],
+  );
+  const key = viewKey(current);
+  const navProps = useMemo<InspectorNav | null>(
+    () =>
+      rootHeading === null
+        ? null
+        : {
+            titles: [rootHeading, ...nav.map((v) => v.title)],
+            onPop: (to) => {
+              dispatch({ type: 'pop', to });
+            },
+          },
+    [rootHeading, nav],
+  );
+  // The entries of this render push at its `seq` and depth: a second press before the next render
+  // (or after a close) is stale and dropped by the reducer.
+  const onEntry = useCallback(
+    (view: NavView) => {
+      dispatch({ type: 'push', seq, depth: nav.length, view });
+    },
+    [seq, nav.length],
   );
   const origin =
     surface === 'board' && current.req?.origin.surface === 'board'
@@ -306,8 +365,11 @@ export function InspectorHost({
             ref={asideRef}
             model={model}
             scope={tenant}
-            seq={current.seq}
-            focusHeading={current.req?.source === 'keyboard' ? current.seq : null}
+            seq={seq}
+            viewKey={key}
+            focusHeading={req?.source === 'keyboard' ? seq : null}
+            nav={navProps}
+            onEntry={onEntry}
             collapsed={current.collapsed}
             onToggleCollapsed={() => {
               dispatch({ type: 'toggleCollapsed' });
@@ -318,7 +380,7 @@ export function InspectorHost({
             onEditQuery={onEdit}
             resolveMembers={(panelId, runId) => api.resolveMembers(panelId, runId)}
           />
-          <LiveRegion key={tenant} text={model?.announce ?? null} seq={current.seq} />
+          <LiveRegion key={tenant} text={model?.announce ?? null} viewKey={key} />
         </OriginContext.Provider>
       </SelectionContext.Provider>
     </InspectorApiContext.Provider>
