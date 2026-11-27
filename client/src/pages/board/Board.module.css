@@ -774,9 +774,17 @@
   gap: var(--space-1) var(--space-2);
   margin: 0;
   padding: 0;
+  min-width: 0;
   list-style: none;
   max-height: min(calc(2 * var(--size-target-min) + var(--space-1)), 40cqh);
   overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/* "Legend table" keeps its one-line width beside the list's scrollbar, never over it. */
+.legendCompact > [data-legend-table] {
+  flex: none;
+  white-space: nowrap;
 }
 
 /* A compact legend item is a chip (#282 Part 2a §4.5) tinted with its series colour at

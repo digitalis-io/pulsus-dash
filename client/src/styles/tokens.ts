@@ -279,10 +279,13 @@ export const material = {
 export const motion = {
   "easing-in": "cubic-bezier(0.4, 0, 1, 1)",
   "easing-out": "cubic-bezier(0.2, 0, 0, 1)",
+  "easing-zoom": "cubic-bezier(0.16, 1, 0.3, 1)",
   "fast": 150,
   "float-open": 200,
   "quick": 100,
   "standard": 250,
+  "zoom-close": 200,
+  "zoom-open": 320,
 } as const;
 
 export const seriesPalette = {

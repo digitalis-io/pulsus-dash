@@ -288,8 +288,11 @@ pub mod line_height {
 pub mod motion {
     pub const EASING_IN: &str = "cubic-bezier(0.4, 0, 1, 1)";
     pub const EASING_OUT: &str = "cubic-bezier(0.2, 0, 0, 1)";
+    pub const EASING_ZOOM: &str = "cubic-bezier(0.16, 1, 0.3, 1)";
     pub const FAST: f32 = 150.0;
     pub const FLOAT_OPEN: f32 = 200.0;
     pub const QUICK: f32 = 100.0;
     pub const STANDARD: f32 = 250.0;
+    pub const ZOOM_CLOSE: f32 = 200.0;
+    pub const ZOOM_OPEN: f32 = 320.0;
 }

@@ -59,7 +59,7 @@ export function PanelFullScreen({
         )}
       </div>
       <div className={cx(styles['dialogActions'])}>
-        <Button variant="primary" onPress={onClose}>
+        <Button variant="primary" slot="close">
           {t('panel.close')}
         </Button>
       </div>
