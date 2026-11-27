@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.16-rc · 2026-11-27 |
+| **Version** | 1.17-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -814,6 +814,11 @@ no place. `geoFrame.shown` holds the indices of the `shown` rows.
   (lon+180)/360, v = ½ − ln((1+sin φ)/(1−sin φ))/(4π); inverse lon = 360u − 180, lat =
   atan(sinh(π(1−2v))); the world is 256·2^z CSS px; basemap x as stored; no repeat; everything is
   clipped to the plot.
+- **Tokens** (`design/tokens.toml`): `map-water` (the plot and the holes) dark `#0E1620`, light
+  `#E6EDF4`; `map-land` dark `#1C232C`, light `#F8F9FB`; `map-coast` dark `#FFFFFF33`, light
+  `#0B0D103D`; `map-border` dark `#FFFFFF1F`, light `#0B0D1029` (the light strokes in the hairline
+  ink, so no light colour is the dark one inverted). Every series colour keeps ≥ 3:1 on `map-land`
+  and `map-water`.
 - **Basemap:** one path per polygon (the outer and its holes), filled `map-land` with the `nonzero`
   rule by the asset's orientations, so holes stay water; strokes only from `coast` (1 px) and `border`
   (0.5 px, `map-border`), each once, never ring outlines (so no artificial edge is drawn).
@@ -1326,9 +1331,9 @@ gate whatever its number).
 | tags version | `BoardSpec.tags` (§5.5) | #215 (I1), landed | v4 |
 | widgets version | `query` optional, `text`, `clock` (§5.1) | #198 (A1) Part 1, landed | v5 |
 | board-list version | `boardList` (§5.5) | #216 (I2) Part 1, landed | v6 |
-| change-feed version | `changeFeed` (§5.8) | part B2 | v7 |
-| geomap version | `geomap` (§5.15) | part E step 1b | v8 |
-| map-sync version | `sync`, `boundsFilter`, `legacyAuto` (§5.15) | part E step 2 | v9 |
+| change-feed version | `changeFeed` (§5.8) | part B2 | the next free (v8 or later) |
+| geomap version | `geomap` (§5.15) | part E step 1b (#234 Part 1), landed | v7 |
+| map-sync version | `sync`, `boundsFilter`, `legacyAuto` (§5.15) | part E step 2 | the next free (v8 or later) |
 
 An older server refuses a head saved at a newer version (`ErrSchemaTooNew`).
 
@@ -1873,13 +1878,15 @@ export type DrawStatus = 'shown' | 'notPlaced' | 'outsideMap' | 'excluded' | 'ca
 export interface GeoRow { key: string; labels: Labels; name: string; value: number; valueStatus: ValueStatus;
   state: State | null; location: LocationResult /* §5.11 */; draw: DrawStatus; group: number; groupId: GroupId }
 export type GroupId = { series: string } | { present: true; value: string } | { present: false } | { other: true }
-export interface GeoGroup { id: GroupId; label: string; pattern: string; colourIndex: number | null; members: GroupId[] | null }
-export interface GeoRowSet { rows: readonly GeoRow[] /* by key */; groups: readonly GeoGroup[]; coverage: Coverage }
+export interface GeoGroup { id: GroupId; label: string; pattern: string; colourIndex: number | null; members: GroupId[] | null;
+  memberLabels: string[] | null /* parallel to members: their final labels */ }
+export interface GeoRowSet { rows: readonly GeoRow[] /* by key */; groups: readonly GeoGroup[]; coverage: Coverage;
+  groupBy: string | null /* the groupBy label key */ }
 export interface GeoFrame extends GeoRowSet { seq: number; shown: Uint32Array; basemap: Basemap }
 // T22 Coverage += geo?: Record<'notPlaced' | 'ambiguous' | 'locationsUnavailable' | 'outsideMap' | 'noValue' | 'infinite' | 'outOfRange', number>
-export function geoRowSet(series: readonly SeriesFrame[], o: GeomapOptions, th: readonly ThresholdLine[] | null,
-  g: Gazetteer | null, q: Completeness): GeoRowSet;
-export function validateGeoRows(s: GeoRowSet, th: boolean): FrameDataIssue | null;
+export function geoRowSet(series: readonly SeriesFrame[], source: 'instant' | 'range', o: GeomapOptions,
+  th: Thresholds | null /* the panel's, with their direction */, g: Gazetteer | null, q: Completeness): GeoRowSet;
+export function validateGeoRows(s: GeoRowSet, th: Thresholds | null): FrameDataIssue | null; // `state` against th
 export function geoFrame(s: GeoRowSet, b: Basemap, seq: number): GeoFrame;
 ```
 
@@ -1898,11 +1905,11 @@ cannot move a head saved at the geomap version or later (`ErrSchemaTooNew`,
 | reducer | T22 `Reducer` | `last` | `reducer.invalid` |
 | size | `{by: 'value'\|'fixed', min 2–40, max min–40}` | `{by: 'value', min: 4, max: 20}` | `size.invalid` |
 | colour | `group`\|`state` (`state` needs thresholds) | `group` | `colour.invalid` |
-| groupBy | a label key \| null | null | `groupBy.invalid` |
+| groupBy | a label key \| null (null and absent are one stored value) | null | `groupBy.invalid` |
 | symbol | `circle`\|`square`\|`triangle`\|`diamond` | `circle` | `symbol.invalid` |
 | labels | `auto`\|`none` | `auto` | `labels.invalid` |
 | cluster, wheelZoom | bool | `true` | `board.json.type` |
-| view | null \| `GeoView` (ADR-0027 bounds) | null | `view.invalid` |
+| view | null \| `GeoView` (ADR-0027 bounds; null and absent are one stored value) | null | `view.invalid` |
 
 **The map-sync version** (part E step 2) is the next free version when it is coded, and depends on the geomap version (it extends the geomap options; §5.0, T11-016). Go decides validity;
 TS = Go on the fixture `v‹N›-geomap-sync.json`. The geomap options gain:
@@ -1923,7 +1930,8 @@ nothing else. A map-sync save to an older server → 400, shown as "This server 
 // vis/geo/targets.ts: every geo Inspector target comes from geoTarget
 export interface GeoMemberEntry { text: string; labels: Labels; keys: readonly string[] }
 export interface GeoInspectorTarget { kind: 'marker' | 'cluster' | 'aggregate' | 'group'; id: string; frameSeq: number;
-  title: string; rows: readonly GeoRow[] /* a snapshot, key order */; members: readonly GeoMemberEntry[] | null /* marker: null */ }
+  title: string; rows: readonly GeoRow[] /* a snapshot, key order */; members: readonly GeoMemberEntry[] | null /* marker: null */;
+  set: GeoRowSet /* the row set it was built from; group targets and later views read only this */ }
 export function geoTarget(s: GeoRowSet, frameSeq: number, ref: { kind: 'marker' | 'cluster'; id: string; keys: readonly string[] }
   | { kind: 'aggregate' } | { kind: 'group'; from: GeoInspectorTarget; entry: number }): GeoInspectorTarget;
 //   cluster, group: one entry per row {text: its name, labels, keys: [key]}; aggregate (id 'other:geo'): one entry per group
@@ -3120,3 +3128,4 @@ None.
 | 1.14-rc | 2026-11-26 | #222 (part B2, I5): §5.9 `orgWide` only with `entity`, repeated values, upper-case ids and repeated single parameters → 400, a missing cursor partner reported on its own pointer; the 403 bodies (`scope_denied`, "data scope denied" without fields, "outside your data scope" with `/entity` `annotations.entity.scope` or `annotations.scope`); `orgWideHidden` is a count the BFF sends null when scoped. §6: `P` with `@>` and `jsonb_build_array`, byte-identical in list and delete; `org_wide_hidden` computed unconditionally. §10.2: `unit:entity-id` in `entity/entity_test.go`, the itests in `annotations/annotations_itest_test.go`, and `itest:annotations-old-binary` runs by `make itest-old-binary` (local) |
 | 1.15-rc | 2026-11-26 | #231 (part E step 1a, E1): §5.11 the `types.ts` interfaces, `GeoData`, `geoLoader`, the `aliases.ts` exports (`normKey`, `GEO_AUTO_RULES`, `GEO_ALIAS_KEYS`), the decoders in `decode.ts` re-exported by `assets.ts`, the URLs of `urls.ts` and the `geo-assets` build input. §5.12: the assets' keys are in the listed order (`v`, `q`, then the data members), not sorted, as the §10.3 RT bytes already were. §5.13: the shapes of `sources.json` and `manifest.json`, and `--notices`; the cloud list's coverage rule (each provider's published list, azure restricted-access regions included) and the example rows reconciled with the lists of 2026-11-26 (gcp `europe-west1` is St. Ghislain; a country or state location becomes a curated city) |
 | 1.16-rc | 2026-11-27 | #173 Part 3b ([T22](T22-value-categorical-and-table-panels.md) §4.5): T24-099 (§4.1) — the map-sync spec version's `legacyAuto` covers auto-vis rows 8 and 11 together: pre-map-sync panels keep the legacy set, panels saved at map-sync or later get both rows; #237 implements it, and #173 adds no spec version |
+| 1.17-rc | 2026-11-27 | #234 Part 1 (E2): §5.0 the geomap version landed as v7 (before the change-feed version, so the change-feed and map-sync versions take the next free numbers). §5.15: `GeoGroup` gains `memberLabels` (the final labels, parallel to `members`) and `GeoRowSet` `groupBy`; `geoRowSet` takes the result's `source` and the panel's `Thresholds` (lines lack the direction) and `validateGeoRows` takes `Thresholds \| null`; a null and an absent `groupBy` or `view` are one stored value. §5.16: `GeoInspectorTarget` gains `set`. T24-091: the `map-water`, `map-land`, `map-coast` and `map-border` values (the light strokes in the hairline ink) |

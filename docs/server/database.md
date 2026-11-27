@@ -270,12 +270,13 @@ the board schema or spec and to the annotations schema.
   `boards_spec_old_binary_itest_test.go`) skips when the spec version is unchanged. Per Postgres
   version it migrates a database with this release, starts the previous release as `serve
   --api-only` on a free loopback port beside this one, and checks: this release creates W from the
-  newest version's fixture (`newFixture`, now `v6-board-list.json`, whose first panel is a board
-  list) and reads it back canonical at its `schema_version` (6); the previous release gets 503 on
+  newest version's fixture (`newFixture`, now `v7-geomap.json`, whose first panel is a geomap)
+  and reads it back at its `schema_version` (7) as the canonical form of the parsed fixture (a
+  `null` option is stored absent); the previous release gets 503 on
   `GET` and on `PUT` of W (W keeps one version) and still lists it; it refuses W's spec on `POST`
-  (400 `oldRefusal`: against a v5 release `board.vis.kind.invalid` at `/panels/0/vis/kind`); it
+  (400 `oldRefusal`: against a v6 release `board.vis.kind.invalid` at `/panels/0/vis/kind`); it
   creates V from its own fixture, refuses W's spec saved over V the same way (V's head and version
-  count unchanged); this release reads V canonical and saves it with a board list; the previous
+  count unchanged); this release reads V canonical and saves it with a geomap panel; the previous
   release then gets 503 on V; and the board round trip still passes on the previous release.
   Each spec version change updates `newFixture` and `oldRefusal`.
 - **`TestBoardTagsOldBinary`** (`itest:board-tags-old-binary`,
@@ -437,8 +438,8 @@ cover:
   (`itest:board-crud`, `TestBoardCRUDWidgets`), and a clock zone the head holds kept on saves while
   a newly introduced unknown one is refused (`itest:board-zones-grandfathered`,
   `TestBoardZonesGrandfathered`, in `server/internal/boards/boards_itest_test.go`);
-- board spec v6: a board with board lists created and read back canonical at schema 6, then saved
-  with one list's `limit` changed (`itest:board-crud`, `TestBoardCRUDBoardList`);
+- board spec v6: a board with board lists created and read back canonical at the current schema,
+  then saved with one list's `limit` changed (`itest:board-crud`, `TestBoardCRUDBoardList`);
 - annotations: the window overlap and newest-first order, the 500 cap and `truncated`, isolation
   between organisations, the `annotation.create` and `annotation.delete` audit events and their
   chain, and the CHECKs for a 32-day range and an unknown kind; the entity, kind, tag and
