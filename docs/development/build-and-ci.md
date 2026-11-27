@@ -152,7 +152,8 @@ keep an entry alive that the app no longer imports (#135).
 | `lazyChunk` | each other non-initial `.js` file (the route chunk `MetricsPage-*` included) | 120 000 each |
 | `fonts`, `totalExceptEngine` | the fonts; every file except the engine's | 150 000; 1 000 000 |
 | `geoBasemap`, `geoGazetteer` | with `required.geoAssets`: rows `geo-basemap` and `geo-gazetteer`, the one `assets/basemap-<hash>.json` and the one `assets/gazetteer-<hash>.json` (none or several fails `missing-artefact:geo basemap` / `geo gazetteer`); both also count in `totalExceptEngine`. The `geo-assets` entry chunk that names them (`src/vis/geo/urls.ts`, an extra Rolldown input of `vite.config.ts`, plan #231) is a `lazyChunk` row and empty until a route imports it, so the initial JS does not move | 40 000; 104 000 |
-| `engine` | one row, `engine (<n> files)`: every `assets/dash-engine-*.js` and `.wasm` (the wasm, its worker bundles and adapter chunks; PRF-009, ADR-0014 §8). Required: no engine wasm fails `missing-artefact:engine`; an engine file in the initial JS fails `engine-in-initial` | 1 900 000 |
+| `engineMt`, `engineSt` | one row per engine mode (plan #68 C2d2), `engine-mt (<n> files)` and `engine-st (<n> files)`: the mode's own `assets/dash-engine-mt-*` or `assets/dash-engine-st-*` files (wasm, glue, its workers) plus every shared `assets/dash-engine-*` chunk (adapter, frames, ring), counted in both (PRF-009, ADR-0014 §8). Required: each mode's wasm and glue (`missing-artefact:engine-<mode>-wasm`, `-js`); any engine file in the initial JS fails `engine-in-initial`; all are outside `totalExceptEngine` | 1 900 000 each |
+| `core` | PRF-009 per mode, `core mt` and `core st`: initial JS + initial CSS + that mode's engine row | 2 999 999 (< 3 MB) |
 
 Every chunk holding an editor module is named `editor-<hash>.js` by `vite.config.ts`, so the
 closure and `e2e:lazy-load` can name the editor's files. `editor-in-initial` fails when a closure
@@ -1024,6 +1025,31 @@ tree is `probe-in-release`; with `--expect-faults` each of the three fault sites
 exports `engine_probe_input`, `engine_probe_synth` and `engine_probe_chunk` (plan #68 C2d1) in any
 `.wasm` are one `probe-in-release` each in every tree (the fault build's included) unless `--expect-probe`, which
 requires each instead (`probe-missing`).
+
+#### The single-thread engine (Part C2d2)
+
+- **Build.** `make engine-wasm` builds both engines (`cargo xtask build-wasm` and
+  `build-wasm --st`); `make engine-wasm-st` builds only `client/src/engine/wasm/gen-st/`
+  (`dash_core_st.js`, `.d.ts`, `_bg.wasm`); `make engine-wasm-probe` builds both probe engines
+  (`gen-probe/`, `gen-st-probe/`). `vite build` and the dev server refuse to run without either
+  engine. The ST build uses the pinned nightly without `build-std`, `--no-default-features --features
+  st`, the flags `+bulk-memory,+mutable-globals,+simd128` and `--max-memory=2147483648`, and
+  wasm-opt without `--enable-threads`.
+- **`ci:engine-gen`.** `make engine-wasm-check` also builds the ST engine twice and compares the
+  builds, compares `gen-st/dash_core_st.d.ts` with the committed
+  `client/src/engine/wasm/dash_core_st.d.ts`, and runs the xtask test `st_module` (its own
+  non-shared memory, no memory import, and binaryen validation without threads, so no atomic
+  instruction).
+- **`lavapipe-st`.** A project of `playwright.engine.config.ts` with `metadata.engineMode: 'st'`:
+  `e2e/engine.ts` `tierOf` appends `&mode=st` to the lavapipe tier, and the project's `grep` runs
+  `e2e:engine-camera` E1 and E7, `e2e:engine-hover` H1 and H3, `e2e:engine-layer` L1 and L2,
+  `e2e:engine-selection` S1 and S3, `golden:engine-line` and the 10⁴-op `e2e:shim-fuzz` (against
+  the probe BFF on 4175, where it also checks `batchesInFlightMax` 1). `make engine-e2e` runs it.
+- **Size rows.** `ci:bundle-size` has `engine-mt` and `engine-st` rows (each ≤ 1 900 000 B) and
+  PRF-009's core total per mode (`core mt`, `core st`, < 3 000 000 B); see
+  [Bundle budgets](#bundle-budgets).
+- **Bench.** `bench:frame-line-1e8` adds `1e7-st` and `1e7-st-hover` (leg `wasm-webgl2-st`),
+  report-only.
 
 #### Frame benches
 

@@ -3,6 +3,7 @@
 | | |
 |---|---|
 | **Status** | Accepted (2026-11-25, on merge of #68 Part C1, under the owner's standing authorisation for pipeline design changes) |
+| **Amended by** | [ADR-0033](0033-st-render-worker-script.md) (decision 2: the ST render worker script; §Consequences: no `Atomics.waitAsync` → ST) |
 | **Amends** | [ADR-0014](0014-typescript-react-web-client.md) §9, the document CSP: one source keyword and one Trusted Types policy name. The rest of ADR-0014, and every other directive, are unchanged |
 | **Source** | Issue #68 Part C1 (the engine in the browser) |
 | **See** | [T03](../technical/T03-browser-runtime.md) §5.7 (T03-022), §9.2; [T18](../technical/T18-security.md) T18-005, T18-006; [ADR-0016](0016-asset-integrity-verified-by-bff.md) |

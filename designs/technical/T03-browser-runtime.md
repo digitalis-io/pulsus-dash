@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.16-rc · 2026-11-26 |
+| **Version** | 1.17-rc · 2026-11-27 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
-| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md) (CSP and the engine's worker policy), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md) (the engine is the default renderer) |
+| **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md) (CSP and the engine's worker policy), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md) (the engine is the default renderer), [ADR-0033](../adr/0033-st-render-worker-script.md) (the ST render worker script) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 (2026-11-19)
@@ -491,6 +491,14 @@ check ([T05 §7.1](T05-testing-and-performance.md#71-gate-catalogue)). `layout.g
 
 Full mode sends input through the input ring, never by message.
 
+*As built (#68 Part C2d2).* The engine's `boot` message carries `mode: 'mt' | 'st'`. In `st` it
+has no `pool` and no `ringStart`, and the `status` reply carries no `memory` (the ST engine's memory
+is its own). ST input travels as `{t: 'input-batch', buf, len}` (main → render, `buf` of 65 536
+bytes transferred) and `{t: 'input-ack', buf, depth, bad}` (render → main, `buf` transferred back
+after the tick that applied the batch; `depth` is the number of batches the worker held unapplied
+when this one arrived, `bad` its `INPUT_BAD` count). The batch holds the input ring's records
+(§5.4), byte for byte; seqs are assigned when a record is copied into a batch.
+
 **Rust → shim imports** (`#[wasm_bindgen(module = "/web/shim/net.js")]`, data workers only):
 
 | Function | Behaviour |
@@ -784,6 +792,7 @@ Brotli sizes, checked per PR by gate `ci:bundle-size` ([PRF-009](../product/09-p
 | ~~`dash-shell.wasm` + glue~~ | — | Withdrawn; the application is budgeted as JS in ADR-0014 §8 |
 | `dash-core-mt.wasm` + glue | ≤ 1 900 KB | wgpu (WebGPU + GL), the `dash-wire` reader, marks, scales, text shaping, planner, local engine |
 | `dash-core-st.wasm` + glue | ≤ 1 900 KB | ST fallback (§9.2); loaded instead of core-mt when not isolated (not eager) |
+| *As built (#68 C2d2):* each engine mode's loaded closure | ≤ 1 900 KB each | `ci:bundle-size` rows `engine-mt` (`dash-engine-mt-*`: wasm, glue, render and pool workers) and `engine-st` (`dash-engine-st-*`: wasm, glue, ST render worker), each with every shared `dash-engine-*` chunk (adapter, frames, ring); each mode's wasm and glue are required; PRF-009's core total (initial JS + initial CSS + that mode's row, < 3 MB) is checked per mode |
 | **Eager total** | **≤ 2 600 KB** | 400 KB headroom below the 3 MB ceiling of [PRF-009](../product/09-performance-contract.md#prf-009--core-bundle-size-and-lazy-loading) |
 | MSDF atlases (Inter + JetBrains Mono, Latin) | ≤ 250 KB | not WASM; other scripts lazy |
 | `dash-editor.wasm` | ≤ 600 KB | lazy |
@@ -836,7 +845,7 @@ line layout without `cosmic-text`.
 |---|---|---|---|
 | All present | **Full** | §4.2 | — |
 | No WebGPU adapter / device | **Tier T2** ([T02 §4.9](T02-vis-engine.md#49-capability-tiers-and-the-gallery)) | wgpu GL backend in the render worker; compute on the pool. A WebGPU failure after the canvas holds its context restarts the render worker once on a fresh canvas with T2. | coverage meter shows "WebGL2 tier" where a ceiling binds |
-| Not cross-origin isolated (headers stripped by a proxy, non-isolated embed) | **Single-thread (ST)** | `dash-core-st` in **one** worker (render + data + layout), no pool; input via `postMessage` with transfer, batched per frame, ≤ 1 batch unacknowledged (the worker returns the buffer) | banner "Reduced performance: cross-origin isolation is off (ask your admin)"; ceilings: 10⁷ line points, 10⁶ scatter, 2k Atlas entities; RUM flags it |
+| Not cross-origin isolated (headers stripped by a proxy, non-isolated embed), or isolated but no `Atomics.waitAsync` | **Single-thread (ST)** | `dash-core-st` in **one** worker (render + data + layout), no pool; input via `postMessage` with transfer, batched per frame, ≤ 1 batch unacknowledged (the worker returns the buffer) | banner per reason: "Reduced performance: cross-origin isolation is off (ask your admin)." (not isolated), "Reduced performance: this browser lacks a feature the fast chart engine needs." (no `Atomics.waitAsync`), "Reduced performance: the single-thread chart engine was requested for this page." (`?mode=st`); ceilings: 10⁷ line points, 10⁶ scatter, 2k Atlas entities; RUM flags it |
 | No OffscreenCanvas | **Main-thread render (MT-R)** | `dash-core-st` on main, time-sliced (≤ 8 ms per slice), data decoded in a worker and transferred. Canvas 2D until MT-R ships (§11). | banner; only Lens, Alert Lens and workbenches supported; Atlas falls back to the Explorer list ([15](../product/15-estate-navigation.md)) |
 | No WebGL2 either | **Static** | shell only; viewports show server-rendered PNGs from the BFF's native renderer ([T02 §4.9](T02-vis-engine.md#49-capability-tiers-and-the-gallery)), refreshed on Context change | "Interactive charts unavailable on this browser"; Alert Lens, ack and silence still work |
 | GPU device lost | recover | render recreates the device and re-uploads from arena chunks (CPU-resident) | ≤ 500 ms with no blank frame: the last frame stays on screen; logged |
@@ -845,12 +854,19 @@ line layout without `cosmic-text`.
 | HTTP/1.1 to the BFF (proxy downgrade) | degrade | works, 6-connection limit | RUM flags `nextHopProtocol`; admin diagnostic |
 | Stale shim after deploy (layout version mismatch) | reload | T03-005 | "Pulsus was updated — reload" |
 
-*Part C1 of #68 (as built).* Until `dash-core-st`, the modes without the shared-memory engine
-(not cross-origin isolated, MT-R, Static, and no `Atomics.waitAsync`) draw with the interim Canvas
-2D engine. *Accepted for M-UI0 (#68 Part C2d1):* without OffscreenCanvas (MT-R) and on Static,
-frames draw with Canvas 2D, which keeps T03-025 (every mode shows the chrome and the charts).
-MT-R and Static's server-rendered PNGs from the BFF are future work, each with its own issue (filed
-by #68 Part C2d2). ST is as written above until C2d2. The engine is the default renderer ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md),
+*Part C1 of #68 (as built).* MT-R and Static draw with Canvas 2D until #269 and #270.
+*Accepted for M-UI0 (#68 Part C2d1):* without OffscreenCanvas (MT-R) and on Static, frames draw
+with Canvas 2D, which keeps T03-025 (every mode shows the chrome and the charts). *ST as built
+(#68 Part C2d2, [ADR-0033](../adr/0033-st-render-worker-script.md)):* `dash-core-st` is the same
+crate built without `+atomics` (feature `st`: no pool, sequential CPU decimation with the same
+output). One render worker (`render-st.worker.ts`) runs it. The adapter's `BatchRing` keeps the
+input ring's pending queue (coalescing per kind and frame, at most 8 waiting Selects per frame) and
+writes the same record bytes into a transferred 64 KiB batch on main's animation frame; seqs are
+assigned at that copy. At most one batch exists end to end: the worker queues a batch's records
+(`engine_input_batch`), applies them at the start of its next tick (T03-019) and returns the buffer
+(`input-ack`) after that tick, and only then may main post the next. The 10⁷-point ceiling is
+measured by `bench:frame-line-1e8`'s ST cases, not enforced. One banner per page, under the
+header, with `role="status"`; none in any other mode. The engine is the default renderer ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md),
 #256), not opt-in: `?engine=canvas2d` or a `VITE_ENGINE=canvas2d` build forces Canvas 2D. Engine
 frames are bound per frame by a routing engine that keeps each frame's state on the main thread:
 
@@ -916,7 +932,7 @@ Owned by [T05](T05-testing-and-performance.md). Specific to this doc:
 
 | Milestone | Ships |
 |---|---|
-| M-UI0 | shim (boot, worker, net, input), one `dash-core-mt` (shell features stubbed in core), render + 2 data + pool, control block v1, T1/T2, ST mode with the `-st` artefact, size gate; no OffscreenCanvas (MT-R) and Static → Canvas 2D (§9.2; MT-R and the server-rendered PNGs follow, each with its issue) |
+| M-UI0 | shim (boot, worker, net, input), one `dash-core-mt` (shell features stubbed in core), render + 2 data + pool, control block v1, T1/T2, ST mode with the `-st` artefact (shipped, #68 C2d2), size gate; no OffscreenCanvas (MT-R) and Static → Canvas 2D (§9.2; MT-R #269 and the server-rendered PNGs #270) |
 | M-UI1 | *Superseded (ADR-0014):* the TS keymap, URL/history and `cam` codec and undo stack ship with the React application; workbench satellites and MT-R mode follow the engine |
 | M-UI2–M-UI3 | layout worker under load (T14 (draft)), local engine in core (T13 (draft)), memory degradation at scale |
 | M-UI5 | `dash-geo`, `sw.js` (T20 (draft)) |
@@ -992,5 +1008,6 @@ which forces a reload.
 | 1.13-rc | 2026-11-26 | #68 Part C2c1: §4.2 main → render message `events{id, atMs}` (the event markers' times; a layer input, not a ring record) |
 | 1.14-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md)): §9.2 the Part C1 note: the engine is the default renderer, not opt-in; `?engine=canvas2d` or a `VITE_ENGINE=canvas2d` build forces Canvas 2D; the recovery table adds the boot failure that marks the session (not for a build without the engine) |
 | 1.15-rc | 2026-11-26 | #68 Part C2c2: §4.2 main → render message `selection{id, keys, fromMs, toMs}` (the page selection; a layer input, not a ring record) |
+| 1.17-rc | 2026-11-27 | #68 Part C2d2 ([ADR-0033](../adr/0033-st-render-worker-script.md)): §9.2 the ST row adds "isolated but no `Atomics.waitAsync`" and the banner text per reason; the Part C1 note: MT-R and Static draw with Canvas 2D until #269 and #270, and ST as built (`BatchRing`, the record bytes unchanged, seqs at the batch copy, the `input-ack` after the applying tick, the measured ceiling); §5.2 the handshake `mode: 'st'` and the batch messages as built; §7.3 the engine budget per mode as its loaded closure with PRF-009's core total per mode; §11 M-UI0 ST shipped |
 | 1.16-rc | 2026-11-26 | #68 Part C2d1: §9.2 the MT-R row and the Part C1 note, and the §11 M-UI0 row, reconciled with what is accepted now: without OffscreenCanvas (MT-R) and on Static, frames draw with Canvas 2D (T03-025 holds); MT-R and Static's server-rendered PNGs are future work with their issues (filed by C2d2); ST unchanged until C2d2 |
 | 1.9-rc | 2026-11-25 | #68 Part C1, [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md): T03-022 and §5.7 assets carry COEP `require-corp`, the CSP names the `pulsus-engine` policy; §9.2 the recovery as built (frame fallback, one restart, session flag, kind swap) and Canvas 2D for not isolated, MT-R and Static until `dash-core-st`; §5.4 resize by message until Part C2 |
