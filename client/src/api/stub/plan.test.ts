@@ -19,6 +19,7 @@ import {
   type StubPlanError,
   type StubPlanned,
 } from './plan';
+import { promGrid } from '../../data/step';
 import { stubShape } from './promShape';
 
 function inputsOf(c: FixtureCase) {
@@ -165,5 +166,21 @@ describe('unit:plan-parity (TS)', () => {
 
   it('bytes', () => {
     for (const b of FIXTURE.bytes) expect(utf8Length(expand(b.text))).toBe(b.bytes);
+  });
+});
+
+describe('unit:promql-step acceptance (#303)', () => {
+  // #303 acceptance, as Go's TestStepAndWindow303.
+  it.each([
+    ['6 h at 560 px', 21_600_000, 560, 30_000, 60_000],
+    ['15 min at 1 200 px', 900_000, 1200, 15_000, 60_000],
+    ['1 h at 1 200 px', 3_600_000, 1200, 15_000, 60_000],
+    ['24 h at 1 000 px', 86_400_000, 1000, 60_000, 75_000],
+    ['30 d at 560 px', 2_592_000_000, 560, 3_600_000, 3_615_000],
+  ])('%s: step and rate window', (_, span, w, step, window) => {
+    const to = 1_767_225_600_000;
+    const g = promGrid(to - span, to, w);
+    expect(g?.stepMs).toBe(step);
+    expect(rateWindowMs(step)).toBe(window);
   });
 });

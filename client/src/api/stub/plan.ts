@@ -128,9 +128,9 @@ export function floorStep(stepMs: number, floorMs: number): number {
   return Math.ceil(stepMs / floorMs) * floorMs;
 }
 
-/** `max(4 × step, step + S, 4 × S)`, S the default scrape interval (15 s). */
+/** `max(step + S, 4 × S)` (#303), S the default scrape interval (15 s), as Go `prom.RateWindowMs`. */
 export function rateWindowMs(stepMs: number): number {
-  return Math.max(4 * stepMs, stepMs + DEFAULT_SCRAPE_MS, 4 * DEFAULT_SCRAPE_MS);
+  return Math.max(stepMs + DEFAULT_SCRAPE_MS, 4 * DEFAULT_SCRAPE_MS);
 }
 
 const DURATION_UNITS = [

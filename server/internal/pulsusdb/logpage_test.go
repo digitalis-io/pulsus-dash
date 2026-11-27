@@ -665,7 +665,7 @@ func windowData() (e1, e2, e3, e4, e5, e6 tEntry) {
 }
 
 func windowQuery(limit int, dir Direction) LogRangeQuery {
-	g, err := PromGrid(1767225601234, 1767229198765, 1200)
+	g, err := LogGrid(1767225601234, 1767229198765, 1200)
 	if err != nil {
 		panic(err)
 	}

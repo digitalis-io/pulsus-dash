@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.22-rc · 2026-11-24 |
+| **Version** | 1.23-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (PromQL editor, errors on run, completion, explain, visual builder, auto-vis hint; LogQL validation on run and label/value completion for LogQL panels) → M-UI2 (pre-run positioned diagnostics and formatting from the WASM parser crates (SRF-078), LogQL detected fields, LogQL ⌘K detection, TraceQL, profile selectors, ⌘K detection for all four, history) → M-UI4 (alert-rule editor, AI explain/generate, virtual-source diagnostics) → M-UI5 (Board variables UI, LogQL/TraceQL builders) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001, ADR-0002 and ADR-0004), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T09-query-editors.md (not tracked) |
@@ -456,8 +456,9 @@ pub struct VisHint { pub primary: VisKind, pub alternatives: SmallVec<[VisKind; 
 metrics page sends the text as typed with the rate chip (`rate`) and, for an instant query, the
 step; the BFF's `prom.Plan` sends a bare counter selector as `rate(<sel>[w])` and a bare histogram
 bucket selector as `sum by (le) (rate(<sel>[w]))` behind the chip (rows 6 and 5), with the rate
-window `w = max(4 × step, step + S, 4 × S)`: `S` is the scrape interval, 15 s by default until a
-per-binding value exists, so a window always holds at least four scrapes. Whether a name is a
+window `w = max(step + S, 4 × S)` (#303; T07-003 v1): `S` is the scrape interval, 15 s by default
+until a per-binding value exists, so a window is one scrape longer than the step and always holds
+at least four scrapes. Whether a name is a
 counter or a histogram comes from the server's per-binding metric types. With the chip off the
 selector is sent as written and drawn as a line. The page reads every fact from the response's
 `planned`: the chip shows when `rate_candidate`, rule 6 and the `/s` unit apply when `rate_applied`,
@@ -789,3 +790,4 @@ revived if a non-AGPL edition is planned (D3, R17).
 | 1.20-rc | 2026-11-23 | #66 Part C: §4.6 adds "v1 (#66)": Explore › Logs sends the text as typed to the range and volume routes; row 4 shows the volume and the stream (patterns with SRF-034, M-UI2); row 14 for LogQL draws every metric query as a line in M-UI1, bars for `count_over_time` later |
 | 1.21-rc | 2026-11-24 | #67: §4.6 adds "Boards (#67)": a board LogQL panel's Auto draws the stream for a log query and a line for a metric query, Bars the volume by level; the answer's kind decides |
 | 1.22-rc | 2026-11-24 | #147: §4.3 (T09-004) note: when the editor chunk fails, every query field is a native text area that runs on Run and the Run keys; a language-only failure shows the alert only; while a field's imports have failed its runs are degraded (PromQL without a language goes to the range route); T09-015 still applies |
+| 1.23-rc | 2026-11-27 | #303: §4.6 rate window `w = max(step + S, 4 × S)`, replacing `max(4 × step, step + S, 4 × S)` (T07-003 v1) |

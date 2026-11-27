@@ -1,10 +1,10 @@
 {
   "name": "counter",
-  "provenance": {"captured": "2026-11-20", "pulsusdb": "0.0.11", "route": "/api/v1/query_range", "sanitised": "labels, values, timestamps and query id replaced; edge values synthetic"},
+  "provenance": {"captured": "2026-11-20", "pulsusdb": "0.0.11", "route": "/api/v1/query_range", "sanitised": "labels, values, timestamps and query id replaced; edge values synthetic; timestamps after the first spaced 3× for the 15 s step floor (#303)"},
   "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "sum by (job, instance) (rate(http_requests_total[5m]))"},
   "response": {
     "status": 200,
     "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-counter-1", "X-Pulsus-Read-Cache": "miss"},
-    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"instance":"a:9090","job":"api"},"values":[[1767225600,"0.1"],[1767225605,"NaN"],[1767225610,"+Inf"],[1767225615,"-Inf"],[1767225625,"-0"],[1767225630,"5e-324"],[1767225635,"0.30000000000000004"],[1767229200,"1e+308"]]},{"metric":{"instance":"b:9090","job":"api"},"values":[[1767225600,"2"],[1767229200,"3"]]}]}}
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"instance":"a:9090","job":"api"},"values":[[1767225600,"0.1"],[1767225615,"NaN"],[1767225630,"+Inf"],[1767225645,"-Inf"],[1767225675,"-0"],[1767225690,"5e-324"],[1767225705,"0.30000000000000004"],[1767229200,"1e+308"]]},{"metric":{"instance":"b:9090","job":"api"},"values":[[1767225600,"2"],[1767229200,"3"]]}]}}
   }
 }

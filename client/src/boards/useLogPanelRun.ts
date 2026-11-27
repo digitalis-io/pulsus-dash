@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useApi } from '../app/providers';
 import { isApiError } from '../api/types';
-import { promGrid } from '../data/step';
+import { logGrid } from '../data/step';
 import type { Diagnostic } from '../editor/lang/types';
 import { firstPageError } from '../explore/logsRun';
 import { useStepWidth } from '../explore/stepWidth';
@@ -112,7 +112,7 @@ export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   // The frame path (§3.3): the PromQL panel's key and options, `fetchLogFrame` as its function.
   const stepMs =
     timeReady && widthPx !== null && widthPx > 0
-      ? (promGrid(fromMs, toMs, widthPx)?.stepMs ?? null)
+      ? (logGrid(fromMs, toMs, widthPx)?.stepMs ?? null)
       : null;
   const runKey = useMemo(
     () =>

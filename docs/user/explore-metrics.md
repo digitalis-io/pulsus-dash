@@ -84,11 +84,12 @@ A bare counter or histogram bucket selector is sent with a rate applied:
 shows when this applies; press it to send the query as typed (and again to apply the rate). When
 the query sent differs from the one typed, **Sent query: …** shows it in the result toolbar.
 
-The rate window holds at least four 15 s scrapes: it is `1m` up to a 15 s step and `4 × step`
-above (the step depends on the time range and the chart's width). Targets scraped less often than
-every 15 s may show gaps. Whether a name is a counter or a histogram comes from the data source's
-metric types; when they cannot be read, only names ending in `_total` are rated and a warning says
-so under **Warnings**.
+The rate window is one 15 s scrape longer than the step and holds at least four scrapes: it is
+`1m` up to a 45 s step and `step + 15s` above (`75s` at a 1 min step). The step gives about one
+point per pixel of the chart's width and is never below 15 s: a 6 h range on a 560 px chart is
+30 s. Targets scraped less often than every 15 s may show gaps. Whether a name is a counter or a
+histogram comes from the data source's metric types; when they cannot be read, only names ending
+in `_total` are rated and a warning says so under **Warnings**.
 
 ## The series table
 

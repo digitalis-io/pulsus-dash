@@ -160,10 +160,13 @@ when a rewrite would shrink it.
 
    A wrap sends the selector's exact bytes; bytes outside it (leading comments and blanks) are
    dropped. With `rate: false`, or an instant query without `step_ms`, a candidate is sent as is
-   and reported as a candidate. The window is `w = max(4 × step, step + S, 4 × S)` with the scrape
-   interval `S` = 15 s until a per-binding one exists, written as the largest of `d`, `h`, `m`, `s`
-   that divides it: 5 s gives `1m`, 30 s gives `2m`, 60 s gives `4m`, 1 h gives `4h`, 45 s gives
-   `3m`.
+   and reported as a candidate. The window is `w = max(step + S, 4 × S)` (#303) with the scrape
+   interval `S` = 15 s until a per-binding one exists: one scrape longer than the step, so
+   consecutive windows overlap by one scrape and a short spike still shows, and at least four
+   scrapes. `$__rate_interval` is the same window. It is written as the largest of `d`, `h`, `m`,
+   `s` that divides it, else in `ms`: 5 s to 45 s give `1m`, 60 s gives `75s`, 2 m gives `135s`,
+   5 m gives `315s`, 1 h gives `3615s`. Before #303 the window was `max(4 × step, step + S, 4 × S)`
+   (4 min at a 60 s step), which smoothed short peaks away.
 4. **Size.** A planned text over 65 536 bytes is refused with 413 and the full plan.
 
 ### Range macros
@@ -390,7 +393,7 @@ its `$` inside `"…"`:
 
 | Reference | Becomes |
 |---|---|
-| `$__interval`, `$__rate_interval` | the step, and PromQL's rate window at the step (`max(4 × step, step + 15 s, 60 s)`, so one board means one window); `1s` in `Prepare` |
+| `$__interval`, `$__rate_interval` | the step, and PromQL's rate window at the step (`max(step + 15 s, 60 s)`, #303, so one board means one window); `1s` in `Prepare` |
 | `$__range`, `$__range_s`, `$__range_ms` | the window `to − from` of the range or volume request, by the PromQL rule ([range macros](#range-macros)); `1s`, `1` and `1` in `Prepare` |
 | any other `$__…` (`$__auto`), or a name longer than 64 | itself, unchanged; PulsusDB refuses it with a mapped position |
 | a name in `vars`, inside `"…"` | the value, encoded by the table below |
@@ -680,15 +683,36 @@ for a slot, then fails with 429 `budget_exhausted`, `hint.reason: tenant_concurr
 
 ### Grid
 
-The browser sends the range and its chart width; the BFF picks the grid (T07-003 alignment):
+The browser sends the range and its chart width; the BFF picks the grid (T07-003). A PromQL range
+(`pulsusdb.PromGrid`, #303) aims at one point per CSS pixel of plot width:
 
-- `step` is the first of 1 s, 5 s, 10 s, 15 s, 30 s, 1 min, 5 min, 15 min, 1 h, 6 h, 1 d with
-  `step × width_px ≥ to − from`, else 1 d;
+- `step` is the entry of the ladder 15 s, 30 s, 1 min, 2 min, 5 min, 10 min, 12 min, 15 min,
+  30 min, 1 h, 2 h, 3 h, 6 h, 12 h, 1 d (T07's `NICE` ladder from the 15 s scrape interval up)
+  nearest to `(to − from) / width_px`: of the two entries around it, the larger one from their
+  midpoint up (`2 × (to − from) ≥ (lo + hi) × width_px`). A chart gets 0.7 to 1.75 points per
+  pixel, and the step is never below the scrape interval;
 - `start = ⌊from / step⌋ × step` and `end = ⌈to / step⌉ × step`;
-- more than 11 000 steps is refused: 400 `invalid`, pointer `/from`, key `range.too_long`.
+- a grid of more than 11 000 steps takes the next entry; one that still has more at 1 d is
+  refused: 400 `invalid`, pointer `/from`, key `range.too_long`.
 
-One hour at 1 200 px is a 5 s step. The cases are in `wire/fixtures/json/promql-step.json`, which
-both `pulsusdb.PromGrid` and the client's `promGrid` are tested against.
+| Window, width | Step | Points | `$__rate_interval` |
+|---|---|---|---|
+| 15 min or 1 h, 1 200 px | 15 s (the floor) | 61, 241 | `1m` |
+| 6 h, 560 px | 30 s | 721 | `1m` |
+| 6 h, 1 600 px | 15 s | 1 441 | `1m` |
+| 24 h, 1 000 px | 1 min | 1 441 | `75s` |
+| 7 d, 1 000 px | 10 min | 1 009 | `615s` |
+| 30 d, 560 px | 1 h | 721 | `3615s` |
+
+Before #303 the step was the first of 1 s, 5 s, 10 s, 15 s, 30 s, 1 min, 5 min, 15 min, 1 h, 6 h,
+1 d at least `(to − from) / width_px`: 6 h at 560 px was 60 s with a 4 min window, and 1 h at
+1 200 px was 5 s, below the scrape interval. The cases are in `wire/fixtures/json/promql-step.json`,
+which both `pulsusdb.PromGrid` and the client's `promGrid` are tested against.
+
+The log routes keep that earlier rule (`pulsusdb.LogGrid`, ladder 1 s … 1 d, the first entry with
+`step × width_px ≥ to − from`): their pages, volume and metric charts sit on it, and the log
+transcripts with them. Its cases are `wire/fixtures/json/log-step.json` (Go `LogGrid`, client
+`logGrid`). A LogQL `$__rate_interval` is PromQL's window at the log step.
 
 Each upstream point is placed on that grid by `ResultStream` as soon as the body decoder reads it,
 so every decoder shares the placement and the points limit and no series is buffered: a series
@@ -1267,7 +1291,7 @@ properties the pager relies on ([testing against PulsusDB](../development/testin
 | `internal/pulsusdb/source.go`, `source_json.go` | the decoder seam: `Accept`, the `Content-Type` dispatch, and the JSON source (both member orders, native histograms skipped; logs mode with the capture, `logSource`) |
 | `internal/pulsusdb/logql.go` | the five LogQL methods, levels, `nsParam`; `LogVolume` sends the planned volume text |
 | `internal/pulsusdb/logpage.go` | the decoded `logResponse`, `streamsResult`, `openLogs` and the pager |
-| `internal/pulsusdb/updec.go`, `redact.go`, `guard.go`, `grid.go`, `errors.go`, `budget.go` | the tokenizer, redaction and headers, reserved selectors, the step rule, errors, retry budget and tenant slots |
+| `internal/pulsusdb/updec.go`, `redact.go`, `guard.go`, `grid.go`, `errors.go`, `budget.go` | the tokenizer, redaction and headers, reserved selectors, the step rules (`PromGrid`, `LogGrid`), errors, retry budget and tenant slots |
 | `internal/pulsusdb/prom/plan.go`, `substitute.go`, `errors.go` | `Prepare`, `Plan`, Classify, the limits, the substitution and its segment map, `PlanError` |
 | `internal/pulsusdb/prom/shape.go`, `types.go` | `ShapeOf` over the upstream parser; metric kinds and `TypesCache` |
 | `internal/pulsusdb/logs/plan.go`, `substitute.go`, `selector.go`, `errors.go` | `logs.Prepare`, `Plan`, the limits, the volume template, `RewriteAtByte`; the LogQL substitution, `encodeDQ` and the segment map; the selector reader (`Classify`); `PlanError` |

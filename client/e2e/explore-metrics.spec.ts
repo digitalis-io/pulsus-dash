@@ -178,7 +178,7 @@ test.describe('e2e:explore (fake)', () => {
     const B = A + HOUR;
     const C = B + HOUR;
     await open(page, exploreUrl('slow_metric', A, A + HOUR));
-    await expect(statusLine(page)).toHaveText(/^0 series · step 5 s/, { timeout: 5_000 });
+    await expect(statusLine(page)).toHaveText(/^0 series · step 15 s/, { timeout: 5_000 });
     await page.locator('h1').click();
     const t0 = Date.now();
     await page.keyboard.press(']');

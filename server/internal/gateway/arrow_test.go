@@ -134,7 +134,7 @@ func blockingUpstream(t *testing.T, release <-chan struct{}, gone chan<- struct{
 		_ = http.NewResponseController(w).Flush()
 		select {
 		case <-release:
-			_, _ = io.WriteString(w, `,{"metric":{"job":"web"},"values":[[1767225605,"2"]]}]}}`)
+			_, _ = io.WriteString(w, `,{"metric":{"job":"web"},"values":[[1767225615,"2"]]}]}}`)
 		case <-r.Context().Done():
 			if gone != nil {
 				close(gone)
@@ -233,8 +233,8 @@ func TestRangeArrowBody(t *testing.T) {
 	b := wiretest.Read(t, body.Bytes())
 	mu.Unlock()
 	p := onePart(t, "body", b)
-	if p.LabelsPart != 1 || p.DataPart != 2 || p.StartMs != 1767225600000 || p.RequestedStartMs != 1767225600000 || p.StepMs != 5000 ||
-		p.Len != 721 || p.Result != "metric" || p.Source != "pulsusdb" || len(p.Series) != 2 || p.Error != nil {
+	if p.LabelsPart != 1 || p.DataPart != 2 || p.StartMs != 1767225600000 || p.RequestedStartMs != 1767225600000 || p.StepMs != 15000 ||
+		p.Len != 241 || p.Result != "metric" || p.Source != "pulsusdb" || len(p.Series) != 2 || p.Error != nil {
 		t.Errorf("part %+v", p)
 	}
 	jsonBody := serve(h, counterReq, "")

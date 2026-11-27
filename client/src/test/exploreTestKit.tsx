@@ -159,7 +159,7 @@ export function openExplore(u: string, o: { api?: StubApi; queryClient?: QueryCl
   return { ...r, engine, api };
 }
 
-/** Waits for the page, then gives the chart host its width (1000 px: step 5 s, window 1m). */
+/** Waits for the page, then gives the chart host its width (1000 px: step 15 s, window 1m; #303). */
 export async function sized(): Promise<void> {
   await screen.findByRole('heading', { level: 2, name: 'Result' });
   act(() => {

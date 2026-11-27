@@ -42,16 +42,16 @@ function decodeErrorOf(f: () => unknown): DecodeError {
 describe('unit:decode-frames (T04-010, ADR-0014 §5)', () => {
   it('decodes the counter golden body onto the grid', () => {
     const r = decodeRange(counter());
-    expect(r.stepMs).toBe(5000);
+    expect(r.stepMs).toBe(15000);
     expect(r.startMs).toBe(1767225600000);
     expect(r.endMs).toBe(1767229200000);
     expect(r.series).toHaveLength(2);
     for (const s of r.series) {
       expect(s.timestamps).toBeInstanceOf(Float64Array);
       expect(s.values).toBeInstanceOf(Float64Array);
-      expect(s.timestamps).toHaveLength(721);
+      expect(s.timestamps).toHaveLength(241);
       s.timestamps.forEach((t, i) => {
-        expect(t).toBe(1767225600000 + i * 5000);
+        expect(t).toBe(1767225600000 + i * 15000);
       });
     }
     const v = r.series[0]?.values ?? new Float64Array(0);
@@ -63,8 +63,8 @@ describe('unit:decode-frames (T04-010, ADR-0014 §5)', () => {
     expect(Object.is(v[5], -0)).toBe(true);
     expect(v[6]).toBe(5e-324);
     expect(v[7]).toBe(0.30000000000000004);
-    for (let i = 8; i < 720; i++) expect(v[i]).toBeNaN();
-    expect(v[720]).toBe(1e308);
+    for (let i = 8; i < 240; i++) expect(v[i]).toBeNaN();
+    expect(v[240]).toBe(1e308);
     expect(r.series[0]?.key).toBe('47ad55f1f828d9ee');
     expect(r.series[0]?.labels).toEqual({ instance: 'a:9090', job: 'api' });
     expect(r.completeness).toEqual({
@@ -516,7 +516,7 @@ describe('decode planned (plan #112 §3.8)', () => {
       rateCandidate: false,
       rateApplied: false,
       histogram: false,
-      stepMs: 5000,
+      stepMs: 15000,
     });
     const gauge = decodeInstant(JSON.parse(gaugeRaw));
     expect(gauge.planned.query).toBe('node_memory_free_bytes');

@@ -193,9 +193,10 @@ and what the server makes of it:
 
 - **The query as you wrote it**, with the values of the board variables it uses (see
   [the filter bar](#the-filter-bar)). The server puts the values in, expands the macros and sends
-  the result to the data source: `$__interval` is the panel's step (one point per pixel or two of
-  its width), `$__rate_interval` the rate window for that step, and `$__range` the board's time
-  range (`$__range_s` and `$__range_ms` the same in seconds and milliseconds), so
+  the result to the data source: `$__interval` is the panel's step (about one point per pixel of
+  its width, never under 15 s: 30 s for 6 h on a 560 px panel), `$__rate_interval` the rate
+  window for that step (the step plus 15 s, at least 1 minute: `1m` at 30 s), and `$__range` the
+  board's time range (`$__range_s` and `$__range_ms` the same in seconds and milliseconds), so
   `sum(increase(x_total[$__range]))` is the total over the board's window. A query whose result
   is a scalar or a string runs as an instant query, which has no window, so the range macros are
   refused there.

@@ -81,10 +81,10 @@ func (p Planned) ToSource(sentByte int) (rawByte int, ok bool) {
 	return at(p.sub, len(p.Expanded), e)
 }
 
-// RateWindowMs is max(4 × step, step + DefaultScrapeMs, 4 × DefaultScrapeMs), PromQL's window at
-// the same step, so one board means one window.
+// RateWindowMs is max(step + DefaultScrapeMs, 4 × DefaultScrapeMs), PromQL's window at the same
+// step (#303), so one board means one window.
 func RateWindowMs(stepMs int64) int64 {
-	return max(4*stepMs, stepMs+DefaultScrapeMs, 4*DefaultScrapeMs)
+	return max(stepMs+DefaultScrapeMs, 4*DefaultScrapeMs)
 }
 
 var durationUnits = []struct {

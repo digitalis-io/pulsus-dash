@@ -573,7 +573,7 @@ frame's labels are exactly `{level: <LogLevel>}` (else a `DecodeError` at `/fram
 ### StubApi
 
 `StubApi` serves `queryRange` as three series `stub_metric{series="0|1|2"}` on the grid of
-`promGrid` (`data/step.ts`, the mirror of the BFF's step rule, tested against the same
+`promGrid` (`data/step.ts`, the mirror of the BFF's PromQL step rule, tested against the same
 `wire/fixtures/json/promql-step.json`), with values `synthLineValue(62, j, t, 100, 40)` and an empty
 completeness; a range too long for the width rejects `queryInvalid`. A range query whose planned
 text matches `/_bucket\b/` answers twelve cumulative buckets `stub_bucket{le}` (`le` 0.005 … +Inf,
@@ -590,7 +590,7 @@ the same three series as a vector at `atMs`; `checkDataSource` resolves
 one entry at `to`, forward none). Entry `i` is `stub line <i>` in stream `i % 3`,
 `{service_name: 'stub', pod: 'stub-<j>', level: info|warn|error}`; only streams with an entry are
 listed; `cursor` is `null`. `queryVolume` returns three frames, `{level: error}`, `{level: warn}` and
-`{level: info}`, on the `promGrid` grid with counts `Math.round(|synthLineValue(65, j, t, 20, 10)|)`.
+`{level: info}`, on the `logGrid` grid (the log routes' step rule, `wire/fixtures/json/log-step.json`) with counts `Math.round(|synthLineValue(65, j, t, 20, 10)|)`.
 Both reject `queryInvalid` for a range too long for the width.
 
 `logLabels` returns the labels of those streams, `level`, `pod` and `service_name`, and
@@ -613,7 +613,7 @@ changed save; a save of the same canonical spec is `changed: false`; a stale eta
 `env`.
 
 `StubApi` serves `queryRange` as three series `stub_metric{series="0|1|2"}` on the grid of
-`promGrid` (`data/step.ts`, the mirror of the BFF's step rule, tested against the same
+`promGrid` (`data/step.ts`, the mirror of the BFF's PromQL step rule, tested against the same
 `wire/fixtures/json/promql-step.json`), with values `synthLineValue(62, j, t, 100, 40)` and an empty
 completeness; a range too long for the width rejects `queryInvalid`. `queryInstant` returns the same
 three series as a vector at `atMs`; `checkDataSource` resolves `{state: 'ok', checkedAtMs: 0}`.

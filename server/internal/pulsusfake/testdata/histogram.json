@@ -1,10 +1,10 @@
 {
   "name": "histogram",
-  "provenance": {"captured": "2026-11-20", "pulsusdb": "0.0.11", "route": "/api/v1/query_range", "sanitised": "labels, values, timestamps and query id replaced"},
+  "provenance": {"captured": "2026-11-20", "pulsusdb": "0.0.11", "route": "/api/v1/query_range", "sanitised": "labels, values, timestamps and query id replaced; timestamps after the first spaced 3× for the 15 s step floor (#303)"},
   "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "sum by (le) (rate(http_request_duration_seconds_bucket[5m]))"},
   "response": {
     "status": 200,
     "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-histogram-1"},
-    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"le":"0.1"},"values":[[1767225600,"1"],[1767225605,"2"]]},{"metric":{"le":"1"},"values":[[1767225600,"1"],[1767225605,"2"]]},{"metric":{"le":"+Inf"},"values":[[1767225600,"1"],[1767225605,"2"]]}]}}
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"le":"0.1"},"values":[[1767225600,"1"],[1767225615,"2"]]},{"metric":{"le":"1"},"values":[[1767225600,"1"],[1767225615,"2"]]},{"metric":{"le":"+Inf"},"values":[[1767225600,"1"],[1767225615,"2"]]}]}}
   }
 }

@@ -161,7 +161,7 @@ describe('panel runs', () => {
       query: 'scalar(vector(1)) / 0',
       atMs: T13,
       vars: {},
-      stepMs: 5000,
+      stepMs: 15000,
     } satisfies InstantRequest);
     const r = await (t.instant.mock.results[0]?.value as Promise<InstantResult>);
     expect(r.kind).toBe('scalar');
