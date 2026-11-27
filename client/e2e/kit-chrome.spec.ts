@@ -454,7 +454,7 @@ test.describe('kit chrome (#282)', () => {
           expect(await l.evaluate((e) => e.__anims ?? []), name).toEqual([]);
         } else {
           // The modal zooms open over `motion.zoom-open`, the backdrop fading alongside.
-          await expect.poll(() => l.evaluate((e) => e.__anims ?? null), name).toEqual([320]);
+          await expect.poll(() => l.evaluate((e) => e.__anims ?? null), name).toEqual([400]);
         }
       }
       await page.keyboard.press('Escape');

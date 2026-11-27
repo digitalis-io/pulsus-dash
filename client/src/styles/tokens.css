@@ -185,7 +185,7 @@
   --motion-quick: 100ms;
   --motion-standard: 250ms;
   --motion-zoom-close: 200ms;
-  --motion-zoom-open: 320ms;
+  --motion-zoom-open: 400ms;
   --opacity-area: 0.28;
   --opacity-chip: 0.12;
   --opacity-dimmed: 0.35;
