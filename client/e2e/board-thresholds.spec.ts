@@ -3,7 +3,8 @@
  * (plan #64 Part B Appendix B.3, E7–E9): the legend table with its threshold states, isolation, the
  * compact legend of a 4-row panel by keyboard, Legend Hidden and a threshold edit through save and
  * reload, an unparsable value that blocks the save, and the stat tile's chip, threshold text and
- * sparkline. The window is the one the `gauge-range` transcript's samples are on.
+ * sparkline; graph mode none (#297), and a stat scrolled out of view and back (#296). The window is
+ * the one the `gauge-range` transcript's samples are on.
  */
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
@@ -60,13 +61,17 @@ async function headers(table: Locator): Promise<string[]> {
 /** The panel's chart summary label (the canvas's accessible name). */
 const chartLabel = (p: Locator): Locator => p.locator('[data-chart-frame] canvas[role="img"]');
 
+/** CSS px bands of a stat canvas: the sparkline's (ADR-0022) and the value's above it. */
+type Band = 'spark' | 'value';
+
 /**
- * Ink in the sparkline band of the panel's visible canvas: pixels whose largest RGB channel
- * difference from the pixel at (2, 2) is over 48, over CSS x ∈ [12, w − 12], y ∈ [h − 40, h − 8].
+ * Ink in a band of the panel's visible canvas: pixels whose largest RGB channel difference from
+ * the pixel at (2, 2) is over 48. `spark`: CSS x ∈ [12, w − 12], y ∈ [h − 40, h − 8]; `value`:
+ * the same x, y ∈ [8, h − 48].
  */
-async function sparkInk(page: Page, title: string): Promise<number> {
+async function bandInk(page: Page, title: string, band: Band): Promise<number> {
   const canvas = panel(page, title).locator('[data-chart-frame] canvas').first();
-  return canvas.evaluate((c: HTMLCanvasElement) => {
+  return canvas.evaluate((c: HTMLCanvasElement, b: Band) => {
     const ctx = c.getContext('2d');
     if (ctx === null) return -1;
     const dpr = c.width / c.clientWidth;
@@ -74,9 +79,9 @@ async function sparkInk(page: Page, title: string): Promise<number> {
     const h = c.clientHeight;
     const bg = ctx.getImageData(2 * dpr, 2 * dpr, 1, 1).data;
     const x0 = Math.round(12 * dpr);
-    const y0 = Math.round((h - 40) * dpr);
+    const y0 = Math.round((b === 'spark' ? h - 40 : 8) * dpr);
     const bw = Math.round((w - 24) * dpr);
-    const bh = Math.round(32 * dpr);
+    const bh = Math.round((b === 'spark' ? 32 : h - 56) * dpr);
     if (bw <= 0 || bh <= 0) return 0;
     const d = ctx.getImageData(x0, y0, bw, bh).data;
     let n = 0;
@@ -89,8 +94,10 @@ async function sparkInk(page: Page, title: string): Promise<number> {
       if (diff > 48) n += 1;
     }
     return n;
-  });
+  }, band);
 }
+
+const sparkInk = (page: Page, title: string): Promise<number> => bandInk(page, title, 'spark');
 
 test.describe('e2e:board-thresholds (fake)', () => {
   test.skip(PREVIEW, NEEDS_BFF);
@@ -267,5 +274,68 @@ test.describe('e2e:board-thresholds (fake)', () => {
     // A range series draws a sparkline in its band; a scalar draws none.
     await expect.poll(() => sparkInk(page, 'Free')).toBeGreaterThan(40);
     expect(await sparkInk(page, 'Plain')).toBe(0);
+  });
+
+  test('e2e:board-stat-graph-none', async ({ page, request }, info) => {
+    test.setTimeout(120_000);
+    // #297: graph mode none draws the value alone; the same series with the default draws both.
+    uid = await createBoard(request, `E8n ${info.project.name} ${crypto.randomUUID()}`, [
+      {
+        id: 'p-1',
+        title: 'None',
+        text: GAUGE,
+        grid: [0, 0, 4, 5],
+        vis: { kind: 'stat', options: { graphMode: 'none' } },
+      },
+      { id: 'p-2', title: 'Spark', text: GAUGE, grid: [4, 0, 4, 5], vis: { kind: 'stat' } },
+    ]);
+    await page.goto(boardUrl(uid));
+    await expect(panel(page, 'None').locator('[data-frame-ready="true"]')).toHaveCount(1);
+    await expect(panel(page, 'Spark').locator('[data-frame-ready="true"]')).toHaveCount(1);
+    await expect.poll(() => sparkInk(page, 'Spark')).toBeGreaterThan(40);
+    await expect.poll(() => bandInk(page, 'None', 'value')).toBeGreaterThan(40);
+    expect(await sparkInk(page, 'None')).toBe(0);
+  });
+
+  test('e2e:board-stat-scroll', async ({ page, request }, info) => {
+    test.setTimeout(120_000);
+    // #296: a stat scrolled out of view and back keeps its value and sparkline, also when the
+    // browser dropped the canvas's backing store meanwhile (a lost and restored 2D context).
+    uid = await createBoard(request, `E8s ${info.project.name} ${crypto.randomUUID()}`, [
+      { id: 'p-1', title: 'Free', text: GAUGE, grid: [0, 0, 4, 5], vis: { kind: 'stat' } },
+      { id: 'p-2', title: 'Tall', text: GAUGE, grid: [0, 5, 12, 40], vis: { kind: 'line' } },
+      { id: 'p-3', title: 'Bottom', text: GAUGE, grid: [0, 45, 12, 6], vis: { kind: 'line' } },
+    ]);
+    await page.goto(boardUrl(uid));
+    const free = panel(page, 'Free');
+    await expect(free.locator('[data-frame-ready="true"]')).toHaveCount(1);
+    await expect.poll(() => sparkInk(page, 'Free')).toBeGreaterThan(40);
+    const spark = await sparkInk(page, 'Free');
+    const value = await bandInk(page, 'Free', 'value');
+    expect(value).toBeGreaterThan(40);
+    const away = async (): Promise<void> => {
+      await panel(page, 'Bottom').scrollIntoViewIfNeeded();
+      await expect(free).not.toBeInViewport();
+    };
+    const back = async (): Promise<void> => {
+      await free.scrollIntoViewIfNeeded();
+      await expect(free).toBeInViewport();
+    };
+    await away();
+    await back();
+    await expect.poll(() => sparkInk(page, 'Free')).toBe(spark);
+    expect(await bandInk(page, 'Free', 'value')).toBe(value);
+    await away();
+    await free
+      .locator('[data-chart-frame] canvas')
+      .first()
+      .evaluate((c: HTMLCanvasElement) => {
+        // What the browser does to a lost context: the bitmap is cleared, then `contextrestored`.
+        c.getContext('2d')?.clearRect(0, 0, c.width, c.height);
+        c.dispatchEvent(new Event('contextrestored'));
+      });
+    await back();
+    await expect.poll(() => sparkInk(page, 'Free')).toBe(spark);
+    expect(await bandInk(page, 'Free', 'value')).toBe(value);
   });
 });

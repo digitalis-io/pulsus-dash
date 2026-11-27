@@ -130,7 +130,13 @@ export type VisSpec =
       readonly countUnit: Unit;
     }
   /** With series data, a sparkline of the first series is drawn under the value (ADR-0022). */
-  | { readonly kind: 'stat'; readonly title: string; readonly unit: Unit }
+  | {
+      readonly kind: 'stat';
+      readonly title: string;
+      readonly unit: Unit;
+      /** The board option (T22 §5.1): `none` draws the value alone; absent = `sparkline`. */
+      readonly graphMode?: 'sparkline' | 'none';
+    }
   | BarchartSpec
   | GeoMapSpec;
 
