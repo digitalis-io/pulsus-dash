@@ -53,7 +53,10 @@ describe('unit:quick-presets', () => {
     await waitFor(() => {
       expect(router.state.location.search).toContain('from=now-1h&to=now');
     });
-    expect(within(group).getByRole('radio', { name: 'Last 1 hour' })).toBeChecked();
+    await waitFor(() => {
+      const now = screen.getByRole('radiogroup', { name: 'Quick range' });
+      expect(within(now).getByRole('radio', { name: 'Last 1 hour' })).toBeChecked();
+    });
     const dialog = await openPicker(user);
     expect(dialog).toBeInTheDocument();
   });

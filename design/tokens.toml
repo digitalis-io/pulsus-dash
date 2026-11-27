@@ -88,6 +88,9 @@ map-border = "#FFFFFF1F"
 # T22-004).
 pattern-ink = "#0B0D10A6"
 category-other = "#8A919C"
+# A failing board panel's glow (#282 Part 2a, VL-004 as amended): failing at 15 %. A state token:
+# only theme/stateEncoding.module.css uses it.
+failing-glow = "#E0457B26"
 
 [color.light]
 canvas = "#F2F3F6"
@@ -168,6 +171,8 @@ map-border = "#0B0D1029"
 # T22-004).
 pattern-ink = "#FFFFFFB3"
 category-other = "#6B7280"
+# A failing board panel's glow (#282 Part 2a): failing at 10 %.
+failing-glow = "#B8285C1A"
 
 # Spacing scale (px).
 [space]
@@ -187,7 +192,7 @@ category-other = "#6B7280"
 # Component and layout sizes (px). Sidebar widths are VL-017's. `chart*` sizes are the chart
 # frame heights, axis tick length, line width and minimum brush drag (#58).
 [size]
-sidebar-expanded = 240
+sidebar-expanded = 212
 sidebar-collapsed = 56
 crumb-max = 160
 tenant-badge = 32
@@ -198,7 +203,10 @@ control = 28
 target-min = 24
 icon = 16
 avatar = 28
-page-padding = 24
+page-padding = 20
+# The content's top padding and the board's panel gap (#282 Part 2a, VL-017 as amended).
+page-padding-top = 12
+board-gap = 12
 chart = 240
 chart-stat = 120
 chart-tick = 4
@@ -211,16 +219,18 @@ chart-dash-gap = 4
 # Boards (plan #61 Part B): 12 columns of 40 px rows; the panel header (the drag handle in Edit).
 board-cols = 12
 board-row = 40
-board-panel-header = 40
+board-panel-header = 36
 # A board panel's legend is a table from this stack height, compact below (#64 Part B §4.5).
 board-legend-table-min = 240
 # The fixed-size editing window (kit ModalDialog size "editor", #90).
 dialog-editor-width = 800
 dialog-editor-height = 720
-# The log stream (#66 Part B): a row (one line without wrap), a sentinel row and the level bar.
-log-row = 20
+# The log stream (#66 Part B): a row (one line without wrap), a sentinel row and the level bar;
+# the level tag, 4 px inside a 24 px row (#282 Part 2a).
+log-row = 24
 log-sentinel = 40
 log-level-bar = 3
+log-tag = 16
 # The Log lines card of Explore › Logs (#66 Part C): the list's height.
 log-stream = 560
 # The Inspector (T25 §4.4): the sheet's width, its collapsed tab and its inset from the content.
@@ -233,19 +243,23 @@ table-row = 28
 list-row = 36
 list-chip = 20
 
-# The radius scale (VL-019 as amended, #282): fields and tooltips; menu items and the checkbox;
-# cards, popovers, menus and the Inspector; dialogs; capsules (buttons, the segmented control,
-# the header's controls).
+# The radius scale (VL-019 as amended, #282 Part 2a; no capsules): controls, fields and tooltips;
+# menu items, segments, chips and the checkbox; cards, panels, popovers, menus and the Inspector;
+# dialogs; tags (state, log level and list tags).
 [radius]
 default = 6
 xs = 4
-md = 10
-lg = 14
-pill = 9999
+md = 8
+lg = 10
+tag = 3
 
-# Alphas (0..1): unselected marks while a selection is relevant (T25-006).
+# Alphas (0..1): unselected marks while a selection is relevant (T25-006); the tint of tags and
+# chips and the stat sparkline's area at its top (#282 Part 2a).
 [opacity]
 dimmed = 0.35
+tag = 0.18
+chip = 0.12
+area = 0.28
 
 [border]
 hairline = 1
@@ -263,6 +277,8 @@ sm = 12
 md = 13
 lg = 16
 xl = 20
+# The page title (#282 Part 2a).
+title = 22
 display = 32
 
 [font.weight]
@@ -292,6 +308,10 @@ normal = 1.5
 1 = "inset 0 1px 0 var(--highlight), 0 1px 2px var(--shadow-ambient)"
 2 = "inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key)"
 3 = "inset 0 1px 0 var(--highlight), 0 4px 12px var(--shadow-ambient), 0 24px 64px var(--shadow-key)"
+# Cards and board panels (#282 Part 2a): a hairline ring, the top highlight and a soft key shadow.
+card = "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)"
+# A failing board panel only, with its StateEncoding class (--state-colour, --state-glow).
+state = "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--state-colour), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--state-glow)"
 
 # The materials' backdrop filter (header, menus, popovers, tooltips, the Inspector; VL-017).
 [material]

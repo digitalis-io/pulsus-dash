@@ -8,3 +8,43 @@
   font-weight: var(--font-weight-semibold);
   color: var(--state-colour);
 }
+
+/* The tag variant (#282 Part 2a, T08 §4.4): 20 px, 3 px corners, the state colour as a tint at
+   `opacity.tag` behind it (a pseudo-element, so no colour is mixed in CSS); the label in `text`. */
+.tag {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  height: var(--space-5);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-tag);
+  color: var(--text);
+}
+
+.tag::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--state-colour);
+  content: '';
+  opacity: var(--opacity-tag);
+}
+
+.tagGlyph {
+  color: var(--state-colour);
+}
+
+.tagLabel {
+  color: var(--text);
+}
+
+@media (forced-colors: active) {
+  .tag {
+    border: var(--border-hairline) solid CanvasText;
+  }
+
+  .tag::before {
+    display: none;
+  }
+}

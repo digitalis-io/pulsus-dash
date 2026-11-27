@@ -16,6 +16,7 @@ export const colour = {
     "control-pressed": "#31363F",
     "degraded": "#E8923A",
     "failing": "#E0457B",
+    "failing-glow": "#E0457B26",
     "field": "#111317",
     "focus": "#4D9BFF",
     "hairline": "#FFFFFF14",
@@ -86,6 +87,7 @@ export const colour = {
     "control-pressed": "#ECEEF1",
     "degraded": "#A85A12",
     "failing": "#B8285C",
+    "failing-glow": "#B8285C1A",
     "field": "#FCFCFD",
     "focus": "#185FCC",
     "hairline": "#1C223314",
@@ -162,8 +164,9 @@ export const space = {
 export const size = {
   "avatar": 28,
   "board-cols": 12,
+  "board-gap": 12,
   "board-legend-table-min": 240,
-  "board-panel-header": 40,
+  "board-panel-header": 36,
   "board-row": 40,
   "chart": 240,
   "chart-brush-min": 4,
@@ -187,12 +190,14 @@ export const size = {
   "list-chip": 20,
   "list-row": 36,
   "log-level-bar": 3,
-  "log-row": 20,
+  "log-row": 24,
   "log-sentinel": 40,
   "log-stream": 560,
-  "page-padding": 24,
+  "log-tag": 16,
+  "page-padding": 20,
+  "page-padding-top": 12,
   "sidebar-collapsed": 56,
-  "sidebar-expanded": 240,
+  "sidebar-expanded": 212,
   "table-row": 28,
   "target-min": 24,
   "tenant-badge": 32,
@@ -200,14 +205,17 @@ export const size = {
 
 export const radius = {
   "default": 6,
-  "lg": 14,
-  "md": 10,
-  "pill": 9999,
+  "lg": 10,
+  "md": 8,
+  "tag": 3,
   "xs": 4,
 } as const;
 
 export const opacity = {
+  "area": 0.28,
+  "chip": 0.12,
   "dimmed": 0.35,
+  "tag": 0.18,
 } as const;
 
 export const border = {
@@ -232,6 +240,7 @@ export const font = {
     "lg": 16,
     "md": 13,
     "sm": 12,
+    "title": 22,
     "xl": 20,
     "xs": 11,
   },
@@ -252,6 +261,8 @@ export const elevation = {
   "1": "inset 0 1px 0 var(--highlight), 0 1px 2px var(--shadow-ambient)",
   "2": "inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key)",
   "3": "inset 0 1px 0 var(--highlight), 0 4px 12px var(--shadow-ambient), 0 24px 64px var(--shadow-key)",
+  "card": "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)",
+  "state": "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--state-colour), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--state-glow)",
 } as const;
 
 export const material = {
