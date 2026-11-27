@@ -143,7 +143,7 @@ export function recordingContext(): RecordingContext {
         addColorStop(offset: number, c: string) {
           rec('addColorStop')(offset, c);
         },
-      } as CanvasGradient;
+      };
     },
     /** A pattern object that remembers its tile; a fill with it records `gradient-or-pattern`. */
     createPattern(image: CanvasImageSource, repetition: string | null): CanvasPattern {

@@ -12,14 +12,15 @@
  * Threshold lines (ADR-0022, #64 Part B §4.2): on line and bars, dashed lines in their state colour
  * (from `StateEncoding`, T02-004) after the series, with labels that are stacked, truncated or
  * gathered into an overflow chip but never dropped; the auto value domain includes them. A stat
- * with series data draws a sparkline of its first series under the value (§4.3).
+ * draws its value top left and, with series data, a full-bleed sparkline of its first series under
+ * the head with a shaded area (§4.3; #282 Part 2a §4.4).
  *
  * Value labels (T02-011 as amended by #93): the band is at least as wide as the widest compact
  * label of the unit (`minValueBand`). Under a held band (`LayerInput.band`), each tick label is
  * drawn in full when it fits, else in compact form, else whole inside the plot on a chip; the plot
  * rectangle then depends only on the held width.
  */
-import { font, radius, size, space } from '../../styles/tokens';
+import { font, opacity, radius, size, space } from '../../styles/tokens';
 import {
   EMPTY_COVERAGE,
   statValue,
@@ -43,7 +44,7 @@ import { bucketScale, type BucketScale } from './bucketScale';
 import { bucketEnd, columnCount, lineColumns, mergeBuckets, type Column } from './columns';
 import type { Ctx2D } from './ctx';
 import { AXIS_FONT, LABEL_HEIGHT, layoutPlot, STAT_FONT } from './layout';
-import { rampIndex, seriesColourIndex, type ThemeColours } from './palette';
+import { rampIndex, seriesColourIndex, withAlpha, type ThemeColours } from './palette';
 import {
   barStats,
   extent,
@@ -70,6 +71,10 @@ export const MAX_SERIES = 500;
 
 /** The smallest stat frame that draws a sparkline under its value (ADR-0022): 104 CSS px. */
 export const SPARK_MIN_H = size['chart-sparkline'] + 2 * font.size.display + space['2'];
+
+/** The stat head: inset, value line, subline, gap = 8 + 40 + 20 + 4 = 72; 72 + chart-sparkline = SPARK_MIN_H (104, ADR-0022). */
+export const STAT_HEAD =
+  space['2'] + Math.ceil(font.size.display * font.lineHeight.tight) + space['5'] + space['1'];
 
 export interface LayerInput {
   readonly ctx: Ctx2D;
@@ -833,19 +838,19 @@ function drawStat(i: LayerInput): LayerModel {
     first !== undefined && i.cssH >= SPARK_MIN_H && finiteInWindow(first, i.window) >= 1
       ? first
       : null;
+  // #282 Part 2a §4.4: the value top left, its line's middle 28 px down (8 + 40 / 2); the DOM
+  // subline sits under it; the sparkline spans the tile under the head.
   ctx.font = STAT_FONT;
   ctx.fillStyle = i.colours.text;
-  ctx.textAlign = 'center';
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  const valueY = spark === null ? i.cssH / 2 : (i.cssH - size['chart-sparkline'] - space['2']) / 2;
-  ctx.fillText(formatValue(v, i.spec.unit), i.cssW / 2, valueY);
+  const valueY = Math.min(
+    space['2'] + Math.ceil(font.size.display * font.lineHeight.tight) / 2,
+    i.cssH / 2,
+  );
+  ctx.fillText(formatValue(v, i.spec.unit), space['3'], valueY);
   if (spark !== null) {
-    drawSparkline(i, spark, {
-      x: space['3'],
-      y: i.cssH - space['2'] - size['chart-sparkline'],
-      width: i.cssW - 2 * space['3'],
-      height: size['chart-sparkline'],
-    });
+    drawSparkline(i, spark, { x: 0, y: STAT_HEAD, width: i.cssW, height: i.cssH - STAT_HEAD });
   }
   // T25-006: the tile's own key (its first series) selected → a 2 px focus ring inside the tile.
   if (first !== undefined && matchedKeys(i.selection, [first.key]) !== null) {
@@ -864,9 +869,12 @@ function finiteInWindow(s: SeriesFrame, w: TimeWindow): number {
 }
 
 /**
- * The stat sparkline (§4.3): the series' finite points inside the window in `r`, joined across
- * absent and non-finite ones (a trend glyph); those points' min..max runs from the rect's bottom
- * to its top (mid-height when they are equal), in the series colour; one point is a dot.
+ * The stat sparkline (§4.3; #282 Part 2a §4.4): the series' finite points inside the window in
+ * `r`, joined across absent and non-finite ones (a trend glyph), x across the whole width; their
+ * max is a line width under the rect's top and their min three quarters down (the band's middle
+ * when they are equal), in the series colour. Under the line, an area from the first to the last
+ * point, closed straight down to the rect's bottom at each end, fades from `opacity.area` to clear.
+ * One point is a dot without an area.
  */
 function drawSparkline(i: LayerInput, s: SeriesFrame, r: PlotRect): void {
   const { ctx, window: w } = i;
@@ -883,8 +891,10 @@ function drawSparkline(i: LayerInput, s: SeriesFrame, r: PlotRect): void {
   const [p0] = pts;
   if (p0 === undefined) return;
   const x = (t: number): number => r.x + ((t - w.fromMs) / (w.toMs - w.fromMs)) * r.width;
+  const top = r.y + size['chart-line'];
+  const bottom = r.y + 0.75 * r.height;
   const y = (v: number): number =>
-    max === min ? r.y + r.height / 2 : r.y + (1 - (v - min) / (max - min)) * r.height;
+    max === min ? (top + bottom) / 2 : bottom - ((v - min) / (max - min)) * (bottom - top);
   const colour = i.colours.series[seriesColourIndex(s)] ?? '';
   if (pts.length === 1) {
     ctx.fillStyle = colour;
@@ -893,14 +903,28 @@ function drawSparkline(i: LayerInput, s: SeriesFrame, r: PlotRect): void {
     ctx.fill();
     return;
   }
+  const path = (): void => {
+    ctx.beginPath();
+    pts.forEach(([t, v], k) => {
+      if (k === 0) ctx.moveTo(x(t), y(v));
+      else ctx.lineTo(x(t), y(v));
+    });
+  };
+  const last = pts[pts.length - 1] ?? p0;
+  const floor = r.y + r.height;
+  const fade = ctx.createLinearGradient(0, r.y, 0, floor);
+  fade.addColorStop(0, withAlpha(colour, opacity.area));
+  fade.addColorStop(1, withAlpha(colour, 0));
+  path();
+  ctx.lineTo(x(last[0]), floor);
+  ctx.lineTo(x(p0[0]), floor);
+  ctx.closePath();
+  ctx.fillStyle = fade;
+  ctx.fill();
   ctx.strokeStyle = colour;
   ctx.lineWidth = size['chart-line'];
   ctx.lineJoin = 'round';
-  ctx.beginPath();
-  pts.forEach(([t, v], k) => {
-    if (k === 0) ctx.moveTo(x(t), y(v));
-    else ctx.lineTo(x(t), y(v));
-  });
+  path();
   ctx.stroke();
 }
 
