@@ -995,7 +995,9 @@ figure, not a failure.
 
   After an `ok` it waits, inside the case's box, for the summary of the synthesised series (the
   chunk is not an input-ring record, so `settle` does not see it). A case that times out also
-  reloads before the next one.
+  reloads before the next one. After a slow 10⁸ frame the GPU process can still be busy, and the
+  reloaded engine can miss its 10 s boot. The bench then retries the boot up to 6 times, 20 s
+  apart, and records the case `timedOut` if it never boots.
 
   Its other tests:
   - **B3** checks `synth`'s acknowledgements: two equal ones, then `ok: false` (`reason: 'alloc'`)
@@ -1030,8 +1032,9 @@ test annotation and a console line, with PRF-001 (p50 interval ≤ 16.7 ms) and 
 **Failures.** Only relative sanity checks fail the run, never a per-step count:
 - a case that is neither skipped nor timed out has fewer than 2 presented frames;
 - a script case ends at the window of its first `a11y` (nothing moved);
-- a hover case has no hover event, or its crosshair never moved (fewer than 2 distinct
-  positions);
+- a hover case has no hover event, or its crosshair never reached a position other than its one
+  before the case. The engine answers only the latest Overlay (C2b), so a slow frame can report a
+  single hover;
 - a frame fails, the engine reaches status 4 or a `fatal` comes during synthesis, or a frame leaves
   its leg;
 - the JSON lacks a case or a field.
