@@ -9,7 +9,8 @@
  * `ring.ts`). Render → main: `status` (after `engine_start`, with the shared memory), `spawn-pool`
  * (one per pool thread) and `events` (one JSON array per animation frame). Main → pool: `pool`.
  * The probe build adds `probe-input` both ways (the worker's decoded records, `e2e:shim-fuzz`) and
- * `probe-synth` both ways (plan #68 C2d1 §3.2: F1c built in the worker, acknowledged).
+ * `probe-synth` and `probe-chunk` both ways (plan #68 C2d1 §3.2: F1c built in the worker,
+ * acknowledged; the frame's chunk described).
  */
 import type { DrawnEvent, FrameSummary, HoverEvent, HoverItem, PlotRect, ValueRange } from '../api';
 
@@ -74,7 +75,9 @@ export type MainToRender =
       readonly id: number;
       readonly series: number;
       readonly points: number;
-    };
+    }
+  /** The probe build (plan #68 C2d1 §3.2): describe frame `id`'s current chunk. */
+  | { readonly t: 'probe-chunk'; readonly id: number };
 
 export type RenderToMain =
   | {
@@ -94,7 +97,9 @@ export type RenderToMain =
       readonly id: number;
       readonly ok: boolean;
       readonly bytes: number;
-    };
+    }
+  /** The probe build: `probe-chunk`'s answer, `{series, points, bytes}` JSON or `null`. */
+  | { readonly t: 'probe-chunk'; readonly id: number; readonly json: string };
 
 export interface PoolMessage {
   readonly t: 'pool';

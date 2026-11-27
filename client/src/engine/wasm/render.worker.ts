@@ -48,6 +48,8 @@ interface ProbeExports {
   engine_probe_renew?(): void;
   /** Plan #68 C2d1 §3.2: bytes of values held, 0 = failed. */
   engine_probe_synth?(id: number, series: number, points: number): number;
+  /** `{series, points, bytes}` JSON of the frame's chunk, or `null`. */
+  engine_probe_chunk?(id: number): string;
 }
 
 interface Faults {
@@ -107,6 +109,9 @@ function apply(m: MainToRender): void {
       return;
     case 'probe-synth':
       if (import.meta.env.VITE_ENGINE_PROBE === '1') void probeSynth(m);
+      return;
+    case 'probe-chunk':
+      if (import.meta.env.VITE_ENGINE_PROBE === '1') void probeChunk(m.id);
       return;
     case 'create':
       if (faults?.failCreate(m.id) === true) {
@@ -191,6 +196,12 @@ async function probeSynth(m: Extract<MainToRender, { t: 'probe-synth' }>): Promi
   const bytes = p.engine_probe_synth?.(m.id, m.series >>> 0, m.points >>> 0) ?? 0;
   scope.postMessage({ t: 'probe-synth', id: m.id, ok: bytes > 0, bytes });
   schedule();
+}
+
+/** The probe build (plan #68 C2d1 §3.2): the frame's chunk described, posted back. */
+async function probeChunk(id: number): Promise<void> {
+  const p = (await import('virtual:dash-engine')) as unknown as ProbeExports;
+  scope.postMessage({ t: 'probe-chunk', id, json: p.engine_probe_chunk?.(id) ?? 'null' });
 }
 
 /** The probe build: the decoded records, posted back. */

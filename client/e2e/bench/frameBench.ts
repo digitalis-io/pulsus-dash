@@ -1,17 +1,27 @@
 /**
  * The frame-bench harness (plan #68 C2d1 §1, §3.1; T05 §4.3 `bench:frame-gallery`,
  * `bench:frame-line-1e8`; ADR-0019). `drive` runs a script of steps inside the page, one step per
- * animation frame, so Playwright round trips do not pace it: each step is a synthetic wheel,
- * pointer drag or hover on the frame's canvas at the plot's centre (`data-plot` of the canvas or
- * its frame). A `PerformanceObserver` collects the frame's `chart-present` marks (both renderers
- * mark the presented frame where they emit `drawn`) and its `chart-draw` measures, filtered by
- * `detail.frame`. `report` appends the results to `test-results/bench/<gate>.json` and annotates
- * the test, with PRF-001 and PRF-002 marked `ok` or `over`: the gates are report-only.
+ * animation frame (an open loop: Playwright round trips do not pace it, and neither does the
+ * engine), each a synthetic wheel, pointer drag or hover on the frame's canvas at the plot's centre
+ * (`data-plot` of the canvas or its frame). A `PerformanceObserver` collects the frame's
+ * `chart-present` marks (both renderers mark the presented frame where they emit `drawn`) and its
+ * `chart-draw` measures, filtered by `detail.frame`. After the script it keeps collecting until the
+ * frame has presented twice or the case's time box runs out (`timedOut`, not a failure). `report`
+ * appends the results to `test-results/bench/<gate>.json` and annotates the test, with PRF-001
+ * and PRF-002 marked `ok`, `over` or `n/a`: the gates are report-only.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { Page, TestInfo } from '@playwright/test';
-import type { BenchGate, BenchResult, Span } from '../../scripts/lib/benchStats.ts';
+import { expect, type Page, type TestInfo } from '@playwright/test';
+import {
+  budgets,
+  collectUntil,
+  type BenchGate,
+  type BenchResult,
+  type Drive,
+} from '../../scripts/lib/benchStats.ts';
+
+export type { Drive } from '../../scripts/lib/benchStats.ts';
 
 export type Step =
   | { kind: 'wheel'; dy: number; dx?: number; shift?: boolean }
@@ -39,147 +49,201 @@ export const HOVER: readonly Step[] = [
   })),
 ];
 
-/** What `drive` collected: page-clock times (ms) of the marks and measures, and the span. */
-export interface Driven {
-  presents: number[];
-  draws: { start: number; end: number }[];
-  span: Span;
-}
-
 /** After the last step: two frames, then this long (the wheel commit is 300 ms). */
 export const SETTLE_MS = 500;
+/** A case's time box: a gallery case, a 10⁸ case (plan #68 C2d1 §3.1). */
+export const GALLERY_BOX_MS = 60_000;
+export const LINE_1E8_BOX_MS = 120_000;
+/** Presents `drive` waits for after the script. */
+export const MIN_PRESENTS = 2;
+
+interface DriveArgs {
+  sel: string;
+  frameId: string;
+  steps: readonly Step[];
+  settleMs: number;
+  boxMs: number;
+  min: number;
+}
+
+/** `drive`'s body, run in the page with `collectUntil`'s source (no imports reach the page). */
+const inPage = async (collect: typeof collectUntil, a: DriveArgs): Promise<Drive> => {
+  const t0 = performance.now();
+  const c = document.querySelector<HTMLCanvasElement>(a.sel);
+  if (c === null) throw new Error(`drive: no canvas ${a.sel}`);
+  const plot = (): [number, number, number, number] => {
+    const host = c.closest<HTMLElement>('[data-plot]');
+    const [x = 0, y = 0, w = 0, h = 0] = (host?.dataset['plot'] ?? '').split(',').map(Number);
+    return [x, y, w, h];
+  };
+  const presents: number[] = [];
+  const draws: { start: number; end: number }[] = [];
+  const take = (list: PerformanceEntryList): void => {
+    for (const e of list) {
+      const d = (e as PerformanceMark).detail as { frame?: unknown } | null;
+      if (d?.frame !== a.frameId) continue;
+      if (e.name === 'chart-present') presents.push(e.startTime);
+      else if (e.name === 'chart-draw')
+        draws.push({ start: e.startTime, end: e.startTime + e.duration });
+    }
+  };
+  const obs = new PerformanceObserver((l) => {
+    take(l.getEntries());
+  });
+  obs.observe({ entryTypes: ['mark', 'measure'] });
+  const frame = (): Promise<number> =>
+    new Promise((r) => {
+      requestAnimationFrame(r);
+    });
+  const client = (x: number, y: number) => {
+    const r = c.getBoundingClientRect();
+    return { clientX: r.left + x, clientY: r.top + y };
+  };
+  const pointer = (type: string, x: number, y: number, buttons: number): void => {
+    c.dispatchEvent(
+      new PointerEvent(type, {
+        ...client(x, y),
+        button: 0,
+        buttons,
+        pointerId: 1,
+        pointerType: 'mouse',
+        isPrimary: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  };
+  let start = t0;
+  let steps = 0;
+  let timedOut = false;
+  let drag: { x: number; y: number } | null = null;
+  for (let k = 0; k < a.steps.length; k++) {
+    await frame();
+    if (k === 0) start = performance.now();
+    if (performance.now() - t0 > a.boxMs) {
+      timedOut = true;
+      break;
+    }
+    const s = a.steps[k];
+    if (s === undefined) break;
+    const [px, py, pw, ph] = plot();
+    const cx = px + pw / 2;
+    const cy = py + ph / 2;
+    if (s.kind !== 'drag' && drag !== null) {
+      pointer('pointerup', drag.x, drag.y, 0);
+      drag = null;
+    }
+    switch (s.kind) {
+      case 'wheel':
+        c.dispatchEvent(
+          new WheelEvent('wheel', {
+            ...client(cx, cy),
+            deltaX: s.dx ?? 0,
+            deltaY: s.dy,
+            deltaMode: 0,
+            shiftKey: s.shift ?? false,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        break;
+      case 'drag':
+        if (drag === null) {
+          drag = { x: cx, y: cy };
+          pointer('pointerdown', drag.x, drag.y, 1);
+        }
+        drag = { x: drag.x + s.dx, y: drag.y };
+        pointer('pointermove', drag.x, drag.y, 1);
+        break;
+      case 'hover':
+        pointer('pointermove', px + s.fx * pw, py + s.fy * ph, 0);
+        break;
+    }
+    steps += 1;
+  }
+  if (drag !== null) pointer('pointerup', drag.x, drag.y, 0);
+  await frame();
+  await frame();
+  await new Promise((r) => setTimeout(r, a.settleMs));
+  if (!timedOut) {
+    // A slow engine (seconds per frame at 10⁸) still yields its frames, within the box.
+    timedOut = await collect(
+      {
+        now: () => performance.now(),
+        wait: (ms) =>
+          new Promise((r) => {
+            setTimeout(r, ms);
+          }),
+      },
+      () => {
+        take(obs.takeRecords());
+        return presents.length;
+      },
+      { start: t0, boxMs: a.boxMs, min: a.min, pollMs: 50 },
+    );
+  }
+  take(obs.takeRecords());
+  obs.disconnect();
+  return { presents, draws, span: { start, end: performance.now() }, steps, timedOut };
+};
 
 /**
  * Runs `steps` on the canvas `canvas` (a selector) in the page, step k in the k-th animation
- * frame, then waits two frames and `SETTLE_MS`. Each step acts at the plot's centre (`data-plot` of
- * the canvas or its frame, read at the step): a wheel there, a drag from there (pointerdown, one
- * move per step, pointerup when the drag steps end) or a hover at `(fx, fy)` of the plot. Collects
- * the `chart-present` marks and `chart-draw` measures whose `detail.frame` is `frameId`; the span
- * runs from the first step's frame (or the call, with no steps) to the end of the wait.
+ * frame, then waits two frames and `SETTLE_MS`, then until the frame has presented
+ * `MIN_PRESENTS` times. Each step acts at the plot's centre (`data-plot` of the canvas or its
+ * frame, read at the step): a wheel there, a drag from there (pointerdown, one move per step,
+ * pointerup when the drag steps end) or a hover at `(fx, fy)` of the plot. Collects the
+ * `chart-present` marks and `chart-draw` measures whose `detail.frame` is `frameId`; the span runs
+ * from the first step's frame (or the call, with no steps) to the end. When `boxMs` passes first
+ * (from the call), it stops with what it has and `timedOut`.
  */
 export async function drive(
   page: Page,
   canvas: string,
   frameId: string,
   steps: readonly Step[],
-): Promise<Driven> {
-  return page.evaluate(
-    async ({ sel, frameId, steps, settleMs }) => {
-      const c = document.querySelector<HTMLCanvasElement>(sel);
-      if (c === null) throw new Error(`drive: no canvas ${sel}`);
-      const plot = (): [number, number, number, number] => {
-        const host = c.closest<HTMLElement>('[data-plot]');
-        const [x = 0, y = 0, w = 0, h = 0] = (host?.dataset['plot'] ?? '').split(',').map(Number);
-        return [x, y, w, h];
-      };
-      const presents: number[] = [];
-      const draws: { start: number; end: number }[] = [];
-      const take = (list: PerformanceEntryList): void => {
-        for (const e of list) {
-          const d = (e as PerformanceMark).detail as { frame?: unknown } | null;
-          if (d?.frame !== frameId) continue;
-          if (e.name === 'chart-present') presents.push(e.startTime);
-          else if (e.name === 'chart-draw')
-            draws.push({ start: e.startTime, end: e.startTime + e.duration });
-        }
-      };
-      const obs = new PerformanceObserver((l) => {
-        take(l.getEntries());
-      });
-      obs.observe({ entryTypes: ['mark', 'measure'] });
-      const frame = (): Promise<number> =>
-        new Promise((r) => {
-          requestAnimationFrame(r);
-        });
-      const client = (x: number, y: number) => {
-        const r = c.getBoundingClientRect();
-        return { clientX: r.left + x, clientY: r.top + y };
-      };
-      const pointer = (type: string, x: number, y: number, buttons: number): void => {
-        c.dispatchEvent(
-          new PointerEvent(type, {
-            ...client(x, y),
-            button: 0,
-            buttons,
-            pointerId: 1,
-            pointerType: 'mouse',
-            isPrimary: true,
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
-      };
-      let start = performance.now();
-      let drag: { x: number; y: number } | null = null;
-      for (let k = 0; k < steps.length; k++) {
-        await frame();
-        if (k === 0) start = performance.now();
-        const s = steps[k];
-        if (s === undefined) break;
-        const [px, py, pw, ph] = plot();
-        const cx = px + pw / 2;
-        const cy = py + ph / 2;
-        if (s.kind !== 'drag' && drag !== null) {
-          pointer('pointerup', drag.x, drag.y, 0);
-          drag = null;
-        }
-        switch (s.kind) {
-          case 'wheel':
-            c.dispatchEvent(
-              new WheelEvent('wheel', {
-                ...client(cx, cy),
-                deltaX: s.dx ?? 0,
-                deltaY: s.dy,
-                deltaMode: 0,
-                shiftKey: s.shift ?? false,
-                bubbles: true,
-                cancelable: true,
-              }),
-            );
-            break;
-          case 'drag':
-            if (drag === null) {
-              drag = { x: cx, y: cy };
-              pointer('pointerdown', drag.x, drag.y, 1);
-            }
-            drag = { x: drag.x + s.dx, y: drag.y };
-            pointer('pointermove', drag.x, drag.y, 1);
-            break;
-          case 'hover':
-            pointer('pointermove', px + s.fx * pw, py + s.fy * ph, 0);
-            break;
-        }
-      }
-      if (drag !== null) pointer('pointerup', drag.x, drag.y, 0);
-      await frame();
-      await frame();
-      await new Promise((r) => setTimeout(r, settleMs));
-      take(obs.takeRecords());
-      obs.disconnect();
-      return { presents, draws, span: { start, end: performance.now() } };
-    },
-    { sel: canvas, frameId, steps, settleMs: SETTLE_MS },
+  boxMs: number,
+): Promise<Drive> {
+  const args: DriveArgs = {
+    sel: canvas,
+    frameId,
+    steps,
+    settleMs: SETTLE_MS,
+    boxMs,
+    min: MIN_PRESENTS,
+  };
+  // A string expression: the page gets `collectUntil` as source (CDP evaluation, not page eval).
+  return page.evaluate<Drive>(
+    `(${inPage.toString()})(${collectUntil.toString()}, ${JSON.stringify(args)})`,
   );
 }
 
-/** PRF-001: p50 interval ≤ 16.7 ms; PRF-002: p99 ≤ 22.2 ms. */
-export const PRF_001_MS = 16.7;
-export const PRF_002_MS = 22.2;
+/**
+ * Opens `url` and waits for a frame's first `a11y` (`data-frame-ready`), and on a probe page for
+ * `__dashProbe`. Never Playwright's fake clock: it hides the User Timing entries `drive` collects.
+ */
+export async function open(page: Page, url: string): Promise<void> {
+  await page.goto(url);
+  await page.locator('html[data-shell-ready="true"]').waitFor();
+  if (url.includes('probe=1')) await page.waitForFunction(() => '__dashProbe' in window);
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]').first()).toBeVisible();
+}
 
-const fmt = (v: number): string => (Number.isFinite(v) ? v.toFixed(1) : '–');
+const fmt = (v: number | null): string => (v !== null && Number.isFinite(v) ? v.toFixed(1) : '–');
 
-/** One result as a line: the percentiles and PRF-001 / PRF-002 marked `ok` or `over`. */
+/** One result as a line: the percentiles and PRF-001 / PRF-002 as `ok`, `over` or `n/a`. */
 export function describeResult(r: BenchResult): string {
   if (r.skipped !== undefined) return `${r.case} ${r.leg}: skipped (${r.skipped})`;
   const i = r.intervalMs;
-  const prf1 = i.p50 <= PRF_001_MS ? 'ok' : 'over';
-  const prf2 = i.p99 <= PRF_002_MS ? 'ok' : 'over';
+  const b = budgets(r);
   return (
     `${r.case} ${r.leg} (${String(r.series)} series, ${String(r.points)} points): ` +
     `interval p50 ${fmt(i.p50)} p95 ${fmt(i.p95)} p99 ${fmt(i.p99)} max ${fmt(i.max)} ms; ` +
     `draw p50 ${fmt(r.drawMs.p50)} p95 ${fmt(r.drawMs.p95)} p99 ${fmt(r.drawMs.p99)} max ${fmt(r.drawMs.max)} ms; ` +
-    `${String(r.frames)} frames, ${String(r.over1)} > 16.7 ms, ${String(r.over2)} > 33.4 ms; ` +
-    `PRF-001 ${prf1}, PRF-002 ${prf2}`
+    `${String(r.frames)} frames for ${String(r.steps)} steps (coalescing ${fmt(r.coalescing)}), ` +
+    `${String(r.over1)} > 16.7 ms, ${String(r.over2)} > 33.4 ms` +
+    (r.hovers === undefined ? '' : `, ${String(r.hovers)} hovers`) +
+    `${r.timedOut === true ? ', timed out' : ''}; PRF-001 ${b.prf001}, PRF-002 ${b.prf002}`
   );
 }
 
@@ -211,7 +275,7 @@ export async function report(info: TestInfo, results: readonly BenchResult[]): P
   await Promise.resolve();
 }
 
-/** The fields of a `BenchResult` (`skipped` is optional). */
+/** The fields of a `BenchResult` (`hovers`, `timedOut` and `skipped` are optional). */
 export const RESULT_FIELDS = [
   'gate',
   'case',
@@ -223,6 +287,8 @@ export const RESULT_FIELDS = [
   'drawMs',
   'over1',
   'over2',
+  'steps',
+  'coalescing',
 ] as const;
 
 /**

@@ -80,11 +80,24 @@ export interface ProbeHost {
    * on the worker's acknowledgement, or `ok: false` when the engine restarts or fails first.
    */
   synth(id: number, series: number, points: number): Promise<SynthAck>;
+  /** The probe build: frame `id`'s current chunk, or null. */
+  chunk(id: number): Promise<ChunkInfo | null>;
 }
 
-/** `probe-synth`'s acknowledgement: `bytes` of values held. */
+/**
+ * `synth`'s outcome: `bytes` of values held. Not `ok`: `alloc` (the worker's allocation failed;
+ * the frame is unchanged), `restart` or `fatal` (the engine went first), `timeout` (no answer).
+ */
 export interface SynthAck {
   readonly ok: boolean;
+  readonly bytes: number;
+  readonly reason?: 'alloc' | 'restart' | 'fatal' | 'timeout';
+}
+
+/** A frame's chunk as the probe build describes it: series, samples of series 0, value bytes. */
+export interface ChunkInfo {
+  readonly series: number;
+  readonly points: number;
   readonly bytes: number;
 }
 
@@ -143,6 +156,8 @@ class EngineHost implements Backend {
   private readonly probeWaits: ((json: string) => void)[] = [];
   /** The probe build: `synth()` calls waiting for their acknowledgement, in order. */
   private readonly synthWaits: { id: number; resolve: (a: SynthAck) => void }[] = [];
+  /** The probe build: `chunk()` calls waiting for their answer, in order. */
+  private readonly chunkWaits: { id: number; resolve: (c: ChunkInfo | null) => void }[] = [];
   private readonly port: Port = {
     postMessage: (msg, transfer = []) => {
       if (this.state === 'ready' && this.render !== null)
@@ -178,7 +193,13 @@ class EngineHost implements Backend {
         const i = this.synthWaits.findIndex((w) => w.id === m.id);
         if (i < 0) return;
         const [w] = this.synthWaits.splice(i, 1);
-        w?.resolve({ ok: m.ok, bytes: m.bytes });
+        w?.resolve(m.ok ? { ok: true, bytes: m.bytes } : { ok: false, bytes: 0, reason: 'alloc' });
+      },
+      onProbeChunk: (m) => {
+        const i = this.chunkWaits.findIndex((w) => w.id === m.id);
+        if (i < 0) return;
+        const [w] = this.chunkWaits.splice(i, 1);
+        w?.resolve(JSON.parse(m.json) as ChunkInfo | null);
       },
     });
   }
@@ -242,6 +263,11 @@ class EngineHost implements Backend {
         new Promise<SynthAck>((resolve) => {
           this.synthWaits.push({ id, resolve });
           worker.postMessage({ t: 'probe-synth', id, series, points } satisfies MainToRender);
+        }),
+      chunk: (id) =>
+        new Promise<ChunkInfo | null>((resolve) => {
+          this.chunkWaits.push({ id, resolve });
+          worker.postMessage({ t: 'probe-chunk', id } satisfies MainToRender);
         }),
       inputLog: () =>
         new Promise<InputRec[]>((resolve) => {
@@ -308,15 +334,16 @@ class EngineHost implements Backend {
     void this.restart();
   }
 
-  /** The probe build: a restart or a failure ends every pending `synth()` with `ok: false`. */
-  private failSynths(): void {
-    for (const w of this.synthWaits.splice(0)) w.resolve({ ok: false, bytes: 0 });
+  /** The probe build: a restart or a failure ends every pending `synth()` and `chunk()`. */
+  private failSynths(reason: 'restart' | 'fatal'): void {
+    for (const w of this.synthWaits.splice(0)) w.resolve({ ok: false, bytes: 0, reason });
+    for (const w of this.chunkWaits.splice(0)) w.resolve(null);
   }
 
   private async restart(): Promise<void> {
     this.restarted = true;
     this.state = 'restarting';
-    this.failSynths();
+    this.failSynths('restart');
     this.render?.terminate();
     this.ring?.close();
     this.ring = null;
@@ -343,7 +370,7 @@ class EngineHost implements Backend {
   private fatal(): void {
     if (this.state === 'dead') return;
     this.state = 'dead';
-    this.failSynths();
+    this.failSynths('fatal');
     this.queue.length = 0;
     this.render?.terminate();
     this.ring?.close();
