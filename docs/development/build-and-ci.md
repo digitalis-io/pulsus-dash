@@ -1038,8 +1038,8 @@ requires each instead (`probe-missing`).
 - **`ci:engine-gen`.** `make engine-wasm-check` also builds the ST engine twice and compares the
   builds, compares `gen-st/dash_core_st.d.ts` with the committed
   `client/src/engine/wasm/dash_core_st.d.ts`, and runs the xtask test `st_module` (its own
-  non-shared memory, no memory import, and binaryen validation without threads, so no atomic
-  instruction).
+  non-shared memory, no memory import, and the features binaryen reports for it, read with the ST
+  features only, have no `threads`: no atomic instruction).
 - **`lavapipe-st`.** A project of `playwright.engine.config.ts` with `metadata.engineMode: 'st'`:
   `e2e/engine.ts` `tierOf` appends `&mode=st` to the lavapipe tier, and the project's `grep` runs
   `e2e:engine-camera` E1 and E7, `e2e:engine-hover` H1 and H3, `e2e:engine-layer` L1 and L2,

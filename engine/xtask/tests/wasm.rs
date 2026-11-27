@@ -230,8 +230,9 @@ fn st_module() {
         "a shared memory: flags {flags:?}"
     );
     assert_eq!(exports, ["memory"], "the memory is exported");
-    // No atomic instruction: binaryen validates the module with the ST features only (no
-    // threads), which rejects any atomic operation or shared memory.
+    // No atomic instruction: binaryen reads the module with the ST features only and prints the
+    // features it uses; `threads` (atomics, shared memory) must not be among them. The MT module
+    // reports `--enable-threads` here.
     let mut cmd = Command::new("wasm-opt");
     cmd.arg(&wasm).arg("--mvp-features");
     for f in xtask::wasm::build_args(true, false).wasm_opt {
