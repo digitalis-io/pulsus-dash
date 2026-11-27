@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-27 |
+| **Version** | 1.8-rc · 2026-11-27 |
 | **Requirement area** | `IA` |
 | **Source draft** | plans/02-information-architecture.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [04](04-surfaces.md), [06](06-ai-copilot.md), [07](07-alerting.md), [11](11-enterprise.md), [13](13-core-flow-storyboard.md), [15](15-estate-navigation.md), [T11](../technical/T11-postgres-schema.md) |
@@ -404,7 +404,10 @@ Every view is deep-linkable and reproducible. The URL encodes Context + scene + 
 AUD-048).
 
 On the board pattern, `f` is repeated, one `label=value` equality filter per parameter (at most 20);
-`var-<name>` carries one value; `collapse` and `expand` are repeated View-mode overrides of a
+`var-<name>` carries one value, and is repeated for a variable the board defines that takes several
+(in order; #289): for such a variable a bare `$__all` is All, any other value starting with `$`
+loses one `$` when read, and a literal starting with `$` is written with one more (`$$__all` is the
+literal `$__all`); the address is over the variable's saved default. `collapse` and `expand` are repeated View-mode overrides of a
 section's saved collapsed state. `map` is repeated, one map view per scope (`*` for the synced maps,
 else a panel id; `‹scope›_‹lat›_‹lon›_‹zoom›`); `geo` is at most one map area
 (`‹scope›_‹w›_‹s›_‹e›_‹n›`), a filter like `f` written by the maps that have the bounds filter on
@@ -461,7 +464,7 @@ in reverse; `Alt+←` in the canvas does the same.
 | Pivot to another signal | kept | kept | translated (label ⇄ attribute names) | kept |
 | Brush a time range on any chart | kept | **set to brush** (with undo) | kept | kept |
 | Click a span / log line | narrows to its instance | **keeps window**, adds a *focus instant* marker | adds `trace_id` | kept |
-| Open a Board | Board's variables, seeded from Context where names match | kept unless the Board pins time | Board's | kept |
+| Open a Board | Board's variables: the address, over the saved default, over the first listed value (#289; seeding from Context where names match is owed) | kept unless the Board pins time | Board's | kept |
 | Pin to Investigation | snapshot of all four | snapshot | snapshot | snapshot |
 
 #### IA-026 — Context propagation
@@ -580,3 +583,4 @@ tenant table, with the acceptance unchanged.
 | 1.5-rc | 2026-11-25 | #181 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part B2): §4 the board pattern gains `e={entityRef,...}`, and an `entityRef` is a canonical `EntityId` (T12-010), at most 16; IA-026 entity-set note (`ContextSearch.e`; the Change feed filters by it; a non-canonical entry is never guessed); the pivot row note's entity set comes from #223 |
 | 1.6-rc | 2026-11-25 | #184 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part E step 2): §4 the board pattern gains `map={mapView}` (repeated, one per scope) and `geo={mapArea}` (at most one), with their forms and the eviction order over the 4 096-byte budget; IA-026 map-area note (a filter like `f=`, effective only while its writer has the option on; the table is unchanged) |
 | 1.7-rc | 2026-11-27 | #282 Part 2a: IA-020 adds the inline presets (15 min, 1 h, 6 h, 24 h, 7 d) from 1280 px wide; the dialog is unchanged |
+| 1.8-rc | 2026-11-27 | #289: §4 the board pattern's `var-<name>` repeats for a multi-value defined variable, `$__all` is All, the `$$` escape, the address over the saved default; §5 "Open a Board" gives the order |

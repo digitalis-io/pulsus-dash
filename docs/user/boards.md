@@ -475,7 +475,25 @@ section (screen readers hear it as expanded or collapsed), and next to it is the
 
 The filter bar (**Board filters**) sits left of the toolbar, in both modes:
 
-- **One chip per variable.** Each `$name` or `${name}` in the board's queries, and then in its
+- **Board variables.** A board can define its variables (they come with the board; editing them
+  in the board editor is not available yet). Each has a chip, in the board's order, showing its
+  label and value: "Node: All", "Node: n1 +2". Pressing it opens a list of the values with a
+  search: pick a value to use it; on a variable that takes several values, tick them and press
+  **Apply** (or ⌘/Ctrl+Enter). **All** uses every value without listing them; picking a value
+  clears All, and All clears the values. A value you picked that the list no longer has stays,
+  marked **custom**; when the search finds nothing, **Use ‹text›** picks what you typed. At most
+  200 values can be picked at once (fewer when they are long): further values are greyed out with
+  "Selection too large; use All or narrow the search". **Reset to default** goes back to the
+  board's saved choice, Escape closes without changing anything, and **Retry** asks again when the
+  values could not be loaded ("Values unavailable"). A variable whose values depend on another one
+  reads "Waiting for ‹label›" until that one has a value. Picked values match exactly, including
+  case, even where the query ignores case. A board variable may appear in a query in a label
+  matcher's value (`{instance=~"$node"}`, `{job="$job"}`), in a LogQL line or label filter
+  (`|= "$x"`, `| level=~"$x"`), and in PromQL as a number or duration (`offset $d`); a variable with
+  several values needs a regex (`=~`). Anywhere else the panel says the value cannot be written
+  where it is referenced, and nothing is sent. In the address the values are `var-<name>`, one per
+  value; `var-node=$__all` is All.
+- **One chip per other variable.** Each `$name` or `${name}` in the board's queries, and then in its
   Markdown Text panels, is a variable (the `$__…` macros, such as `$__rate_interval`, are not). Its chip reads "Variable `name`: `value`", or
   "not set". Pressing it opens **Variable `name`** with a **Value** field: **Apply** sets the value
   (an empty value clears it), **Clear** removes it. The value is kept in the address as
