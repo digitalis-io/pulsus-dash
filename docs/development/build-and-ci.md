@@ -967,8 +967,8 @@ renderers anti-alias differently by design.
 scans every file of the tree, recursively: `__dashProbe` or `__pulsus_engine_fault__` in a release
 tree is `probe-in-release`; with `--expect-faults` each of the three fault sites
 (`__pulsus_engine_fault__:route|boot|worker`) missing is `fault-site-missing`. The probe engine's
-exports `engine_probe_input` and `engine_probe_synth` (plan #68 C2d1) in any `.wasm` are one
-`probe-in-release` each in every tree (the fault build's included) unless `--expect-probe`, which
+exports `engine_probe_input`, `engine_probe_synth` and `engine_probe_chunk` (plan #68 C2d1) in any
+`.wasm` are one `probe-in-release` each in every tree (the fault build's included) unless `--expect-probe`, which
 requires each instead (`probe-missing`).
 
 #### Frame benches
@@ -1018,7 +1018,10 @@ figure, not a failure.
   chunk is not an input-ring record, so `settle` does not see it). A case that times out also
   reloads before the next one. After a slow 10⁸ frame the GPU process can still be busy, and the
   reloaded engine can miss its 10 s boot. The bench then retries the boot up to 6 times, 20 s
-  apart, and records the case `timedOut` if it never boots.
+  apart; only that boot timeout is retried, and a boot that never succeeds, or any other boot
+  error, fails the run. A frame failure or the engine's status 4 while the bench waits for the
+  synthesised summary fails the run, and so does one found before any reload. Only the worker
+  restart a synthesis itself reported (`restart`) is a timeout.
 
   Its other tests:
   - **B3** checks `synth`'s acknowledgements: two equal ones, then `ok: false` (`reason: 'alloc'`)
@@ -1027,7 +1030,11 @@ figure, not a failure.
     small noise frame redraws every 100 ms and presents, while a drive of the idle bench frame
     collects nothing.
   - **`synth outcomes`** drives the precedence above with the probe's `synthFault` on small
-    sizes: `alloc`, `silent` (a 3 s timeout) and `fatal`.
+    sizes: `alloc`, `silent` (a 3 s timeout) and `fatal`. It also covers a memory failure after an
+    earlier case succeeded: only the cases skipped for memory rerun, and only they are expected at
+    the fallback scale.
+  - **`a real failure after the synthesis acknowledgement`**: the probe's `trap()` makes the render
+    worker throw right after an `ok`, and the run fails rather than timing out.
 
 **Fields.** Each result in `client/test-results/bench/bench-frame-gallery.json` and
 `bench-frame-line-1e8.json` (JSON arrays, appended per test) is a `BenchResult`

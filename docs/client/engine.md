@@ -1097,7 +1097,7 @@ into the git-ignored
 `client/src/engine/wasm/gen-probe/`, and `make e2e-build-probe` builds the client with
 `VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1` (Vite then resolves `virtual:dash-engine` to
 `gen-probe/`) into `client/dist-probe` and its stub BFF into `build/e2e-probe/pulsus-dash`.
-`ci:probe-absent` requires `engine_probe_input` and `engine_probe_synth` in that tree's wasm
+`ci:probe-absent` requires `engine_probe_input`, `engine_probe_synth` and `engine_probe_chunk` in that tree's wasm
 (`--expect-probe`) and fails every other tree, the fault build included, that holds either. The
 probe build is also the one `make engine-bench` serves ([measuring frames](#measuring-frames-part-c2d1)).
 
@@ -1236,7 +1236,9 @@ and a structured clone. Instead, the probe build's `synth(n, {series, points})` 
 `Frames::synth_f1c`, which works as follows:
 - It builds `pulsus-synth`'s F1c grid: `f1a_value(s, k)`, key hash `s`, label `s`, a step of
   `10⁶ / points` ms from 0.
-- Values, offsets and series metas are each reserved with `try_reserve_exact`. More than 2³¹
+- Values, offsets, series metas and each series' label strings are reserved with
+  `try_reserve_exact`. The one infallible allocation left is each series' small shared label slice
+  (`Arc<[_]>`, which has no fallible constructor on stable Rust), made after the large buffers. More than 2³¹
   samples, `points` of 0 or above 10⁶, an unknown frame or a failed reservation return `false`
   before the frame changes.
 - On success the frame's previous chunk goes, with the cached layer and pick that read it. The
@@ -1250,7 +1252,8 @@ not `ok`. The probe resolves with `{ok, bytes, reason?}`. When not `ok`, `reason
 - `timeout`: no answer in 120 s, or the third argument's milliseconds.
 
 `synthFault('alloc' | 'silent' | 'fatal')` simulates one of these outcomes for the next `synth`
-only, for the bench's outcome test. `chunk(n)` asks the worker (`engine_probe_chunk`) for
+only, for the bench's outcome test. `failed(n)` lists the frame's `onFail` reasons, and `trap()`
+(the probe build, message `probe-trap`) makes the render worker throw for real. `chunk(n)` asks the worker (`engine_probe_chunk`) for
 `{series, points, bytes}` of the frame's chunk (points are series 0's samples), or null.
 
 `bench:frame-line-1e8` treats `alloc` at 10⁸ as a host without the memory. It records each case
