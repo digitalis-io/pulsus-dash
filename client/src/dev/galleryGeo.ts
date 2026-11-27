@@ -129,5 +129,8 @@ export function galleryRun(series: readonly SeriesFrame[]): PanelRun {
     stream: null,
     placeholder: false,
     retry: () => undefined,
+    store: 'off',
+    rank: null,
+    stale: [],
   };
 }

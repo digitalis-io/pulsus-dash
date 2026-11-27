@@ -43,6 +43,12 @@ func PromGrid(fromMs, toMs int64, widthPx int) (Grid, error) {
 	}
 }
 
+// ErrStepNotOnLadder is returned for a requested step that is not a PromLadder entry (#304 §A.1).
+var ErrStepNotOnLadder = errors.New("step_ms must be a step of the ladder")
+
+// PromGridStep is a stub (tests first, #304).
+func PromGridStep(fromMs, toMs, stepMs int64) (Grid, error) { return Grid{}, nil }
+
 // LogGrid returns the grid of the log routes (#62's rule, unchanged by #303): the step is the
 // first Ladder entry with entry × widthPx ≥ toMs − fromMs (else 1 d), start is fromMs floored to
 // the step and end is toMs raised to it. Integer arithmetic only.

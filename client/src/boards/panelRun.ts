@@ -12,7 +12,7 @@ import type { DataPanelSpec, PlannedQuery } from '../api/types';
 import type { VolumeResult } from '../data/decode';
 import type { FrameData } from '../data/frames';
 import type { Diagnostic } from '../editor/lang/types';
-import type { VisSpec } from '../engine/api';
+import type { TimeWindow, VisSpec } from '../engine/api';
 import { volumePlan } from '../explore/logsRun';
 import { seriesRows, type SeriesRow } from '../explore/seriesRows';
 import { errorView, refusalText } from '../explore/statusText';
@@ -42,6 +42,14 @@ export interface PanelOutcome {
   readonly volume?: VolumeResult;
   /** The baseline run's result, or `'failed'`; absent: no baseline run (T22-012). */
   readonly baseline?: ExploreResult | 'failed';
+  /** Store-backed (#304 §4.1): the held span a line frame draws; `result` is the visible slice. */
+  readonly held?: ExploreResult;
+  /** Store-backed: the visible grid, the line's auto-fit window (§A.3). */
+  readonly fit?: TimeWindow;
+  /** Store-backed: the scope epoch of the identity it was assembled under (§4.5). */
+  readonly scope?: string;
+  /** Store-backed: 1 every visible bucket at the view's step; 0 a fill (Part B). */
+  readonly rank?: 0 | 1;
 }
 
 /** A LogQL stream panel's pager and its unsaved controls (plan #67 §3.1). */

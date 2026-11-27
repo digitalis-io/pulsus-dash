@@ -170,3 +170,19 @@ describe('invalid planned (plan #68 D2 §3.4, r8)', () => {
     expect(v?.text).toBe('The query failed: bad body');
   });
 });
+
+describe('absent masks from the validity bitmap (#304 §A.3)', () => {
+  it('absent masks: the decoded message carries them and gaps equals the JSON path', () => {
+    const m = decodedMessage('gaps');
+    expect(m.absent).toBeDefined();
+    const got = rangeFromDecoded(m, NOW_MS);
+    const want = decodeRange(JSON.parse(routeJson('gaps')));
+    expect(want.absent).toBeDefined();
+    expect(got.absent).toEqual(want.absent);
+  });
+
+  it('absent masks: a message without absent slots has none', () => {
+    const m: DecodedRange = { ...decodedMessage('two-series'), absent: [null, null] };
+    expect(rangeFromDecoded(m, NOW_MS).absent).toBeUndefined();
+  });
+});

@@ -1325,3 +1325,56 @@ describe('query range dsf (plan #68 D2 §4.1, §4.4)', () => {
     expect(cancelled).toBe(true);
   });
 });
+
+describe('HttpApi range store wire (#304 §A.1, §A.2)', () => {
+  const withScope = (status: number, body: unknown): Response =>
+    new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+      status,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Pulsus-Scope-Epoch': '00112233445566ff',
+        'X-Pulsus-Scope-Seq': '7',
+      },
+    });
+
+  it('range body', async () => {
+    const { api: a, requests } = api(() => Promise.resolve(json(200, counterRaw)));
+    await a.queryRange('demo', { ...R, stepMs: 15_000, rangeMs: 3_600_000, priority: 'low' });
+    expect(await requests[0]?.text()).toBe(
+      '{"query":"up","from":1,"to":2,"width_px":3,"step_ms":15000,"range_ms":3600000}',
+    );
+    expect((requests[0] as (Request & { priority?: string }) | undefined)?.priority ?? 'low').toBe(
+      'low',
+    );
+  });
+
+  it('scope header', async () => {
+    const ok = api(() => Promise.resolve(withScope(200, counterRaw)));
+    const r = await ok.api.queryRange('demo', R);
+    expect(r.scope).toEqual({ epoch: '00112233445566ff', seq: 7 });
+    const plain = api(() => Promise.resolve(json(200, counterRaw)));
+    expect((await plain.api.queryRange('demo', R)).scope ?? null).toBeNull();
+    const denied = api(() =>
+      Promise.resolve(
+        withScope(403, { error: { code: 'scope_denied', message: 'data scopes are not supported yet' } }),
+      ),
+    );
+    const e = (await rejection(denied.api.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('scopeDenied');
+    expect(e.scope).toEqual({ epoch: '00112233445566ff', seq: 7 });
+  });
+
+  it('bootstrap scope epoch', async () => {
+    const { api: a } = api(() =>
+      Promise.resolve(
+        json(200, {
+          ...BOOTSTRAP,
+          tenants: [{ ...BOOTSTRAP.tenants[0], scope_epoch: 'aa', scope_seq: 3 }],
+        }),
+      ),
+    );
+    const s = await a.getSession();
+    expect(s.tenants[0]?.scopeEpoch).toBe('aa');
+    expect(s.tenants[0]?.scopeSeq).toBe(3);
+  });
+});

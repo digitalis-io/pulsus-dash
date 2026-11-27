@@ -59,6 +59,9 @@ export function runOf(
     stream: null,
     placeholder: false,
     retry: () => undefined,
+    store: 'off',
+    rank: null,
+    stale: [],
     ...rest,
   };
 }

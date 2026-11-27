@@ -51,6 +51,11 @@ export function promGrid(fromMs: number, toMs: number, widthPx: number): Grid | 
   return null;
 }
 
+/** Stub (tests first, #304). */
+export function promGridAt(_fromMs: number, _toMs: number, _stepMs: number): Grid | null {
+  return null;
+}
+
 /**
  * The log routes' grid (#62, unchanged by #303): the step is the first ladder entry with
  * `entry × widthPx ≥ toMs − fromMs` (else 1 d); the start is floored and the end raised to it.

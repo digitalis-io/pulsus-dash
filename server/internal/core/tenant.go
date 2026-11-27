@@ -21,4 +21,12 @@ type TenantBinding struct {
 	OrgID                                                           OrgID
 	ID                                                              uuid.UUID
 	Slug, DatasourceURL, Database, ScopeOrgID, CredentialsRef, Kind string
+	// ScopeSeq orders the binding's access-determining versions (#304 §A.2, ADR-0038).
+	ScopeSeq int64
 }
+
+// ScopeEpoch is a stub (tests first, #304).
+func ScopeEpoch(principal string, b TenantBinding, s DataScope) string { return "" }
+
+// Canonical is a stub (tests first, #304).
+func (s DataScope) Canonical() string { return "" }

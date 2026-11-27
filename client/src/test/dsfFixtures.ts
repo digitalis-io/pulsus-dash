@@ -31,6 +31,8 @@ interface DecodedFixture {
   head: DecodedRange['head'];
   ts: string[];
   vs: string[][];
+  /** Per series: the absent slots' indices, or null (#304 §A.3). */
+  absent?: (number[] | null)[];
 }
 
 export interface FailedFixture {
@@ -54,6 +56,16 @@ export function decodedMessage(name: string, chunk = 1, epoch = 1): DecodedRange
     head: m.head,
     ts: Float64Array.from(m.ts, f64),
     vs: m.vs.map((v) => Float64Array.from(v, f64)),
+    ...(m.absent === undefined
+      ? {}
+      : {
+          absent: m.absent.map((ix) => {
+            if (ix === null) return null;
+            const a = new Uint8Array(m.ts.length);
+            for (const i of ix) a[i] = 1;
+            return a;
+          }),
+        }),
   };
 }
 

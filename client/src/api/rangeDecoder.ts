@@ -56,6 +56,8 @@ export interface DecodedRange {
   readonly head: DecodedHead;
   readonly ts: Float64Array;
   readonly vs: readonly Float64Array[];
+  /** Per series: 1 where the validity bitmap marks the slot null; null when none is (#304 §A.3). */
+  readonly absent?: readonly (Uint8Array | null)[];
 }
 
 export interface RangeDecoder {

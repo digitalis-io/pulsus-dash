@@ -86,6 +86,9 @@ const BASE: PanelRun = {
   stream: null,
   placeholder: false,
   retry: () => undefined,
+  store: 'off',
+  rank: null,
+  stale: [],
 };
 
 function outcome(r: RangeResult, facts: { rateApplied?: boolean } = {}) {

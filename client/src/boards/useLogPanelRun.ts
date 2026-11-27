@@ -37,7 +37,7 @@ import {
   type PanelState,
   type PanelStream,
 } from './panelRun';
-import { isAbort, missingOf, type PanelRun, type PanelRunInput } from './usePanelRun';
+import { NO_STALE, isAbort, missingOf, type PanelRun, type PanelRunInput } from './usePanelRun';
 import { useQueryLanguage } from './useQueryLanguage';
 import { panelVars, referencedVariables } from './variableRefs';
 
@@ -220,6 +220,9 @@ export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       stream,
       placeholder: false,
       retry: NO_RETRY,
+      store: 'off' as const,
+      rank: null,
+      stale: NO_STALE,
     }),
     [
       text,

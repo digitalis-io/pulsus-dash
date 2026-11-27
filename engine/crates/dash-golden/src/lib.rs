@@ -178,6 +178,8 @@ pub fn page_viewport(
         band: Band::Measure,
         events: std::sync::Arc::from([]),
         selection: Default::default(),
+        fit: None,
+        fade: None,
     }
 }
 
@@ -255,6 +257,8 @@ pub fn layer_viewport(id: &str, theme: Theme, css: Size64, dpr: f32) -> Result<V
         band: Band::Measure,
         events: Arc::from(fixture_nums(&row["events"])),
         selection: Default::default(),
+        fit: None,
+        fade: None,
     })
 }
 

@@ -5,7 +5,7 @@
  */
 import type { components } from './gen/schema';
 import type { TimeWindow } from '../engine/api';
-import type { LogqlPlannedQuery, PlannedQuery } from '../data/decode';
+import type { LogqlPlannedQuery, PlannedQuery, ScopeStamp } from '../data/decode';
 
 export type { LogqlPlannedQuery, PlannedQuery };
 
@@ -37,6 +37,12 @@ export interface RangeRequest {
   vars?: Readonly<Record<string, string>>;
   /** The rate chip; omitted = on. */
   rate?: boolean;
+  /** A PromQL ladder step the server validates and plans with (#304 §A.1); omitted = from the width. */
+  stepMs?: number;
+  /** The window the range macros see (#304 §A.1); omitted = `toMs − fromMs`. */
+  rangeMs?: number;
+  /** The fetch priority (never in the body). */
+  priority?: 'high' | 'auto' | 'low';
 }
 
 /** A LogQL range request (plan #65 Part B §3.5, plan #116 §3.8). */
@@ -95,6 +101,10 @@ export interface LogMatchRequest {
 export interface Tenant {
   slug: string;
   name: string;
+  /** The effective data-scope version for the session principal (ADR-0038, #304 §A.2). */
+  scopeEpoch?: string;
+  /** Its order: higher is newer. */
+  scopeSeq?: number;
   dataSource?: DataSourceStatus;
 }
 
@@ -250,7 +260,9 @@ export type ApiErrorKind =
   | 'badResponse'
   | 'queryTooLong'
   /** Plan #68 D2: a malformed or invalid DSF body (T04-010), never retried. */
-  | 'internal';
+  | 'internal'
+  /** A 403 `scope_denied` (T12-018): the range store drops the tenant (#304 §4.5). */
+  | 'scopeDenied';
 
 /** What the BFF said about a failed query (§4.5 of plan #62). */
 export interface ApiErrorDetail {
@@ -271,6 +283,8 @@ export interface ApiErrorExtra {
   fields?: readonly FieldError[];
   /** The BFF's answer to a failed query or check. */
   detail?: ApiErrorDetail;
+  /** The scope epoch and sequence the BFF used (#304 §A.2); absent: none sent. */
+  scope?: ScopeStamp;
 }
 
 export class ApiError extends Error {
@@ -279,6 +293,8 @@ export class ApiError extends Error {
   readonly fields: readonly FieldError[];
   /** `{}` unless a query or check failed with something to say. */
   readonly detail: ApiErrorDetail;
+  /** The scope the BFF used for the failed request (#304 §A.2); null: none sent. */
+  scope: ScopeStamp | null;
 
   constructor(kind: ApiErrorKind, message: string, extra: ApiErrorExtra = {}) {
     super(message);
@@ -286,6 +302,7 @@ export class ApiError extends Error {
     this.kind = kind;
     this.fields = extra.fields ?? [];
     this.detail = extra.detail ?? {};
+    this.scope = extra.scope ?? null;
   }
 }
 

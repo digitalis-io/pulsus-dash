@@ -2,7 +2,7 @@
  * Chart frame data (plan #58 §3.2): series, heatmap and scalar frames, and their validation. The
  * component validates; the engine assumes valid data.
  */
-import type { ThresholdState, VisSpec } from '../engine/api';
+import type { ThresholdState, TimeWindow, VisSpec } from '../engine/api';
 import type { CATEGORY_PATTERNS } from '../engine/patterns';
 import type { GeoFrame } from '../vis/geo/frame';
 import type { Basemap } from '../vis/geo/types';
@@ -119,7 +119,17 @@ export interface ScalarFrame {
 }
 
 export type FrameData =
-  | { readonly kind: 'series'; readonly series: readonly SeriesFrame[] }
+  | {
+      readonly kind: 'series';
+      readonly series: readonly SeriesFrame[];
+      /**
+       * Line: the auto value domain and the summary's min, max and last use only samples with
+       * fromMs ≤ t ≤ toMs (#304 §A.3); absent = every sample. Other kinds ignore it.
+       */
+      readonly fit?: TimeWindow;
+      /** Line: fade from the series drawn before over 150 ms (ADR-0039); ignored with nothing drawn. */
+      readonly transition?: 'crossfade';
+    }
   | { readonly kind: 'heatmap'; readonly heatmap: HeatmapFrame }
   | { readonly kind: 'scalar'; readonly scalar: ScalarFrame }
   /** A bar chart's drawn rows, in draw order, and the panel's coverage (ADR-0028, T22 §5.1). */

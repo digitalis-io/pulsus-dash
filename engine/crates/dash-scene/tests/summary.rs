@@ -46,6 +46,8 @@ fn summaries_match_ts() {
             band: Band::Measure,
             events: std::sync::Arc::from([]),
             selection: Default::default(),
+            fit: None,
+            fade: None,
         };
         let got = build(&v)
             .1

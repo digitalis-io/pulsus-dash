@@ -56,6 +56,7 @@ import type {
   MarkEvent,
   PickEvent,
   PlotRect,
+  TimeWindow,
   ValueRange,
   VisSpec,
 } from '../engine/api';
@@ -138,6 +139,8 @@ export interface ChartFrameProps {
   readonly onSummary?: (s: FrameSummary) => void;
   /** `geo`: the host div is the map's plot surface and key target (T24 §5.14); default `chart`. */
   readonly surface?: 'chart' | 'geo';
+  /** Spans of held data not fresh for the view (#304 §4.3): hatched over the plot. */
+  readonly stale?: readonly TimeWindow[];
 }
 
 interface HoverState {

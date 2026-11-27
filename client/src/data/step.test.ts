@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import logCasesRaw from '../../../wire/fixtures/json/log-step.json?raw';
+import atCasesRaw from '../../../wire/fixtures/json/promql-step-at.json?raw';
 import casesRaw from '../../../wire/fixtures/json/promql-step.json?raw';
-import { LOG_LADDER_MS, PROM_LADDER_MS, logGrid, promGrid, type Grid } from './step';
+import {
+  LOG_LADDER_MS,
+  PROM_LADDER_MS,
+  logGrid,
+  promGrid,
+  promGridAt,
+  type Grid,
+} from './step';
 
 interface StepCase {
   from: number;
@@ -47,5 +55,18 @@ describe('unit:promql-step (TS half)', () => {
 
   it('matches every case of log-step.json (unit:log-step)', () => {
     check(logCasesRaw, 14, logGrid);
+  });
+});
+
+describe('promGridAt parity (#304 §A.1)', () => {
+  it('matches every case of promql-step-at.json', () => {
+    const cases = JSON.parse(atCasesRaw) as (StepCase & { step_ms: number })[];
+    expect(cases).toHaveLength(10);
+    for (const c of cases) {
+      const g = promGridAt(c.from, c.to, c.step_ms);
+      const name = `${String(c.from)}..${String(c.to)} @${String(c.step_ms)}`;
+      if (c.error !== undefined) expect(g, name).toBeNull();
+      else expect(g, name).toEqual({ startMs: c.start, endMs: c.end, stepMs: c.step_ms });
+    }
   });
 });

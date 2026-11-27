@@ -663,6 +663,8 @@ impl Frames {
                     .map_or(Band::Measure, Band::Fixed),
                 events: f.events.clone(),
                 selection: f.selection.clone(),
+                fit: None,
+                fade: None,
             };
             let built = build_frame(&v);
             self.layer_builds += 1;

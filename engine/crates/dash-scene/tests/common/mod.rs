@@ -39,5 +39,7 @@ pub fn viewport(chunk: Chunk, spec: LineSpec, window: Range64, band: Band) -> Vi
         band,
         events: std::sync::Arc::from([]),
         selection: Default::default(),
+        fit: None,
+        fade: None,
     }
 }

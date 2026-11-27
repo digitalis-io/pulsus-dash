@@ -53,8 +53,23 @@ export interface RangeFrame {
   readonly completeness: Completeness;
 }
 
+/** The scope epoch and sequence the BFF used for a request (ADR-0038, #304 §A.2). */
+export interface ScopeStamp {
+  readonly epoch: string;
+  readonly seq: number;
+}
+
 /** A PromQL range result: the frames and what the server planned and sent. */
-export type RangeResult = RangeFrame & { readonly planned: PlannedQuery };
+export type RangeResult = RangeFrame & {
+  readonly planned: PlannedQuery;
+  /**
+   * Per series, aligned with `series`: 1 where the point was absent upstream (`null` / a null
+   * slot); null when no point of that series is absent. Absent member: none is absent.
+   */
+  readonly absent?: readonly (Uint8Array | null)[];
+  /** The response's `X-Pulsus-Scope-Epoch` / `-Seq`; null or absent when it carried none. */
+  readonly scope?: ScopeStamp | null;
+};
 
 export type InstantResult = {
   readonly planned: PlannedQuery;

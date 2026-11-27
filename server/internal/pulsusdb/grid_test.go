@@ -116,3 +116,40 @@ func TestLogGridCases(t *testing.T) {
 		t.Error("the corpus lacks the 14 610-day case")
 	}
 }
+
+// promGridAt parity (Go half, #304 §A.1): every case of wire/fixtures/json/promql-step-at.json.
+func TestPromGridStep(t *testing.T) {
+	b, err := os.ReadFile("../../../wire/fixtures/json/promql-step-at.json") // #nosec G304 -- a fixed fixture
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		From, To   int64
+		StepMs     int64 `json:"step_ms"`
+		Start, End int64
+		Error      string
+	}
+	if err := json.Unmarshal(b, &cases); err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) != 10 {
+		t.Fatalf("%d cases, want 10", len(cases))
+	}
+	for _, c := range cases {
+		g, err := PromGridStep(c.From, c.To, c.StepMs)
+		switch c.Error {
+		case "range":
+			if !errors.Is(err, ErrRangeTooLong) {
+				t.Errorf("%d..%d @%d: err %v, want ErrRangeTooLong", c.From, c.To, c.StepMs, err)
+			}
+		case "ladder":
+			if !errors.Is(err, ErrStepNotOnLadder) {
+				t.Errorf("%d..%d @%d: err %v, want ErrStepNotOnLadder", c.From, c.To, c.StepMs, err)
+			}
+		default:
+			if err != nil || g != (Grid{Start: c.Start, End: c.End, Step: c.StepMs}) {
+				t.Errorf("%d..%d @%d: %+v %v", c.From, c.To, c.StepMs, g, err)
+			}
+		}
+	}
+}

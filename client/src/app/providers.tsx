@@ -9,6 +9,7 @@ import { I18nProvider } from 'react-aria-components';
 import type { Api } from '../api/Api';
 import { StubApi } from '../api/StubApi';
 import type { Session } from '../api/types';
+import type { RangeStore } from '../data/rangeStore';
 import { createBoardPrefs, type BoardPrefs } from '../boards/prefs';
 import { TimeZoneContext } from '../state/timeZone';
 import { ClockContext } from '../state/useTimeContext';
@@ -64,7 +65,17 @@ export function useBoardPrefs(): BoardPrefs {
   return prefs;
 }
 
-export function Providers({ deps, children }: { deps: RouterDeps; children: ReactNode }) {
+export function Providers({
+  deps,
+  children,
+  rangeStore,
+}: {
+  deps: RouterDeps;
+  children: ReactNode;
+  /** The page's range store (#304); tests inject one, the app makes its own. */
+  rangeStore?: RangeStore;
+}) {
+  void rangeStore;
   const [focus] = useState(createShellFocusRequest);
   const [prefs] = useState(() => createBoardPrefs(deps.api, deps.queryClient));
   // One effect, so a StrictMode replay (setup, cleanup, setup) reconnects what it disposed.

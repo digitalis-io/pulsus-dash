@@ -159,6 +159,8 @@ fn build_selection_items() {
         band: Band::Measure,
         events: Arc::from([t0 + 1_800_000.0]),
         selection: Arc::new(sel),
+        fit: None,
+        fade: None,
     };
     let interval = (Some(t0 + 600_000.0), Some(t0 + 1_200_000.0));
     let plain = build_frame(&viewport(SelectionIn::default()));

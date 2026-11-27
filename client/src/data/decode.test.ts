@@ -580,3 +580,34 @@ describe('LogQL planned (plan #116 §3.8, A.3 D1–D3)', () => {
     expect(decodeErrorOf(() => decodeRange(grid)).path).toBe('/planned');
   });
 });
+
+describe('absent masks (#304 §A.3)', () => {
+  it('absent masks', () => {
+    const body = counter();
+    const frames = body['frames'] as Json[];
+    const f0 = frames[0] as Json;
+    const n = (f0['timestamps'] as unknown[]).length;
+    const values: unknown[] = Array.from({ length: n }, (_, i) =>
+      i === 0 ? null : i === 1 ? 'NaN' : 1,
+    );
+    const f1 = frames[1] as Json;
+    const r = decodeRange({
+      ...body,
+      frames: [
+        { ...f0, values },
+        { ...f1, values: Array.from({ length: n }, () => 2) },
+      ],
+    });
+    expect(r.absent).toHaveLength(2);
+    const m = r.absent?.[0];
+    expect(m?.[0]).toBe(1);
+    expect(m?.[1]).toBe(0);
+    expect(Number.isNaN(r.series[0]?.values[1])).toBe(true);
+    expect(r.absent?.[1]).toBeNull();
+    const none = decodeRange({
+      ...body,
+      frames: [{ ...f1, values: Array.from({ length: n }, () => 2) }],
+    });
+    expect(none.absent).toBeUndefined();
+  });
+});

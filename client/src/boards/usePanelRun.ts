@@ -16,6 +16,7 @@ import { useApi } from '../app/providers';
 import { isApiError, type DataPanelSpec } from '../api/types';
 import { promGrid } from '../data/step';
 import type { Diagnostic } from '../editor/lang/types';
+import type { TimeWindow } from '../engine/api';
 import { refusalOf, runKind, type Refusal } from '../explore/useExploreRun';
 import { useTimeContext } from '../state/useTimeContext';
 import { fromInstant, fromRange, type ExploreResult } from '../vis/autovis';
@@ -85,11 +86,18 @@ export interface PanelRun {
   readonly placeholder: boolean;
   /** Runs the current key again (TanStack `refetch()`; the geomap's Retry). */
   readonly retry: () => void;
+  /** `held`: the range store serves it; `bypass`: admission refused, the single request; `off`: not eligible (#304 §4.1). */
+  readonly store: 'held' | 'bypass' | 'off';
+  /** The outcome's rank (Part B): 0 a fill from other steps, 1 the view's own step; null: none. */
+  readonly rank: 0 | 1 | null;
+  /** Held spans not fresh for the view (#304 §4.3). */
+  readonly stale: readonly TimeWindow[];
 }
 
 const NO_DIAGNOSTICS: readonly Diagnostic[] = Object.freeze([]);
 const NO_NAMES: readonly string[] = Object.freeze([]);
 const NO_RETRY = (): void => undefined;
+export const NO_STALE: readonly TimeWindow[] = Object.freeze([]);
 
 export function isAbort(e: unknown): boolean {
   return e instanceof DOMException && e.name === 'AbortError';
@@ -295,6 +303,9 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       stream: null,
       placeholder: false,
       retry: NO_RETRY,
+      store: 'off' as const,
+      rank: null,
+      stale: NO_STALE,
     }),
     [
       text,
