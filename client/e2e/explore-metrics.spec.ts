@@ -244,8 +244,14 @@ test.describe('e2e:explore (fake)', () => {
     await expect
       .poll(
         async () =>
-          (await covering(request, R, R + HOUR, { query: 'empty_metric', state: 'completed' }))
-            .length,
+          // At the view's step: the zoom-out ladder (#304 Part B) covers it too, coarser.
+          (
+            await covering(request, R, R + HOUR, {
+              query: 'empty_metric',
+              state: 'completed',
+              step: '15',
+            })
+          ).length,
       )
       .toBe(2);
   });
