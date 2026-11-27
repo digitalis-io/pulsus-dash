@@ -1,7 +1,8 @@
 /*
- * The Inspector sheet (T25 §4.4, T25-013; plan #192 §4.4): a floating translucent sheet, one
- * elevation (the kit Popover's shadow), radius `float`, inset from the content column's right, top
- * (below the header) and bottom. It never reflows the content.
+ * The Inspector sheet (T25 §4.4, T25-013; plan #192 §4.4, #282): a floating sheet in the menu
+ * material (opaque surface-1 without backdrop-filter support, under reduced transparency or forced
+ * colours), elevation 2, radius `md`, inset from the content column's right, top (below the
+ * header) and bottom. It never reflows the content.
  */
 .sheet {
   position: fixed;
@@ -17,10 +18,9 @@
   );
   overflow: hidden;
   border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--radius-float);
-  background: var(--surface-float);
-  backdrop-filter: blur(var(--space-5)) saturate(140%);
-  box-shadow: 0 var(--space-2) var(--space-6) var(--backdrop);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  box-shadow: var(--elevation-2);
   color: var(--text);
   opacity: 1;
   transition:
@@ -62,10 +62,14 @@
   }
 }
 
-@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
-  .sheet {
-    background: var(--surface-1);
-    backdrop-filter: none;
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  @media (prefers-reduced-transparency: no-preference) and (not (forced-colors: active)) {
+    .sheet {
+      background: var(--material-menu);
+      /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
+      -webkit-backdrop-filter: var(--material-filter);
+      backdrop-filter: var(--material-filter);
+    }
   }
 }
 

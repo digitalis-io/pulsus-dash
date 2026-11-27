@@ -6,7 +6,8 @@
   height: 100vh;
   min-width: 0;
   overflow: hidden;
-  background: var(--surface-1);
+  /* The source list (#282, VL-017): an opaque sidebar surface, never a material. */
+  background: var(--sidebar);
   /* The right hairline is drawn inside the 240 px, so the column and the nav are the same width. */
   box-shadow: inset calc(var(--border-hairline) * -1) 0 0 var(--hairline);
 }
@@ -66,7 +67,7 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 0;
   margin: 0;
   padding: 0 var(--space-2);
   list-style: none;
@@ -79,21 +80,43 @@
   min-height: var(--size-control);
   padding: 0 var(--space-2);
   border-radius: var(--radius);
-  color: var(--text-muted);
+  color: var(--text);
   font-size: var(--font-size-md);
+  font-weight: var(--font-weight-regular);
   text-decoration: none;
+  transition: background-color var(--motion-quick) var(--motion-easing-out);
+}
+
+/* Row icons (and the starred mark) in the accent; the current row's in text-on-accent. */
+.link > [aria-hidden='true'] {
+  color: var(--accent);
 }
 
 .link:hover {
   background: var(--surface-hover);
-  color: var(--text);
 }
 
+/* The current row (#282, VL-017): an accent fill, expanded and collapsed alike; no inset bar. */
 .link[aria-current='page'] {
-  background: var(--surface-2);
-  box-shadow: inset var(--size-focus-ring) 0 0 var(--accent);
-  color: var(--text);
-  font-weight: var(--font-weight-medium);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+.link[aria-current='page'] > [aria-hidden='true'] {
+  color: var(--text-on-accent);
+}
+
+@media (forced-colors: active) {
+  .link[aria-current='page'] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+
+  .link[aria-current='page'] > [aria-hidden='true'] {
+    color: HighlightText;
+  }
 }
 
 .nested {

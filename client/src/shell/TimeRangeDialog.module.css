@@ -33,9 +33,17 @@
 }
 
 .option[data-selected] {
-  background: var(--surface-2);
-  box-shadow: inset var(--size-focus-ring) 0 0 var(--accent);
+  background: var(--accent-fill);
+  color: var(--text-on-accent);
   font-weight: var(--font-weight-medium);
+}
+
+@media (forced-colors: active) {
+  .option[data-selected] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
 }
 
 .option[data-focus-visible] {
@@ -134,7 +142,7 @@
 .cell[data-selection-start],
 .cell[data-selection-end] {
   border-radius: var(--radius);
-  background: var(--accent);
+  background: var(--accent-fill);
   color: var(--text-on-accent);
 }
 

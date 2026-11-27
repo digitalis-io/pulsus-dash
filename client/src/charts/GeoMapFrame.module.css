@@ -55,7 +55,7 @@
 .over {
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-float);
+  border-radius: var(--radius-md);
   background: var(--surface-float);
   color: var(--text);
   font-size: var(--font-size-sm);

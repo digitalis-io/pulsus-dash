@@ -1,35 +1,51 @@
+/* The segmented control (#282, VL-019 as amended): a field-filled capsule track, 28 px, with an
+   accent-filled thumb on the selected item, 2 px in from the track's outer edge (the 1 px edge
+   and 1 px of padding), so 24 px items fit. */
 .group {
   display: inline-flex;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--radius);
-  background: var(--surface-2);
+  gap: 0;
+  min-height: var(--size-control);
+  padding: calc(var(--space-0-5) - var(--border-hairline));
+  border: var(--border-hairline) solid var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--field);
 }
 
 .item {
   min-height: var(--size-target-min);
   padding: 0 var(--space-3);
   border: 0;
-  border-radius: var(--radius);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-muted);
   font: inherit;
   font-size: var(--font-size-sm);
   cursor: default;
+  transition:
+    background-color var(--motion-quick) var(--motion-easing-out),
+    color var(--motion-quick) var(--motion-easing-out);
 }
 
 .item[data-hovered] {
-  background: var(--surface-hover);
+  color: var(--text);
 }
 
 .item[data-selected] {
-  background: var(--surface-1);
-  color: var(--text);
+  background: var(--accent-fill);
+  box-shadow: var(--elevation-1);
+  color: var(--text-on-accent);
   font-weight: var(--font-weight-medium);
 }
 
 .item[data-focus-visible] {
   outline: var(--size-focus-ring) solid var(--focus);
   outline-offset: var(--size-focus-offset);
+}
+
+@media (forced-colors: active) {
+  .item[data-selected] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
 }

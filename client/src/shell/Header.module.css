@@ -9,7 +9,20 @@
   min-width: 0;
   padding: 0 var(--size-page-padding);
   border-bottom: var(--border-hairline) solid var(--hairline);
+  /* Opaque unless translucency is supported and wanted (VL-017 as amended, #282). */
   background: var(--surface-1);
+}
+
+/* The unified toolbar: the bar material where content scrolls beneath it. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  @media (prefers-reduced-transparency: no-preference) and (not (forced-colors: active)) {
+    .header {
+      background: var(--material-bar);
+      /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
+      -webkit-backdrop-filter: var(--material-filter);
+      backdrop-filter: var(--material-filter);
+    }
+  }
 }
 
 .left {
@@ -78,8 +91,9 @@
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-lg);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -92,12 +106,15 @@
   width: var(--size-control);
   height: var(--size-control);
   border: none;
-  border-radius: var(--radius);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-muted);
   font: inherit;
   font-size: var(--font-size-lg);
   cursor: pointer;
+  transition:
+    background-color var(--motion-quick) var(--motion-easing-out),
+    color var(--motion-quick) var(--motion-easing-out);
 }
 
 .star[data-selected] {
@@ -106,6 +123,11 @@
 
 .star[data-hovered] {
   background: var(--surface-hover);
+  color: var(--text);
+}
+
+.star[data-selected][data-hovered] {
+  color: var(--accent);
 }
 
 .star[data-focus-visible] {

@@ -1,3 +1,5 @@
+/* The modal sheet (#282): the backdrop without blur; a lifted surface (elevation 3, radius lg),
+   still centred. */
 .overlay {
   position: fixed;
   inset: 0;
@@ -9,10 +11,52 @@
 
 .modal {
   max-width: calc(100vw - var(--space-12));
-  border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--radius);
+  border: var(--border-hairline) solid var(--border-control);
+  border-radius: var(--radius-lg);
   background: var(--surface-1);
+  box-shadow: var(--elevation-3);
   color: var(--text);
+}
+
+/* VL-014, VL-016: none under reduced motion, so React Aria mounts and unmounts on one frame. */
+@media (prefers-reduced-motion: no-preference) {
+  .overlay[data-entering] {
+    animation: fade var(--motion-float-open) var(--motion-easing-out);
+  }
+
+  .overlay[data-exiting] {
+    animation: fade var(--motion-fast) var(--motion-easing-in) reverse forwards;
+  }
+
+  .modal[data-entering] {
+    animation: rise var(--motion-float-open) var(--motion-easing-out);
+  }
+
+  .modal[data-exiting] {
+    animation: fade var(--motion-fast) var(--motion-easing-in) reverse forwards;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    translate: 0 calc(var(--space-2) * -1);
+  }
+
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
 }
 
 .dialog {
@@ -29,6 +73,7 @@
   margin: 0;
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-lg);
 }
 
 .wideModal {

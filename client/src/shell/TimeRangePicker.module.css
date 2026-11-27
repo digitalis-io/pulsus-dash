@@ -2,16 +2,18 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: var(--size-control);
+  /* A header capsule (#282): the field fill, the control edge. */
+  height: var(--size-control);
   padding: 0 var(--space-3);
-  border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--radius);
-  background: var(--surface-2);
+  border: var(--border-hairline) solid var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--field);
   color: var(--text);
   font: inherit;
   font-size: var(--font-size-md);
   white-space: nowrap;
   cursor: pointer;
+  transition: background-color var(--motion-quick) var(--motion-easing-out);
 }
 
 .trigger[data-hovered] {

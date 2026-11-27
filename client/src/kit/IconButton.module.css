@@ -1,7 +1,9 @@
+/* A 28 px ghost capsule (#282). */
 .iconButton {
   width: var(--size-control);
   height: var(--size-control);
   padding: 0;
+  border-radius: var(--radius-pill);
   color: var(--text-muted);
 }
 

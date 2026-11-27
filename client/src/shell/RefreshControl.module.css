@@ -1,20 +1,21 @@
 .group {
   display: inline-flex;
   align-items: stretch;
-  min-height: var(--size-control);
-  border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--radius);
-  background: var(--surface-2);
+  /* A header capsule (#282): the field fill, the control edge. */
+  height: var(--size-control);
+  border: var(--border-hairline) solid var(--border-control);
+  border-radius: var(--radius-pill);
+  background: var(--field);
 }
 
 .now {
   height: auto;
-  border-radius: var(--radius) 0 0 var(--radius);
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
 }
 
 .divider {
   width: var(--border-hairline);
-  background: var(--hairline);
+  background: var(--border-control);
 }
 
 .interval {
@@ -23,7 +24,7 @@
   gap: var(--space-2);
   padding: 0 var(--space-3);
   border: none;
-  border-radius: 0 var(--radius) var(--radius) 0;
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
   background: transparent;
   color: var(--text);
   font: inherit;
