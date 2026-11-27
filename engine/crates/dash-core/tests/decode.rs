@@ -775,9 +775,16 @@ fn chunk_table_cap_holds_as_frames_let_go() {
     assert_eq!(held.len(), 3);
     assert_eq!(svc.table().len(), 3);
     drop(held);
+    // No ownership change marked: the tick leaves the table alone (no scan).
+    let _ = svc.take_done();
+    assert_eq!(svc.table().len(), 3);
+    // A frame let go (`mark_changed`): the next tick enforces the cap, then stops checking.
+    svc.table_mut().mark_changed();
+    assert!(svc.busy(), "a pending cap check keeps the loop ticking");
     let _ = svc.take_done();
     assert!(svc.table().unheld_bytes() <= one);
     assert_eq!(svc.table().len(), 1);
+    assert!(!svc.table().changed() && !svc.busy());
     assert_eq!(svc.in_flight(), 0);
 }
 

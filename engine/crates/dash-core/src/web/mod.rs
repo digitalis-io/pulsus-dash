@@ -153,7 +153,7 @@ pub fn engine_on_wake(wake: &js_sys::Function) {
 /// table's unheld cap is enforced at once (plan #68 D2, review r1 #1).
 #[cfg(feature = "mt")]
 fn data_changed(e: &mut Engine) {
-    e.decode.table_mut().enforce_cap();
+    e.decode.table_mut().mark_changed();
 }
 
 #[cfg(not(feature = "mt"))]
@@ -716,7 +716,12 @@ impl Engine {
         }
         self.read_input();
         out.extend(self.frames.take_events());
+        let builds = self.frames.layer_builds();
         self.draw_frames(now_ms, t0, &mut out);
+        // A rebuilt layer drops the cached references of the frame's last data (plan #68 D2).
+        if self.frames.layer_builds() != builds {
+            data_changed(self);
+        }
         out.extend(self.frames.take_applied());
         events::batch(&out)
     }

@@ -186,6 +186,8 @@ pub struct ChunkTable {
     next: u32,
     clock: u64,
     cap: usize,
+    /// Chunk ownership may have changed since the cap was last enforced (`mark_changed`).
+    changed: bool,
     entries: BTreeMap<u32, Entry>,
 }
 
@@ -203,6 +205,7 @@ impl ChunkTable {
             next: 1,
             clock: 0,
             cap,
+            changed: false,
             entries: BTreeMap::new(),
         }
     }
@@ -284,21 +287,48 @@ impl ChunkTable {
             .sum()
     }
 
+    /// A frame replaced, cleared or disposed its data, or dropped a cached reference: some chunk
+    /// may be unheld now. The next tick enforces the cap (`enforce_if_changed`).
+    pub fn mark_changed(&mut self) {
+        self.changed = true;
+    }
+
+    /// Whether ownership changed since the cap was last enforced.
+    pub fn changed(&self) -> bool {
+        self.changed
+    }
+
+    /// The cap, only if ownership changed: a tick with no change neither scans nor allocates.
+    pub fn enforce_if_changed(&mut self) {
+        if self.changed {
+            self.enforce_cap();
+        }
+    }
+
     /// Evicts unheld chunks, least recently used first, until their bytes are within the cap. Run
-    /// on every insert, and whenever a frame drops or replaces a chunk (`web`: after each change of
-    /// a frame's data) and at each tick (`DecodeService::take_done`): a chunk becomes unheld when
-    /// the last frame holding it lets it go, not only when another arrives.
+    /// on every insert, and at the next tick after chunk ownership changed (`mark_changed`: a
+    /// frame's data replaced, cleared or disposed, a layer rebuilt), since a chunk becomes unheld
+    /// when the last frame holding it lets it go, not only when another arrives. Within the cap it
+    /// only sums; it allocates only to evict.
     pub fn enforce_cap(&mut self) {
+        self.changed = false;
+        // The total first, without allocating: within the cap, nothing more is done.
+        let total: usize = self
+            .entries
+            .values()
+            .filter(|e| Arc::strong_count(&e.chunk) == 1)
+            .map(|e| e.bytes)
+            .sum();
+        if total <= self.cap {
+            return;
+        }
+        let mut total = total;
         let mut unheld: Vec<(u64, u32, usize)> = self
             .entries
             .iter()
             .filter(|(_, e)| Arc::strong_count(&e.chunk) == 1)
             .map(|(id, e)| (e.last_used, *id, e.bytes))
             .collect();
-        let mut total: usize = unheld.iter().map(|u| u.2).sum();
-        if total <= self.cap {
-            return;
-        }
         unheld.sort_unstable();
         for (_, id, bytes) in unheld {
             if total <= self.cap {
@@ -764,7 +794,7 @@ impl DecodeService {
     /// table here (`ids` when the table has no id left). Also starts the tasks `pump` would.
     pub fn take_done(&mut self) -> Vec<Done> {
         self.pump();
-        self.table.enforce_cap();
+        self.table.enforce_if_changed();
         let mut out = std::mem::take(&mut self.local);
         let mut credits: BTreeMap<u32, u64> = BTreeMap::new();
         while let Ok(o) = self.rx.try_recv() {
@@ -826,8 +856,8 @@ impl DecodeService {
         self.reqs.len()
     }
 
-    /// Decodes in flight: `engine_wants_frame` stays true.
+    /// Decodes in flight, or a cap check pending: `engine_wants_frame` stays true.
     pub fn busy(&self) -> bool {
-        !self.reqs.is_empty() || !self.local.is_empty()
+        !self.reqs.is_empty() || !self.local.is_empty() || self.table.changed()
     }
 }
