@@ -265,6 +265,29 @@ pub fn frame_set_events(id: u32, at_ms: Vec<f64>) {
     });
 }
 
+/// The line's auto-fit window (#304 §A.3): the summary and the auto domain over
+/// `from_ms ≤ t ≤ to_ms` only; both None = every sample. Posted before the frame's data.
+#[wasm_bindgen]
+pub fn frame_set_fit(id: u32, from_ms: Option<f64>, to_ms: Option<f64>) {
+    with(|e| {
+        e.dirty.insert(id);
+        let fit = match (from_ms, to_ms) {
+            (Some(lo), Some(hi)) if lo.is_finite() && hi.is_finite() && lo <= hi => {
+                Some(dash_scene::Range64 { lo, hi })
+            }
+            _ => None,
+        };
+        e.frames.set_fit(id, fit);
+    });
+}
+
+/// Whether the frame's next data fades in over its current one (ADR-0039): called before every
+/// `data` and `data-chunk`; false cuts.
+#[wasm_bindgen]
+pub fn frame_crossfade(id: u32, on: bool) {
+    with(|e| e.frames.set_crossfade(id, on));
+}
+
 /// The page selection (plan #68 C2c2 §3.1): its keys (only 16 lower-case hex digits can match a
 /// series key), and its interval; a layer input, so the frame is rebuilt.
 #[wasm_bindgen]
@@ -443,7 +466,7 @@ fn json_or_null(v: Option<&serde_json::Value>) -> JsValue {
 }
 
 /// The decode results since the last call, as the messages the worker posts (§3.1): `decode-credit`
-/// `{req, bytes}`; `decoded` `{req, chunk, epoch, head (JSON), ts, vs}`; `decode-failed` `{req,
+/// `{req, bytes}`; `decoded` `{req, chunk, epoch, head (JSON), ts, vs, absent}`; `decode-failed` `{req,
 /// kind, message, row, coverage (JSON or null), planned}`. Called at tick start.
 #[cfg(feature = "mt")]
 #[wasm_bindgen]
@@ -475,6 +498,15 @@ pub fn engine_decode_take() -> js_sys::Array {
                     vs.push(&js_sys::Float64Array::from(v.as_slice()).into());
                 }
                 set(&o, "vs", &vs.into());
+                // #304 §A.3: the validity bitmap's null slots, per series (null when none).
+                let absent = js_sys::Array::new();
+                for a in &m.absent {
+                    absent.push(
+                        &a.as_deref()
+                            .map_or(JsValue::NULL, |a| js_sys::Uint8Array::from(a).into()),
+                    );
+                }
+                set(&o, "absent", &absent.into());
             }
             Done::Failed(f) => {
                 set(&o, "t", &"decode-failed".into());
@@ -795,6 +827,7 @@ impl Engine {
         }
         out.append(&mut self.queued);
         let mut presented = false;
+        self.frames.set_now(now_ms);
         for id in std::mem::take(&mut self.dirty) {
             if self.failed.contains(&id) || !self.gpus.contains_key(&id) {
                 continue;
@@ -808,6 +841,10 @@ impl Engine {
             let Some((list, a11y, hover)) = self.frames.build(id) else {
                 continue;
             };
+            // A crossfade keeps the frame presenting until it ends (ADR-0039).
+            if self.frames.fading(id) {
+                self.dirty.insert(id);
+            }
             if let Some(h) = hover {
                 out.push(h);
             }

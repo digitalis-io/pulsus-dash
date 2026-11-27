@@ -81,7 +81,11 @@ fn crossfade_alpha() {
     let alpha = |e: &Option<dash_marks::desc::Emphasis>| e.as_ref().map(|e| e.dimmed);
     assert!((alpha(&lines[0].1).unwrap_or(1.0) - 0.5).abs() < 1e-6);
     assert!((alpha(&lines[1].1).unwrap_or(1.0) - 0.5).abs() < 1e-6);
-    assert!(lines.iter().all(|(_, e)| e.as_ref().is_some_and(|e| e.matched.iter().all(|m| !m))));
+    assert!(
+        lines
+            .iter()
+            .all(|(_, e)| e.as_ref().is_some_and(|e| e.matched.iter().all(|m| !m)))
+    );
     // The axes and the summary are the new data's.
     assert_eq!(summary, plain_summary);
     let guides = |l: &dash_marks::desc::DrawList| {

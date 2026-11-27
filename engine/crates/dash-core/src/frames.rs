@@ -39,8 +39,8 @@ use std::sync::Arc;
 use dash_marks::{DrawList, MarkItem};
 use dash_scene::hover::{HoverAt, HoverOut, PickSnap, hover_at, key_on, overlay_item, pick_item};
 use dash_scene::{
-    Band, Camera, PlotCamera, Range64, SelectionIn, Size64, StageInfo, Theme, Viewport, VisKind,
-    VisSpec, YRange, build_frame,
+    Band, Camera, FADE_MS, Fade, PlotCamera, Range64, SelectionIn, Size64, StageInfo, Theme,
+    Viewport, VisKind, VisSpec, YRange, build_frame,
 };
 use dash_wire::{Chunk, ChunkBuilder, ChunkError, IdAlloc, IdSpace, SeriesMeta};
 use serde_json::{Value, json};
@@ -194,6 +194,11 @@ struct Frame {
     last_hover: Option<HoverOut>,
     /// What the presentation on screen picks on: set when one completes.
     onscreen: Option<Arc<PickSnap>>,
+    /// The line's auto-fit window (#304 §A.3): a layer input.
+    fit: Option<Range64>,
+    /// A data crossfade (ADR-0039): the previous chunk and when it started (NaN: at the next
+    /// build); cleared at 150 ms, by a camera change or by data without a crossfade.
+    fade: Option<(Arc<Chunk>, f64)>,
 }
 
 impl Frame {
@@ -222,6 +227,8 @@ impl Frame {
             layer: None,
             last_hover: None,
             onscreen: None,
+            fit: None,
+            fade: None,
         }
     }
 }
@@ -241,6 +248,8 @@ pub struct Frames {
     events: Vec<String>,
     /// `build_frame` calls (the layer builds).
     layer_builds: u64,
+    /// The worker's clock at the current tick (the crossfade, ADR-0039).
+    now_ms: f64,
 }
 
 impl Default for Frames {
@@ -253,6 +262,7 @@ impl Default for Frames {
             reported: BTreeMap::new(),
             events: Vec::new(),
             layer_builds: 0,
+            now_ms: 0.0,
         }
     }
 }
@@ -349,6 +359,10 @@ impl Frames {
                 f.applied = true;
                 match CameraIn::from_record(view, value, band) {
                     Some(c) => {
+                        // A camera change ends a fade at once: input never waits for it.
+                        if f.camera.map(|o| o.view) != Some(c.view) {
+                            f.fade = None;
+                        }
                         f.camera = Some(c);
                         f.layer_dirty = true;
                         Some(frame)
@@ -531,6 +545,36 @@ impl Frames {
         }
     }
 
+    /// The line's auto-fit window (#304 §A.3): `None` = every sample.
+    pub fn set_fit(&mut self, id: u32, fit: Option<Range64>) {
+        if let Some(f) = self.frames.get_mut(&id) {
+            f.fit = fit;
+            f.layer_dirty = true;
+        }
+    }
+
+    /// The next data fades in over the frame's current chunk (ADR-0039); without a chunk drawn,
+    /// nothing. `false`: the next data cuts (any fade in progress ends).
+    pub fn set_crossfade(&mut self, id: u32, on: bool) {
+        if let Some(f) = self.frames.get_mut(&id) {
+            f.fade = if on {
+                f.data.clone().map(|c| (c, f64::NAN))
+            } else {
+                None
+            };
+        }
+    }
+
+    /// The worker's clock for this tick's builds.
+    pub fn set_now(&mut self, now_ms: f64) {
+        self.now_ms = now_ms;
+    }
+
+    /// The frame is fading: it is built again on the next tick.
+    pub fn fading(&self, id: u32) -> bool {
+        self.frames.get(&id).is_some_and(|f| f.fade.is_some())
+    }
+
     /// The frame's event markers' times, ms (plan #68 C2c1 §3.1), in call order: a layer input.
     pub fn set_events(&mut self, id: u32, at_ms: Vec<f64>) {
         if let Some(f) = self.frames.get_mut(&id) {
@@ -663,9 +707,25 @@ impl Frames {
                     .map_or(Band::Measure, Band::Fixed),
                 events: f.events.clone(),
                 selection: f.selection.clone(),
-                fit: None,
+                fit: f.fit,
                 fade: None,
             };
+            let mut v = v;
+            if let Some((prev, started)) = f.fade.as_mut() {
+                if started.is_nan() {
+                    *started = self.now_ms;
+                }
+                if self.now_ms - *started >= FADE_MS {
+                    f.fade = None;
+                } else {
+                    v.fade = Some(Fade {
+                        prev: prev.clone(),
+                        prev_fit: None,
+                        started_ms: *started,
+                        now_ms: self.now_ms,
+                    });
+                }
+            }
             let built = build_frame(&v);
             self.layer_builds += 1;
             f.series = series_of(&built.list);
@@ -694,7 +754,7 @@ impl Frames {
                 _ => None,
             };
             f.layer = Some(built.list);
-            f.layer_dirty = false;
+            f.layer_dirty = f.fade.is_some();
         }
         // The hover of the last Overlay, on this list's pick (none without a plot); a key index
         // from an older stage is clamped to this pick's samples (`key_on`).

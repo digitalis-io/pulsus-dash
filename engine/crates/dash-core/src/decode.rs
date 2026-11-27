@@ -75,6 +75,9 @@ pub struct Decoded {
     pub head: Value,
     pub ts: Vec<f64>,
     pub vs: Vec<Vec<f64>>,
+    /// Per series: 1 where the validity bitmap marks the slot null, or None when no slot is
+    /// (#304 §A.3): absent and present-NaN draw alike but stay distinct.
+    pub absent: Vec<Option<Vec<u8>>>,
 }
 
 /// A failed decode; for `error`, the row, the coverage so far and `dash.planned`.
@@ -358,6 +361,7 @@ enum Outcome {
         head: Value,
         ts: Vec<f64>,
         vs: Vec<Vec<f64>>,
+        absent: Vec<Option<Vec<u8>>>,
     },
     Failed(Failed),
 }
@@ -528,22 +532,31 @@ impl Work {
         let ts: Vec<f64> = (0..len)
             .map(|k| (info.start_ms + info.step_ms * k as i64) as f64)
             .collect();
+        let on = |i: usize| {
+            chunk
+                .present
+                .as_ref()
+                .is_none_or(|w| w.get(i / 64).is_some_and(|w| w >> (i % 64) & 1 == 1))
+        };
         let vs: Vec<Vec<f64>> = (0..chunk.series.len())
             .map(|s| {
                 let base = s * len;
                 (0..len)
                     .map(|k| {
                         let i = base + k;
-                        let on = chunk
-                            .present
-                            .as_ref()
-                            .is_none_or(|w| w.get(i / 64).is_some_and(|w| w >> (i % 64) & 1 == 1));
                         match chunk.values.get(i) {
-                            Some(v) if on => *v,
+                            Some(v) if on(i) => *v,
                             _ => f64::NAN,
                         }
                     })
                     .collect()
+            })
+            .collect();
+        let absent: Vec<Option<Vec<u8>>> = (0..chunk.series.len())
+            .map(|s| {
+                let base = s * len;
+                let m: Vec<u8> = (0..len).map(|k| u8::from(!on(base + k))).collect();
+                m.contains(&1).then_some(m)
             })
             .collect();
         let head = json!({
@@ -559,6 +572,7 @@ impl Work {
             head,
             ts,
             vs,
+            absent,
         })
     }
 }
@@ -821,6 +835,7 @@ impl DecodeService {
                             head,
                             ts,
                             vs,
+                            absent,
                         } => match self.table.insert(Arc::new(chunk)) {
                             Some(id) => Done::Decoded(Decoded {
                                 req,
@@ -829,6 +844,7 @@ impl DecodeService {
                                 head,
                                 ts,
                                 vs,
+                                absent,
                             }),
                             None => Done::Failed(Failed {
                                 req,
