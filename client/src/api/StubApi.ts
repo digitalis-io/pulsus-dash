@@ -62,7 +62,7 @@ import type {
 } from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
 import { LOG_LEVELS, type LogFrame } from '../data/logFrame';
-import { promGrid } from '../data/step';
+import { logGrid, promGrid } from '../data/step';
 import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
 import {
@@ -858,7 +858,7 @@ export class StubApi implements Api {
   queryLogs(tenant: string, req: LogsRequest, signal?: AbortSignal): Promise<LogsResult> {
     return settle(() => {
       this.checkTenant(tenant);
-      const g = promGrid(req.fromMs, req.toMs, req.widthPx);
+      const g = logGrid(req.fromMs, req.toMs, req.widthPx);
       if (g === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
       const planned = this.planLogs({
         query: req.query,
@@ -916,7 +916,7 @@ export class StubApi implements Api {
   queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<VolumeResult> {
     return settle(() => {
       this.checkTenant(tenant);
-      const g = promGrid(req.fromMs, req.toMs, req.widthPx);
+      const g = logGrid(req.fromMs, req.toMs, req.widthPx);
       if (g === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
       const planned = this.planLogs({
         query: req.query,

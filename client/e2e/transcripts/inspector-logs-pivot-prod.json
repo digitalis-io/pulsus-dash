@@ -1,7 +1,7 @@
 {
   "name": "inspector-logs-pivot-prod",
   "provenance": {"synthetic": "the Logs pivot of fixture P with f=env=prod (#192): only the env=prod checkout stream"},
-  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{env=\"prod\",service_name=\"checkout\"}", "form": {"end": "1795095740000000000", "limit": "1001", "direction": "backward"}},
+  "match": {"method": "GET", "paths": ["/api/logs/v1/query_range"], "query": "{env=\"prod\",service_name=\"checkout\"}", "form": {"end": "1795095750000000000", "limit": "1001", "direction": "backward"}},
   "response": {
     "status": 200,
     "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-inspector-logs-pivot-prod-1"},

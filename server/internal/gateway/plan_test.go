@@ -164,7 +164,7 @@ func TestPromqlPlanned(t *testing.T) {
 	s := &served{}
 
 	rec := postJSON(h, rangePath, rangeBody("rate(x[$__rate_interval])"))
-	const p1 = `{"planned":{"query":"rate(x[1m])","expanded":"rate(x[1m])","bytes":11,"value_type":"vector","rate_candidate":false,"rate_applied":false,"histogram":false,"step_ms":5000},"start":1767225600000,`
+	const p1 = `{"planned":{"query":"rate(x[1m])","expanded":"rate(x[1m])","bytes":11,"value_type":"vector","rate_candidate":false,"rate_applied":false,"histogram":false,"step_ms":15000},"start":1767225600000,`
 	if rec.Code != 200 || !strings.HasPrefix(rec.Body.String(), p1) {
 		t.Errorf("P1: %d %.300s", rec.Code, rec.Body.String())
 	}

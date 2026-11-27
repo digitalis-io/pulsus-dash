@@ -25,7 +25,7 @@ import (
 
 const workloadFrom = 1767225600000
 
-// matrixBody is a matrix of n series of points points at 5 s from workloadFrom: values "1.5",
+// matrixBody is a matrix of n series of points points at 15 s from workloadFrom: values "1.5",
 // every 7th "NaN". It is built before the measured boundary (A.11).
 func matrixBody(n, points int) []byte {
 	b := make([]byte, 0, 64+n*(80+points*22))
@@ -42,7 +42,7 @@ func matrixBody(n, points int) []byte {
 				b = append(b, ',')
 			}
 			b = append(b, '[')
-			b = strconv.AppendInt(b, workloadFrom/1000+int64(j)*5, 10)
+			b = strconv.AppendInt(b, workloadFrom/1000+int64(j)*15, 10)
 			if j%7 == 0 {
 				b = append(b, `,"NaN"]`...)
 			} else {
@@ -110,7 +110,7 @@ func workloadGateway(m http.RoundTripper) http.Handler {
 
 // rangeOnce runs one range request of points grid points and reports its status.
 func rangeOnce(h http.Handler, points int) int {
-	to := workloadFrom + int64(points-1)*5000
+	to := workloadFrom + int64(points-1)*15000
 	body := fmt.Sprintf(`{"query":"w","from":%d,"to":%d,"width_px":%d}`, workloadFrom, to, max(points, 1))
 	req := httptest.NewRequest(http.MethodPost, rangePath, strings.NewReader(body))
 	sw := &statusRecorder{}

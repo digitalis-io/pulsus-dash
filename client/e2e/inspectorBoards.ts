@@ -9,10 +9,10 @@ import { createBoard, deleteBoard, type PanelInput } from './boardApi.ts';
 export const K_FROM = Date.UTC(2026, 10, 19, 12, 44);
 export const K_TO = Date.UTC(2026, 10, 19, 13, 44);
 export const S_FROM = Date.UTC(2026, 10, 19, 12, 0);
-/** 3 h: a board panel of ~570 px plans 30 s steps on it, so H's buckets are 30 s. */
+/** 3 h: a board panel of ~570 px plans 15 s steps on it (#303), so H's buckets are 15 s. */
 export const S_TO = Date.UTC(2026, 10, 19, 15, 0);
-/** Fixture P's instant: 13:41:20. */
-export const P_T = Date.UTC(2026, 10, 19, 13, 41, 20);
+/** Fixture P's instant: 13:41:30 (on the 15 s grid, #303). */
+export const P_T = Date.UTC(2026, 10, 19, 13, 41, 30);
 export const P99 = 'histogram_quantile(0.99, x)';
 export const HIST = 'sum by (le) (rate(inspector_bucket[5m]))';
 
@@ -93,7 +93,7 @@ export async function clickAt(page: Page, p: { x: number; y: number }): Promise<
   await page.mouse.click(p.x, p.y);
 }
 
-/** Opens fixture P: a click on p1 at 13:41:20 near the top, nearest the checkout series. */
+/** Opens fixture P: a click on p1 at 13:41:30 near the top, nearest the checkout series. */
 export async function inspectP(page: Page): Promise<void> {
   await clickAt(page, await plotPoint(page, 'p1', P_T, 0.12, K_FROM, K_TO));
   await expect(heading(page)).toHaveText('p99 latency');

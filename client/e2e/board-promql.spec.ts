@@ -299,7 +299,7 @@ test.describe('e2e:board-promql (fake)', () => {
         'http_requests_total',
       );
 
-      // Case 2: 24 h on a 12-column body (288–1 440 px): step 5 m, so [5m] and [20m].
+      // Case 2: 24 h on a 12-column body (961–1 440 px): step 1 m, so [1m] and [75s] (#303).
       await page.goto(boardUrl(uid, from24, from24 + DAY));
       await expect(page.getByRole('link', { name: 'Open in Explore: Mix' })).toBeVisible();
       const mixSent = async (): Promise<string> =>
@@ -307,7 +307,7 @@ test.describe('e2e:board-promql (fake)', () => {
           x.query.startsWith('avg_over_time(node_memory_free_bytes['),
         )?.query ?? '';
       // The server substituted the macros at the panel's step.
-      await expect.poll(mixSent).toMatch(/\[5m\].*\[20m\]/);
+      await expect.poll(mixSent).toMatch(/\[1m\].*\[75s\]/);
       const sent = await mixSent();
       await page.getByRole('button', { name: 'Panel menu: Mix' }).click();
       await page.getByRole('menuitem', { name: 'Open in Explore' }).click();

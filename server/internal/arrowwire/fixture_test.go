@@ -107,8 +107,10 @@ func buildCounter(t *testing.T) ([]byte, expectBody) {
 	binding := core.TenantBinding{ID: uuid.MustParse("01900000-0000-7000-8000-000000000001"), Slug: "demo", DatasourceURL: url, Kind: "pulsusdb"}
 	rc := &core.RequestCtx{Tenant: core.TenantCtx{Org: core.OrgID(uuid.MustParse("01900000-0000-7000-8000-0000000000aa")), Binding: binding},
 		Principal: core.LocalPrincipal, Scope: core.FullTenantScope(), Priority: core.PriorityInteractive, RequestID: "req-1"}
-	g, err := pulsusdb.PromGrid(1767225600000, 1767229200000, 1200)
-	mustOK(t, err)
+	// The #62 grid of 1 h at 1 200 px (5 s), fixed: the engine's wire tests read this fixture's
+	// layout (721 points), whatever step PromGrid picks today (15 s since #303). dash.planned is
+	// the JSON golden's planned bytes as they are (step_ms 15000): the writer passes them opaque.
+	g := pulsusdb.Grid{Start: 1767225600000, End: 1767229200000, Step: 5000}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	rs, err := c.QueryRange(ctx, rc, pulsusdb.RangeQuery{Query: `sum by (job, instance) (rate(http_requests_total[5m]))`,

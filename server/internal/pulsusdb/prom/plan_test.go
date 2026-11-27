@@ -279,3 +279,39 @@ func TestReservedFixture(t *testing.T) {
 		}
 	}
 }
+
+// #303 acceptance: a 6 h window at 560 px plans a step of 30–40 s and a rate window of 1–1.5 min
+// (max(step + S, 4 × S)); a short window keeps the 15 s scrape floor and its 1 m window, and a long
+// one gets a window one scrape longer than its step.
+func TestStepAndWindow303(t *testing.T) {
+	for _, c := range []struct {
+		name              string
+		spanMs            int64
+		widthPx           int
+		step, window      int64
+		windowText, macro string
+	}{
+		{"6 h at 560 px", 21_600_000, 560, 30_000, 60_000, "1m", "1m"},
+		{"15 min at 1 200 px", 900_000, 1200, 15_000, 60_000, "1m", "1m"},
+		{"1 h at 1 200 px", 3_600_000, 1200, 15_000, 60_000, "1m", "1m"},
+		{"24 h at 1 000 px", 86_400_000, 1000, 60_000, 75_000, "75s", "75s"},
+		{"30 d at 560 px", 2_592_000_000, 560, 3_600_000, 3_615_000, "3615s", "3615s"},
+	} {
+		g, err := pulsusdb.PromGrid(1_767_225_600_000-c.spanMs, 1_767_225_600_000, c.widthPx)
+		if err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if g.Step != c.step {
+			t.Errorf("%s: step %d, want %d", c.name, g.Step, c.step)
+		}
+		if w := RateWindowMs(g.Step); w != c.window || FormatDuration(w) != c.windowText {
+			t.Errorf("%s: window %d %q, want %d %q", c.name, w, FormatDuration(w), c.window, c.windowText)
+		}
+		for q, want := range map[string]string{"rate(x[$__rate_interval])": "rate(x[" + c.macro + "])", "x_total": "rate(x_total[" + c.macro + "])"} {
+			pl, perr := Plan(Inputs{Query: q, Kind: KindRange, Rate: true, StepMs: g.Step}, MetricTypes{"x_total": MetricCounter})
+			if perr != nil || pl.Query != want {
+				t.Errorf("%s: %s planned %q %v, want %q", c.name, q, pl.Query, perr, want)
+			}
+		}
+	}
+}

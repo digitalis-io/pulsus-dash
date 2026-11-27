@@ -65,7 +65,7 @@ describe('stub api queries (plan #62 §4.5)', () => {
       toMs: 3600000,
       widthPx: 1200,
     });
-    expect(r.stepMs).toBe(5000);
+    expect(r.stepMs).toBe(15000);
     expect(r.startMs).toBe(0);
     expect(r.endMs).toBe(3600000);
     expect(r.series).toHaveLength(3);
@@ -73,9 +73,9 @@ describe('stub api queries (plan #62 §4.5)', () => {
       const labels = { __name__: 'stub_metric', series: String(j) };
       expect(s.labels).toEqual(labels);
       expect(s.key).toBe(keyHash(labels));
-      expect(s.timestamps).toHaveLength(721);
+      expect(s.timestamps).toHaveLength(241);
       s.timestamps.forEach((t, i) => {
-        expect(t).toBe(i * 5000);
+        expect(t).toBe(i * 15000);
         expect(s.values[i]).toBe(synthLineValue(62, j, t, 100, 40));
       });
     });

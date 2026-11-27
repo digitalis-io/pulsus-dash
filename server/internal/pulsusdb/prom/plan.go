@@ -139,10 +139,11 @@ func FloorStep(stepMs, floorMs int64) int64 {
 	return (stepMs + floorMs - 1) / floorMs * floorMs
 }
 
-// RateWindowMs is max(4 × step, step + DefaultScrapeMs, 4 × DefaultScrapeMs): a window holds
-// at least four scrapes however small the step.
+// RateWindowMs is max(step + DefaultScrapeMs, 4 × DefaultScrapeMs) (#303): the conventional
+// window, one scrape longer than the step and at least four scrapes, so a rate follows the step
+// and keeps its short spikes.
 func RateWindowMs(stepMs int64) int64 {
-	return max(4*stepMs, stepMs+DefaultScrapeMs, 4*DefaultScrapeMs)
+	return max(stepMs+DefaultScrapeMs, 4*DefaultScrapeMs)
 }
 
 var durationUnits = []struct {

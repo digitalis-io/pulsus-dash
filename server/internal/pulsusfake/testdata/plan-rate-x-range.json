@@ -16,6 +16,6 @@
       "Content-Type": "application/json",
       "X-Pulsus-Query-Id": "fake-plan-rate-x-range"
     },
-    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"job":"a"},"values":[[1767225600,"1"],[1767225605,"2"]]}]}}
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"job":"a"},"values":[[1767225600,"1"],[1767225615,"2"]]}]}}
   }
 }

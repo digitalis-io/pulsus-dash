@@ -513,7 +513,7 @@ func contractLogQL(t *testing.T, c *Client, rc *core.RequestCtx) {
 		}
 	})
 	q := func(limit int) LogRangeQuery {
-		g, err := PromGrid(floorDiv(lo, 1e6), -floorDiv(-hi, 1e6), 1200)
+		g, err := LogGrid(floorDiv(lo, 1e6), -floorDiv(-hi, 1e6), 1200)
 		if err != nil {
 			t.Fatal(err)
 		}

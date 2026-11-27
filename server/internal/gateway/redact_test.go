@@ -235,7 +235,7 @@ func propBody(rng *rand.Rand, needle string) (string, propCase) {
 					m = append(m, enc(p.k)+":"+enc(p.v))
 				}
 				if route == "range" {
-					parts = append(parts, fmt.Sprintf(`{"metric":{%s},"values":[[%d,"1.5"]]}`, strings.Join(m, ","), 1767225600+5*i))
+					parts = append(parts, fmt.Sprintf(`{"metric":{%s},"values":[[%d,"1.5"]]}`, strings.Join(m, ","), 1767225600+15*i))
 				} else {
 					parts = append(parts, fmt.Sprintf(`{"metric":{%s},"value":[1767229200,"1.5"]}`, strings.Join(m, ",")))
 				}
