@@ -20,7 +20,7 @@ type stepCase struct {
 
 func loadStepCases(t *testing.T, name string, want int) []stepCase {
 	t.Helper()
-	b, err := os.ReadFile("../../../wire/fixtures/json/" + name)
+	b, err := os.ReadFile("../../../wire/fixtures/json/" + name) // #nosec G304 -- fixed fixture names of the tests
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestPromGridProperties(t *testing.T) {
 	}
 }
 
-// unit:logql-step: LogGrid keeps the #62 rule (first entry of 1 s … 1 d at least range / width)
+// unit:log-step: LogGrid keeps the #62 rule (first entry of 1 s … 1 d at least range / width)
 // for the log routes, whose pages, volume and transcripts sit on it (#303 leaves it unchanged).
 func TestLogGridCases(t *testing.T) {
 	if !checkStepCases(t, loadStepCases(t, "log-step.json", 14), LogGrid) {

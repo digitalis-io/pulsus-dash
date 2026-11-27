@@ -3,7 +3,7 @@
  * PulsusDB fake through the http-mode BFF. The boards are created through the boards API on the
  * windows of the `inspector-*` transcripts (2026-11-19 UTC): "inspector kinds" on 12:44–13:44
  * (fixture P's p99, the bucket heatmap, the checkout log lines), "inspector selection" and
- * "inspector logs" on 12:00–15:00 (two series, two log streams, a heatmap in 30 s columns).
+ * "inspector logs" on 12:00–15:00 (two series, two log streams, a heatmap in 15 s columns).
  */
 import { expect, test, type Page } from '@playwright/test';
 import { colour } from '../src/styles/tokens.ts';
@@ -133,9 +133,9 @@ test.describe('e2e:inspector (fake)', () => {
     // The result is drawn: its three series are in the table.
     await expect(page.getByRole('table').getByRole('row')).toHaveCount(4);
     await expect(frame.locator('canvas')).toHaveAttribute('aria-label', /3 series/);
-    // Explore's chart plans a 5 s grid on which the 10 s samples leave every other step empty: a
-    // click on an empty step selects nothing (T25 §4.2), so the pixels next to 13:41:20 are tried
-    // too (an engine may round the pointer to a whole pixel).
+    // Explore's chart plans the samples' 15 s grid (#303); a click off a sample's step selects
+    // nothing (T25 §4.2), so the pixels next to 13:41:30 are tried too (an engine may round the
+    // pointer to a whole pixel).
     await expect(async () => {
       const box = await frame.boundingBox();
       const [px = 0, py = 0, pw = 0, ph = 0] =
@@ -203,8 +203,8 @@ test.describe('e2e:inspector (fake)', () => {
         const href = (await logs.getAttribute('href')) ?? '';
         const u = new URL(href, 'http://x');
         expect(u.pathname).toMatch(/\/explore\/logs$/);
-        expect(u.searchParams.get('from')).toBe('2026-11-19T13:40:20.000Z');
-        expect(u.searchParams.get('to')).toBe('2026-11-19T13:42:20.000Z');
+        expect(u.searchParams.get('from')).toBe('2026-11-19T13:40:30.000Z');
+        expect(u.searchParams.get('to')).toBe('2026-11-19T13:42:30.000Z');
         expect(u.searchParams.get('q')).toBe('{service_name="checkout"}');
         // Plain click navigates in place; Back restores the board.
         await logs.click();
@@ -247,8 +247,8 @@ test.describe('e2e:inspector (fake)', () => {
         await frame.locator('[data-frame-ready="true"]').or(frame).first().waitFor();
         await slider.focus();
         await page.keyboard.press('End');
-        // 10 s samples: 13:44 back to 13:41:20.
-        for (let i = 0; i < 16; i++) await page.keyboard.press('ArrowLeft');
+        // 15 s samples: 13:44 back to 13:41:30.
+        for (let i = 0; i < 10; i++) await page.keyboard.press('ArrowLeft');
         await expect(slider).toHaveAttribute('aria-valuenow', String(P_T));
         await page.keyboard.press('Enter');
         await expect(heading(page)).toBeFocused();
@@ -498,15 +498,15 @@ test.describe('e2e:inspector (fake)', () => {
             .poll(() => state(id))
             .toEqual(['s1 line at 12:00:40:-', 's2 line at 12:00:20:-', 's1 line at 12:00:10:-']);
         }
-        // (c) H's bucket [12:00:00, 12:00:30).
-        await clickAt(page, await plotPoint(page, 'h', S_FROM + 15_000, 0.5, S_FROM, S_TO));
+        // (c) H's bucket [12:00:00, 12:00:15) (15 s columns, #303): the 12:00:10 row only.
+        await clickAt(page, await plotPoint(page, 'h', S_FROM + 7_500, 0.5, S_FROM, S_TO));
         await expect(heading(page)).toHaveText('H');
         for (const id of ['l1', 'l2']) {
           await expect
             .poll(() => state(id))
             .toEqual([
               's1 line at 12:00:40:mute',
-              's2 line at 12:00:20:sel',
+              's2 line at 12:00:20:mute',
               's1 line at 12:00:10:sel',
             ]);
         }

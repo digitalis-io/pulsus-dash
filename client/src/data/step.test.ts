@@ -46,7 +46,7 @@ describe('unit:promql-step (TS half)', () => {
     check(casesRaw, 21, promGrid);
   });
 
-  it('matches every case of log-step.json (unit:logql-step)', () => {
+  it('matches every case of log-step.json (unit:log-step)', () => {
     check(logCasesRaw, 14, logGrid);
   });
 

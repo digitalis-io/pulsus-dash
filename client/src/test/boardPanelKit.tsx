@@ -53,7 +53,7 @@ export function openBoard(panels: readonly PanelSpec[], o: Opts = {}) {
 }
 export type Board = ReturnType<typeof openBoard>;
 
-/** Waits for the panels, then gives every panel body 1000 × 240 (step 5 s on 1 h). */
+/** Waits for the panels, then gives every panel body 1000 × 240 (step 15 s on 1 h, #303). */
 export async function ready(...titles: string[]): Promise<void> {
   for (const title of titles) await screen.findByRole('heading', { level: 3, name: title });
   act(() => {
