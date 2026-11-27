@@ -486,7 +486,14 @@ At the end of input, call `FrameSplitter::finish()` first. If bytes remain, call
   ([T04-015](../../designs/technical/T04-wire-format-and-data-plane.md#t04-015--at-most-two-copies-on-the-network-path)).
   The values are copied once into the chunk and once into GPU memory. This is one memcpy more
   than a zero-copy view. In exchange, retained memory is exactly the published values.
-  `bench:decode-r1` will report the cost.
+  `bench:decode-r1` reports the cost.
+- **The join (Part D2,
+  [ADR-0034](../../designs/adr/0034-grid-part-joined-into-one-chunk.md)).** The decoder makes one
+  chunk per grid batch, because a part's series count is not known before it has streamed.
+  `join::join_grid` joins a part's batch chunks, in arrival order, into the one chunk a frame draws
+  (T02-002): one more exact-size copy of the values and validity, sized with checked arithmetic
+  before anything is allocated (an overflow, or more than 2³¹ samples, is `JoinError::Size`). A
+  part of exactly one batch is reused without a copy.
 
 ### Limits and budgets
 
@@ -792,6 +799,116 @@ travel in the input ring, not as messages. Data enters the engine only through `
 series become a chunk in the local id space (`IdSpace::Local`, 2⁶³…2⁶⁴), so Part D's decoder ids
 (`IdSpace::Stream`, 0…2⁶³) never collide with them. The control block is `dash-protocol`'s layout
 v1 (T03 §4.3); `client/src/engine/wasm/layout.gen.ts` is generated from it.
+
+### Range data as DSF (Part D2)
+
+In MT, a board or Explore range query reaches the engine as DSF, and the line frame takes the
+decoded chunk by reference. The main thread never parses the data (T03-003): it reads the response
+body as bytes and hands each read to the render worker, and the pool decodes it.
+
+| Engine | Range data |
+|---|---|
+| MT, booted (status 1 or 2) | DSF, decoded on the pool, the chunk by reference |
+| ST | JSON, as before (a resumable ST decode is #281) |
+| Canvas 2D, or before the first boot | JSON, as before |
+
+**The decoder slot.** `client/src/api/rangeDecoder.ts` holds the API layer's range decoder. It
+imports nothing from `engine/`. When an MT backend boots, `engine/index.ts` fills the slot with
+`streamDecoder(open, register)`: `open` is the backend's `openDecode`, and `register` records the
+result's series array in `engine/wasm/chunkRefs.ts`. A failure for the session clears the slot. With
+the slot filled, `HttpApi.queryRange` sends `Accept: application/vnd.pulsus.dash-stream;v=1,
+application/json;q=0.1` (see [panels](panels.md#range-data-json-or-dsf-68-part-d2)).
+
+**Messages** (`wasm/protocol.ts`; MT only):
+
+| Direction | Message | What |
+|---|---|---|
+| main → render | `decode-begin {req}` | a decode; `req` is page-unique |
+| main → render | `decode-chunk {req, buf}` | one read's exact bytes, in order, `buf` transferred |
+| render → main | `decode-credit {req, bytes}` | bytes the pool has consumed |
+| main → render | `decode-end {req}`, `decode-abort {req}` | the end of the body; the request's signal aborted |
+| render → main | `decoded {req, chunk, epoch, head, ts, vs}` | the table id and epoch of the chunk, the head (grid, `dash.planned`, the final coverage, each series' key and labels), one shared `ts` and each series over the full grid (absent points NaN), `ts` and `vs` transferred |
+| render → main | `decode-failed {req, kind, message, row?, coverage?, planned?}` | `error` (an `error/1` row), `limit` (a B3 limit), `invalid` (T04-010), `ids`, `busy` |
+| main → render | `data-chunk {id, chunk, epoch}` | `setData` by reference |
+| render → main | `chunk-missing {id, chunk}` | the chunk was evicted, or is of another epoch: the frame posts its values |
+| main → render | `chunk-release {chunk, epoch}` | the registered array was collected |
+
+**Backpressure** (`streamDecoder`):
+
+- Each read goes whole. A view that spans its buffer transfers that buffer; any other view is
+  copied (`slice`) to its exact bytes.
+- Main counts the bytes posted minus the credits. At 8 MiB or more (`PAUSE_THRESHOLD_BYTES`) it
+  stops reading, and resumes on the credit that brings the count under it. This is a pause
+  threshold, not a cap: one read can take the count well past it.
+- A read over B3's `max_chunk` (128 MiB) is never posted: main cancels the reader, aborts the
+  decode and retries the request once as JSON.
+- An abort cancels the reader and posts `decode-abort`, whether reading or paused.
+
+**The worker** (`dash-core` `decode.rs`, `web/mod.rs`):
+
+| Thread | Owns |
+|---|---|
+| main | the fetch and its reader (bytes only), the backpressure, the assembly, `chunkRefs` |
+| render | the `DecodeService`, the chunk table and the id allocator; it never decodes |
+| pool | feeding the `FrameSplitter` and `BodyDecoder`; `join_grid` |
+
+`engine_decode_chunk` copies a read into 64-aligned slabs (`slabs_from`) and queues them. `pump`
+starts at most one pool task per request; the task drains the queue in order and credits each slab.
+At END it joins the batch chunks, drops them, and builds `ts` and `vs`. No lock is taken (T03-008):
+a request's decoder state belongs to render or to its one running task, and moves between them
+through channels. At each tick start `engine_decode_take` puts the decoded chunk in the table and
+returns the messages for the worker to post. While a decode runs, `engine_wants_frame` stays true.
+A body with other than one grid part is `invalid`.
+
+**Ids, epochs and the table.**
+
+- The table hands out `u32` ids from 1, increasing and never reused within a worker's life, so an
+  id is exact as a JS number.
+- At `u32::MAX` a decode fails with `ids` and is retried as JSON. A restart starts a new table.
+- Every worker has a boot epoch (1, then +1 per restart), written as `BOOT_EPOCH` and passed in the
+  `boot` message. `data-chunk` and `chunk-release` carry it, and the worker acts only on its own: a
+  stale reference is answered `chunk-missing`, and a late finaliser's release is ignored.
+- The chunks themselves take stream-space `ChunkId`s, a block of 2³² per request, so they never
+  collide with the local ids of TS-built chunks in a renderer's caches.
+
+**Data by reference** (`wasm/frame.ts`, `wasm/chunkRefs.ts`):
+
+| Step | Behaviour |
+|---|---|
+| `WasmFrame.setData(d)` | `refOf(d.series)` of the current epoch → `data-chunk`; else the values, as before |
+| `chunk-missing` | the frame posts the values of its last `setData` |
+| restart | a new epoch: old references are stale, so values are posted |
+| collected | the `FinalizationRegistry` posts `chunk-release`; a frame still holding the chunk keeps drawing it |
+| pressure | unheld chunks beyond 256 MiB are evicted, least recently used first |
+
+Only the identical array matches. A filtered, isolated or merged list (for example `framePlan`'s
+isolated series, or a bar chart's common grid) is another array and goes by value. Chunks belong to
+one request and are looked up only by their id, never by query, so tenants and scopes never share
+one (T04-017).
+
+**The memory contract**
+([ADR-0034](../../designs/adr/0034-grid-part-joined-into-one-chunk.md)), and the only claim made:
+
+| Memory | Bound |
+|---|---|
+| In flight | per decode, the B3 wire limits the decoder enforces (a frame payload of at most 64 MiB, a grid of at most 2²² points, the body and value budgets), × at most 2 decodes per worker |
+| Completed | the table's chunks held by no frame, at most 256 MiB, LRU; plus main's arrays, held by the query cache |
+
+**Fallbacks.**
+
+| Outcome | What happens |
+|---|---|
+| `limit` (a B3 limit, a joined size over 2³¹ samples, a read over `max_chunk`) | one JSON retry |
+| `ids` (the table's ids used up) | one JSON retry |
+| `busy` (two decodes already open) | JSON at once; the DSF body is not read |
+| `gone` (no running engine, or a restart or failure mid-decode) | one JSON retry |
+| `error` (an `error/1` row) | its class's `ApiError` (`errorFromRow`) |
+| `invalid` (T04-010), or a missing or invalid `dash.planned` | `ApiError('internal')` and the `rum:wire_invalid` mark; no retry |
+
+**The probe** (fault builds, `?probe=1`) adds `decodes()` (begun, done, failed, aborted, retried as
+JSON, by-reference `setData`), `chunks()` (the table's count and bytes, through
+`engine_chunk_stats`) and `decoder(on)` (the slot off, or back). `main.tsx` exposes the query
+client there as `__dashProbeQueries`, so the e2e suite can refetch and clear.
 
 ### The input ring (Part C2a1)
 
@@ -1385,8 +1502,10 @@ the lavapipe gate host a 10⁸ synthesis takes about 4 s and each presentation a
 - A chunk holds at most 2³¹ samples (`ChunkError::TooLarge`); timestamps must be finite and
   strictly increasing per series (`ChunkError::Order`).
 - Wire decoding: a frame payload of at most 64 MiB (`MAX_PAYLOAD`), a grid of at most 2²² points
-  (`MAX_GRID_LEN`), the flatbuffer and IPC work bounds above, and the shared limits and budgets
-  ([above](#limits-and-budgets)).
+  (`MAX_GRID_LEN`, a B3 limit: `PartError::Limit("grid len")`), the flatbuffer and IPC work bounds
+  above, and the shared limits and budgets ([above](#limits-and-budgets)).
+- DSF range data (Part D2): MT only; at most 2 decodes in flight per worker; 256 MiB of unheld
+  decoded chunks; each result is held twice while shown (the engine's chunk and main's arrays).
 - The native renderer blocks on the status read after P3; the browser (`Sync::Defer`) draws within
   the current capacity, reads the header back without waiting and re-runs an under-sized frame,
   never reporting it as drawn.
@@ -1434,5 +1553,6 @@ the lavapipe gate host a 10⁸ synthesis takes about 4 s and each presentation a
 | VIZ-001 | the line drawn in the browser | `golden:engine-line`, `canvas2d parity` |
 | T04-001, T04-002, T04-005, T04-012 (subset) | Arrow decode into `Chunk`; exact schemas; coverage rule | `unit:codec-roundtrip`, `unit:coverage-complete` |
 | T04-009, T04-010 | DSF header, splitter and decoder bounds; the shared limits and budgets | `unit:dsf-header`, `unit:fb-reader`, `unit:dsf-bounds`, `unit:dsf-fuzz-smoke`, `unit:limits-json`, `unit:dsf-limits` |
-| T04-015 (as amended) | one decode copy, nothing pinned | `unit:arrow-alignment` |
+| T04-015 (as amended, ADR-0034) | one decode copy, nothing pinned; the join of a grid part's batches, a single batch reused | `unit:arrow-alignment`, `unit:join-grid` |
+| T03-003, T04-010, T04-012, T04-013, T04-017, ADR-0034 | DSF range data decoded on the pool, never on main or render; limits retried as JSON, invalid bodies `internal`; aborts and failures release a request's state; ids and epochs; the unheld-chunk LRU; references by identity | `decode_service`, `limit_fallback`, `invalid_body`, `chunk_ids`, `chunk_table`, `query range dsf`, `read over max_chunk`, `range from decoded`, `error from row`, `invalid planned`, `chunk refs`, `e2e:engine-dsf` (E1–E6), `bench:decode-r1` (report-only) |
 | ADR-0014 §7 | no arrow-rs; `thiserror` and `bytemuck` only | `ci:spec-lint` (`dash-wire-deps`) |

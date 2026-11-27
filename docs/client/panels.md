@@ -380,6 +380,58 @@ for the screen-reader summary (its text comes with #160):
 
 With no finite mark, all four are null.
 
+## Range data: JSON or DSF (#68 Part D2)
+
+Every panel's range query goes through `HttpApi.queryRange`, and its answer is always the same
+`RangeResult` (`data/decode.ts`). Only the transport differs.
+
+| The page | Request | Decode |
+|---|---|---|
+| no range decoder (ST, Canvas 2D, before the first engine boot) | JSON, unchanged | `decodeRange` in TS |
+| an MT engine booted | `Accept: application/vnd.pulsus.dash-stream;v=1, application/json;q=0.1` | the body goes unparsed to the engine, decoded on the pool (see [engine](engine.md#range-data-as-dsf-part-d2)) |
+
+With a decoder:
+
+| Answer | Behaviour |
+|---|---|
+| status ≠ 200 | the envelope's `ApiError` (`api/queryError.ts`), as before |
+| 200 JSON (a BFF that does not serve DSF) | the JSON decode |
+| 200 DSF, decoded | `rangeFromDecoded`, then the series array is registered against the engine's chunk |
+| 200 DSF, an `error/1` row | `errorFromRow` |
+| declined: `limit`, `ids`, `busy`, `gone` | the reader is cancelled and the request is sent once more, as JSON |
+| `invalid` (a malformed body, T04-010), or a missing or invalid `dash.planned` | `ApiError('internal')`, shown by `errorView`'s generic text ("The query failed: …"), and the mark `rum:wire_invalid` `{route, message}`; no retry |
+| abort | the reader is cancelled, the engine's decode aborted, and the promise rejects with the abort |
+
+**`rangeFromDecoded(m, receivedAtMs)`** (`data/dsfRange.ts`) builds the result from the worker's
+message:
+
+| `RangeResult` field | From |
+|---|---|
+| `startMs`, `endMs`, `stepMs` | the head |
+| `series[i]` | the head's key and labels; `timestamps` is the one shared `ts` (the same object for every series), `values` is `vs[i]` over the full grid (absent points NaN) |
+| `planned` | `decodePlanned(JSON.parse(head.planned), '/planned')`, the JSON path's own validator; only this few-hundred-byte object is parsed on main |
+| `completeness` | the final `coverage/1` row: `truncated`; `warnings` (plus the truncation reason when the writer truncated, for example `wire_limit`); `infos`; `queryId` = `upstream_query_ids[0]`; `readCache` from codes 0–3; `readCacheThroughMs` = `read_cache_through`; `dataAgeMs` = receipt time − `data_end`, at least 0 (null without `data_end`) |
+
+**`errorFromRow(row, coverage, planned)`** rebuilds the envelope the BFF gives the same class before
+the header and passes it to the JSON path's `queryError`, so both paths expose the same kind,
+message, fields, position, action, query id and planned query. The query id comes from the
+coverage's `upstream_query_ids[0]`, and `hint.reason` is not carried (no client code reads it). A
+`virtual_unsupported` refusal never reaches a stream: the guard raises it before any request.
+
+| `error/1` code | Envelope |
+|---|---|
+| 0 bad_query | `invalid`, field `/query` (`query.invalid`), `hint.position.offset` from the row |
+| 1 too_broad | `too_broad`, `hint.action: 'narrow'` |
+| 3 forbidden_scope | `scope_denied` |
+| 4 upstream_unavailable | `unavailable` (the row's 502 or 503) |
+| 5 timeout | `unavailable`, `hint.action: 'narrow'` |
+| 7 rate_limited | `budget_exhausted` |
+| 8 internal | `internal` |
+
+The tests are `client/src/data/dsfRange.test.ts` (every D1 route fixture's decoded message,
+`engine/fixtures/range-decoded/`, against the JSON body of the same request) and the `query range
+dsf` cases of `client/src/api/HttpApi.test.ts`.
+
 ## Limits
 
 - At most 200 bars are drawn (`validateFrameData` refuses more as `cap`); the rest are counted in
@@ -433,3 +485,6 @@ The builders `byVersion`, `many`, `threeKeys` and the `barchart-dupes` series ar
   VIZ-005, VIZ-027, VIZ-065 (row 11), VIZ-066 (rows and CSV text), VIZ-067, VIZ-068 (facts),
   VIZ-069.
 - [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md) (the value range).
+- Range data as DSF: [ADR-0034](../../designs/adr/0034-grid-part-joined-into-one-chunk.md),
+  [T04](../../designs/technical/T04-wire-format-and-data-plane.md) §5.2, T04-010, T04-012,
+  [T03](../../designs/technical/T03-browser-runtime.md) T03-003.
