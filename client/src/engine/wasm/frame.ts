@@ -23,6 +23,8 @@
  * | `select(x, y)` (C2b) | a Select record; before `created` dropped (no stage can exist yet) |
  * | `hover` (C2b) | only for the latest Overlay: none while one is held or unpublished, and only when the event's `oseq` extends to the last published Overlay's seq |
  * | `select` (C2b) | forwarded as `{source: 'pointer', item}`: it answers what was on screen |
+ * | `setData(d)` (D2) | a series array registered against a chunk of this worker's epoch (`chunkRefs`) → `data-chunk`; else the values |
+ * | `chunk-missing` (D2) | the values of the last `setData`, when it went by reference to that chunk |
  */
 import type {
   EventMarker,
