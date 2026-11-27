@@ -259,9 +259,10 @@ Copy value and Copy query write the clipboard on the click only (T08-021); a ref
 `size.inspector-inset` from the header, the right and the bottom, `size.inspector` wide (at most
 the content width less 24 px). It never reflows the board, so nothing re-queries.
 
-- **Material:** `surface-float` with a 20 px backdrop blur and 140 % saturation, a hairline, the
-  kit Popover's shadow, `radius.float`. Under `prefers-reduced-transparency` or forced colours it is
-  opaque `surface-1` without the blur. While a modal dialog is open the sheet steps aside.
+- **Material:** `material-menu` with `material-filter` (a 24 px backdrop blur and 180 %
+  saturation), a 1 px `hairline`, `elevation-2`, `radius.md`. Without `backdrop-filter` support,
+  under `prefers-reduced-transparency` or under forced colours it is opaque `surface-1` without the
+  blur ([Visual design](visual-design.md#elevation-and-materials)). While a modal dialog is open the sheet steps aside.
 - **Motion:** it opens with a fade and a 16 px slide over `motion.float-open` (200 ms); a new view
   (a new target, a push or a pop: a new `viewKey`) crossfades the body over 150 ms (the outgoing
   layer is `inert` and `aria-hidden`; a third view drops it at once); a close fades over 150 ms.
@@ -275,18 +276,19 @@ the content width less 24 px). It never reflows the board, so nothing re-queries
 - **Live region:** one polite region outside the sheet gets the model's `announce` text once per
   `viewKey`, at most once per 500 ms (the latest wins, T08-018); the same text again is cleared and
   rewritten on the next frame.
-- **Source cue:** the origin board panel has a 2 px `focus` outline at a 2 px offset
+- **Source cue:** the origin board panel has a `size.focus-ring` (3 px) `focus` outline at a `size.focus-offset` (1 px) offset
   (`data-inspector-origin`).
 
 ## Tokens
 
 | Token | Value | Use |
 |---|---|---|
-| `color.surface-float` | dark `#12151AF0`, light `#FFFFFFF0` | the sheet |
+| `color.material-menu` | dark `#1E2127EB`, light `#FAFBFCE6`; `color.surface-1` without translucency | the sheet |
 | `color.selection` | `accent` at 16 % | the band, selected log rows and table rows |
 | `opacity.dimmed` | 0.35 | unselected marks |
 | `size.inspector`, `size.inspector-tab`, `size.inspector-inset` | 360, 40, 12 px | the sheet |
-| `radius.float` | 10 px | the sheet |
+| `radius.md` | 10 px (was `radius.float`) | the sheet |
+| `elevation.2`, `material.filter` | the menu elevation; `blur(24px) saturate(180%)` | the sheet |
 | `motion.float-open` | 200 ms | the opening |
 
 ## Limits
