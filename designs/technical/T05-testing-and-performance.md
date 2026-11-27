@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.70-rc · 2026-11-27 |
+| **Version** | 1.71-rc · 2026-11-27 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -265,6 +265,33 @@ any 8×8 block inside a text region exceeds 0.25. Goldens MUST change only in a 
 `bench:frame-gallery` runs every page in Chrome with WebGPU and again with WebGL2, on (a) and (b),
 and reports p50 and p99 per page. On (c), the 4K wall, every row must also hold at native
 resolution.
+
+*Harness (#68 Part C2d1).* `bench:frame-gallery` and `bench:frame-line-1e8` run on one committed
+harness (`client/e2e/bench/frameBench.ts`):
+- **Driving.** A scripted pan, zoom and hover runs inside the page, one step per animation frame,
+  as synthetic wheel and pointer events on the frame's canvas: 40 zoom-ins, a 40-step drag pan, 40
+  zoom-outs; then, as a separate `-hover` case, 120 hover steps across the plot and back.
+- **Measuring.** Both renderers mark each presented frame (`chart-present`, where they emit
+  `drawn`). The frame time is the interval between consecutive marks. The draw time comes from
+  the `chart-draw` measures ([ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md)). Both are filtered
+  by the frame's id, and each case reports p50, p95, p99 and max, plus the intervals over 16.7 ms
+  and over 33.4 ms.
+- **Legs.** `bench:frame-gallery` covers every page the engine draws, on the WebGL2 and WebGPU
+  legs, with Canvas 2D as the baseline on the same host.
+- **10⁸ points.** `bench:frame-line-1e8` holds F1c (1 000 series × 10⁵ points) built in the
+  render worker through the probe build (`Frames::set_chunk`). Its cases are plain, selected
+  (m = 1 and m = 500) and hover. On a host without the memory for 10⁸ it reports 10⁷
+  (1 000 × 10⁴), and the lab runs 10⁸.
+- **Pacing.** The script is an open loop: when the engine presents more slowly than the main
+  thread's frames, the input ring coalesces (T03-020), and each case reports its steps and
+  `coalescing` (steps per presented frame). After the script the harness collects until the frame
+  has presented twice. Each case has a time box (60 s in the gallery, 120 s at 10⁸); a case that
+  runs out is recorded `timedOut`, which is a figure, not a failure of its frame count; a drive that
+  ran must still have dispatched its steps and moved the window or the crosshair.
+- **Status.** On the gate host (`make engine-bench`) both are report-only until the lab exists
+  (§7.1, T05-006). Only relative sanity checks fail a run: at least 2 presented frames, the window
+  moved by a script, a hover that moved the crosshair, and no failed frame or `fatal`. PRF-001
+  and PRF-002 are printed beside each result as `ok`, `over`, or `n/a` when there is no interval.
 
 **Per surface** (scripted `.pdrec` scenarios from [13](../product/13-core-flow-storyboard.md) and
 [09 §4](../product/09-performance-contract.md#4-load--data-latency), run against the M-size synthetic
@@ -1422,3 +1449,4 @@ Meta-testing:
 | 1.68-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md), the engine is the default renderer): §7.1 `e2e:mode-matrix` as M1–M15 and the amended integrity leg (the reload after a failed boot makes no engine request); new `e2e:canvas2d-pin` and `ci:engine-built`; the main suite's builds pin Canvas 2D and the engine suite proves the default |
 | 1.69-rc | 2026-11-26 | #68 Part C2c2 (the selection on engine frames, [ADR-0032](../adr/0032-selection-dims-as-one-layer.md)): §7.1 new `e2e:engine-selection`; `golden:engine-overlay` adds `line-50-selection`; `e2e:selection-sources` gains the engine leg; `unit:selection-draw`'s line case is the scratch layer plus one composite at `dimmed`. Numbered after #256's 1.68-rc |
 | 1.70-rc | 2026-11-27 | #173 Part 3b ([T22](T22-value-categorical-and-table-panels.md) I1, the board and Explore surfaces): §7.1's T22 block adds `unit:panel-view-category`, `unit:panel-run-baseline`, `unit:panel-run-cancel` and the eight bar chart e2e gates (`e2e:categorical-coverage` bar rows, `e2e:bars-bounds`, `e2e:bars-filter`, `e2e:bars-inspect`, `e2e:categorical-interactions`, `e2e:selection-empty`, `e2e:selection-keys`, `e2e:categorical-table-view`; PR); `unit:autovis-table` adds the surfaces case. Numbered after #68 Part C2c2's 1.69-rc |
+| 1.71-rc | 2026-11-27 | #68 Part C2d1 (the frame benches): §4.3 `bench:frame-gallery` and `bench:frame-line-1e8` run on the committed harness (in-page scripted pan, zoom and hover; `chart-present` intervals and `chart-draw` measures; p50, p95, p99, max), report-only on the gate host (`make engine-bench`) until the lab; relative sanity checks, per-case time boxes (`timedOut`), steps and coalescing; 10⁷ where the host lacks the memory for 10⁸; the selected (m = 1, 500) and hover cases. Numbered after #173 Part 3b's 1.70-rc |

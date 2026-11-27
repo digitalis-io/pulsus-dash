@@ -17,7 +17,7 @@
  * | `setSelection(s)` (C2c2) | a `selection` message of its keys and interval, unless equal to the last one posted |
  * | `stage` | `stage()` is the last completed presentation's: only an event of the latest `resize()` call counts (none while a Resize is held or unpublished, and only for that call's seq); every `resize()` blocks it until then; a zero size makes it null at once. `onStage` on every change |
  * | Camera, Resize before `created` | held, the latest per kind; on `created` enqueued in call order |
- * | `drawn` | only for the latest `resize()` call: none while a Resize is held or unpublished, and only when the event's `rseq` is that call's seq; reported with the caller's values, never at 0, with its `chart-draw` measure |
+ * | `drawn` | only for the latest `resize()` call: none while a Resize is held or unpublished, and only when the event's `rseq` is that call's seq; reported with the caller's values, never at 0, with its `chart-draw` measure and a `chart-present` mark (C2d1) |
  * | `applied`, `drawn` seqs | extended to 53 bits against the frame's last published seq: the acks `settled()` compares |
  * | `setOverlay(o)` (C2b) | an Overlay record (the hover and the box band); before `created` held, the latest |
  * | `select(x, y)` (C2b) | a Select record; before `created` dropped (no stage can exist yet) |
@@ -420,6 +420,9 @@ export class WasmFrame implements EngineFrame {
             detail: { kind: this.kind, series: ev.series, frame: this.init.id ?? null },
           });
           performance.clearMeasures('chart-draw');
+          // The presented frame, where `drawn` is emitted (the frame benches, plan #68 C2d1 §1).
+          performance.mark('chart-present', { detail: { frame: this.init.id ?? null } });
+          performance.clearMarks('chart-present');
         } catch {
           // The User Timing API is optional: drawing does not depend on it.
         }

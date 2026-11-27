@@ -388,6 +388,46 @@ pub fn engine_probe_renew() {
     });
 }
 
+/// The probe build (plan #68 C2d1 §3.2): F1c (`series` × `points` on a grid) built in the worker
+/// as frame `id`'s data (`Frames::synth_f1c`); the bytes of values it holds, 0 when it failed (an
+/// allocation, an unknown frame), and then the frame is unchanged.
+#[cfg(feature = "probe")]
+#[wasm_bindgen]
+pub fn engine_probe_synth(id: u32, series: u32, points: u32) -> u32 {
+    with(|e| {
+        if !e.frames.synth_f1c(id, series, points) {
+            return 0;
+        }
+        e.dirty.insert(id);
+        // At most 2³¹ samples were made; a byte count past u32 saturates.
+        let bytes = u64::from(series) * u64::from(points) * 8;
+        u32::try_from(bytes).unwrap_or(u32::MAX)
+    })
+    .unwrap_or(0)
+}
+
+/// The probe build (plan #68 C2d1 §3.2): frame `id`'s chunk as JSON `{series, points, bytes}`
+/// (points: the samples of series 0; bytes: of all values), or `null` without one.
+#[cfg(feature = "probe")]
+#[wasm_bindgen]
+pub fn engine_probe_chunk(id: u32) -> String {
+    with(|e| {
+        e.frames.chunk(id).map_or_else(
+            || "null".to_owned(),
+            |c| {
+                let points = c.offsets.get(1).copied().unwrap_or(0);
+                serde_json::json!({
+                    "series": c.series.len(),
+                    "points": points,
+                    "bytes": c.values.len() * 8,
+                })
+                .to_string()
+            },
+        )
+    })
+    .unwrap_or_else(|| "null".to_owned())
+}
+
 /// The device px of a Resize, at least 1 and at most the device's texture limit.
 fn device_px(px: u32, max: u32) -> u32 {
     px.clamp(1, max.max(1))
