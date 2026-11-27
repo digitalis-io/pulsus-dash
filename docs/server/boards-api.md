@@ -315,7 +315,7 @@ the panels, pointer `/variables/<i>/<key>`:
 | `allValue` without `includeAll: true`; or out of its bounds | `…/allValue` | `board.variable.allValue.forbidden`; `board.variable.allValue.invalid` |
 | `values` out of their bounds, with a duplicate, or (constant) not exactly one | `…/values` | `board.variable.values.invalid` |
 | `query.lang` not `promql` or `logql`, `query.text` over 4 096 bytes or not `label_values(…)` | `…/query` | `board.variable.query.invalid` |
-| `query.text` references its own name or a later variable | `…/query` | `board.variable.query.order` |
+| `query.text` references its own name or a later variable (an earlier one, or a name the board does not define, whose value comes from the URL, is allowed) | `…/query` | `board.variable.query.order` |
 | `sort` or `refresh` not in its list | `…/sort`, `…/refresh` | `board.variable.<key>.invalid` |
 | `default` out of its bounds, with a duplicate (decoded), more than one entry without `multi`, `$__all` without `includeAll` or not on its own, or (custom) an entry (decoded) not in `values` | `…/default` | `board.variable.default.invalid` |
 | a `multi` default whose decoded values, as a JSON array, are over 65 536 bytes | `…/default` | `board.variable.default.tooLarge` |

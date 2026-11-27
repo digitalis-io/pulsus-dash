@@ -516,9 +516,10 @@ order; `none` as served.
 
 **Lists** (`useVariableLists`): a custom variable's values, sorted, with no request. A query
 variable's list is `api.variableValues(tenant, {lang, query, fromMs, toMs, vars, limit: 1000})`
-under `['varValues', tenant, uid, name, text, varsJson, fromMs, toMs]` (`staleTime: Infinity`, no
-retry, no placeholder). The key exists only once the variables its query references are ready, so
-lists load in spec order and a dependent fetches again when a value it uses changes. `refresh:
+under `['varValues', tenant, uid, name, lang, text, varsJson, fromMs, toMs]` (`staleTime: Infinity`, no
+retry, no placeholder). The request's `vars` are the earlier variables' values and, for a name the board does not define,
+its URL value (such a name also has the legacy text chip). The key exists only once the variables
+its query references are ready, so lists load in spec order and a dependent fetches again when a value it uses changes. `refresh:
 load` keeps the window of the board's first ready render; `timeChange` follows the window. Retry
 refetches; a new key, a tenant switch or an unmount aborts the request in flight.
 
@@ -540,8 +541,9 @@ Rows: All (with `includeAll`), the selected values the list does not hold, tagge
 "‹value›, custom", shown whatever the search), up to 200 listed matches and then "N more, type to
 narrow", and "Use ‹text›" when the search matches nothing. A truncated list adds "List truncated:
 type a value". Single-select: choosing a row commits it and closes. Multi-select: rows toggle a
-draft (All clears the rows, a row clears All); when one more row would pass 200 values or 65 536
-bytes the rows it would add are disabled and "Selection too large; use All or narrow the search"
+draft (All clears the rows, a row clears All); a value over 200 code points (listed or typed) is
+never choosable, and when one more row would pass 200 values or 65 536
+bytes the rows it would add, "Use ‹text›" included, are disabled and "Selection too large; use All or narrow the search"
 shows, All staying enabled. **Apply** (or ⌘/Ctrl+Enter) commits the draft; Escape or a click
 outside discards it; **Reset to default** removes the URL values; **Retry** refetches a failed list.
 A polite region says "Loading values", "Values unavailable", "‹n› matches" and "‹n› selected".

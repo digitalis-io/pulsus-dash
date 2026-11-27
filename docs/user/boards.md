@@ -482,8 +482,9 @@ The filter bar (**Board filters**) sits left of the toolbar, in both modes:
   **Apply** (or ⌘/Ctrl+Enter). **All** uses every value without listing them; picking a value
   clears All, and All clears the values. A value you picked that the list no longer has stays,
   marked **custom**; when the search finds nothing, **Use ‹text›** picks what you typed. At most
-  200 values can be picked at once (fewer when they are long): further values are greyed out with
-  "Selection too large; use All or narrow the search". **Reset to default** goes back to the
+  200 values can be picked at once (fewer when they are long), and a value can be at most 200
+  characters: values that would break a limit, typed ones too, are greyed out with "Selection too
+  large; use All or narrow the search". **Reset to default** goes back to the
   board's saved choice, Escape closes without changing anything, and **Retry** asks again when the
   values could not be loaded ("Values unavailable"). A variable whose values depend on another one
   reads "Waiting for ‹label›" until that one has a value. Picked values match exactly, including
@@ -510,7 +511,9 @@ can be at most 200 characters ("Use at most 200 characters"). A board can have a
 ("A board can have at most 20 filters"). A message shows under its field and the dialog stays open;
 closing a dialog changes nothing.
 
-Neither variables nor filters are saved with the board. They are part of the address, so each
+A board variable's definition (its values or query, whether it takes several values or All, and
+its default) is saved with the board; the values you pick are not, and neither are the other
+variables' values or the filters. Those are part of the address, so each
 change is a step in the browser history (Back undoes it), a reload keeps them, and **Copy link**
 carries them. Changing them never asks about unsaved changes. A variable's value goes into the
 PromQL panels that use it: changing it reruns only those panels. A Text panel that uses it shows

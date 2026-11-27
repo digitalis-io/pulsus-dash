@@ -313,7 +313,7 @@ variable's values for the board's picker:
 
 | Step | PromQL | LogQL | Refusal |
 |---|---|---|---|
-| 1 | the tenant, `from < to`, `limit` | the same, `to` at most 9 223 372 036 854 | the field errors |
+| 1 | the tenant, `from < to`, `limit`; `vars` (count, names, values) even for `label_values(label)` | the same, `to` at most 9 223 372 036 854 | the field errors |
 | 2 | `varquery.Parse`: `label_values(label)` or `label_values(selector, label)` | the same | 400 `query.invalid` at `/query` |
 | 3 | `prom.SubstituteSelector` (the rules above, macros left as written), then the upstream parser must read one metric selector | `logs.SubstituteSelector`, then exactly one `{…}` and no pipeline | `variable.*`, `field.*`; 400 `query.invalid` |
 | 4 | the byte guard on the selector, before tenant resolution | the same | 400 `virtual_unsupported` |
