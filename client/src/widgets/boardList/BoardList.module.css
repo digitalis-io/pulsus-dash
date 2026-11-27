@@ -1,0 +1,215 @@
+/*
+ * A Board list (plan #216 Part 2a §4.3; T24-027): the field, caption, notice, the list area, the
+ * meter. Tokens only: 36 px rows with hairlines, hover surface-2, a 2 px focus ring, 20 px chips,
+ * no state colour; rows new on a refresh fade in (150 ms), cut under reduced motion.
+ */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  font-size: var(--font-size-sm);
+}
+
+.invalid {
+  width: 100%;
+  height: 100%;
+}
+
+.caption,
+.notice p,
+.stateText {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.notice {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.area {
+  display: flex;
+  position: relative;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tableArea {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.rows {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+  border-bottom: var(--border-hairline) solid var(--hairline);
+}
+
+.row[data-new] {
+  animation: fade-in var(--motion-fast) var(--motion-easing-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row[data-new] {
+    animation: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.link {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: var(--size-list-row);
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.link:hover {
+  background: var(--surface-2);
+}
+
+.link:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: calc(var(--size-focus-ring) * -1);
+}
+
+.title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.uid {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+/* The meta line takes at most half the row, so the title keeps the rest (T24-022). */
+.meta {
+  display: flex;
+  flex: 0 1 auto;
+  max-width: 50%;
+  gap: var(--space-2);
+  align-items: center;
+  min-width: 0;
+  padding-right: var(--space-2);
+  overflow: hidden;
+}
+
+/*
+ * The chips give way, the time does not shrink (the meta line clips it only when it alone is wider
+ * than half the row): one line, right-aligned; the chips that do not fit wrap out of view.
+ */
+.chips {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  min-width: 0;
+  height: var(--size-list-chip);
+  overflow: hidden;
+}
+
+.time,
+.tagsUnknown {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tagsUnknown {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.time {
+  flex: none;
+}
+
+.chip {
+  display: inline-block;
+  max-width: 100%;
+  height: var(--size-list-chip);
+  overflow: hidden;
+  line-height: calc(var(--size-list-chip) - var(--border-hairline) * 2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 var(--space-2);
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.state {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.state:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+}
+
+.meter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-width: 0;
+}
+
+.meterText {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.srOnly {
+  position: absolute;
+  width: var(--border-hairline);
+  height: var(--border-hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

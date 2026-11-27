@@ -220,6 +220,26 @@ describe('unit:widget-gallery-route', () => {
     );
   });
 
+  // Plan #216 Part 2a §4.6: the Board list pages.
+  for (const [page, n] of [
+    ['widget-board-list', 2],
+    ['widget-board-list-search', 2],
+    ['widget-board-list-states', 4],
+  ] as const) {
+    it(`${page}: ${String(n)} Board list bodies`, async () => {
+      installResizeObserver();
+      renderApp(`/t/demo/dev/widgets?page=${page}`);
+      await waitFor(
+        () => {
+          expect(document.querySelectorAll('[data-widget-gallery] [data-board-list]')).toHaveLength(
+            n,
+          );
+        },
+        { timeout: 5_000 },
+      );
+    });
+  }
+
   it('has no widgetGallery route in the http build', () => {
     const deps: RouterDeps = {
       api: {} as never,

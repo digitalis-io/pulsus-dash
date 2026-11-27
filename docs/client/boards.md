@@ -387,7 +387,12 @@ listRecent(tenant, signal?, limit?: number): Promise<RefPage>;   // limit defaul
 the board search, #215) answers without `applied`; `HttpApi` checks each member with `Object.hasOwn`
 (the generated types call them required) and decodes a missing `applied` as `null`, `tagsStale` as
 0, an item's `tags` as `null` and a Starred or Recent `truncated` as `false`. The list modules then
-treat the answer as of unknown coverage ([widgets](widgets.md#board-list-in-progress)).
+treat the answer as of unknown coverage ([widgets](widgets.md#board-list)).
+
+A **503** from any boards call (the configuration store is down) is `ApiError('unavailable')`
+(#216 Part 2a; before, `unknown`): the Board list shows "The configuration store is unavailable",
+and the view recorder still counts it as ambiguous, so a 503 `recordView` reconciles Recent as a
+`network` or `unknown` failure does ([the view recorder](README.md)).
 
 `StubApi` answers as the BFF: `q` matches when the ASCII-lower title contains the ASCII-lower `q`
 or that equals a tag, `tag` when it equals a tag, and both must hold; most recently updated first;

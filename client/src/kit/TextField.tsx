@@ -17,6 +17,8 @@ export interface TextFieldProps extends Omit<AriaTextFieldProps, 'className' | '
   inputRef?: Ref<HTMLInputElement>;
   /** Shown in the empty input; never instead of the label. */
   placeholder?: string;
+  /** Escape in the input reaches the page's Esc ladder (`data-escape-ladder`, T25-007). */
+  escapeLadder?: boolean;
 }
 
 export function TextField({
@@ -25,6 +27,7 @@ export function TextField({
   mono = false,
   inputRef,
   placeholder,
+  escapeLadder = false,
   ...props
 }: TextFieldProps) {
   const invalid = error !== null && error !== undefined;
@@ -40,6 +43,7 @@ export function TextField({
         ref={inputRef}
         className={cx(styles['input'], mono ? styles['mono'] : undefined)}
         {...(placeholder === undefined ? {} : { placeholder })}
+        {...(escapeLadder ? { 'data-escape-ladder': '' } : {})}
       />
       <FieldError className={cx(styles['error'])}>{error}</FieldError>
     </AriaTextField>

@@ -9,6 +9,7 @@ import {
   isDataPanel,
   isWidgetPanel,
   PENDING_WIDGETS,
+  TABLE_WIDGETS,
   textOptions,
   WIDGET_KINDS,
 } from './spec';
@@ -65,6 +66,7 @@ describe('unit:widget-spec', () => {
     expect(panels.filter(isDataPanel).map((p) => p.id)).toEqual(['p-5']);
     expect([...WIDGET_KINDS].sort()).toEqual(['boardList', 'clock', 'text']);
     // Text draws from plan #198 Part 3a.
-    expect([...PENDING_WIDGETS].sort()).toEqual(['boardList', 'clock']);
+    expect([...PENDING_WIDGETS].sort()).toEqual(['clock']);
+    expect([...TABLE_WIDGETS]).toEqual(['boardList']);
   });
 });

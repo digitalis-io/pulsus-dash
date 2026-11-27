@@ -18,6 +18,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useLocation } from 'react-router';
+import { CAPABILITIES } from '../app/capabilities';
 import { cx } from '../kit/cx';
 import { useShellRoute } from '../shell/useShellRoute';
 import type { BoardFilter } from '../state/boardParams';
@@ -86,9 +87,6 @@ export function useInspectedPanelId(): string | null {
 
 /** At most one live-region write per this many ms; the latest text wins (T08-018). */
 const LIVE_MS = 500;
-
-/** Everything the Inspector capabilities gate is off until M-UI4 (T25-015). */
-const CAPABILITIES = Object.freeze({ investigations: false, alerting: false, ai: false });
 
 /** Where focus goes when the Inspector closes (T25-008). */
 function closeTarget(req: InspectRequest, doc: Document): HTMLElement | null {

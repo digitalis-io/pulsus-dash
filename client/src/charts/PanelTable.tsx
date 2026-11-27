@@ -1,7 +1,9 @@
 /**
- * A panel's table view (T22-013, VIZ-066; plan #173 Part 3a §3.7): a read-only grid over a fit's
- * `PanelRows`, every row of the result (drawn or not), virtualised at one `table-row` per row. The
- * bar above it holds the caption (`n rows · d drawn`), Export CSV and the way back to the chart.
+ * A panel's table view (T22-013, VIZ-066; plan #173 Part 3a §3.7, plan #216 Part 2a §3.3): a
+ * read-only grid over a `TableView` (a fit's `PanelRows`, a list widget's rows), every row of the
+ * result (drawn or not), virtualised at one `table-row` per row. The bar above it holds the caption
+ * (`n rows · d drawn`, or the caller's), Export CSV and the way back (`Show chart (Shift+T)`, or the
+ * caller's). Null rows (a list with no snapshot) show `emptyText` as a status, with Export disabled.
  *
  * Keys on the grid (only when the grid itself has focus; a row's name button keeps its own Enter
  * and Space): the first arrow, Home or End sets the active row, which ↑/↓, Home/End and
@@ -27,7 +29,7 @@ import { t } from '../i18n/t';
 import { Button } from '../kit/Button';
 import { cx } from '../kit/cx';
 import { size } from '../styles/tokens';
-import { csvFileName, panelCsv, type PanelRows } from '../vis/reduce';
+import { csvFileName, panelCsv, type TableView } from '../vis/reduce';
 import styles from './PanelTable.module.css';
 
 const ROW_PX = size['table-row'];
@@ -36,9 +38,18 @@ const COUNT = new Intl.NumberFormat('en-GB');
 
 const px = (n: number): string => `${String(n)}px`;
 
+export type { TableView };
+
 export interface PanelTableProps {
-  rows: PanelRows;
+  /** Null: nothing to show yet (`emptyText`), Export disabled. */
+  rows: TableView | null;
   title: string;
+  /** The bar's caption; default `n rows · d drawn`. */
+  caption?: string;
+  /** The way back's label; default `Show chart (Shift+T)`. */
+  closeLabel?: string;
+  /** The status shown for null rows. */
+  emptyText?: string;
   /** The keys of the page selection: their rows are `aria-selected`. */
   selected: ReadonlySet<string>;
   /** A row was chosen (its name button, or Enter on the grid); absent: names are plain text. */
@@ -55,7 +66,7 @@ export interface PanelTableProps {
 }
 
 /** Downloads `rows` as `csvFileName(title)`; the object URL is revoked on the next task. */
-function exportCsv(rows: PanelRows, title: string): void {
+function exportCsv(rows: TableView, title: string): void {
   const url = URL.createObjectURL(new Blob([panelCsv(rows)], { type: 'text/csv;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url;
@@ -66,9 +77,14 @@ function exportCsv(rows: PanelRows, title: string): void {
   }, 0);
 }
 
+const NO_ROWS: TableView = { columns: [], rows: [] };
+
 export function PanelTable({
-  rows,
+  rows: given,
   title,
+  caption,
+  closeLabel,
+  emptyText,
   selected,
   onRow,
   onClose,
@@ -77,13 +93,14 @@ export function PanelTable({
   rowNote,
   focusFirstToggle = false,
 }: PanelTableProps): JSX.Element {
+  const rows = given ?? NO_ROWS;
   const tableId = useId();
   const gridRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const n = rows.rows.length;
   const drawn = rows.rows.reduce((k, r) => (r.drawn ? k + 1 : k), 0);
   // The active row belongs to the rows it was set on: new rows read as none.
-  const [state, setState] = useState<{ rows: PanelRows; index: number } | null>(null);
+  const [state, setState] = useState<{ rows: TableView; index: number } | null>(null);
   const active = state !== null && state.rows === rows && state.index < n ? state.index : null;
 
   const rangeExtractor = useCallback(
@@ -150,7 +167,7 @@ export function PanelTable({
         moveTo(n - 1);
         break;
       case 'Enter': {
-        const key = active === null ? undefined : rows.rows[active]?.mark.key;
+        const key = active === null ? undefined : rows.rows[active]?.key;
         if (key === undefined || onRow === undefined) return;
         onRow(key, 'keyboard', e.currentTarget);
         break;
@@ -166,16 +183,15 @@ export function PanelTable({
   useLayoutEffect(() => {
     gridRef.current?.style.setProperty('--table-cols', String(rows.columns.length - 1));
   }, [rows.columns.length]);
-
   // Show table (T24 §4.12): the first toggle once the virtualiser has mounted its row.
   const pendingFocus = useRef(focusFirstToggle);
   useLayoutEffect(() => {
     if (!pendingFocus.current) return;
     const grid = gridRef.current;
-    const toggle = grid?.querySelector<HTMLElement>('[data-row-toggle]');
-    if (toggle !== null && toggle !== undefined) {
+    const first = grid?.querySelector<HTMLElement>('[data-row-toggle]');
+    if (first !== null && first !== undefined) {
       pendingFocus.current = false;
-      toggle.focus();
+      first.focus();
     } else if (n === 0) {
       pendingFocus.current = false;
       grid?.focus();
@@ -187,10 +203,11 @@ export function PanelTable({
     <div className={cx(styles['root'])} data-panel-table="">
       <div className={cx(styles['bar'])}>
         <p className={cx(styles['caption'])}>
-          {t('table.caption', { n: COUNT.format(n), d: COUNT.format(drawn) })}
+          {caption ?? t('table.caption', { n: COUNT.format(n), d: COUNT.format(drawn) })}
         </p>
         <Button
           variant="secondary"
+          isDisabled={given === null}
           onPress={() => {
             exportCsv(rows, title);
           }}
@@ -198,105 +215,116 @@ export function PanelTable({
           {t('table.export')}
         </Button>
         <Button variant="secondary" onPress={onClose}>
-          {t('table.close')}
+          {closeLabel ?? t('table.close')}
         </Button>
       </div>
-      <div
-        ref={gridRef}
-        role="grid"
-        tabIndex={0}
-        aria-label={title}
-        aria-rowcount={n + 1}
-        aria-colcount={rows.columns.length}
-        aria-readonly="true"
-        {...(active === null ? {} : { 'aria-activedescendant': rowId(active) })}
-        className={cx(styles['grid'], wide ? styles['wide'] : undefined)}
-        onKeyDown={onKeyDown}
-      >
-        <div role="rowgroup" className={cx(styles['head'])}>
-          <div role="row" aria-rowindex={1} className={cx(styles['row'])}>
-            {rows.columns.map((c, k) => (
-              <div key={c} role="columnheader" aria-colindex={k + 1} className={cx(styles['cell'])}>
-                {c}
-              </div>
-            ))}
+      {given === null ? (
+        <p role="status" className={cx(styles['empty'])}>
+          {emptyText}
+        </p>
+      ) : (
+        <div
+          ref={gridRef}
+          role="grid"
+          tabIndex={0}
+          aria-label={title}
+          aria-rowcount={n + 1}
+          aria-colcount={rows.columns.length}
+          aria-readonly="true"
+          {...(active === null ? {} : { 'aria-activedescendant': rowId(active) })}
+          className={cx(styles['grid'], wide ? styles['wide'] : undefined)}
+          onKeyDown={onKeyDown}
+        >
+          <div role="rowgroup" className={cx(styles['head'])}>
+            <div role="row" aria-rowindex={1} className={cx(styles['row'])}>
+              {rows.columns.map((c, k) => (
+                <div
+                  key={c}
+                  role="columnheader"
+                  aria-colindex={k + 1}
+                  className={cx(styles['cell'])}
+                >
+                  {c}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div ref={bodyRef} role="rowgroup" className={cx(styles['body'])}>
+            {items.map((it) => {
+              const r = rows.rows[it.index];
+              if (r === undefined) return null;
+              const key = r.key;
+              const note = selected.has(key) ? (rowNote?.(key) ?? null) : null;
+              return (
+                <div
+                  key={key}
+                  id={rowId(it.index)}
+                  role="row"
+                  aria-rowindex={it.index + 2}
+                  aria-selected={selected.has(key)}
+                  data-index={it.index}
+                  data-row-key={key}
+                  data-drawn={r.drawn ? 'yes' : 'no'}
+                  data-active={it.index === active ? '' : undefined}
+                  className={cx(styles['row'], styles['bodyRow'])}
+                >
+                  {r.cells.map((c, k) => (
+                    <div
+                      key={rows.columns[k] ?? k}
+                      role="gridcell"
+                      aria-colindex={k + 1}
+                      className={cx(styles['cell'])}
+                    >
+                      {k === 0 && toggle !== undefined && (
+                        <button
+                          type="button"
+                          className={cx(styles['toggle'])}
+                          aria-pressed={selected.has(key)}
+                          aria-label={toggle.label(key)}
+                          data-row-toggle=""
+                          onClick={() => {
+                            toggle.onToggle(key);
+                          }}
+                        />
+                      )}
+                      {k === 0 && onRow !== undefined ? (
+                        <button
+                          type="button"
+                          className={cx(styles['name'])}
+                          onClick={(e) => {
+                            onRow(key, e.detail === 0 ? 'keyboard' : 'pointer', e.currentTarget);
+                          }}
+                        >
+                          {c}
+                        </button>
+                      ) : (
+                        c
+                      )}
+                      {k === 0 && onInspectRow !== undefined && (
+                        <button
+                          type="button"
+                          className={cx(styles['inspect'])}
+                          data-row-inspect=""
+                          onClick={(e) => {
+                            onInspectRow(key, e.currentTarget);
+                          }}
+                        >
+                          {t('geo.table.inspect')}
+                        </button>
+                      )}
+                      {k === 0 && note !== null && (
+                        <span className={cx(styles['note'])} data-row-note="">
+                          {note}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
           </div>
         </div>
-        <div ref={bodyRef} role="rowgroup" className={cx(styles['body'])}>
-          {items.map((it) => {
-            const r = rows.rows[it.index];
-            if (r === undefined) return null;
-            const key = r.mark.key;
-            const note = selected.has(key) ? (rowNote?.(key) ?? null) : null;
-            return (
-              <div
-                key={key}
-                id={rowId(it.index)}
-                role="row"
-                aria-rowindex={it.index + 2}
-                aria-selected={selected.has(key)}
-                data-index={it.index}
-                data-row-key={key}
-                data-drawn={r.drawn ? 'yes' : 'no'}
-                data-active={it.index === active ? '' : undefined}
-                className={cx(styles['row'], styles['bodyRow'])}
-              >
-                {r.cells.map((c, k) => (
-                  <div
-                    key={rows.columns[k] ?? k}
-                    role="gridcell"
-                    aria-colindex={k + 1}
-                    className={cx(styles['cell'])}
-                  >
-                    {k === 0 && toggle !== undefined && (
-                      <button
-                        type="button"
-                        className={cx(styles['toggle'])}
-                        aria-pressed={selected.has(key)}
-                        aria-label={toggle.label(key)}
-                        data-row-toggle=""
-                        onClick={() => {
-                          toggle.onToggle(key);
-                        }}
-                      />
-                    )}
-                    {k === 0 && onRow !== undefined ? (
-                      <button
-                        type="button"
-                        className={cx(styles['name'])}
-                        onClick={(e) => {
-                          onRow(key, e.detail === 0 ? 'keyboard' : 'pointer', e.currentTarget);
-                        }}
-                      >
-                        {c}
-                      </button>
-                    ) : (
-                      c
-                    )}
-                    {k === 0 && onInspectRow !== undefined && (
-                      <button
-                        type="button"
-                        className={cx(styles['inspect'])}
-                        data-row-inspect=""
-                        onClick={(e) => {
-                          onInspectRow(key, e.currentTarget);
-                        }}
-                      >
-                        {t('geo.table.inspect')}
-                      </button>
-                    )}
-                    {k === 0 && note !== null && (
-                      <span className={cx(styles['note'])} data-row-note="">
-                        {note}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

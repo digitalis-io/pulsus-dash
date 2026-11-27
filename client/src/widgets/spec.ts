@@ -26,9 +26,15 @@ export const WIDGET_KINDS: ReadonlySet<PanelVisKind> = new Set<PanelVisKind>([
 
 /**
  * The widget kinds this version does not draw yet: such a panel shows `widget.kindUnavailable`.
- * The clock until A2, the board list until #216 Part 2; Text draws from #198 Part 3a.
+ * The clock until A2; Text draws from #198 Part 3a, the board list from #216 Part 2a.
  */
-export const PENDING_WIDGETS: ReadonlySet<WidgetKind> = new Set<WidgetKind>(['clock', 'boardList']);
+export const PENDING_WIDGETS: ReadonlySet<WidgetKind> = new Set<WidgetKind>(['clock']);
+
+/**
+ * The widget kinds with a table view (T24-026; plan #216 Part 2a): the Panel menu has "Show as
+ * table" / "Show list", and Shift+T flips it.
+ */
+export const TABLE_WIDGETS: ReadonlySet<WidgetKind> = new Set<WidgetKind>(['boardList']);
 
 /** Whether `kind` is a widget kind. */
 export function isWidgetKind(kind: PanelVisKind): kind is WidgetKind {

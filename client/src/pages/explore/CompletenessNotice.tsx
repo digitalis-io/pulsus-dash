@@ -1,7 +1,8 @@
 /**
  * The completeness notice of an Explore result (plan #63 Part C §3.3, C.2; PRF-031): a truncated
  * result shows the "Partial data" badge, its warnings and Narrow; warnings without truncation show
- * the "Warnings" badge; infos are listed as notes. Each list shows at most five items. Nothing is
+ * the "Warnings" badge; infos are listed as notes. Without `onNarrow` (plan #216 Part 2a) there is
+ * no Narrow. Each list shows at most five items. Nothing is
  * rendered when there is nothing to say. No state colour: completeness is not an entity state.
  */
 import { useId, type JSX } from 'react';
@@ -14,7 +15,7 @@ import styles from './Explore.module.css';
 
 export interface CompletenessNoticeProps {
   readonly completeness: Completeness;
-  readonly onNarrow: () => void;
+  readonly onNarrow?: () => void;
 }
 
 const MAX_ITEMS = 5;
@@ -52,7 +53,7 @@ export function CompletenessNotice({
             {c.truncated ? t('explore.notice.partial') : t('explore.notice.warnings')}
           </span>
           <Items items={c.warnings} labelledBy={badgeId} />
-          {c.truncated && (
+          {c.truncated && onNarrow !== undefined && (
             <Button variant="ghost" onPress={onNarrow}>
               {t('explore.narrow')}
             </Button>
