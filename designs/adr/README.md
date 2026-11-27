@@ -35,6 +35,7 @@
 | [0031](0031-gpu-engine-default-renderer.md) | The GPU chart engine is the default renderer and Canvas 2D the fallback; only `canvas2d` forces Canvas 2D; a failed boot marks the session; every build includes the engine; amends 0014 §4, 0022 decision 2 and 0023 decision 4 | **Accepted** (2026-11-26) |
 | [0032](0032-selection-dims-as-one-layer.md) | While a selection is active, a line chart's unmatched series are dimmed together: one layer composited once at `dimmed`, in every renderer; amends 0025 | **Accepted** (2026-11-26) |
 | [0033](0033-st-render-worker-script.md) | The `pulsus-engine` policy admits the single-thread render worker (three exact URLs); pages that are not isolated, and browsers without `Atomics.waitAsync`, get the ST engine; amends 0026 | **Accepted** (2026-11-27) |
+| [0035](0035-platform-ui-face.md) | The platform UI face on Apple systems (`html[data-platform="apple"]`); Inter and JetBrains Mono stay self-hosted and draw every canvas; amends 0014 §1 | **Accepted** (on merge of #282 Part 1) |
 
 Format: context, decision, consequences. An ADR is immutable once Accepted. It can be changed
 only by a later ADR that supersedes it.
