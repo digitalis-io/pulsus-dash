@@ -3,7 +3,6 @@ package vars
 import (
 	"strconv"
 	"strings"
-	"unicode/utf8"
 )
 
 // Refusal is one refused reference (plan #289 §3.4): row 7b (Where "") or a context of T07-031.
@@ -47,10 +46,11 @@ func (r *RegexString) decode(raw string) {
 				r.bad = true
 				return
 			}
-			if multi || c >= utf8.RuneSelf {
+			if multi {
 				b.WriteRune(c)
 			} else {
-				b.WriteByte(byte(c))
+				// One byte: UnquoteChar gives a value under 256 when multi is false.
+				b.WriteByte(byte(c & 0xff))
 			}
 			s = tail
 		}

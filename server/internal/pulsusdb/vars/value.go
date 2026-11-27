@@ -82,7 +82,7 @@ type Map map[string]Value
 // UnmarshalJSON decodes an object of values; any other shape, or an entry of another shape, is a
 // *TypeError.
 func (m *Map) UnmarshalJSON(b []byte) error {
-	var raw map[string]json.RawMessage
+	var raw map[string]json.RawMessage              //nolint:forbidigo // a request member, not an upstream body
 	if err := json.Unmarshal(b, &raw); err != nil { //nolint:forbidigo // a request member, not an upstream body
 		return &TypeError{}
 	}
@@ -119,7 +119,7 @@ func (v *Value) UnmarshalJSON(b []byte) error {
 	if len(b) == 0 || b[0] != '{' {
 		return typeError("value")
 	}
-	var o map[string]json.RawMessage
+	var o map[string]json.RawMessage                             //nolint:forbidigo // a request member, not an upstream body
 	if err := json.Unmarshal(b, &o); err != nil || len(o) != 1 { //nolint:forbidigo // a request member, not an upstream body
 		return typeError("object")
 	}

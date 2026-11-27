@@ -678,7 +678,7 @@ type structuredCase struct {
 // prefixes (M01, R05, L04a, H03, …).
 func structuredCases(t *testing.T, path string, prefixes ...string) []structuredCase {
 	t.Helper()
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // the fixture paths are constants of the tests
 	if err != nil {
 		t.Fatal(err)
 	}
