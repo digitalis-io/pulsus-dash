@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.19-rc · 2026-11-27 |
+| **Version** | 1.20-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -729,11 +729,18 @@ unavailable" and still lists the rows; a null gazetteer gives `gazetteerUnavaila
 
 #### T24-088 — Host and plan
 **MUST** — The geomap is honest 2D (T24-001) with one spec
-([T21-002](T21-time-and-distribution-panels.md#t21-002--one-spec-per-kind)). `PanelFrame` routes `geomap` (`vis/framePlan.ts`:
-`'geomap'` → `{ kind: 'geomap' }`) to `GeoMapFrame`, which calls `planGeo` (§5.14) and renders
-`<ChartFrame surface="geo" onFrame>` ([ADR-0027](../adr/0027-geomap-frame-seam.md)).
-- **Plan order** (the first that holds): a pending run → `loading`; a failed run → `error`;
-  `validateGeoRows` fails → `invalid`, "Invalid map data (‹detail›)"; a null basemap →
+([T21-002](T21-time-and-distribution-panels.md#t21-002--one-spec-per-kind)). `panelView` routes a
+`geomap` panel, after the blocked rows, to `{ kind: 'geomap' }` (`notMetric` for a LogQL log answer;
+the host renders loading and errors itself), and `framePlan('geomap')` is `{spec: null, data: null,
+notice: 'geomap'}`; `PanelFrame` renders `GeoMapBody` (§5.14), the lazy `GeoMapFrame`, which calls
+`planGeo(p, size, view, {seq, motion})` (§5.14; `seq` +1 per new row set, `motion` `cut` under
+reduced motion) and renders `<ChartFrame surface="geo" onFrame>`
+([ADR-0027](../adr/0027-geomap-frame-seam.md)). `PanelRun` gains `placeholder` (the outcome is the
+previous key's, TanStack `isPlaceholderData`) and `retry()` (its `refetch()`).
+- **Plan order** (the first that holds): a pending run (no answer and no error, or a placeholder
+  while fetching) → `loading`; a failed run with no answer of its own → `error`; a `string` result
+  (`{code: 'kind'}`) or
+  a failing `validateGeoRows` → `invalid`, "Invalid map data (‹detail›)"; a null basemap →
   `mapDataUnavailable` (the rows, no frame); plot W < 160 or H < 120 CSS px → `tooSmall`; 0 rows →
   `empty`; 0 `shown` rows → `noneShown`; else `ok`. Only `empty`, `noneShown` and `ok` build a frame.
   `tooSmall` follows `invalid`, so its rows are always validated (`rows: GeoRowSet`, never null).
@@ -1876,9 +1883,19 @@ light `#6B7280`. The host and the plan:
 
 ```ts
 export interface GeoMapFrameProps { panelId: string; title: string; unit: Unit; options: GeomapOptions;
-  thresholds: readonly ThresholdLine[] | null; run: PanelRun;
+  thresholds: Thresholds | null /* the panel's; the spec gets their lines */; run: PanelRun;
   geoData: { basemap: Basemap | null; gazetteer: Gazetteer | null } | 'loading';
   fill?: boolean; sizeMemo?: { current: FrameSize | null }; onInspect?: ChartFrameProps['onInspect'] }
+// The component's props: geoData optional (absent: the shared loadGeoData()); inspectorSource?: boolean (default
+//   true; the editor preview passes false: it never inspects or selects); onLoadFailed?(): the map renderer could not load.
+// ChartFrameProps += onSummary?(s: FrameSummary): each a11y summary, after the frame's own state.
+// The producer contract (Canvas 2D): when the scene import rejects and the load's generation still matches, the frame is not
+//   disposed and its kind is still geomap, the frame emits exactly one a11y summary {kind: 'geomap', geo: null, …} (no drawn);
+//   otherwise nothing. GeoMapFrame calls onLoadFailed() for a geomap summary with geo null.
+// GeoMapBody (pages/board/): the lazy host inside a panel-local error boundary keyed by an attempt count. A host-chunk
+//   rejection or onLoadFailed shows one state: attempt 0 "Map couldn't load" + Retry (attempt + 1: a fresh lazy, boundary
+//   and frame, so both imports run again; no cache-busting URL); attempt ≥ 1 "Map couldn't load. Reload the page to try
+//   again." + Reload (location.reload()). Focused when focus was in the panel; other panels stay usable.
 // ChartFrameProps += onFrame?(f: EngineFrame | null) (null before dispose), surface?: 'chart' | 'geo'. With 'geo': no crosshair
 //   and no label targets; the canvas wrapper is the plot surface (tabIndex 0, role="application", aria-roledescription="map",
 //   aria-label = the title) and the key target; its keys call frame.cameraKey (T24-091)
@@ -1893,7 +1910,8 @@ export type GeoPlan = // vis/geo/plan.ts
   | { state: 'invalid'; issue: FrameDataIssue }
   | { state: 'mapDataUnavailable' | 'tooSmall'; rows: GeoRowSet }   // validated (T24-088)
   | { state: 'empty' | 'noneShown' | 'ok'; rows: GeoRowSet; spec: GeoMapSpec; data: { kind: 'geo'; geo: GeoFrame } };
-export function planGeo(p: GeoMapFrameProps, size: FrameSize, view: GeoView | null /* T24-088 */): GeoPlan;
+export function planGeo(p: GeoMapFrameProps, size: FrameSize, view: GeoView | null /* T24-088 */,
+  o: { seq: number; motion: 'ease' | 'cut'; staleAtMs?: number | null /* a kept refetch failure, first seen */ }): GeoPlan;
 ```
 
 ### 5.15 Geomap rows and the geomap spec version (part E step 1b; `vis/geo/frame.ts`, OpenAPI, Go, TS)
@@ -1969,14 +1987,19 @@ export function geoTarget(s: GeoRowSet, frameSeq: number, ref: { kind: 'marker' 
 //   resolve: n > 8 ? { panelId, runId: 'geo:' + target.id } : null,
 //   next: i → { target: cluster or group → the marker of rows[i]; aggregate → geoTarget({kind: 'group', from, entry: i}),
 //     selection: its keys, title } }
-// GeoMapFrame: views = its last root target + every view its `next` built (reset per root); registerMembers(panelId,
-//   'geo:' + id → { texts: all n, members: [], labels: all n } of that view, else null); unmount disposes
+// The host answers 'geo:' + id from the open request's own geo target (resolveGeoMembers(target, runId) →
+//   { texts: all n, members: [], labels: all n }, else null); no GeoMapFrame registers a resolver (#234 Parts 3 and 4)
 export function geoPlace(r: GeoRow): string; // the gazetteer name, else lat, lon toFixed(4); '' if not placed
 // charts/geo/GeoMarkList.tsx
 export interface GeoMarkListProps { title: string; marks: GeoMarksEvent['marks']; rows: ReadonlyMap<string, GeoRow>; unit: Unit;
   complete: boolean /* the meter reads '100 %' */; selection: Selection | null; frame: EngineFrame | null;
-  onInspect(t: GeoInspectorTarget, f: HTMLElement): void }
-export function geoMarkName(m: GeoMarksEvent['marks'][number], rows: GeoMarkListProps['rows'], unit: Unit, sel: Selection | null): string;
+  seq: number /* a new one is a refetch */; rowSet: GeoRowSet; onInspect(t: GeoInspectorTarget, f: HTMLElement): void;
+  onActive(id: string | null): void /* → setFocusMark */; announce(text: string): void }
+export function geoMarkName(m: GeoMarksEvent['marks'][number], rows: GeoMarkListProps['rows'], unit: Unit, sel: Selection | null,
+  thresholds: boolean): string;
+// charts/PanelTable.tsx += toggle?: { label(key): string /* "Select ‹name›" */; onToggle(key): void } (a leading 24 px
+//   aria-pressed button, T25-016); onInspectRow?(key, el) (an Inspect button per row); rowNote?(key): string | null (a
+//   visible note on a selected row, "Not placed")
 // vis/geo/rows.ts
 export function geoTable(s: GeoRowSet, unit: Unit): PanelRows; export function geoCsv(s: GeoRowSet, unit: Unit): string;
 export function geoFacts(title: string, s: GeoRowSet, series: readonly SeriesFrame[], instant: boolean, unit: Unit): SummaryFacts | null;
@@ -2152,6 +2175,16 @@ link, a reload and history reproduce them; they are never stored and never sent 
 
 ## 7. Performance budget
 
+
+**The geo bundle rule** (#234 Part 3, `geoInRoute` in `client/scripts/lib/bundleModules.ts`, run by
+`npm run origins` on both builds, fail-closed like the Markdown rule): no module of `src/vis/geo/`,
+`src/engine/(canvas2d|controller)/geo/`, `src/charts/geo/`, `GeoMapFrame` or `inspector/geoModel`
+is in the static closure of `index.html` or `src/pages/boards/BoardsPage.tsx`; the board route's
+(`BoardPage.tsx`) may hold only `vis/geo/targets.ts` and `inspector/geoModel.ts`; a missing root,
+an unknown import or an unmapped chunk is a finding; `src/charts/GeoMapFrame.tsx` and
+`src/engine/canvas2d/geo/scene.ts` are dynamic entries (`missing-geo-entry`) and in
+`bundle-budgets.json` `required.lazyModules`. The loader imports the asset URLs itself, so the
+`geo-assets` input (`urls.ts`) stays an entry nothing imports.
 The Markdown and parse5 code loads as lazy chunks within the ADR-0014 §8 budgets (ADR-0024).
 Report-only: `bench:markdown-render` (64 KiB ≤ 16 ms p95) and `bench:clock-tick` (20 Clocks × 12 zones
 ≤ 2 ms per tick).
@@ -2893,7 +2926,7 @@ name,key,value,value_status,state,location_status,location_detail,source,code,pr
 | `unit:geo-announce` | charts/GeoMapFrame.test.tsx, the real host, a fake clock | N, 600 ms apart: `other (12)`, e18, n27, Back, Back, e18; then n27, Back, n27 within 100 ms | `Inspector: other (12), 12 groups, 23 series` · `Inspector: Level 2: e18, 12 series` · `Inspector: Level 3: {env="e18", pod="p27"}, 27 ms` · the 2nd · the 1st · the 2nd (the same text, rewritten); the quick run: only the last, at 500 ms | T25-008 |
 | `unit:geo-nav` | charts/GeoMapFrame.test.tsx, the real host | N, by keys: the legend `other (12)` → entry 11 (e18) → entry 9 (n27) → Back → Back → close | one request; the selection 23 keys → 12 (n18–n29) → [n27] → 12 → 23; the breadcrumb `other (12)` › `e18` › n27's name; the `h2` focused per step; close → the legend button | T24-092 |
 | `unit:geo-nav-life` | same | at n27: (a) a refresh removing n27; (b) V: cluster:v1 at W1, entry v1, the window → W2; (c) close, a query edit, the panel removed, a route change, a tenant reset; (d) e18 and e17 in one tick; (e) unmount; (f) the aggregate expanded, e18, Back | (a) n27 kept; Back → n18–n29; the resolver `geo:group:{"present":true,"value":"e18"}` → 12; (b) Logs `{service_name="checkout"}` over W1; (c) closed, `nav` [], nothing dispatched; (d) e18 accepted, e17 rejected; (e) disposed; (f) e18: n18–n25 + "+4 more", buttons → their rows; Back: e7–e14 + "+4 more", buttons → the groups | T25-011, T25-012 |
-| `unit:geo-inspect` | inspector/model.test.ts | the targets above; k01; the context `f=env=prod` | the inspect block; §4.13; k01 chips: Explore on, Logs off "No log stream label on this series (needs service_name or job)" | T25-002, T25-009 to T25-011 |
+| `unit:geo-inspect` | inspector/model.test.ts | the targets above; k01; the context `f=env=prod` | the inspect block; §4.13; k01 chips: Explore on (naming env); with `f=env=prod` Logs `{env="prod"}` (T25-010: the identity AND the filters); with no filter Logs off "No log stream label on this series (needs service_name or job)" | T25-002, T25-009 to T25-011 |
 | `unit:geo-single-group` | charts/GeoMapFrame.test.tsx | S1 | no legend; Tab surface → list → meter; selects | T24-093 |
 | `unit:geo-table-csv` | vis/geo/rows.test.ts | G; X; G's table | CSV G and CSV X exactly; the table shows the unguarded values (k13's place `-89.9000, 0.0000`, x3's detail with its LF, x4's `cloud cloud_region==1`); the CSV parsed (RFC 4180) gives the guarded ones (`'-89.9000, 0.0000`) | VIZ-066, T24-094 |
 | `unit:list-table-csv` (amended) | widgets/lists/table.test.ts | the guard block | each result | T24-026 |
@@ -3159,3 +3192,4 @@ None.
 | 1.17-rc | 2026-11-27 | #234 Part 1 (E2): §5.0 the geomap version landed as v7 (before the change-feed version, so the change-feed and map-sync versions take the next free numbers). §5.15: `GeoGroup` gains `memberLabels` (the final labels, parallel to `members`) and `GeoRowSet` `groupBy`; `geoRowSet` takes the result's `source` and the panel's `Thresholds` (lines lack the direction) and `validateGeoRows` takes `Thresholds \| null`; a null and an absent `groupBy` or `view` are one stored value. §5.16: `GeoInspectorTarget` gains `set`. T24-091: the `map-water`, `map-land`, `map-coast` and `map-border` values (the light strokes in the hairline ink) |
 | 1.18-rc | 2026-11-27 | #234 Part 2 (E2): T24-091 records the inertia's release velocity as the spring's initial velocity (D = 2v/ω), which T02-022's rest form does not fix. §5.14 names the mark tokens `pattern-ink` and `category-other` with their values. §10.4: the File column of `unit:geo-radius-project`, `unit:geo-camera`, `unit:geo-ownership`, `unit:geo-keys-engine`, `unit:geo-inertia` and `unit:geo-marks` moves from `engine/canvas2d/geo/` to `engine/controller/geo/` (the renderer-free half any engine reuses, [ADR-0031](../adr/0031-gpu-engine-default-renderer.md); gate IDs unchanged). §10.4 and §10.5 keys: at G's fit the world's east edge is 135.84 px from the centre, so containment caps Shift+→; the 256 px pan is Shift+← |
 | 1.19-rc | 2026-11-27 | #216 Part 2a (I2): the Board list view. T24-021: Esc's clear commits `''` at once. T24-023: the clamp of the shown count is kept per answer (an empty answer starts again at `limit`). T24-025: the count is announced only for a search the user committed; a row's chips and time are its link's description. T24-026: the facts are the list's description; the table caption `‹n› boards · ‹d› shown` and "Show list (Shift+T)". §4.5: the failed-refresh notice shows the rows' fetch time. §5.7: the Part 2a modules. §11: Part 2a landed, Part 2b next |
+| 1.20-rc | 2026-11-27 | #234 Part 3 (E2, the host): T24-088 records `panelView` → `{kind: 'geomap'}` (after the blocked rows; `notMetric` for a LogQL log answer), `framePlan` → `notice: 'geomap'`, `PanelRun.placeholder` and `retry()`, and `planGeo`'s `{seq, motion}` (and `staleAtMs` for a kept refetch failure). §5.14: `thresholds: Thresholds \| null`, the component's optional `geoData`, `inspectorSource` and `onLoadFailed`, `ChartFrameProps.onSummary`, the Canvas 2D producer contract of the failure summary and `GeoMapBody`'s host-chunk boundary with Retry, then Reload. §5.16: `GeoMarkListProps` += `seq`, `rowSet`, `onActive`, `announce`; `geoMarkName` takes `thresholds`; `PanelTable` += `toggle`, `onInspectRow`, `rowNote`; the host answers `geo:` member ids from the request (no frame registers). §7: the `geoInRoute` bundle rule. §10.5: `unit:geo-inspect`'s k01 Logs chip follows T25-010 (with `f=env=prod` it is `{env="prod"}`; off with no filter) |
