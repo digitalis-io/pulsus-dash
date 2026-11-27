@@ -515,9 +515,9 @@ func TestDatasourceCheckItest(t *testing.T) {
 }
 
 // itest:scope-paths and itest:plan-authority with the DSF Accept (plan #68 D1 §5, ENT-006,
-// T06-029): the same requests with and without the DSF Accept send the same upstream requests
-// (method, path, form without the remaining-deadline timeout, and the tenant's decoration), and
-// the DSF answers are DSF bodies.
+// T06-029): the same requests with and without the DSF Accept send the same upstream query
+// requests (method, path, form without the remaining-deadline timeout, and the tenant's
+// decoration), and the DSF answers are DSF bodies.
 func TestPromqlRangeDSFItest(t *testing.T) {
 	const dsf = "application/vnd.pulsus.dash-stream;v=1"
 	for _, c := range storetest.Clusters(t) {
@@ -544,6 +544,9 @@ func TestPromqlRangeDSFItest(t *testing.T) {
 				}
 				var out []sent
 				for _, r := range fake.Requests() {
+					if r.Path != "/api/v1/query_range" {
+						continue // the metric-types lookup is cached after the first run
+					}
 					f := r.Form
 					f.Del("timeout")
 					out = append(out, sent{r.Method, r.Path, f.Encode(), []string{r.Header.Get("X-Scope-OrgID"), r.Header.Get("X-Pulsus-Database"),
