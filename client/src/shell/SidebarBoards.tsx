@@ -76,7 +76,7 @@ function BoardLinks({
           <Link
             to={{ pathname: `/t/${tenant}/board/${b.uid}`, search: contextSearchString(search) }}
             state={BOARD_LINK_STATE}
-            className={cx(styles['link'], styles['nested'])}
+            className={cx(styles['link'], star ? undefined : styles['nested'])}
             onPointerEnter={() => {
               preloadRoute('board');
             }}

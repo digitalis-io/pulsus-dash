@@ -6,13 +6,24 @@
   height: var(--size-avatar);
   border: none;
   border-radius: 50%;
-  /* The accent fill, not a series colour: series colours are for data (VL-002, #282). */
+  /* The accent fill, not a series colour: series colours are for data (VL-002, #282); a subtle
+     ring set off from the bar. */
   background: var(--accent-fill);
+  box-shadow:
+    0 0 0 var(--border-hairline) var(--sidebar-top),
+    0 0 0 calc(var(--border-hairline) * 2) var(--border-control);
   color: var(--text-on-accent);
   font: inherit;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   cursor: pointer;
+  transition: box-shadow var(--motion-hover) var(--motion-easing-out);
+}
+
+.avatar[data-hovered] {
+  box-shadow:
+    0 0 0 var(--border-hairline) var(--sidebar-top),
+    0 0 0 calc(var(--border-hairline) * 2) var(--border-field);
 }
 
 .avatar[data-focus-visible] {

@@ -48,6 +48,10 @@
   --ramp-7: #8DBBEB;
   --ramp-8: #B1D3F7;
   --ramp-9: #D8EAFE;
+  --row-hover: #FFFFFF0D;
+  --row-selected: #4F6A94;
+  --segment-thumb: #353A43;
+  --segment-track: #FFFFFF0A;
   --selection: #5B9BFF29;
   --series-1: #7AA2D6;
   --series-2: #C9A36B;
@@ -60,6 +64,9 @@
   --shadow-ambient: #00000066;
   --shadow-key: #0000008C;
   --sidebar: #121418;
+  --sidebar-bottom: #13151A;
+  --sidebar-edge: #FFFFFF0F;
+  --sidebar-top: #17191E;
   --surface-1: #15171C;
   --surface-2: #1D2026;
   --surface-float: #15171CF0;
@@ -72,6 +79,7 @@
   --text: #E9EBEF;
   --text-muted: #9AA1AC;
   --text-on-accent: #F5F8FF;
+  --text-on-row-selected: #E9EBEF;
   --unknown: #6B7280;
   --watch: #D9C84A;
 }
@@ -123,6 +131,10 @@
   --ramp-7: #3C6995;
   --ramp-8: #365371;
   --ramp-9: #313F4D;
+  --row-hover: #1C22330D;
+  --row-selected: #5274AD;
+  --segment-thumb: #FFFFFF;
+  --segment-track: #1C22330D;
   --selection: #2563C929;
   --series-1: #3F6FA8;
   --series-2: #93703A;
@@ -135,6 +147,9 @@
   --shadow-ambient: #141A2414;
   --shadow-key: #141A2426;
   --sidebar: #EBEDF1;
+  --sidebar-bottom: #E4E6EB;
+  --sidebar-edge: #1C22330F;
+  --sidebar-top: #E8EAEE;
   --surface-1: #FFFFFF;
   --surface-2: #EEF0F3;
   --surface-float: #FFFFFFF0;
@@ -147,6 +162,7 @@
   --text: #1B1E25;
   --text-muted: #565E6B;
   --text-on-accent: #FFFFFF;
+  --text-on-row-selected: #FFFFFF;
   --unknown: #7A818C;
   --watch: #8A7A0F;
 }
@@ -160,6 +176,7 @@
   --elevation-state: inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow);
   --font-advance-mono: 0.6;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --font-size-bar-title: 15px;
   --font-size-display: 32px;
   --font-size-lg: 16px;
   --font-size-md: 13px;
@@ -179,23 +196,30 @@
   --material-filter: blur(24px) saturate(180%);
   --motion-easing-in: cubic-bezier(0.4, 0, 1, 1);
   --motion-easing-out: cubic-bezier(0.2, 0, 0, 1);
+  --motion-easing-spring: cubic-bezier(0.22, 1, 0.36, 1);
   --motion-easing-zoom: cubic-bezier(0.16, 1, 0.3, 1);
   --motion-fast: 150ms;
   --motion-float-open: 200ms;
+  --motion-hover: 120ms;
+  --motion-pop-close: 120ms;
+  --motion-pop-open: 180ms;
   --motion-quick: 100ms;
+  --motion-sidebar: 240ms;
+  --motion-slide: 220ms;
   --motion-standard: 250ms;
   --motion-zoom-close: 200ms;
   --motion-zoom-open: 400ms;
   --opacity-area: 0.28;
   --opacity-chip: 0.12;
   --opacity-dimmed: 0.35;
+  --opacity-icon: 0.85;
   --opacity-tag: 0.18;
   --radius: 6px;
   --radius-lg: 10px;
   --radius-md: 8px;
   --radius-tag: 3px;
   --radius-xs: 4px;
-  --size-avatar: 28px;
+  --size-avatar: 24px;
   --size-board-cols: 12px;
   --size-board-gap: 12px;
   --size-board-legend-table-min: 240px;
@@ -254,7 +278,12 @@
   :root {
     --motion-fast: 0ms;
     --motion-float-open: 0ms;
+    --motion-hover: 0ms;
+    --motion-pop-close: 0ms;
+    --motion-pop-open: 0ms;
     --motion-quick: 0ms;
+    --motion-sidebar: 0ms;
+    --motion-slide: 0ms;
     --motion-standard: 0ms;
     --motion-zoom-close: 0ms;
     --motion-zoom-open: 0ms;

@@ -1,7 +1,7 @@
 /**
- * `unit:material-fallback` (#282, VL-017 as amended): the materials (header, popover, tooltip,
- * Inspector) are opaque `surface-1` in their base rule; the translucent material and its backdrop
- * filter apply inside `@supports (backdrop-filter…)` only, with no positive preference query, so a
+ * `unit:material-fallback` (#282, VL-017 as amended): the materials (popover, tooltip, Inspector;
+ * the header bar now carries the sidebar's opaque material) are opaque `surface-1` in their base
+ * rule; the translucent material and its backdrop filter apply inside `@supports (backdrop-filter…)` only, with no positive preference query, so a
  * browser without the reduced-transparency query (Safari, Firefox) still gets it; a later
  * `@media (prefers-reduced-transparency: reduce), (forced-colors: active)` rule sets the opaque
  * `surface-1` back with no filter.
@@ -15,7 +15,6 @@ import { describe, expect, it } from 'vitest';
 const CLIENT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 const MATERIALS: readonly { file: string; cls: string }[] = [
-  { file: 'src/shell/Header.module.css', cls: '.header' },
   { file: 'src/kit/Popover.module.css', cls: '.popover' },
   { file: 'src/kit/Tooltip.module.css', cls: '.tooltip' },
   { file: 'src/inspector/Inspector.module.css', cls: '.sheet' },
