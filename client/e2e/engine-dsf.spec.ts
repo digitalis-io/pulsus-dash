@@ -267,29 +267,41 @@ test.describe('e2e:engine-dsf', () => {
   test('e2e:engine-dsf E4 supersede and release', async ({ page, request }, info) => {
     only(info, 'lavapipe');
     test.setTimeout(150_000);
-    await withLineBoard(page, request, LINE, ENGINE, async (uid) => {
-      await onEngine(page, 'a');
+    // A slow answer (800 ms), so each newer window supersedes the request in flight.
+    const SLOW: PanelInput[] = [
+      { id: 's', title: 'S', text: 'dsf_slow', grid: [0, 0, 12, 8], vis: { kind: 'line' } },
+    ];
+    await withLineBoard(page, request, SLOW, ENGINE, async () => {
+      await onEngine(page, 's');
+      const failedRange: string[] = [];
+      page.on('requestfailed', (r) => {
+        if (new URL(r.url()).pathname === RANGE) failedRange.push(r.failure()?.errorText ?? '');
+      });
       const before = await decodes(page);
-      // Five window changes in a row (in-app navigation, a minute apart).
-      for (let k = 1; k <= 5; k++) {
-        const url = boardUrl(uid, S_FROM - k * 60_000, S_TO - k * 60_000, ENGINE);
-        await page.evaluate((u) => {
-          const state: unknown = history.state;
-          history.pushState(state, '', u);
-          dispatchEvent(new PopStateEvent('popstate', { state }));
-        }, url);
-      }
-      // The last window's result is drawn; every decode begun has ended (done, failed or aborted).
+      // Five refetches in a row, each superseding the one in flight (`cancelRefetch`): the fake
+      // answers one fixed grid and the BFF refuses off-grid samples, so the window stays.
+      await page.evaluate(async () => {
+        for (let k = 0; k < 5; k++) {
+          void window.__dashProbeQueries?.invalidateQueries();
+          await new Promise((r) => setTimeout(r, 150));
+        }
+      });
+      // Every decode begun ends (done, failed or aborted); the superseded requests were aborted.
       await expect
-        .poll(async () => {
-          const d = await decodes(page);
-          return d.begun > before.begun && d.done + d.failed + d.aborted === d.begun;
-        })
-        .toBe(true);
-      const fake = await fakeRequests(request, { query: 'inspector_two' });
-      const last = fake.filter((r) => r.start === String((S_FROM - 5 * 60_000) / 1000));
-      expect(last.length).toBeGreaterThanOrEqual(1);
-      await expect(panel(page, 'a').locator('[data-frame-ready="true"]')).toHaveCount(1);
+        .poll(
+          async () => {
+            const d = await decodes(page);
+            const ended = d.done + d.failed + d.aborted;
+            return d.done > before.done && ended === d.begun ? 'settled' : JSON.stringify(d);
+          },
+          { timeout: 30_000 },
+        )
+        .toBe('settled');
+      expect(failedRange.length).toBeGreaterThanOrEqual(1);
+      await expect
+        .poll(async () => (await fakeRequests(request, { state: 'cancelled' })).length)
+        .toBeGreaterThanOrEqual(1);
+      await expect(panel(page, 's').locator('[data-frame-ready="true"]')).toHaveCount(1);
       // The query cache dropped and collected: the table keeps only the frames' own chunks.
       const cdp = await page.context().newCDPSession(page);
       await page.evaluate(() => window.__dashProbeQueries?.clear());
