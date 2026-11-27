@@ -12,7 +12,7 @@ import { plotOf, plotX } from './helpers.ts';
 
 const FROM = '2026-01-01T00:00:00.000Z';
 const TO = '2026-01-01T01:00:00.000Z';
-/** The board spec version that adds `vis.unit` (BoardSchemaVersion). */
+/** The board spec version that adds `vis.unit` (a save stores it or a later one). */
 const UNITS_VERSION = 8;
 
 const boardUrl = (uid: string): string =>
@@ -138,7 +138,8 @@ test.describe('e2e:board-units (fake)', () => {
       schema_version: number;
       spec: { panels: { vis: { unit?: { id: string } } }[] };
     };
-    expect(body.schema_version).toBe(UNITS_VERSION);
+    // Saved at the units version or a later one (v9 adds variables, #289).
+    expect(body.schema_version).toBeGreaterThanOrEqual(UNITS_VERSION);
     expect(body.spec.panels[0]?.vis.unit).toEqual({ id: 'seconds' });
     await page.getByRole('button', { name: 'Edit board' }).click();
     await expect(page.locator('.react-grid-item')).toHaveCount(1);
