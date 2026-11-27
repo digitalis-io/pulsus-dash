@@ -77,7 +77,7 @@ describe('tokens generate', () => {
       '--opacity-chip: 0.12;',
       '--opacity-area: 0.28;',
       '--elevation-card: inset 0 1px 0 var(--highlight), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient);',
-      '--elevation-state: inset 0 1px 0 var(--highlight), 0 0 0 1px var(--state-colour), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--state-glow);',
+      '--elevation-state: inset 0 1px 0 var(--highlight), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow);',
     ]) {
       expect(common, decl).toContain(decl);
     }

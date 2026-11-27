@@ -14,8 +14,6 @@
 
 .failing {
   --state-colour: var(--failing);
-  /* A failing board panel's glow (elevation.state, #282 Part 2a); no other state has one. */
-  --state-glow: var(--failing-glow);
 }
 
 .unknown {

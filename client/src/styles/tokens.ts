@@ -262,7 +262,7 @@ export const elevation = {
   "2": "inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key)",
   "3": "inset 0 1px 0 var(--highlight), 0 4px 12px var(--shadow-ambient), 0 24px 64px var(--shadow-key)",
   "card": "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)",
-  "state": "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--state-colour), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--state-glow)",
+  "state": "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow)",
 } as const;
 
 export const material = {
