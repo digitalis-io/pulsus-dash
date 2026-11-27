@@ -341,7 +341,7 @@ standard = 250
 # The Inspector opening (T25 §4.4).
 float-open = 200
 # A modal dialog zooming open from its origin, and closing back to it (#282).
-zoom-open = 320
+zoom-open = 400
 zoom-close = 200
 easing-zoom = "cubic-bezier(0.16, 1, 0.3, 1)"
 easing-out = "cubic-bezier(0.2, 0, 0, 1)"

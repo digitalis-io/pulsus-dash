@@ -294,5 +294,5 @@ pub mod motion {
     pub const QUICK: f32 = 100.0;
     pub const STANDARD: f32 = 250.0;
     pub const ZOOM_CLOSE: f32 = 200.0;
-    pub const ZOOM_OPEN: f32 = 320.0;
+    pub const ZOOM_OPEN: f32 = 400.0;
 }

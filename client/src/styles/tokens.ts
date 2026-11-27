@@ -285,7 +285,7 @@ export const motion = {
   "quick": 100,
   "standard": 250,
   "zoom-close": 200,
-  "zoom-open": 320,
+  "zoom-open": 400,
 } as const;
 
 export const seriesPalette = {
