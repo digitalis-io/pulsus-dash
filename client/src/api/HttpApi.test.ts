@@ -1,5 +1,5 @@
 import createClient from 'openapi-fetch';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import counterRaw from '../../../wire/fixtures/json/promql-range-counter.json?raw';
 import gaugeRaw from '../../../wire/fixtures/json/promql-instant-gauge.json?raw';
 import logStreamsRaw from '../../../wire/fixtures/json/logql-streams-backward-1.json?raw';
@@ -8,6 +8,17 @@ import logVolumeRaw from '../../../wire/fixtures/json/logql-volume.json?raw';
 import type { Api } from './Api';
 import type { paths } from './gen/schema';
 import { HttpApi } from './HttpApi';
+import {
+  DSF_ACCEPT,
+  MAX_CHUNK,
+  PAUSE_THRESHOLD_BYTES,
+  setRangeDecoder,
+  streamDecoder,
+  type DecodedRange,
+  type DecodeSession,
+} from './rangeDecoder';
+import { rangeFromDecoded } from '../data/dsfRange';
+import { decodedMessage, routeJson } from '../test/dsfFixtures';
 import {
   ApiError,
   BoardConflictError,
@@ -943,5 +954,344 @@ describe('HttpApi annotations (plan #64 Part C §3.5)', () => {
         'unavailable',
       ),
     ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Plan #68 D2 §4.1, §4.4: the DSF path of queryRange, with a fake engine behind `streamDecoder`.
+
+const DSF_CT = 'application/vnd.pulsus.dash-stream;v=1';
+const RANGE_ROUTE = '/api/dash/v1/query/promql/range';
+
+type Outcome =
+  | { readonly kind: 'decoded'; readonly m: DecodedRange }
+  | { readonly kind: 'declined'; readonly reason: 'limit' | 'ids' | 'busy' | 'gone' }
+  | { readonly kind: 'failed'; readonly failure: 'error' | 'invalid' };
+
+/** The engine side of one decode, as the MT backend's session behaves. */
+class FakeSession implements DecodeSession {
+  readonly posts: ArrayBuffer[] = [];
+  ended = false;
+  aborted = false;
+  /** Credit each read at once (else `credit()` does). */
+  autoCredit = true;
+  private credit: (n: number) => void = () => undefined;
+  private settle: { ok: (m: DecodedRange) => void; no: (e: unknown) => void } = {
+    ok: () => undefined,
+    no: () => undefined,
+  };
+  readonly result: Promise<DecodedRange>;
+
+  constructor(
+    private readonly outcome: Outcome,
+    credit = true,
+  ) {
+    this.autoCredit = credit;
+    this.result = new Promise((ok, no) => {
+      this.settle = { ok, no };
+    });
+    this.result.catch(() => undefined);
+  }
+  post(buf: ArrayBuffer): void {
+    this.posts.push(buf);
+    if (this.autoCredit) {
+      queueMicrotask(() => {
+        this.credit(buf.byteLength);
+      });
+    }
+  }
+  end(): void {
+    this.ended = true;
+    this.finish();
+  }
+  abort(): void {
+    this.aborted = true;
+  }
+  onCredit(cb: (bytes: number) => void): void {
+    this.credit = cb;
+  }
+  /** Credits `n` bytes now. */
+  give(n: number): void {
+    this.credit(n);
+  }
+  posted(): number {
+    return this.posts.reduce((n, b) => n + b.byteLength, 0);
+  }
+  private finish(): void {
+    const o = this.outcome;
+    if (o.kind === 'decoded') this.settle.ok(o.m);
+    else if (o.kind === 'declined')
+      this.settle.no(
+        Object.assign(new Error(o.reason), { name: 'EngineDeclined', reason: o.reason }),
+      );
+    else
+      this.settle.no(
+        Object.assign(new Error('bad offsets'), { name: 'DecodeFailed', kind: o.failure }),
+      );
+  }
+}
+
+/** A DSF response whose body yields `reads` (each enqueued as given) and counts its pulls. */
+function dsfResponse(reads: readonly Uint8Array[]): { res: Response; pulls: () => number } {
+  let i = 0;
+  let pulls = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(c) {
+      pulls++;
+      const r = reads[i++];
+      if (r === undefined) c.close();
+      else c.enqueue(r);
+    },
+  });
+  return {
+    res: new Response(body, { status: 200, headers: { 'Content-Type': DSF_CT } }),
+    pulls: () => pulls,
+  };
+}
+
+const TWO = decodedMessage('two-series');
+const TWO_JSON = routeJson('two-series');
+
+/** An HttpApi with a fake engine: each `open` makes a session of the next outcome. */
+function dsfApi(
+  outcomes: Outcome[],
+  responses: (() => Response)[],
+  o: { credit?: boolean; busy?: boolean } = {},
+) {
+  const sessions: FakeSession[] = [];
+  const registered: unknown[] = [];
+  setRangeDecoder(
+    streamDecoder(
+      () => {
+        if (o.busy === true) {
+          throw Object.assign(new Error('busy'), { name: 'EngineDeclined', reason: 'busy' });
+        }
+        const s = new FakeSession(
+          outcomes[sessions.length] ?? outcomes[0] ?? { kind: 'declined', reason: 'gone' },
+          o.credit ?? true,
+        );
+        sessions.push(s);
+        return s;
+      },
+      (series) => registered.push(series),
+    ),
+  );
+  let n = 0;
+  const t = api(() => Promise.resolve((responses[n++] ?? (() => json(200, TWO_JSON)))()));
+  return { ...t, sessions, registered };
+}
+
+const accept = (r: Request | undefined) => r?.headers.get('Accept') ?? '';
+
+describe('query range dsf (plan #68 D2 §4.1, §4.4)', () => {
+  afterEach(() => {
+    setRangeDecoder(null);
+    vi.restoreAllMocks();
+  });
+
+  it('query range dsf: no decoder → JSON, no DSF Accept', async () => {
+    const { api: a, requests } = api(() => Promise.resolve(json(200, TWO_JSON)));
+    const r = await a.queryRange('demo', R);
+    expect(r.series).toHaveLength(2);
+    expect(accept(requests[0])).not.toContain('dash-stream');
+  });
+
+  it('query range dsf: a decoder → DSF Accept, the decoded result, registered by identity', async () => {
+    const t = dsfApi([{ kind: 'decoded', m: TWO }], [() => dsfResponse([new Uint8Array(64)]).res]);
+    const r = await t.api.queryRange('demo', R);
+    expect(accept(t.requests[0])).toBe(DSF_ACCEPT);
+    expect(r).toEqual(rangeFromDecoded(TWO, Date.now()));
+    expect(t.registered).toEqual([r.series]);
+    expect(t.registered[0]).toBe(r.series);
+    expect(t.sessions[0]?.ended).toBe(true);
+    expect(t.requests).toHaveLength(1);
+  });
+
+  it('query range dsf: 400 → the envelope error', async () => {
+    const f = JSON.parse(routeJson('err-query-invalid')) as { status: number; body: unknown };
+    const t = dsfApi([], [() => json(f.status, f.body)]);
+    const e = (await rejection(t.api.queryRange('demo', R))) as ApiError;
+    expect(e.kind).toBe('queryInvalid');
+    expect(t.sessions).toHaveLength(0);
+  });
+
+  for (const reason of ['limit', 'ids', 'busy', 'gone'] as const) {
+    it(`query range dsf: ${reason} → exactly one JSON retry`, async () => {
+      const t = dsfApi(
+        [{ kind: 'declined', reason }],
+        [() => dsfResponse([new Uint8Array(64)]).res, () => json(200, TWO_JSON)],
+      );
+      const r = await t.api.queryRange('demo', R);
+      expect(r.series).toHaveLength(2);
+      expect(t.requests).toHaveLength(2);
+      expect(accept(t.requests[0])).toBe(DSF_ACCEPT);
+      expect(accept(t.requests[1])).not.toContain('dash-stream');
+      expect(t.registered).toEqual([]);
+    });
+  }
+
+  it('invalid_body: invalid → internal, one rum:wire_invalid with the route, no retry; a limit still retries', async () => {
+    const mark = vi.spyOn(performance, 'mark');
+    const t = dsfApi(
+      [{ kind: 'failed', failure: 'invalid' }],
+      [() => dsfResponse([new Uint8Array(64)]).res],
+    );
+    const e = (await rejection(t.api.queryRange('demo', R))) as ApiError;
+    expect(e).toBeInstanceOf(ApiError);
+    expect(e.kind).toBe('internal');
+    expect(t.requests).toHaveLength(1);
+    const marks = mark.mock.calls.filter((c) => c[0] === 'rum:wire_invalid');
+    expect(marks).toHaveLength(1);
+    expect((marks[0]?.[1] as { detail: { route: string } }).detail.route).toBe(RANGE_ROUTE);
+    const l = dsfApi(
+      [{ kind: 'declined', reason: 'limit' }],
+      [() => dsfResponse([new Uint8Array(64)]).res, () => json(200, TWO_JSON)],
+    );
+    await l.api.queryRange('demo', R);
+    expect(l.requests).toHaveLength(2);
+  });
+
+  for (const [what, planned] of [
+    ['missing', null],
+    ['malformed', '{'],
+    [
+      'rejected',
+      '{"query":"q","expanded":"q","bytes":1,"value_type":7,"rate_candidate":false,"rate_applied":false,"histogram":false}',
+    ],
+  ] as const) {
+    it(`invalid_planned: ${what} → internal, one rum:wire_invalid, no JSON request`, async () => {
+      const mark = vi.spyOn(performance, 'mark');
+      const m: DecodedRange = { ...TWO, head: { ...TWO.head, planned } };
+      const t = dsfApi([{ kind: 'decoded', m }], [() => dsfResponse([new Uint8Array(8)]).res]);
+      const e = (await rejection(t.api.queryRange('demo', R))) as ApiError;
+      expect(e.kind).toBe('internal');
+      expect(t.requests).toHaveLength(1);
+      expect(mark.mock.calls.filter((c) => c[0] === 'rum:wire_invalid')).toHaveLength(1);
+      expect(t.registered).toEqual([]);
+    });
+  }
+
+  it('query range dsf: two slow streams pause at the threshold and resume on credit', async () => {
+    const MiB = 1 << 20;
+    const reads = () => Array.from({ length: 6 }, () => new Uint8Array(3 * MiB));
+    const a = dsfResponse(reads());
+    const b = dsfResponse(reads());
+    const t = dsfApi(
+      [
+        { kind: 'decoded', m: TWO },
+        { kind: 'decoded', m: TWO },
+      ],
+      [() => a.res, () => b.res],
+      { credit: false },
+    );
+    const pa = t.api.queryRange('demo', R);
+    const pb = t.api.queryRange('demo', R);
+    await vi.waitFor(() => {
+      expect(t.sessions).toHaveLength(2);
+    });
+    // Each stream stops once 8 MiB or more is outstanding: three reads of 3 MiB.
+    await vi.waitFor(() => {
+      for (const s of t.sessions) expect(s.posted()).toBe(9 * MiB);
+    });
+    const before = t.sessions.map((s) => s.posted());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(t.sessions.map((s) => s.posted())).toEqual(before);
+    for (const s of t.sessions) {
+      s.autoCredit = true;
+      s.give(s.posted());
+    }
+    await Promise.all([pa, pb]);
+    for (const s of t.sessions) expect(s.posted()).toBe(18 * MiB);
+  });
+
+  it('query range dsf: a 12 MiB read, and a read past the room left, are posted whole', async () => {
+    const MiB = 1 << 20;
+    const t = dsfApi(
+      [{ kind: 'decoded', m: TWO }],
+      [() => dsfResponse([new Uint8Array(7 * MiB), new Uint8Array(12 * MiB)]).res],
+    );
+    await t.api.queryRange('demo', R);
+    expect(t.sessions[0]?.posts.map((b) => b.byteLength)).toEqual([7 * MiB, 12 * MiB]);
+  });
+
+  it('query range dsf: a view with a byte offset is posted as its exact bytes', async () => {
+    const backing = new Uint8Array(32).map((_, i) => i);
+    const view = new Uint8Array(backing.buffer, 4, 10);
+    const t = dsfApi([{ kind: 'decoded', m: TWO }], [() => dsfResponse([view]).res]);
+    await t.api.queryRange('demo', R);
+    const posted = t.sessions[0]?.posts[0];
+    expect(posted?.byteLength).toBe(10);
+    expect(Array.from(new Uint8Array(posted ?? new ArrayBuffer(0)))).toEqual([
+      4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+    ]);
+  });
+
+  it('query range dsf: abort while paused cancels the reader and posts the abort', async () => {
+    const MiB = 1 << 20;
+    const reads = Array.from({ length: 6 }, () => new Uint8Array(4 * MiB));
+    let cancelled = false;
+    let i = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        const r = reads[i++];
+        if (r === undefined) c.close();
+        else c.enqueue(r);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const t = dsfApi(
+      [{ kind: 'decoded', m: TWO }],
+      [() => new Response(body, { status: 200, headers: { 'Content-Type': DSF_CT } })],
+      { credit: false },
+    );
+    const ctrl = new AbortController();
+    const p = t.api.queryRange('demo', R, ctrl.signal);
+    await vi.waitFor(() => {
+      expect(t.sessions).toHaveLength(1);
+    });
+    const s = t.sessions[0];
+    await vi.waitFor(() => {
+      expect(s?.posted()).toBeGreaterThanOrEqual(PAUSE_THRESHOLD_BYTES);
+    });
+    ctrl.abort();
+    const e = await rejection(p);
+    expect((e as { name?: string }).name).toBe('AbortError');
+    expect(s?.aborted).toBe(true);
+    expect(cancelled).toBe(true);
+  });
+
+  it('query range dsf: busy → JSON with no DSF bytes read', async () => {
+    const dsf = dsfResponse([new Uint8Array(64)]);
+    const t = dsfApi([], [() => dsf.res, () => json(200, TWO_JSON)], { busy: true });
+    const r = await t.api.queryRange('demo', R);
+    expect(r.series).toHaveLength(2);
+    expect(t.requests).toHaveLength(2);
+    expect(dsf.pulls()).toBeLessThanOrEqual(1);
+    expect(t.sessions).toHaveLength(0);
+  });
+
+  it('read over max_chunk: not posted; the reader cancelled, the abort posted, the JSON retry renders', async () => {
+    // A view that claims MAX_CHUNK + 1 bytes (nothing of that size is allocated here).
+    const big = { byteLength: MAX_CHUNK + 1, byteOffset: 0, buffer: { byteLength: MAX_CHUNK + 1 } };
+    let cancelled = false;
+    const body = new ReadableStream<unknown>({
+      pull(c) {
+        c.enqueue(big);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const res = new Response(null, { status: 200, headers: { 'Content-Type': DSF_CT } });
+    Object.defineProperty(res, 'body', { value: body });
+    const t = dsfApi([{ kind: 'decoded', m: TWO }], [() => res, () => json(200, TWO_JSON)]);
+    const r = await t.api.queryRange('demo', R);
+    expect(r.series).toHaveLength(2);
+    expect(t.requests).toHaveLength(2);
+    expect(t.sessions[0]?.posts).toEqual([]);
+    expect(t.sessions[0]?.aborted).toBe(true);
+    expect(cancelled).toBe(true);
   });
 });

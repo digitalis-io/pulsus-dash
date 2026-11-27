@@ -15,6 +15,7 @@ import {
   type OverlayState,
   type StageModel,
 } from './frame';
+import { collected, refOf, refStats, register, setReleaser, type ChunkRef } from './chunkRefs';
 import type { MainToRender, StageWire } from './protocol';
 import { InputRing } from './ring';
 
@@ -509,5 +510,82 @@ describe('WasmFrame selection (plan #68 C2c2 §3.1)', () => {
     f.dispose();
     f.setSelection({ keys: [k], fromMs: null, toMs: null });
     expect(sel()).toHaveLength(2);
+  });
+});
+
+describe('WasmFrame chunk refs (plan #68 D2 §4.2)', () => {
+  const series = (k: string) => ({
+    key: k,
+    labels: { job: 'api' },
+    timestamps: new Float64Array([1, 2]),
+    values: new Float64Array([3, 4]),
+  });
+  const valuesOf = (s: readonly ReturnType<typeof series>[]) =>
+    s.map((x) => ({ key: x.key, names: ['job'], values: ['api'], t: x.timestamps, v: x.values }));
+
+  afterEach(() => {
+    setReleaser(null);
+  });
+
+  it('chunk refs: the registered array by reference; a copy, gaps and another epoch by value', () => {
+    const A = [series('00000000000000aa'), series('00000000000000bb')];
+    register(A, { chunk: 7, epoch: 1 });
+    const B = [...A];
+    const gaps = [series('00000000000000cc')];
+    const p = port();
+    const onFail = vi.fn();
+    const canvas = { width: 0, height: 0 } as unknown as OffscreenCanvas;
+    const f = new WasmFrame(
+      p,
+      1,
+      canvas,
+      { timeZone: 'UTC', keyTarget: null, id: 'f1' },
+      onFail,
+      1,
+    );
+    const before = refStats.byRef;
+    f.setData({ kind: 'series', series: A });
+    f.setData({ kind: 'series', series: B });
+    f.setData({ kind: 'series', series: gaps });
+    expect(refOf(A)).toEqual({ chunk: 7, epoch: 1 });
+    expect(refOf(B)).toBeUndefined();
+    // The worker lost A's chunk: its values go (A was the last data by reference).
+    f.setData({ kind: 'series', series: A });
+    f.chunkMissing(7);
+    // A chunk-missing of another chunk changes nothing.
+    f.chunkMissing(8);
+    expect(p.sent.slice(1).map((s) => s.msg)).toEqual([
+      { t: 'data-chunk', id: 1, chunk: 7, epoch: 1 },
+      { t: 'data', id: 1, series: valuesOf(B) },
+      { t: 'data', id: 1, series: valuesOf(gaps) },
+      { t: 'data-chunk', id: 1, chunk: 7, epoch: 1 },
+      { t: 'data', id: 1, series: valuesOf(A) },
+    ]);
+    expect(refStats.byRef - before).toBe(2);
+    // After a restart (a new worker, epoch 2) A is stale: its values are posted.
+    const q = port();
+    const g = new WasmFrame(
+      q,
+      1,
+      canvas,
+      { timeZone: 'UTC', keyTarget: null, id: 'f1' },
+      onFail,
+      2,
+    );
+    g.setData({ kind: 'series', series: A });
+    expect(q.sent.slice(1).map((s) => s.msg)).toEqual([{ t: 'data', id: 1, series: valuesOf(A) }]);
+  });
+
+  it('chunk refs: a late finaliser releases with the old epoch', () => {
+    const released: ChunkRef[] = [];
+    setReleaser((r) => released.push(r));
+    const A = [series('00000000000000aa')];
+    register(A, { chunk: 3, epoch: 1 });
+    // A is collected after a restart: its finaliser still names epoch 1 (the new worker ignores it).
+    collected({ chunk: 3, epoch: 1 });
+    expect(released).toEqual([{ chunk: 3, epoch: 1 }]);
+    setReleaser(null);
+    collected({ chunk: 4, epoch: 1 });
+    expect(released).toHaveLength(1);
   });
 });

@@ -196,8 +196,16 @@ export class WasmFrame implements EngineFrame {
     canvas: OffscreenCanvas,
     private readonly init: FrameInit,
     private readonly onFail: (reason: string) => void,
+    /** The worker's boot epoch (plan #68 D2 §3.2); 0: no chunk references (ST). */
+    private readonly epoch = 0,
   ) {
     port.postMessage({ t: 'create', id, canvas, frameId: init.id ?? null }, [canvas]);
+  }
+
+  /** The worker could not resolve a `data-chunk` (plan #68 D2 §4.2). */
+  chunkMissing(chunk: number): void {
+    void chunk;
+    void this.epoch;
   }
 
   private post(msg: MainToRender): void {

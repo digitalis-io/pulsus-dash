@@ -2,6 +2,8 @@
 //! ([`frames`]) and its events ([`events`]), both target-independent, and on wasm32 the
 //! wasm-bindgen exports, the GPU surfaces, the frame loop and the rayon pool (`web`).
 
+#[cfg(feature = "mt")]
+pub mod decode;
 pub mod error;
 pub mod events;
 pub mod frames;
