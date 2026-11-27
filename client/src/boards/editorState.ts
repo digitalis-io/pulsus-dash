@@ -5,6 +5,7 @@
  * (§4.1) adds sections: add, rename, remove and, in Edit mode, collapse (saved with the board); a
  * View-mode collapse is a URL override (`isCollapsed`), not state here. #198 Part 3a (§3.3) adds a
  * widget (`addWidget`, with the vis and size its registry def gives) and edits one (`updateWidget`).
+ * #216 Part 2b (§4.3) sets the board's tags (`setTags`).
  */
 import type {
   Board,
@@ -186,6 +187,7 @@ const EDITS: ReadonlySet<BoardAction['type']> = new Set([
   'layout',
   'keyOp',
   'setTime',
+  'setTags',
   'addSection',
   'updateSection',
   'removeSection',
@@ -406,8 +408,14 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
       }
       return edited(s, { ...s.draft, time: a.time });
     }
-    case 'setTags':
-      return s;
+    case 'setTags': {
+      if (a.tags.length > 0) return edited(s, { ...s.draft, tags: [...a.tags] });
+      // Typing the tags back out of a board saved without any leaves the draft clean.
+      if (s.head.spec.tags !== undefined) return edited(s, { ...s.draft, tags: [] });
+      const rest = { ...s.draft };
+      delete rest.tags;
+      return edited(s, rest);
+    }
     case 'saveStart':
       // Saving again from the conflict dialog closes it.
       return { ...s, conflict: null, save: { status: 'saving', fields: [] } };

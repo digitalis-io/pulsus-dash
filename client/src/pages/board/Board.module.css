@@ -415,6 +415,80 @@
   font-weight: var(--font-weight-semibold);
 }
 
+/*
+ * The Tags button and its popover (plan #216 Part 2b §4.2): the tag icon as a mask over the text
+ * colour (in the board route's CSS, not the kit Icon), and muted 20 px chips without state colour,
+ * as the Board list rows' chips.
+ */
+.tagIcon {
+  display: inline-block;
+  flex: none;
+  width: var(--size-icon);
+  height: var(--size-icon);
+  background-color: currentcolor;
+  mask-image: url('../../icons/tag.svg');
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+.tags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: calc(var(--size-sidebar-expanded) + var(--space-16));
+  padding: var(--space-4);
+}
+
+.tagsField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.tagChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tagItem {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+.tagChip {
+  max-width: 100%;
+  height: var(--size-list-chip);
+  overflow: hidden;
+  padding: 0 var(--space-2);
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  line-height: calc(var(--size-list-chip) - var(--border-hairline) * 2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tagsNone,
+.tagsHelp {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.tagsError {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+
 /* The panel editor dialog (#90): preview on top, fields below, actions at the foot. */
 .editorBody {
   display: flex;

@@ -1,7 +1,8 @@
 /**
  * The board toolbar (plan #61 Part B §4.4), under the page header and right-aligned. View: the
  * time since the last refresh, Share and Edit board. Edit: Add panel, Add widget (plan #198 Part 3a
- * §4.4), Add section (Part C), Save current time range, Discard, Save and Done.
+ * §4.4), Add section (Part C), Tags (plan #216 Part 2b §4.2), Save current time range, Discard, Save
+ * and Done.
  */
 import { useEffect, useState } from 'react';
 import { formatHourMinute } from '../../i18n/format';
@@ -15,6 +16,7 @@ import type { WidgetDef } from '../../widgets/registry';
 import { AddWidgetMenu } from './AddWidgetMenu';
 import styles from './Board.module.css';
 import { BoardShare } from './BoardShare';
+import { BoardTagsButton } from './BoardTagsButton';
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
@@ -60,6 +62,11 @@ export type BoardToolbarProps =
       /** A widget kind from Add widget. */
       onAddWidget: (def: WidgetDef) => void;
       onAddSection: () => void;
+      /** The draft's tags. */
+      tags: readonly string[];
+      /** A save's error at `/tags` (its text), else null. */
+      tagsError: string | null;
+      onTags: (tags: readonly string[]) => void;
       onSaveTime: (on: boolean) => void;
       onDiscard: () => void;
       onSave: () => void;
@@ -90,6 +97,12 @@ export function BoardToolbar(props: BoardToolbarProps) {
         <Icon name="plus" />
         {t('board.addSection')}
       </Button>
+      <BoardTagsButton
+        tags={props.tags}
+        error={props.tagsError}
+        busy={busy}
+        onChange={props.onTags}
+      />
       <Checkbox isSelected={props.savesTime} onChange={props.onSaveTime} isDisabled={busy}>
         {t('board.saveTime')}
       </Checkbox>

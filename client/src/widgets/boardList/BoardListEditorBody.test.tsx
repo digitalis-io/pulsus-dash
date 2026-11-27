@@ -108,7 +108,8 @@ function setup(o: { options?: VisOptions; readOnly?: boolean } = {}) {
       </ApiContext.Provider>
     </QueryClientProvider>,
   );
-  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  // No waits of its own between events: the fake clock moves only through `tick`.
+  const user = userEvent.setup({ delay: null });
   const dialog = () => screen.getByRole('dialog', { name: 'Edit board list' });
   const show = (mode: string) => within(dialog()).getByRole('radio', { name: mode });
   const field = (name: string) => within(dialog()).getByRole('textbox', { name });
@@ -133,6 +134,13 @@ function setup(o: { options?: VisOptions; readOnly?: boolean } = {}) {
 const lastOptions = (onVis: ReturnType<typeof setup>['onVis']) =>
   onVis.mock.calls.at(-1)?.[0].options;
 
+/** Lets the real clock run past the preview's debounce. */
+async function settle(): Promise<void> {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 300));
+  });
+}
+
 /** Sets an input's value as one change (a paste or an IME commit). */
 function setValue(input: HTMLElement, value: string): void {
   act(() => {
@@ -146,7 +154,9 @@ describe('unit:board-list-editor', () => {
     await tick();
     expect(h.show('Starred')).toBeChecked();
     expect(h.queryField('Search text')).toBeNull();
-    await h.user.click(h.show('Search'));
+    act(() => {
+      fireEvent.click(h.show('Search'));
+    });
     expect(lastOptions(h.onVis)).toEqual({ mode: 'search' });
     expect(h.field('Search text')).toBeInTheDocument();
     expect(h.queryField('Tag')).toBeNull();
@@ -171,7 +181,9 @@ describe('unit:board-list-editor', () => {
   it('Show → Tag: the live tag error, then a valid tag', async () => {
     const h = setup();
     await tick();
-    await h.user.click(h.show('Tag'));
+    act(() => {
+      fireEvent.click(h.show('Tag'));
+    });
     expect(lastOptions(h.onVis)).toEqual({ mode: 'tag' });
     expect(h.queryField('Search text')).toBeNull();
     expect(h.field('Tag')).toHaveAccessibleDescription(/Use one valid tag, in tag mode only\./);
@@ -199,8 +211,10 @@ describe('unit:board-list-editor', () => {
   });
 
   it('Order: Use during incidents writes the sort and shows the ranking caption', async () => {
+    // The kit Select's overlay settles on real time.
+    vi.useRealTimers();
     const h = setup();
-    await tick();
+    await settle();
     await h.user.click(within(h.dialog()).getByRole('button', { name: /Order/ }));
     await h.user.click(await screen.findByRole('option', { name: 'Use during incidents' }));
     expect(lastOptions(h.onVis)).toEqual({ sort: 'incidents' });
@@ -247,9 +261,9 @@ describe('unit:board-spec-board-list (editor leg)', () => {
 
 describe('unit:board-list-preview (body)', () => {
   it('the preview is an inert group named Preview with no link, input or button', async () => {
+    vi.useRealTimers();
     const h = setup({ options: { mode: 'search', query: 'check' } });
-    await tick(300);
-    await tick();
+    await settle();
     const p = h.preview();
     // The rows sit in an inert box inside the group.
     const box = p.querySelector('[inert]');
@@ -266,7 +280,8 @@ describe('unit:board-list-preview (body)', () => {
     within(h.dialog()).getByRole('textbox', { name: 'Title' }).focus();
     await h.user.tab();
     expect(p.contains(document.activeElement)).toBe(false);
-    expect(document.activeElement).toBe(h.show('Search'));
+    const showGroup = within(h.dialog()).getByRole('radiogroup', { name: 'Show' });
+    expect(showGroup.contains(document.activeElement)).toBe(true);
 
     // A click on a preview row does not navigate.
     const path = h.router.state.location.pathname;

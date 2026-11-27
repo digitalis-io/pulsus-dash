@@ -3,8 +3,11 @@
  * `editor`) for a widget, titled by its def. Title, then the def's own editor body, then Remove
  * panel, the mirrored save status (the board behind is `aria-hidden`) and Done. Every change goes
  * to the draft at once (`updateWidget`); the page returns focus with `focusAfterEditor` as for the
- * panel editor.
+ * panel editor. While the body reports a local field text it cannot write (`onLocalInvalid`, plan
+ * #216 Part 2b §4.1), Done is disabled and the status line leads with its message; the page hears
+ * it too, to refuse Save.
  */
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { FieldError, WidgetPanelSpec } from '../../api/types';
 import type { WidgetPatch } from '../../boards/editorState';
 import { fieldMessage } from '../../boards/fieldMessages';
@@ -30,6 +33,8 @@ export interface WidgetEditorProps {
   onChange: (patch: WidgetPatch) => void;
   onRemove: () => void;
   onClose: () => void;
+  /** The body's local invalid text (null when none, and when the editor closes). */
+  onLocalInvalid?: (message: string | null) => void;
 }
 
 export function WidgetEditor({
@@ -43,9 +48,24 @@ export function WidgetEditor({
   onChange,
   onRemove,
   onClose,
+  onLocalInvalid,
 }: WidgetEditorProps) {
   const titleError = fields.find((f) => f.pointer === `${pointer}/title`);
   const Editor = def.Editor;
+  const [local, setLocal] = useState<string | null>(null);
+  const report = useRef(onLocalInvalid);
+  useLayoutEffect(() => {
+    report.current = onLocalInvalid;
+  });
+  // Closing the editor drops a local text, as for any editor close.
+  useEffect(
+    () => () => {
+      report.current?.(null);
+    },
+    [],
+  );
+  const status =
+    local === null ? statusText : statusText === '' ? local : `${local} · ${statusText}`;
   return (
     <ModalDialog
       title={t(def.editTitle)}
@@ -77,6 +97,10 @@ export function WidgetEditor({
             onVis={(vis) => {
               onChange({ vis });
             }}
+            onLocalInvalid={(m) => {
+              setLocal(m);
+              report.current?.(m);
+            }}
           />
         </div>
         <div className={cx(styles['editorActions'])}>
@@ -88,9 +112,9 @@ export function WidgetEditor({
             aria-label={t('board.saveStatus')}
             className={cx(styles['editorStatus'])}
           >
-            {statusText}
+            {status}
           </p>
-          <Button variant="primary" onPress={onClose}>
+          <Button variant="primary" onPress={onClose} isDisabled={local !== null}>
             {t('editor.close')}
           </Button>
         </div>

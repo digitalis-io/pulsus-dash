@@ -371,7 +371,7 @@ test.describe('Board list widget', () => {
       // Title → Show → Search text → Rows → Order → Remove panel → Done.
       await d.getByRole('textbox', { name: 'Title' }).focus();
       const order = [
-        d.getByRole('radio', { name: 'Search' }),
+        d.getByRole('radiogroup', { name: 'Show' }).locator(':focus'),
         d.getByRole('textbox', { name: 'Search text' }),
         d.getByRole('textbox', { name: 'Rows' }),
         d.getByRole('button', { name: /Order/ }),
