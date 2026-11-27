@@ -49,8 +49,8 @@ describe('tokens generate', () => {
     expect(rs).toMatch(
       /pub mod elevation \{[^}]*pub const E_1: &str = "inset 0 1px 0 var\(--highlight\)/,
     );
-    expect(rs).toContain(
-      'pub mod material { pub const FILTER: &str = "blur(24px) saturate(180%)"; }',
+    expect(rs).toMatch(
+      /pub mod material \{\s*pub const CARD: &str = "linear-gradient\(180deg, var\(--card-sheen\), transparent var\(--size-board-panel-header\)\)";\s*pub const FILTER: &str = "blur\(24px\) saturate\(180%\)";\s*\}/,
     );
   });
 
@@ -76,8 +76,8 @@ describe('tokens generate', () => {
       '--opacity-tag: 0.18;',
       '--opacity-chip: 0.12;',
       '--opacity-area: 0.28;',
-      '--elevation-card: inset 0 1px 0 var(--highlight), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient);',
-      '--elevation-state: inset 0 1px 0 var(--highlight), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow);',
+      '--elevation-card: inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient);',
+      '--elevation-state: inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow);',
     ]) {
       expect(common, decl).toContain(decl);
     }

@@ -10,6 +10,9 @@ export const colour = {
     "border-field": "#6A717C",
     "brush": "#5B9BFF29",
     "canvas": "#0E1014",
+    "card-highlight": "#FFFFFF0F",
+    "card-shade": "#0000001F",
+    "card-sheen": "#FFFFFF09",
     "category-other": "#8A919C",
     "control": "#23272E",
     "control-hover": "#2A2F37",
@@ -81,6 +84,9 @@ export const colour = {
     "border-field": "#7D8490",
     "brush": "#2563C929",
     "canvas": "#F2F3F6",
+    "card-highlight": "#FFFFFFB3",
+    "card-shade": "#0000000A",
+    "card-sheen": "#FFFFFF00",
     "category-other": "#6B7280",
     "control": "#FFFFFF",
     "control-hover": "#F6F7F9",
@@ -261,11 +267,12 @@ export const elevation = {
   "1": "inset 0 1px 0 var(--highlight), 0 1px 2px var(--shadow-ambient)",
   "2": "inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key)",
   "3": "inset 0 1px 0 var(--highlight), 0 4px 12px var(--shadow-ambient), 0 24px 64px var(--shadow-key)",
-  "card": "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)",
-  "state": "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow)",
+  "card": "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)",
+  "state": "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow)",
 } as const;
 
 export const material = {
+  "card": "linear-gradient(180deg, var(--card-sheen), transparent var(--size-board-panel-header))",
   "filter": "blur(24px) saturate(180%)",
 } as const;
 
