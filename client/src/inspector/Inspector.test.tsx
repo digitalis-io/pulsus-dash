@@ -220,7 +220,9 @@ describe('unit:inspector-viewkey', () => {
   };
   const entry = (name: string): HTMLElement =>
     within(
-      document.querySelector<HTMLElement>('[data-section="members"]') as HTMLElement,
+      document.querySelector<HTMLElement>(
+        '[data-inspector-content]:not([data-leaving]) [data-section="members"]',
+      ) as HTMLElement,
     ).getByRole('button', { name });
   const back = (): HTMLElement => screen.getByRole('button', { name: /^Back to / });
   const h2 = (): HTMLElement => screen.getByRole('heading', { level: 2 });

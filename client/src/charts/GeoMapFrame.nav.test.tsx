@@ -188,7 +188,9 @@ describe('unit:geo-members-fullscreen', () => {
     k.h.rerender(tree(true));
     presses();
     k.h.rerender(tree(false));
-    pushE18();
+    // The root is still expanded: entry 11 is e18.
+    fireEvent.click(entryAt(11));
+    expect(h2()).toHaveTextContent('e18');
     presses();
   });
 });
@@ -421,15 +423,21 @@ describe('unit:geo-targets (member rows)', () => {
     expect(k.h.selection()).toBe('q08,q10|null|null');
     expect(
       k.h.api().resolveMembers('p1', 'geo:group:{"present":true,"value":"e8"}')?.texts,
-    ).toEqual(['{env="e8"}', '{env="e8", pod="b"}']);
-    expect(entryTexts()).toEqual(['{env="e8"}', '{env="e8", pod="b"}']);
+    ).toEqual(['{env="e8", lat="9", lon="9"}', '{env="e8", lat="11", lon="11", pod="b"}']);
+    expect(entryTexts()).toEqual([
+      '{env="e8", lat="9", lon="9"}',
+      '{env="e8", lat="11", lon="11", pod="b"}',
+    ]);
     fireEvent.click(entryAt(1));
-    expect(h2()).toHaveTextContent('{env="e8", pod="b"}');
+    expect(h2()).toHaveTextContent('{env="e8", lat="11", lon="11", pod="b"}');
     expect(k.h.selection()).toBe('q10|null|null');
     expect(document.querySelector('[data-section="members"]')).toBeNull();
     k.set({ run: runOf(O2().filter((s) => s.key !== 'q10')) });
     fireEvent.click(back());
-    expect(entryTexts()).toEqual(['{env="e8"}', '{env="e8", pod="b"}']);
+    expect(entryTexts()).toEqual([
+      '{env="e8", lat="9", lon="9"}',
+      '{env="e8", lat="11", lon="11", pod="b"}',
+    ]);
     expect(seen).toHaveLength(1);
   });
 });

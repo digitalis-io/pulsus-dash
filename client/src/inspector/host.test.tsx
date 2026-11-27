@@ -433,11 +433,11 @@ describe('unit:inspector-nav (host)', () => {
     expect(h.selection()).toBe('q08,q10|null|null');
     expect(screen.getByRole('button', { name: 'Back to other (3)' })).toBeInTheDocument();
     expect(crumbs()).toEqual(['other (3)', 'e8']);
-    fireEvent.click(entry('{env="e8", pod="b"}'));
-    expect(heading()).toHaveTextContent('{env="e8", pod="b"}');
+    fireEvent.click(entry('{env="e8", lat="11", lon="11", pod="b"}'));
+    expect(heading()).toHaveTextContent('{env="e8", lat="11", lon="11", pod="b"}');
     expect(h.selection()).toBe('q10|null|null');
     expect(screen.getByRole('button', { name: 'Back to e8' })).toBeInTheDocument();
-    expect(crumbs()).toEqual(['other (3)', 'e8', '{env="e8", pod="b"}']);
+    expect(crumbs()).toEqual(['other (3)', 'e8', '{env="e8", lat="11", lon="11", pod="b"}']);
     const path = document.querySelector<HTMLElement>('nav[aria-label="Inspector path"]');
     if (path === null) throw new Error('no path');
     // Every crumb but the last is a pop button.
@@ -467,13 +467,13 @@ describe('unit:inspector-nav (host)', () => {
   it('a pre step runs before the pop; a crumb pops to its depth', () => {
     const { h, log } = open(['clearSearch']);
     fireEvent.click(entry('e8'));
-    fireEvent.click(entry('{env="e8", pod="b"}'));
+    fireEvent.click(entry('{env="e8", lat="11", lon="11", pod="b"}'));
     esc();
     expect(log).toEqual(['clearSearch']);
-    expect(heading()).toHaveTextContent('{env="e8", pod="b"}');
+    expect(heading()).toHaveTextContent('{env="e8", lat="11", lon="11", pod="b"}');
     esc();
     expect(heading()).toHaveTextContent('e8');
-    fireEvent.click(entry('{env="e8", pod="b"}'));
+    fireEvent.click(entry('{env="e8", lat="11", lon="11", pod="b"}'));
     const path = document.querySelector<HTMLElement>('nav[aria-label="Inspector path"]');
     if (path === null) throw new Error('no path');
     fireEvent.click(within(path).getByRole('button', { name: 'other (3)' }));
