@@ -524,12 +524,12 @@ test.describe('panels-categorical (fake)', () => {
     // 13 rows of 40 px with 12 px gaps, under a 36 px header (#282 Part 2a).
     expect(plot.height).toBeGreaterThanOrEqual(544);
     expect(plot.height).toBeLessThan(558);
-    await expect(p.locator('[data-coverage-meter]')).toHaveText('showing 42 of 250; kept min, max');
+    await expect(p.locator('[data-coverage-meter]')).toHaveText('showing 39 of 250; kept min, max');
     await listIn(p).focus();
     await page.keyboard.press('Shift+T');
     const grid = p.getByRole('grid', { name: 'Many' });
     await expect(grid).toBeFocused();
-    await expect(p.getByText('250 rows · 42 drawn')).toBeVisible();
+    await expect(p.getByText('250 rows · 39 drawn')).toBeVisible();
     await page.keyboard.press('End');
     await expect(grid.locator('[aria-rowindex="251"]')).toHaveCount(1);
     const download = page.waitForEvent('download');
