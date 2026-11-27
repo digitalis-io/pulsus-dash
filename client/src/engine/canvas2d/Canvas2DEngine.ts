@@ -65,9 +65,6 @@ import type { GeoScene } from './geo/scene';
 
 export { MAX_SERIES };
 
-/** Camera keys kept for a scene still loading. */
-const MAX_PENDING_KEYS = 8;
-
 /** The browser gives no 2D context; the component shows `chart.unsupported`. */
 export class ChartUnsupportedError extends Error {
   override readonly name = 'ChartUnsupportedError';
@@ -223,8 +220,6 @@ class Canvas2DFrame implements ChartFrame {
   /** The generation of the load in flight; null: none. */
   private geoPending: number | null = null;
   private geoFocus: string | null = null;
-  /** Camera keys sent before the scene exists, replayed on attach. */
-  private geoKeys: CameraKey[] = [];
   /** The scene's last hover was a mark: leaving the kind clears it. */
   private geoHover = false;
 
@@ -418,11 +413,13 @@ class Canvas2DFrame implements ChartFrame {
     if (this.spec?.kind === 'geomap') this.geo?.setFocusMark(id);
   }
 
-  /** ADR-0027: one geomap camera key; kept until the scene exists; a no-op on other kinds. */
+  /**
+   * ADR-0027: one geomap camera key; a no-op on other kinds, and while the scene is still loading
+   * (or has no size yet): a key is an action on the map shown, not a queued command.
+   */
   cameraKey(k: CameraKey): void {
     if (this.disposed || this.spec?.kind !== 'geomap') return;
-    if (this.geo !== null) this.geo.cameraKey(k);
-    else if (this.geoKeys.length < MAX_PENDING_KEYS) this.geoKeys.push(k);
+    this.geo?.cameraKey(k);
   }
 
   on<E extends keyof FrameEvents>(e: E, cb: (ev: FrameEvents[E]) => void): () => void {
@@ -485,7 +482,7 @@ class Canvas2DFrame implements ChartFrame {
     );
   }
 
-  /** Creates the scene and replays the spec, data, theme, size, selection, focus mark and keys. */
+  /** Creates the scene and replays the spec, data, theme, size, selection and focus mark. */
   private attachGeo(mod: GeoModule): void {
     const spec = this.spec;
     if (spec?.kind !== 'geomap') return;
@@ -514,8 +511,6 @@ class Canvas2DFrame implements ChartFrame {
     if (this.cssW > 0 && this.cssH > 0) scene.resize(this.cssW, this.cssH, this.dpr);
     scene.setSelection(this.selection);
     scene.setFocusMark(this.geoFocus);
-    for (const k of this.geoKeys) scene.cameraKey(k);
-    this.geoKeys = [];
     this.schedule();
   }
 
@@ -523,7 +518,6 @@ class Canvas2DFrame implements ChartFrame {
   private leaveGeo(): void {
     this.geoGen += 1;
     this.geoPending = null;
-    this.geoKeys = [];
     this.geo?.dispose();
     this.geo = null;
     if (this.geoHover) {
