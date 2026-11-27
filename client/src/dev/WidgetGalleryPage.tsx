@@ -3,18 +3,32 @@
  * widget's states on fixed content, the corpus of `golden:widget-gallery`. `?page=widget-text` shows
  * a runbook in Markdown, a PromQL code panel and an empty panel, each through the board's
  * `WidgetBody`; `?page=widget-text-removals` shows the registry's Text editor body on content with
- * one removal of each kind. The board variable `env` is `prod`.
+ * one removal of each kind. The board variable `env` is `prod`. The Board list pages (plan #216 Part
+ * 2a §4.6) draw `boardListGallery.ts`'s panels, each with its own query client (no retry, always
+ * stale) and its own Api (`galleryApi`), the stale panel's cache primed with B.
  *
  * The board's widget modules come from the board route's chunk (`BoardPage` re-exports them), loaded
  * with it: a static import here would make this chunk another importer of them and split the stub
  * build's initial chunks differently, adding about 2.7 KB brotli to its initial JS.
  */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense, useContext, useId, useState, type ReactElement } from 'react';
 import { useLocation } from 'react-router';
 import type { WidgetPanelSpec } from '../api/types';
+import { ApiContext } from '../app/providers';
 import { t } from '../i18n/t';
 import { cx } from '../kit/cx';
 import { usePageTitle } from '../shell/PageTitle';
+import { useShellRoute } from '../shell/useShellRoute';
+import { B } from '../widgets/boardList/fixtures';
+import {
+  boardListGalleryPanels,
+  galleryApi,
+  GALLERY_STALE_FETCHED_MS,
+  isBoardListGalleryPage,
+  type BoardListGalleryPage,
+  type BoardListGalleryPanel,
+} from './boardListGallery';
 import styles from './WidgetGalleryPage.module.css';
 import {
   WIDGET_GALLERY_VARS,
@@ -36,6 +50,37 @@ function GalleryPanel({ m, panel }: { m: BoardModule; panel: WidgetPanelSpec }) 
         <m.WidgetBody panel={panel} headingId={headingId} editing={false} />
       </div>
     </section>
+  );
+}
+
+/** A Board list panel with its own query client and Api; the stale panel's cache holds B. */
+function ListPanel({ m, item }: { m: BoardModule; item: BoardListGalleryPanel }) {
+  const { tenant } = useShellRoute();
+  const [client] = useState(() => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } });
+    if (item.answer === 'stale') {
+      const key = m.boardListKey(tenant, m.boardListOptions(item.panel.vis.options), '');
+      qc.setQueryData(key, B, { updatedAt: GALLERY_STALE_FETCHED_MS });
+    }
+    return qc;
+  });
+  const [api] = useState(() => galleryApi(item.answer));
+  return (
+    <QueryClientProvider client={client}>
+      <ApiContext.Provider value={api}>
+        <GalleryPanel m={m} panel={item.panel} />
+      </ApiContext.Provider>
+    </QueryClientProvider>
+  );
+}
+
+function ListPanels({ m, page }: { m: BoardModule; page: BoardListGalleryPage }) {
+  return (
+    <div className={cx(styles['panels'])}>
+      {boardListGalleryPanels(page).map((item) => (
+        <ListPanel key={item.panel.id} m={m} item={item} />
+      ))}
+    </div>
   );
 }
 
@@ -66,6 +111,13 @@ const Gallery = lazy(async () => {
   function Panels({ page }: { page: Page }): ReactElement {
     // Outside a board the run context is its default; only the variables differ.
     const outer = useContext(m.BoardRunContext);
+    if (isBoardListGalleryPage(page)) {
+      return (
+        <div data-widget-gallery={page}>
+          <ListPanels m={m} page={page} />
+        </div>
+      );
+    }
     const panels = widgetGalleryPanels(page);
     return (
       <m.BoardRunContext.Provider value={{ ...outer, vars: WIDGET_GALLERY_VARS }}>
