@@ -879,7 +879,7 @@ A body with other than one grid part is `invalid`.
 | `chunk-missing` | the frame posts the values of its last `setData` |
 | restart | a new epoch: old references are stale, so values are posted |
 | collected | the `FinalizationRegistry` posts `chunk-release`; a frame still holding the chunk keeps drawing it |
-| pressure | unheld chunks beyond 256 MiB are evicted, least recently used first: at every insert, at every tick and whenever a frame replaces, clears or disposes its data (a chunk becomes unheld when its last frame lets go) |
+| pressure | unheld chunks beyond 256 MiB are evicted, least recently used first: at every insert, and at the next tick after ownership changed (a frame replaced, cleared or disposed its data, or rebuilt its layer: a chunk becomes unheld when its last frame lets go); a tick with no change does not scan the table |
 | refused or abandoned | a result whose `dash.planned` main refuses, and a `decoded` that arrives for a session already aborted, are released at once (`releaseChunk` → `chunk-release`): no array will ever hold them |
 
 Only the identical array matches. A filtered, isolated or merged list (for example `framePlan`'s
@@ -907,7 +907,7 @@ one (T04-017).
 | `invalid` (T04-010), or a missing or invalid `dash.planned` | `ApiError('internal')` and the `rum:wire_invalid` mark; no retry |
 
 **The probe** (fault builds, `?probe=1`) adds `decodes()` (begun, done, failed, aborted, retried as
-JSON, by-reference `setData`), `chunks()` (the table's count, bytes and unheld bytes, and the decodes in flight, through
+JSON, body bytes the pool consumed, by-reference `setData`), `chunks()` (the table's count, bytes and unheld bytes, and the decodes in flight, through
 `engine_chunk_stats`) and `decoder(on)` (the slot off, or back). `main.tsx` exposes the query
 client there as `__dashProbeQueries`, so the e2e suite can refetch, cancel and clear. `chunks()`
 returns `{count, bytes, unheld, inflight}`: the table's entries, their bytes, the bytes no frame

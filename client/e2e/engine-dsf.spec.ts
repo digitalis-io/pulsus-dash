@@ -37,6 +37,7 @@ interface Decodes {
   failed: number;
   retried: number;
   aborted: number;
+  credited: number;
   byRef: number;
 }
 
@@ -48,7 +49,7 @@ declare global {
       decoder(on: boolean): void;
     };
     __dashProbeQueries?: {
-      invalidateQueries(): Promise<void>;
+      invalidateQueries(f?: { predicate: (q: { queryKey: unknown }) => boolean }): Promise<void>;
       cancelQueries(): Promise<void>;
       clear(): void;
     };
@@ -356,15 +357,25 @@ test.describe('e2e:engine-dsf', () => {
       await cancel();
       await expect.poll(async () => (await chunkStats(page))?.inflight).toBe(0);
       const table = await chunkStats(page);
-      // Refetch (not awaited: the stalling answer never ends). Its decode begins and stays in
-      // flight in the worker.
+      const start = await decodes(page);
+      // Refetch the stalling panel alone (not awaited: its answer never ends). Its decode begins
+      // and stays in flight in the worker.
       await page.evaluate(() => {
-        void window.__dashProbeQueries?.invalidateQueries();
+        void window.__dashProbeQueries?.invalidateQueries({
+          predicate: (q) => JSON.stringify(q.queryKey).includes('dsf_stall'),
+        });
       });
       await expect
         .poll(async () => (await chunkStats(page))?.inflight, { timeout: 30_000 })
         .toBe(1);
+      // The pool has consumed its body bytes (the header and the first batch, credited), so the
+      // cancel lands mid-decode, not before the decoding began.
+      await expect
+        .poll(async () => (await decodes(page)).credited - start.credited, { timeout: 30_000 })
+        .toBeGreaterThan(0);
+      expect((await chunkStats(page))?.inflight).toBe(1);
       const before = await decodes(page);
+      expect(before.begun - start.begun).toBe(1);
       // Cancel it: its fetch aborts mid-decode, and the worker drops the request.
       await cancel();
       // The stalled decode is aborted (and any other still reading at the cancel).

@@ -124,9 +124,18 @@ export interface DecodeStats {
   aborted: number;
   /** `HttpApi` retried a declined body as JSON. */
   retried: number;
+  /** Body bytes the engine's pool reported consumed (`decode-credit`). */
+  credited: number;
 }
 
-export const decodeStats: DecodeStats = { begun: 0, done: 0, failed: 0, aborted: 0, retried: 0 };
+export const decodeStats: DecodeStats = {
+  begun: 0,
+  done: 0,
+  failed: 0,
+  aborted: 0,
+  retried: 0,
+  credited: 0,
+};
 
 let slot: RangeDecoder | null = null;
 
@@ -208,6 +217,7 @@ export function streamDecoder(
       };
       s.onCredit((n) => {
         outstanding -= n;
+        decodeStats.credited += n;
         if (outstanding < PAUSE_THRESHOLD_BYTES) wake();
       });
       s.result.catch(() => {
