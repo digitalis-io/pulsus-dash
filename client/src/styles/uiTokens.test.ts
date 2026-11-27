@@ -114,4 +114,39 @@ describe('unit:ui-token-contrast', () => {
       pair(theme, ['accent-fill'], ['field'], 3);
     });
   }
+
+  // State colours as text (glyph and label, VL-003) on surface-1 and surface-2. Pairs that met
+  // 4.5:1 before the refresh must still; the others (below 4.5:1 before #282) may not fall more
+  // than 0.15 below their origin/main ratio. The strict 4.5:1 for every pair needs new state
+  // colours and is tracked in #284.
+  const STATES = ['ok', 'watch', 'degraded', 'failing', 'unknown'] as const;
+  /** The ratios at origin/main before #282 (surface-1, surface-2). */
+  const BEFORE: Record<Theme, Record<(typeof STATES)[number], readonly [number, number]>> = {
+    dark: {
+      ok: [7.14, 6.6],
+      watch: [10.72, 9.91],
+      degraded: [7.5, 6.92],
+      failing: [4.62, 4.27],
+      unknown: [3.78, 3.5],
+    },
+    light: {
+      ok: [4.85, 4.17],
+      watch: [4.31, 3.71],
+      degraded: [5.08, 4.37],
+      failing: [6.01, 5.17],
+      unknown: [3.93, 3.38],
+    },
+  };
+  for (const theme of THEMES) {
+    it(`${theme}: state text keeps 4.5:1 where it had it, and never falls more than 0.15 (#284)`, () => {
+      for (const st of STATES) {
+        (['surface-1', 'surface-2'] as const).forEach((bg, i) => {
+          const before = BEFORE[theme][st][i] ?? 0;
+          const r = ratio(stack(theme, bg, st), stack(theme, bg));
+          const min = before >= 4.5 ? 4.5 : before - 0.15;
+          expect(r, `${theme}: ${st} on ${bg} (was ${String(before)})`).toBeGreaterThanOrEqual(min);
+        });
+      }
+    });
+  }
 });
