@@ -50,12 +50,16 @@ func (q *dataRoutes) now() time.Time {
 	return time.Now()
 }
 
+// dataScope is the data scope of every data call: the full tenant until T10 (M-UI6). It is a
+// test seam (arrow_test.go: a restricted or empty scope is denied the same for JSON and DSF);
+// production code never changes it.
+var dataScope = core.FullTenantScope
+
 // dataRequestCtxFrom is the RequestCtx of every data call: the request's (organisation, actor
-// and request ID) with the resolved tenant, the fixed local principal (D12) and the full-tenant
-// scope.
+// and request ID) with the resolved tenant, the fixed local principal (D12) and dataScope.
 func dataRequestCtxFrom(ctx context.Context, t core.TenantCtx) *core.RequestCtx {
 	rc := *rcFrom(ctx)
-	rc.Tenant, rc.Principal, rc.Scope, rc.Priority = t, core.LocalPrincipal, core.FullTenantScope(), core.PriorityInteractive
+	rc.Tenant, rc.Principal, rc.Scope, rc.Priority = t, core.LocalPrincipal, dataScope(), core.PriorityInteractive
 	if rc.RequestID == "" {
 		rc.RequestID, _ = ctx.Value(requestIDKey{}).(string)
 	}
@@ -176,7 +180,11 @@ func (q *dataRoutes) failure(ctx context.Context, err error) *reqError {
 // serveRange is POST /api/dash/v1/query/promql/range (plan #62 §4.1, plan #112 §4.4): the raw
 // text is planned on the server and the planned text is sent; the frames are written as the
 // upstream body is decoded, one series at a time, after the planned member.
+//
+// With the DSF Accept the 200 body is DSF (streamArrow, plan #68 D1); every other response, and
+// every step before the first byte, is the same for both formats. Every response varies on Accept.
 func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Vary", "Accept")
 	tenant, e := tenantParam(r)
 	if e != nil {
 		writeReqError(w, e)
@@ -222,13 +230,17 @@ func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = rs.Close() }()
-	first, err := rs.Next()
+	first, err := nextSeries(rs)
 	if err != nil && !errors.Is(err, io.EOF) {
 		q.failPlanned(w, r, err, pr.planned)
 		return
 	}
-	q.stream(w, r, pr.rc, streamHead{planned: appendPlanned(nil, pr.planned.Wire()), typesWarning: pr.typesWarning},
-		rs, grid, first, "promql_stream_aborted")
+	h := streamHead{planned: appendPlanned(nil, pr.planned.Wire()), typesWarning: pr.typesWarning}
+	if wantsArrow(r) {
+		q.streamArrow(w, r, pr.rc, h, pr.planned, rs, grid, from, first)
+		return
+	}
+	q.stream(w, r, pr.rc, h, rs, grid, first, "promql_stream_aborted")
 }
 
 func rangeIf(bad bool, pointer, msg string) *reqError {

@@ -513,3 +513,57 @@ func TestDatasourceCheckItest(t *testing.T) {
 		})
 	}
 }
+
+// itest:scope-paths and itest:plan-authority with the DSF Accept (plan #68 D1 §5, ENT-006,
+// T06-029): the same requests with and without the DSF Accept send the same upstream query
+// requests (method, path, form without the remaining-deadline timeout, and the tenant's
+// decoration), and the DSF answers are DSF bodies.
+func TestPromqlRangeDSFItest(t *testing.T) {
+	const dsf = "application/vnd.pulsus.dash-stream;v=1"
+	for _, c := range storetest.Clusters(t) {
+		t.Run(c.Name, func(t *testing.T) {
+			fake, url := fakeharness.Start(t)
+			s, _ := boundServe(t, c, url, "  scope_org_id: acme\n  database: metrics_b\n  credentials_ref: env:FAKE_CREDS\n",
+				"FAKE_CREDS=user:pw-secret")
+			bodies := []string{rangeBody(counterQuery, ""), rangeBody("x_total", ""), rangeBody(`up{job="api"}`, ""), rangeBody("up{", "")}
+			type sent struct {
+				method, path, form string
+				headers            []string
+			}
+			run := func(accept string) []sent {
+				fake.Reset()
+				for _, b := range bodies {
+					hdr := []string{}
+					if accept != "" {
+						hdr = append(hdr, "Accept", accept)
+					}
+					code, out := s.send(t, "/api/dash/v1/query/promql/range?tenant=demo", b, hdr...)
+					if code == 200 && accept != "" && (len(out) < 16 || out[0] != 1) {
+						t.Errorf("%s: a 200 that is not a DSF body: %.40q", b, out)
+					}
+				}
+				var out []sent
+				for _, r := range fake.Requests() {
+					if r.Path != "/api/v1/query_range" {
+						continue // the metric-types lookup is cached after the first run
+					}
+					f := r.Form
+					f.Del("timeout")
+					out = append(out, sent{r.Method, r.Path, f.Encode(), []string{r.Header.Get("X-Scope-OrgID"), r.Header.Get("X-Pulsus-Database"),
+						r.Header.Get("Authorization"), r.Header.Get("Accept"), r.Header.Get("Content-Type")}})
+				}
+				return out
+			}
+			jsonRun, dsfRun := run(""), run(dsf)
+			if len(jsonRun) != len(bodies) || !slices.EqualFunc(jsonRun, dsfRun, func(a, b sent) bool {
+				return a.method == b.method && a.path == b.path && a.form == b.form && slices.Equal(a.headers, b.headers)
+			}) {
+				t.Errorf("upstream requests differ:\n json %+v\n dsf  %+v", jsonRun, dsfRun)
+			}
+			if jsonRun[0].headers[0] != "acme" {
+				t.Errorf("no tenant decoration: %+v", jsonRun[0])
+			}
+			s.stop(t)
+		})
+	}
+}

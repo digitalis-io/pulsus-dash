@@ -268,6 +268,8 @@ func (p *GridPart) commitBatches(f *frameSet, body, values int) error {
 // then META(D, c)|LAST. c must be PhaseFinal or PhasePartial, else ErrShape and nothing is
 // written. If the pending series would pass a limit, the part auto-closes from c instead
 // (ErrLimit). c goes through the coverage cut policy and is charged from the part's reserve.
+// c.SeriesReturned is ignored: the row carries the series the part commits, the pending ones
+// included (plan #68 D1 §3.3); an auto-close counts only those already sent.
 func (p *GridPart) Finish(c Coverage) error {
 	if err := p.usable(); err != nil {
 		return err
@@ -275,6 +277,7 @@ func (p *GridPart) Finish(c Coverage) error {
 	if c.Phase != PhaseFinal && c.Phase != PhasePartial {
 		return ErrShape
 	}
+	c.SeriesReturned = p.sent + uint32(len(p.pending)) // #nosec G115 -- a batch holds ≤ 64 series
 	var body, values int
 	if len(p.pending) > 0 {
 		var reason string
@@ -316,12 +319,13 @@ func (p *GridPart) addEmptyLabels(f *frameSet) error {
 
 // Fail drops the pending series and writes a 0-row BATCH(L)|LAST, META(D, c) with
 // PhasePartial and ERROR(D, e)|LAST; c and e are cut (B3 §3.1) and charged from the part's
-// reserve, so a Fail always fits.
+// reserve, so a Fail always fits. c.SeriesReturned is ignored: the row carries the series
+// already sent, not the dropped pending ones (plan #68 D1 §3.3).
 func (p *GridPart) Fail(c Coverage, e ErrorRow) error {
 	if err := p.usable(); err != nil {
 		return err
 	}
-	c.Phase = PhasePartial
+	c.Phase, c.SeriesReturned = PhasePartial, p.sent
 	return p.close(c, e, nil)
 }
 

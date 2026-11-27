@@ -1,0 +1,1 @@
+{"planned":{"query":"rate(req_total[5m])","expanded":"rate(req_total[5m])","bytes":19,"value_type":"vector","rate_candidate":false,"rate_applied":false,"histogram":false,"step_ms":60000},"start":1795089600000,"end":1795093200000,"step":60000,"frames":[],"completeness":{"truncated":false,"warnings":[],"infos":[],"query_id":"fake-route-2"}}
