@@ -5,15 +5,24 @@ use crate::Rgba8;
 pub mod colour {
     pub mod dark {
         use crate::Rgba8;
-        pub const ACCENT: Rgba8 = Rgba8([0x5B, 0x9B, 0xFF, 0xFF]);
-        pub const BACKDROP: Rgba8 = Rgba8([0x0B, 0x0D, 0x10, 0xB3]);
+        pub const ACCENT: Rgba8 = Rgba8([0x4D, 0x9B, 0xFF, 0xFF]);
+        pub const ACCENT_FILL: Rgba8 = Rgba8([0x2B, 0x68, 0xD6, 0xFF]);
+        pub const ACCENT_PRESSED: Rgba8 = Rgba8([0x25, 0x5C, 0xC0, 0xFF]);
+        pub const BACKDROP: Rgba8 = Rgba8([0x05, 0x06, 0x08, 0x99]);
+        pub const BORDER_CONTROL: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x29]);
+        pub const BORDER_FIELD: Rgba8 = Rgba8([0x6A, 0x71, 0x7C, 0xFF]);
         pub const BRUSH: Rgba8 = Rgba8([0x5B, 0x9B, 0xFF, 0x29]);
-        pub const CANVAS: Rgba8 = Rgba8([0x0B, 0x0D, 0x10, 0xFF]);
+        pub const CANVAS: Rgba8 = Rgba8([0x0E, 0x10, 0x14, 0xFF]);
         pub const CATEGORY_OTHER: Rgba8 = Rgba8([0x8A, 0x91, 0x9C, 0xFF]);
+        pub const CONTROL: Rgba8 = Rgba8([0x23, 0x27, 0x2E, 0xFF]);
+        pub const CONTROL_HOVER: Rgba8 = Rgba8([0x2A, 0x2F, 0x37, 0xFF]);
+        pub const CONTROL_PRESSED: Rgba8 = Rgba8([0x31, 0x36, 0x3F, 0xFF]);
         pub const DEGRADED: Rgba8 = Rgba8([0xE8, 0x92, 0x3A, 0xFF]);
         pub const FAILING: Rgba8 = Rgba8([0xE0, 0x45, 0x7B, 0xFF]);
-        pub const FOCUS: Rgba8 = Rgba8([0x5B, 0x9B, 0xFF, 0xFF]);
+        pub const FIELD: Rgba8 = Rgba8([0x11, 0x13, 0x17, 0xFF]);
+        pub const FOCUS: Rgba8 = Rgba8([0x4D, 0x9B, 0xFF, 0xFF]);
         pub const HAIRLINE: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x14]);
+        pub const HIGHLIGHT: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x0F]);
         pub const LEVEL_CRITICAL: Rgba8 = Rgba8([0xC9, 0x8F, 0x8F, 0xFF]);
         pub const LEVEL_DEBUG: Rgba8 = Rgba8([0x6F, 0xB8, 0xB8, 0xFF]);
         pub const LEVEL_ERROR: Rgba8 = Rgba8([0xC9, 0x8F, 0x8F, 0xFF]);
@@ -25,6 +34,8 @@ pub mod colour {
         pub const MAP_COAST: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x33]);
         pub const MAP_LAND: Rgba8 = Rgba8([0x1C, 0x23, 0x2C, 0xFF]);
         pub const MAP_WATER: Rgba8 = Rgba8([0x0E, 0x16, 0x20, 0xFF]);
+        pub const MATERIAL_BAR: Rgba8 = Rgba8([0x16, 0x18, 0x1D, 0xE6]);
+        pub const MATERIAL_MENU: Rgba8 = Rgba8([0x1E, 0x21, 0x27, 0xEB]);
         pub const OK: Rgba8 = Rgba8([0x2F, 0xB5, 0x9A, 0xFF]);
         pub const PATTERN_INK: Rgba8 = Rgba8([0x0B, 0x0D, 0x10, 0xA6]);
         pub const RAMP_1: Rgba8 = Rgba8([0x25, 0x34, 0x44, 0xFF]);
@@ -45,32 +56,44 @@ pub mod colour {
         pub const SERIES_6: Rgba8 = Rgba8([0xC9, 0x8F, 0x8F, 0xFF]);
         pub const SERIES_7: Rgba8 = Rgba8([0xA8, 0xA8, 0xD9, 0xFF]);
         pub const SERIES_8: Rgba8 = Rgba8([0xBF, 0xB0, 0x7A, 0xFF]);
-        pub const SURFACE_1: Rgba8 = Rgba8([0x12, 0x15, 0x1A, 0xFF]);
-        pub const SURFACE_2: Rgba8 = Rgba8([0x19, 0x1D, 0x24, 0xFF]);
-        pub const SURFACE_FLOAT: Rgba8 = Rgba8([0x12, 0x15, 0x1A, 0xF0]);
-        pub const SURFACE_HOVER: Rgba8 = Rgba8([0x22, 0x27, 0x31, 0xFF]);
+        pub const SHADOW_AMBIENT: Rgba8 = Rgba8([0x00, 0x00, 0x00, 0x66]);
+        pub const SHADOW_KEY: Rgba8 = Rgba8([0x00, 0x00, 0x00, 0x8C]);
+        pub const SIDEBAR: Rgba8 = Rgba8([0x12, 0x14, 0x18, 0xFF]);
+        pub const SURFACE_1: Rgba8 = Rgba8([0x16, 0x18, 0x1D, 0xFF]);
+        pub const SURFACE_2: Rgba8 = Rgba8([0x1D, 0x20, 0x26, 0xFF]);
+        pub const SURFACE_FLOAT: Rgba8 = Rgba8([0x16, 0x18, 0x1D, 0xF0]);
+        pub const SURFACE_HOVER: Rgba8 = Rgba8([0x26, 0x2A, 0x31, 0xFF]);
         pub const SYN_FUNC: Rgba8 = Rgba8([0x7A, 0xA2, 0xD6, 0xFF]);
         pub const SYN_KEYWORD: Rgba8 = Rgba8([0xB4, 0x8F, 0xC9, 0xFF]);
         pub const SYN_LABEL: Rgba8 = Rgba8([0x6F, 0xB8, 0xB8, 0xFF]);
         pub const SYN_NUMBER: Rgba8 = Rgba8([0xD6, 0xA8, 0x6B, 0xFF]);
         pub const SYN_STRING: Rgba8 = Rgba8([0x8F, 0xBF, 0x8F, 0xFF]);
-        pub const TEXT: Rgba8 = Rgba8([0xE6, 0xE8, 0xEB, 0xFF]);
-        pub const TEXT_MUTED: Rgba8 = Rgba8([0x8A, 0x91, 0x9C, 0xFF]);
-        pub const TEXT_ON_ACCENT: Rgba8 = Rgba8([0x0B, 0x0D, 0x10, 0xFF]);
+        pub const TEXT: Rgba8 = Rgba8([0xE9, 0xEB, 0xEF, 0xFF]);
+        pub const TEXT_MUTED: Rgba8 = Rgba8([0x9A, 0xA1, 0xAC, 0xFF]);
+        pub const TEXT_ON_ACCENT: Rgba8 = Rgba8([0xF5, 0xF8, 0xFF, 0xFF]);
         pub const UNKNOWN: Rgba8 = Rgba8([0x6B, 0x72, 0x80, 0xFF]);
         pub const WATCH: Rgba8 = Rgba8([0xD9, 0xC8, 0x4A, 0xFF]);
     }
     pub mod light {
         use crate::Rgba8;
-        pub const ACCENT: Rgba8 = Rgba8([0x25, 0x63, 0xC9, 0xFF]);
-        pub const BACKDROP: Rgba8 = Rgba8([0x1A, 0x1D, 0x23, 0x66]);
+        pub const ACCENT: Rgba8 = Rgba8([0x18, 0x5F, 0xCC, 0xFF]);
+        pub const ACCENT_FILL: Rgba8 = Rgba8([0x18, 0x5F, 0xCC, 0xFF]);
+        pub const ACCENT_PRESSED: Rgba8 = Rgba8([0x15, 0x52, 0xB3, 0xFF]);
+        pub const BACKDROP: Rgba8 = Rgba8([0x1B, 0x1E, 0x25, 0x40]);
+        pub const BORDER_CONTROL: Rgba8 = Rgba8([0x1C, 0x22, 0x33, 0x3D]);
+        pub const BORDER_FIELD: Rgba8 = Rgba8([0x7D, 0x84, 0x90, 0xFF]);
         pub const BRUSH: Rgba8 = Rgba8([0x25, 0x63, 0xC9, 0x29]);
-        pub const CANVAS: Rgba8 = Rgba8([0xF5, 0xF6, 0xF8, 0xFF]);
+        pub const CANVAS: Rgba8 = Rgba8([0xF2, 0xF3, 0xF6, 0xFF]);
         pub const CATEGORY_OTHER: Rgba8 = Rgba8([0x6B, 0x72, 0x80, 0xFF]);
+        pub const CONTROL: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xFF]);
+        pub const CONTROL_HOVER: Rgba8 = Rgba8([0xF6, 0xF7, 0xF9, 0xFF]);
+        pub const CONTROL_PRESSED: Rgba8 = Rgba8([0xEC, 0xEE, 0xF1, 0xFF]);
         pub const DEGRADED: Rgba8 = Rgba8([0xA8, 0x5A, 0x12, 0xFF]);
         pub const FAILING: Rgba8 = Rgba8([0xB8, 0x28, 0x5C, 0xFF]);
-        pub const FOCUS: Rgba8 = Rgba8([0x25, 0x63, 0xC9, 0xFF]);
-        pub const HAIRLINE: Rgba8 = Rgba8([0x0B, 0x0D, 0x10, 0x14]);
+        pub const FIELD: Rgba8 = Rgba8([0xFC, 0xFC, 0xFD, 0xFF]);
+        pub const FOCUS: Rgba8 = Rgba8([0x18, 0x5F, 0xCC, 0xFF]);
+        pub const HAIRLINE: Rgba8 = Rgba8([0x1C, 0x22, 0x33, 0x14]);
+        pub const HIGHLIGHT: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x99]);
         pub const LEVEL_CRITICAL: Rgba8 = Rgba8([0x98, 0x57, 0x57, 0xFF]);
         pub const LEVEL_DEBUG: Rgba8 = Rgba8([0x35, 0x82, 0x82, 0xFF]);
         pub const LEVEL_ERROR: Rgba8 = Rgba8([0x98, 0x57, 0x57, 0xFF]);
@@ -82,6 +105,8 @@ pub mod colour {
         pub const MAP_COAST: Rgba8 = Rgba8([0x0B, 0x0D, 0x10, 0x3D]);
         pub const MAP_LAND: Rgba8 = Rgba8([0xF8, 0xF9, 0xFB, 0xFF]);
         pub const MAP_WATER: Rgba8 = Rgba8([0xE6, 0xED, 0xF4, 0xFF]);
+        pub const MATERIAL_BAR: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xD9]);
+        pub const MATERIAL_MENU: Rgba8 = Rgba8([0xFA, 0xFB, 0xFC, 0xE6]);
         pub const OK: Rgba8 = Rgba8([0x17, 0x80, 0x6A, 0xFF]);
         pub const PATTERN_INK: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xB3]);
         pub const RAMP_1: Rgba8 = Rgba8([0xE3, 0xF0, 0xFE, 0xFF]);
@@ -102,17 +127,20 @@ pub mod colour {
         pub const SERIES_6: Rgba8 = Rgba8([0x98, 0x57, 0x57, 0xFF]);
         pub const SERIES_7: Rgba8 = Rgba8([0x62, 0x62, 0xA6, 0xFF]);
         pub const SERIES_8: Rgba8 = Rgba8([0x85, 0x76, 0x40, 0xFF]);
+        pub const SHADOW_AMBIENT: Rgba8 = Rgba8([0x14, 0x1A, 0x24, 0x14]);
+        pub const SHADOW_KEY: Rgba8 = Rgba8([0x14, 0x1A, 0x24, 0x26]);
+        pub const SIDEBAR: Rgba8 = Rgba8([0xEB, 0xED, 0xF1, 0xFF]);
         pub const SURFACE_1: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xFF]);
-        pub const SURFACE_2: Rgba8 = Rgba8([0xEC, 0xEE, 0xF2, 0xFF]);
+        pub const SURFACE_2: Rgba8 = Rgba8([0xEE, 0xF0, 0xF3, 0xFF]);
         pub const SURFACE_FLOAT: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xF0]);
-        pub const SURFACE_HOVER: Rgba8 = Rgba8([0xE2, 0xE5, 0xEA, 0xFF]);
+        pub const SURFACE_HOVER: Rgba8 = Rgba8([0xE5, 0xE8, 0xED, 0xFF]);
         pub const SYN_FUNC: Rgba8 = Rgba8([0x25, 0x63, 0xC9, 0xFF]);
         pub const SYN_KEYWORD: Rgba8 = Rgba8([0x6B, 0x4A, 0x84, 0xFF]);
         pub const SYN_LABEL: Rgba8 = Rgba8([0x2E, 0x6E, 0x6E, 0xFF]);
         pub const SYN_NUMBER: Rgba8 = Rgba8([0x7F, 0x5F, 0x2A, 0xFF]);
         pub const SYN_STRING: Rgba8 = Rgba8([0x3D, 0x73, 0x40, 0xFF]);
-        pub const TEXT: Rgba8 = Rgba8([0x1A, 0x1D, 0x23, 0xFF]);
-        pub const TEXT_MUTED: Rgba8 = Rgba8([0x55, 0x5D, 0x69, 0xFF]);
+        pub const TEXT: Rgba8 = Rgba8([0x1B, 0x1E, 0x25, 0xFF]);
+        pub const TEXT_MUTED: Rgba8 = Rgba8([0x56, 0x5E, 0x6B, 0xFF]);
         pub const TEXT_ON_ACCENT: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xFF]);
         pub const UNKNOWN: Rgba8 = Rgba8([0x7A, 0x81, 0x8C, 0xFF]);
         pub const WATCH: Rgba8 = Rgba8([0x8A, 0x7A, 0x0F, 0xFF]);
@@ -130,6 +158,7 @@ pub const SEQUENTIAL_RAMP: [[Rgba8; 9]; 2] = [
 ];
 
 pub mod space {
+    pub const S_0_5: f32 = 2.0;
     pub const S_1: f32 = 4.0;
     pub const S_10: f32 = 40.0;
     pub const S_12: f32 = 48.0;
@@ -156,12 +185,12 @@ pub mod size {
     pub const CHART_SPARKLINE: f32 = 32.0;
     pub const CHART_STAT: f32 = 120.0;
     pub const CHART_TICK: f32 = 4.0;
-    pub const CONTROL: f32 = 32.0;
+    pub const CONTROL: f32 = 28.0;
     pub const CRUMB_MAX: f32 = 160.0;
     pub const DIALOG_EDITOR_HEIGHT: f32 = 720.0;
     pub const DIALOG_EDITOR_WIDTH: f32 = 800.0;
-    pub const FOCUS_OFFSET: f32 = 2.0;
-    pub const FOCUS_RING: f32 = 2.0;
+    pub const FOCUS_OFFSET: f32 = 1.0;
+    pub const FOCUS_RING: f32 = 3.0;
     pub const HEADER: f32 = 56.0;
     pub const ICON: f32 = 16.0;
     pub const INSPECTOR: f32 = 360.0;
@@ -183,7 +212,10 @@ pub mod size {
 
 pub mod radius {
     pub const DEFAULT: f32 = 6.0;
-    pub const FLOAT: f32 = 10.0;
+    pub const LG: f32 = 14.0;
+    pub const MD: f32 = 10.0;
+    pub const PILL: f32 = 9999.0;
+    pub const XS: f32 = 4.0;
 }
 
 pub mod opacity { pub const DIMMED: f32 = 0.35; }
@@ -194,6 +226,7 @@ pub mod font {
     pub mod family {
         pub const MONO: &str = "\"JetBrains Mono Variable\", ui-monospace, monospace";
         pub const UI: &str = "\"Inter Variable\", system-ui, sans-serif";
+        pub const UI_APPLE: &str = "-apple-system, BlinkMacSystemFont, \"Inter Variable\", system-ui, sans-serif";
     }
     pub mod size {
         pub const DISPLAY: f32 = 32.0;
@@ -204,12 +237,26 @@ pub mod font {
         pub const XS: f32 = 11.0;
     }
     pub mod weight {
+        pub const BOLD: f32 = 700.0;
         pub const MEDIUM: f32 = 500.0;
         pub const REGULAR: f32 = 400.0;
         pub const SEMIBOLD: f32 = 600.0;
     }
     pub mod advance { pub const MONO: f32 = 0.6; }
+    pub mod tracking {
+        pub const DISPLAY: f32 = -0.022;
+        pub const LG: f32 = -0.011;
+        pub const XL: f32 = -0.017;
+    }
 }
+
+pub mod elevation {
+    pub const E_1: &str = "inset 0 1px 0 var(--highlight), 0 1px 2px var(--shadow-ambient)";
+    pub const E_2: &str = "inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key)";
+    pub const E_3: &str = "inset 0 1px 0 var(--highlight), 0 4px 12px var(--shadow-ambient), 0 24px 64px var(--shadow-key)";
+}
+
+pub mod material { pub const FILTER: &str = "blur(24px) saturate(180%)"; }
 
 pub mod line_height {
     pub const NORMAL: f32 = 1.5;
@@ -217,8 +264,10 @@ pub mod line_height {
 }
 
 pub mod motion {
+    pub const EASING_IN: &str = "cubic-bezier(0.4, 0, 1, 1)";
     pub const EASING_OUT: &str = "cubic-bezier(0.2, 0, 0, 1)";
     pub const FAST: f32 = 150.0;
     pub const FLOAT_OPEN: f32 = 200.0;
+    pub const QUICK: f32 = 100.0;
     pub const STANDARD: f32 = 250.0;
 }
