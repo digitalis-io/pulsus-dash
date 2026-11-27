@@ -17,15 +17,12 @@ import {
   decodeLogqlPlanned,
   decodeLogs,
   decodeMetadata,
-  decodePlanned,
   decodeRange,
   decodeSeriesSet,
   decodeValues,
   decodeVolume,
   type InstantResult,
-  type LogqlPlannedQuery,
   type LogsResult,
-  type PlannedQuery,
   type PromMetadata,
   type PromSeriesSet,
   type PromValues,
@@ -35,7 +32,6 @@ import {
 import {
   ApiError,
   BoardConflictError,
-  type ApiErrorDetail,
   type Board,
   type AnnotationList,
   type BoardPage,
@@ -53,9 +49,36 @@ import {
   type Session,
   type VolumeRequest,
 } from './types';
+import { errorFromRow, rangeFromDecoded } from '../data/dsfRange';
+import { messageOf, queryError } from './queryError';
+import {
+  DSF_ACCEPT,
+  DSF_TYPE,
+  DecodeFailed,
+  EngineDeclined,
+  decodeStats,
+  rangeDecoder,
+  type DecodedRange,
+  type RangeDecoder,
+} from './rangeDecoder';
 
 type Bootstrap = components['schemas']['Bootstrap'];
 type ErrorEnvelope = components['schemas']['ErrorEnvelope'];
+/** The range route (`rum:wire_invalid`'s route). */
+const RANGE_ROUTE = '/api/dash/v1/query/promql/range';
+
+/**
+ * A malformed or invalid DSF body (T04-010; plan #68 D2 §4.1): `internal`, never retried, and the
+ * RUM event `rum:wire_invalid` as a User Timing mark (no RUM transport exists yet).
+ */
+function wireInvalid(message: string): ApiError {
+  try {
+    performance.mark('rum:wire_invalid', { detail: { route: RANGE_ROUTE, message } });
+  } catch {
+    // The User Timing API is optional.
+  }
+  return new ApiError('internal', message);
+}
 type WireBoard = components['schemas']['Board'];
 type WireSummary = components['schemas']['BoardSummary'];
 type WireConflict = components['schemas']['BoardConflict'];
@@ -159,13 +182,6 @@ function toBoard(b: WireBoard): Board {
   return { ...toSummary(b), etag: b.etag, spec: toSpec(b.spec) };
 }
 
-/** The envelope's message, else `HTTP <status>`. */
-function messageOf(error: unknown, status: number): string {
-  const msg = (error as Partial<ErrorEnvelope> | undefined)?.error?.message;
-  return typeof msg === 'string' && msg !== '' ? msg : `HTTP ${String(status)}`;
-}
-
-type ErrorBody = Partial<components['schemas']['ErrorBody']>;
 // The generated request types make timeout_ms required because it has a default (the generator's
 // default-non-nullable rule); the BFF applies the default, so the client omits it when unset.
 type RangeBody = components['schemas']['PromRangeRequest'];
@@ -173,96 +189,17 @@ type InstantBody = components['schemas']['PromInstantRequest'];
 type LogsBody = components['schemas']['LogqlRangeRequest'];
 type VolumeBody = components['schemas']['LogqlVolumeRequest'];
 
-function isRecord(v: unknown): v is Readonly<Record<string, unknown>> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-/** The decoder of an error body's `planned`: the PromQL or the LogQL plan (plan #116 §3.8). */
-type PlannedDecoder = (v: unknown, path: string) => PlannedQuery | LogqlPlannedQuery;
-
-/** The error body's `planned`, decoded; absent when missing or malformed (plan #112 §3.8). */
-function plannedOf(
-  body: ErrorBody,
-  decode: PlannedDecoder,
-): PlannedQuery | LogqlPlannedQuery | undefined {
-  if (body.planned === undefined) return undefined;
-  try {
-    return decode(body.planned, '/planned');
-  } catch (e) {
-    if (e instanceof DecodeError) return undefined;
-    throw e;
-  }
-}
-
-const TOO_LONG_KEYS = new Set(['query.sent_too_large', 'query.too_large_to_plan']);
-
-/**
- * The `ApiError` of a failed query or check (plan #62 §4.5, plan #112 §3.8): every `detail` carries
- * the server's `planned` when the body has one (errors raised after planning), decoded by `decode`
- * (the LogQL routes pass `decodeLogqlPlanned`, plan #116 §3.8).
- */
-function queryError(
-  status: number,
-  error: unknown,
-  decode: PlannedDecoder = decodePlanned,
-): ApiError {
-  const body: ErrorBody = (error as Partial<ErrorEnvelope> | undefined)?.error ?? {};
-  const message = messageOf(error, status);
-  const hint = isRecord(body.hint) ? body.hint : undefined;
-  const planned = plannedOf(body, decode);
-  const fields = body.fields ?? [];
-  const queryId = typeof body.query_id === 'string' ? body.query_id : undefined;
-  const detail = (extra: ApiErrorDetail = {}): ApiErrorDetail => ({
-    ...extra,
-    ...(planned === undefined ? {} : { planned }),
-  });
-  const withHint = detail(hint === undefined ? {} : { hint });
-  if (status === 413 && fields.some((f) => TOO_LONG_KEYS.has(f.message_key))) {
-    return new ApiError('queryTooLong', message, {
-      detail: detail({
-        ...(hint === undefined ? {} : { hint }),
-        ...(queryId === undefined ? {} : { queryId }),
-      }),
-    });
-  }
-  if (
-    status === 400 &&
-    fields.some(
-      (f) =>
-        f.message_key === 'variable.missing' ||
-        f.pointer === '/step_ms' ||
-        f.pointer.startsWith('/vars'),
-    )
-  ) {
-    return new ApiError('invalid', message, {
-      fields: fields.map((f) => ({ pointer: f.pointer, messageKey: f.message_key })),
-      detail: detail(),
-    });
-  }
-  if (status === 400 && body.code === 'virtual_unsupported') {
-    return new ApiError('queryInvalid', message, { detail: withHint });
-  }
-  if (status === 400 && fields[0]?.pointer === '/query') {
-    const d: ApiErrorDetail = {};
-    const position = isRecord(hint?.['position']) ? hint['position']['offset'] : undefined;
-    if (typeof position === 'number') d.position = position;
-    if (queryId !== undefined) d.queryId = queryId;
-    return new ApiError('queryInvalid', message, { detail: detail(d) });
-  }
-  switch (status) {
-    case 404:
-      return new ApiError('notFound', message, { detail: detail() });
-    case 422:
-      return new ApiError('tooBroad', message, { detail: withHint });
-    case 429:
-      return new ApiError('busy', message, { detail: withHint });
-    case 502:
-    case 503:
-      return new ApiError('unavailable', message, { detail: withHint });
-    case 504:
-      return new ApiError('timeout', message, { detail: detail() });
-  }
-  return new ApiError('unknown', message, { detail: detail() });
+/** The range request body; the optional members only when given. */
+function rangeBody(req: RangeRequest): RangeBody {
+  return {
+    query: req.query,
+    from: req.fromMs,
+    to: req.toMs,
+    width_px: req.widthPx,
+    ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
+    ...(req.vars === undefined ? {} : { vars: { ...req.vars } }),
+    ...(req.rate === undefined ? {} : { rate: req.rate }),
+  } as RangeBody;
 }
 
 /** Runs a query request: an abort is re-thrown unchanged, any other rejection is `network`. */
@@ -550,20 +487,80 @@ export class HttpApi implements Api {
     return Promise.resolve();
   }
 
+  /**
+   * `POST …/query/promql/range` (plan #68 D2 §4.1): with a range decoder (an MT engine booted) it
+   * asks for DSF and hands the body to the engine unparsed; a declined body (`limit`, `ids`,
+   * `busy`, `gone`) is retried once as JSON; an `error/1` row is its class's `ApiError`; a malformed
+   * body is `internal`. Without a decoder, or on a JSON answer, the JSON decode.
+   */
   async queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult> {
-    const body = {
-      query: req.query,
-      from: req.fromMs,
-      to: req.toMs,
-      width_px: req.widthPx,
-      ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
-      ...(req.vars === undefined ? {} : { vars: { ...req.vars } }),
-      ...(req.rate === undefined ? {} : { rate: req.rate }),
-    } as RangeBody;
+    const decoder = rangeDecoder();
+    if (decoder === null) return this.rangeJson(tenant, req, signal);
     const { data, error, response } = await send(() =>
-      this.client.POST('/api/dash/v1/query/promql/range', {
+      this.client.POST(RANGE_ROUTE, {
         params: { query: { tenant } },
-        body,
+        body: rangeBody(req),
+        headers: { Accept: DSF_ACCEPT },
+        parseAs: 'stream',
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined || data === null) throw queryError(response.status, error);
+    const body = data as unknown as ReadableStream<Uint8Array>;
+    const type = response.headers.get('Content-Type') ?? '';
+    if (!type.startsWith(DSF_TYPE)) {
+      // A JSON answer (a BFF that does not serve DSF): the JSON decode, unchanged.
+      let json: unknown;
+      try {
+        json = await new Response(body).json();
+      } catch (e) {
+        if (isAbort(e)) throw e;
+        throw new ApiError('badResponse', 'the range body is not JSON');
+      }
+      return decoded(decodeRange, json);
+    }
+    let m: DecodedRange;
+    try {
+      m = await decoder.decode(body, signal);
+    } catch (e) {
+      if (e instanceof EngineDeclined) {
+        decodeStats.retried++;
+        return this.rangeJson(tenant, req, signal);
+      }
+      if (e instanceof DecodeFailed) {
+        if (e.kind === 'error' && e.row !== null) throw errorFromRow(e.row, e.coverage, e.planned);
+        throw wireInvalid(e.message);
+      }
+      if (isAbort(e)) throw e;
+      throw new ApiError('network', 'the BFF could not be reached');
+    }
+    return this.assemble(decoder, m);
+  }
+
+  /** The `RangeResult` of a decoded message, its series registered against the chunk. */
+  private assemble(decoder: RangeDecoder, m: DecodedRange): RangeResult {
+    let result: RangeResult;
+    try {
+      result = rangeFromDecoded(m, Date.now());
+    } catch (e) {
+      if (e instanceof DecodeError) {
+        throw wireInvalid(`${e.message} at ${e.path === '' ? '/' : e.path}`);
+      }
+      throw e;
+    }
+    decoder.register(result.series, m);
+    return result;
+  }
+
+  private async rangeJson(
+    tenant: string,
+    req: RangeRequest,
+    signal?: AbortSignal,
+  ): Promise<RangeResult> {
+    const { data, error, response } = await send(() =>
+      this.client.POST(RANGE_ROUTE, {
+        params: { query: { tenant } },
+        body: rangeBody(req),
         ...(signal === undefined ? {} : { signal }),
       }),
     );

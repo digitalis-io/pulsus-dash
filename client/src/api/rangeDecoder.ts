@@ -118,11 +118,13 @@ export interface DecodeStats {
   begun: number;
   done: number;
   failed: number;
+  /** Aborted by the request's signal (a superseded query, T04-013). */
+  aborted: number;
   /** `HttpApi` retried a declined body as JSON. */
   retried: number;
 }
 
-export const decodeStats: DecodeStats = { begun: 0, done: 0, failed: 0, retried: 0 };
+export const decodeStats: DecodeStats = { begun: 0, done: 0, failed: 0, aborted: 0, retried: 0 };
 
 let slot: RangeDecoder | null = null;
 
@@ -134,15 +136,138 @@ export function rangeDecoder(): RangeDecoder | null {
   return slot;
 }
 
-/** A decoder over `open`'s sessions: reads `body`, posts each read, pauses on credit. */
+/** A session error as `EngineDeclined` or `DecodeFailed` (the engine side throws plain errors). */
+function normalised(e: unknown): unknown {
+  if (e instanceof EngineDeclined || e instanceof DecodeFailed) return e;
+  if (typeof e !== 'object' || e === null) return e;
+  const o = e as {
+    name?: unknown;
+    reason?: unknown;
+    kind?: unknown;
+    message?: unknown;
+    row?: unknown;
+    coverage?: unknown;
+    planned?: unknown;
+  };
+  const message = typeof o.message === 'string' ? o.message : '';
+  if (o.name === 'EngineDeclined') {
+    const r = o.reason;
+    const reason: DeclineReason = r === 'limit' || r === 'ids' || r === 'busy' ? r : 'gone';
+    return new EngineDeclined(reason, message === '' ? undefined : message);
+  }
+  if (o.name === 'DecodeFailed') {
+    return new DecodeFailed(o.kind === 'error' ? 'error' : 'invalid', message, {
+      row: (o.row ?? null) as WireErrorRow | null,
+      coverage: (o.coverage ?? null) as WireCoverage | null,
+      planned: typeof o.planned === 'string' ? o.planned : null,
+    });
+  }
+  return e;
+}
+
+/** The signal's abort reason (an `AbortError` when none was given). */
+function abortReason(signal: AbortSignal): Error {
+  const r: unknown = signal.reason;
+  return r instanceof Error ? r : new DOMException('The operation was aborted.', 'AbortError');
+}
+
+/**
+ * A decoder over `open`'s sessions (§4.4): each read of `body` is posted whole as its exact bytes
+ * (the view's own buffer when it spans it, else a copy); a read over `MAX_CHUNK` is never posted
+ * (`limit`). Reading pauses while the posted bytes not yet credited are at or above
+ * `PAUSE_THRESHOLD_BYTES` and resumes on the credit that brings them under it. An abort, a
+ * decline or a failure cancels the reader and aborts the session. `open` throwing (`busy`,
+ * `gone`) leaves the body unread.
+ */
 export function streamDecoder(
   open: () => DecodeSession,
   register: RangeDecoder['register'],
 ): RangeDecoder {
   return {
-    decode(): Promise<DecodedRange> {
-      void open;
-      return Promise.reject(new EngineDeclined('gone'));
+    async decode(body, signal) {
+      if (signal?.aborted === true) throw abortReason(signal);
+      let s: DecodeSession;
+      try {
+        s = open();
+      } catch (e) {
+        void body.cancel().catch(() => undefined);
+        throw normalised(e);
+      }
+      decodeStats.begun++;
+      const reader = body.getReader();
+      let outstanding = 0;
+      let wake: () => void = () => undefined;
+      // Set by the result's rejection (a failure, a decline) while the loop reads or waits.
+      const state = { failed: false };
+      const failed = (): boolean => state.failed;
+      const cancel = (): void => {
+        void reader.cancel().catch(() => undefined);
+      };
+      s.onCredit((n) => {
+        outstanding -= n;
+        if (outstanding < PAUSE_THRESHOLD_BYTES) wake();
+      });
+      s.result.catch(() => {
+        state.failed = true;
+        cancel();
+        wake();
+      });
+      const onAbort = (): void => {
+        cancel();
+        wake();
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      const aborted = (): boolean => signal?.aborted === true;
+      try {
+        for (;;) {
+          while (outstanding >= PAUSE_THRESHOLD_BYTES && !aborted() && !failed()) {
+            await new Promise<void>((r) => {
+              wake = r;
+            });
+          }
+          if (aborted() || failed()) break;
+          let r: ReadableStreamReadResult<Uint8Array>;
+          try {
+            r = await reader.read();
+          } catch (e) {
+            if (aborted() || failed()) break;
+            throw e;
+          }
+          if (r.done) {
+            s.end();
+            break;
+          }
+          const v = r.value;
+          if (v.byteLength > MAX_CHUNK) throw new EngineDeclined('limit', 'a read over max_chunk');
+          const whole = v.byteOffset === 0 && v.byteLength === v.buffer.byteLength;
+          const buf = (whole ? v.buffer : v.slice().buffer) as ArrayBuffer;
+          outstanding += v.byteLength;
+          s.post(buf);
+        }
+        if (aborted() && signal !== undefined) throw abortReason(signal);
+        const m = await new Promise<DecodedRange>((resolve, reject) => {
+          const stop = (): void => {
+            if (signal !== undefined) reject(abortReason(signal));
+          };
+          signal?.addEventListener('abort', stop, { once: true });
+          s.result.then(resolve, reject).finally(() => {
+            signal?.removeEventListener('abort', stop);
+          });
+        });
+        decodeStats.done++;
+        return m;
+      } catch (e) {
+        s.abort();
+        cancel();
+        if (aborted() && signal !== undefined) {
+          decodeStats.aborted++;
+          throw abortReason(signal);
+        }
+        decodeStats.failed++;
+        throw normalised(e);
+      } finally {
+        signal?.removeEventListener('abort', onAbort);
+      }
     },
     register,
   };

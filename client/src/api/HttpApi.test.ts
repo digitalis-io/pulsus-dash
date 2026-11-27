@@ -1097,10 +1097,11 @@ describe('query range dsf (plan #68 D2 §4.1, §4.4)', () => {
   });
 
   it('query range dsf: a decoder → DSF Accept, the decoded result, registered by identity', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_795_093_200_000);
     const t = dsfApi([{ kind: 'decoded', m: TWO }], [() => dsfResponse([new Uint8Array(64)]).res]);
     const r = await t.api.queryRange('demo', R);
     expect(accept(t.requests[0])).toBe(DSF_ACCEPT);
-    expect(r).toEqual(rangeFromDecoded(TWO, Date.now()));
+    expect(r).toEqual(rangeFromDecoded(TWO, 1_795_093_200_000));
     expect(t.registered).toEqual([r.series]);
     expect(t.registered[0]).toBe(r.series);
     expect(t.sessions[0]?.ended).toBe(true);
