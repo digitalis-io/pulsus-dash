@@ -524,6 +524,48 @@ describe('unit:geo-states', () => {
     kept(k);
   });
 
+  it('(l) a table reload with focus in the board header: focus never moves (review r1)', () => {
+    const k = okG();
+    // An explicit open focuses the first toggle; an explicit close returns to the map.
+    fireEvent.keyDown(listButtons()[1] as HTMLElement, { key: 'T', shiftKey: true });
+    expect(document.activeElement).toHaveAttribute('data-row-toggle');
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'T', shiftKey: true });
+    expect(document.activeElement).toBe(document.querySelector('[data-chart-frame]'));
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'T', shiftKey: true });
+    expect(document.activeElement).toHaveAttribute('data-row-toggle');
+    const header = document.querySelector<HTMLElement>('[data-outside]');
+    act(() => {
+      header?.focus();
+    });
+    // The rows go (a new window) and come back: the table unmounts and remounts.
+    k.set({ run: runOf(null, {}) });
+    expect(document.querySelector('[data-panel-table]')).toBeNull();
+    expect(document.activeElement).toBe(header);
+    k.set({ run: run({}) });
+    expect(document.querySelector('[data-panel-table]')).not.toBeNull();
+    expect(document.activeElement).toBe(header);
+    kept(k);
+  });
+
+  it('(m) marks delivered after focus moved to the Inspector: focus stays, no announcement', () => {
+    const k = okG();
+    k.set({ run: run({ placeholder: true, fetching: true }) });
+    expect(document.activeElement).toBe(status());
+    k.set({ run: run({}) });
+    // The new frame has not sent its marks yet; the user moves to the Inspector.
+    const close = k.h.aside()?.querySelector<HTMLElement>('button');
+    act(() => {
+      close?.focus();
+    });
+    emitMarks(k.frame());
+    expect(document.activeElement).toBe(close);
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(k.live()).toBe('');
+    kept(k);
+  });
+
   it('(k) (c) with focus in the Inspector: focus stays there', () => {
     const k = okG();
     const close = k.h.aside()?.querySelector<HTMLElement>('button');

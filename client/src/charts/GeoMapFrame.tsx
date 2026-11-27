@@ -199,6 +199,19 @@ export default function GeoMapFrame(props: GeoMapFrameHostProps): JSX.Element {
   const [marks, setMarks] = useState<GeoMarksEvent | null>(null);
   const [summaryView, setSummaryView] = useState<GeoView | null>(null);
   const [table, setTable] = useState(false);
+  /** The user opened the table (focus its first toggle once) or closed it (focus back to the map). */
+  const tableIntent = useRef<'open' | 'close' | null>(null);
+  const [focusToggle, setFocusToggle] = useState(false);
+  const tableOn = useRef(table);
+  useLayoutEffect(() => {
+    tableOn.current = table;
+  });
+  /** An explicit open or close of the table (Shift+T, Show table, the table's close). */
+  const userTable = useCallback((on: boolean) => {
+    tableIntent.current = on ? 'open' : 'close';
+    setFocusToggle(on);
+    setTable(on);
+  }, []);
   const { text: liveText, announce } = usePoliteAnnouncer();
 
   // The cell's content box: the caller's memo first (before paint, so a re-mounted map plans at
@@ -332,32 +345,51 @@ export default function GeoMapFrame(props: GeoMapFrameHostProps): JSX.Element {
       if (e.key !== 'T' && e.key !== 't') return;
       if (inTextField(e.target)) return;
       e.preventDefault();
-      setTable((on) => !on);
+      userTable(!tableOn.current);
     };
     root.addEventListener('keydown', onKey);
     return () => {
       root.removeEventListener('keydown', onKey);
     };
-  }, []);
+  }, [userTable]);
   const hasRows = rows !== null;
   const showTable = table && hasRows;
   const tableRows = useMemo(() => (rows === null ? null : geoTable(rows, unit)), [rows, unit]);
-  // The table takes focus when it opens (its first toggle, else the grid); the map when it closes.
+  // States (T24-095) and the table: focus moves only while it is in this panel.
+  const inside = useRef(false);
+  /** Focus is in this panel, or was when its element went away. */
+  const focusInside = (): boolean => {
+    const root = rootRef.current;
+    const active = document.activeElement;
+    if (root === null) return false;
+    if (root.contains(active)) return true;
+    return (active === null || active === document.body) && inside.current;
+  };
+  // Focus follows only the user's own open and close (review r1): an explicit open focuses the
+  // table's first toggle (`focusFirstToggle`, once); an explicit close focuses Show table, else the
+  // map, else the status, and only while focus is still in this panel. A table that goes away or
+  // comes back with a state change moves nothing (the state's own rule applies).
   const tableShown = useRef(showTable);
   useEffect(() => {
     if (tableShown.current === showTable) return;
     tableShown.current = showTable;
-    const root = rootRef.current;
-    // Opening: the table focuses its first toggle itself (`focusFirstToggle`).
+    const intent = tableIntent.current;
+    tableIntent.current = null;
     if (showTable) return;
+    const settle = (): void => {
+      setFocusToggle(false);
+    };
+    settle();
+    if (intent !== 'close' || !focusInside()) return;
+    const root = rootRef.current;
     const to =
+      root?.querySelector<HTMLElement>('[data-geo-show-table]') ??
       root?.querySelector<HTMLElement>('[data-chart-frame]') ??
       root?.querySelector<HTMLElement>('[data-geo-status]');
     to?.focus();
   }, [showTable]);
 
   // States (T24-095): focus and the announcement on a state change, from inside the panel only.
-  const inside = useRef(false);
   const [loadingText, setLoadingText] = useState(false);
   if (state !== 'loading' && loadingText) setLoadingText(false);
   const loadingShown = useRef(false);
@@ -390,14 +422,6 @@ export default function GeoMapFrame(props: GeoMapFrameHostProps): JSX.Element {
       root.removeEventListener('focusout', onOut);
     };
   }, []);
-  /** Focus is in this panel, or was when its element went away. */
-  const focusInside = (): boolean => {
-    const root = rootRef.current;
-    const active = document.activeElement;
-    if (root === null) return false;
-    if (root.contains(active)) return true;
-    return (active === null || active === document.body) && inside.current;
-  };
   const measured = size.width > 0;
   useLayoutEffect(() => {
     // Before the first measure the plan's size is a placeholder: no state has been shown yet.
@@ -454,6 +478,8 @@ export default function GeoMapFrame(props: GeoMapFrameHostProps): JSX.Element {
     const p = pendingOk.current;
     if (p === null || marks === null || state !== 'ok') return;
     pendingOk.current = null;
+    // Focus left the panel while the marks were pending: no move, no announcement.
+    if (!focusInside()) return;
     const root = rootRef.current;
     const first =
       root?.querySelector<HTMLElement>('[data-geo-list] button[tabindex="0"]') ??
@@ -499,7 +525,7 @@ export default function GeoMapFrame(props: GeoMapFrameHostProps): JSX.Element {
       <Button
         variant="secondary"
         onPress={() => {
-          setTable(true);
+          userTable(true);
         }}
         data-geo-show-table=""
       >
@@ -515,7 +541,7 @@ export default function GeoMapFrame(props: GeoMapFrameHostProps): JSX.Element {
         rows={tableRows}
         title={title}
         selected={selected}
-        focusFirstToggle
+        focusFirstToggle={focusToggle}
         toggle={{
           label: (key) => t('geo.table.select', { name: rowMap.get(key)?.name ?? key }),
           onToggle: (key) => {
@@ -533,7 +559,7 @@ export default function GeoMapFrame(props: GeoMapFrameHostProps): JSX.Element {
           return r === undefined || r.draw === 'shown' ? null : drawStatusText(r.draw);
         }}
         onClose={() => {
-          setTable(false);
+          userTable(false);
         }}
       />
     );
