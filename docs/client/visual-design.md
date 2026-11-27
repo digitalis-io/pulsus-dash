@@ -87,7 +87,7 @@ naming the key. In Rust, `font::tracking::LG` is an `f32`, `elevation::E_1` and
 | Surface | Elevation | Material | Radius |
 |---|---|---|---|
 | Default and primary buttons, the segmented thumb | `elevation-1` | — | `default`, `xs` |
-| Cards, board panels, the boards list table | `elevation-card` (its ring replaces the border; a transparent 1 px border draws in forced colours) | — | `md` |
+| Cards, board panels, the boards list table | `elevation-card`: one edge, its hairline ring (no border of their own), with a 1 px inner top highlight (`card-highlight`) and bottom shade (`card-shade`); the surface is `material-card` (a `card-sheen` top sheen fading within 36 px) over `surface-1`. Reduced transparency: plain `surface-1`; forced colours: a 1 px `CanvasText` border, plain `surface-1` | `material-card` | `md` |
 | A failing stat panel | `elevation-state` (failing ring and glow) | — | `md` |
 | A dragged board panel | `elevation-3` | — | `md` |
 | Popovers, menus, listboxes, tooltips, the Inspector | `elevation-2` | `material-menu` | `md` (tooltips `default`) |
@@ -125,7 +125,7 @@ focused menu and listbox row, the selected time preset, the checked box) use
 | Menu, Select listbox | padding 4 px, rows 28 px, `xs`, 13 px regular; hairline separators inset 8 px | the focused row `accent-fill` with `text-on-accent` (the check too), no outline |
 | Tooltip | `material-menu`, `default`, `elevation-2`, 12 px | — |
 | Modal dialog | `surface-1`, 1 px `border-control`, `lg` (10 px), `elevation-3`; title 16 px semibold, `tracking-lg` | — |
-| Card | `surface-1`, a transparent 1 px border, `md`, `elevation-card`, padding 12 px; title 13 px semibold | forced colours: a `CanvasText` border |
+| Card | `material-card` over `surface-1`, no border, `md`, `elevation-card`, padding 12 px; title 13 px semibold | forced colours: a `CanvasText` border |
 | EmptyState | `surface-2`, no border, `md`, padding 16 px; title 13 px semibold, body muted | — |
 | StateGlyph `tag` | 20 px high, padding 0 4 px, `tag` (3 px), the tint pattern in `--state-colour`; the glyph in the state colour, the label 11 px semibold in `text` | forced colours: a `CanvasText` border, no tint |
 | Sidebar | `sidebar`, a right hairline; rows 28 px, `default`, 8 px inset, no gap; icons `accent`, labels `text` 13 px | hover `surface-hover`; the current row (expanded and collapsed) `accent-fill`, its icon and label `text-on-accent`, semibold, no inset bar |

@@ -36,6 +36,11 @@ border-control = "#FFFFFF29"
 # surface beneath (VL-009).
 border-field = "#6A717C"
 highlight = "#FFFFFF0F"
+# The card's depth inside its one edge (cards and board panels): a top sheen over `surface-1` that
+# fades within a panel header, a 1 px inner top highlight and a 1 px inner bottom shade.
+card-sheen = "#FFFFFF09"
+card-highlight = "#FFFFFF0F"
+card-shade = "#0000001F"
 shadow-ambient = "#00000066"
 shadow-key = "#0000008C"
 accent-fill = "#2B68D6"
@@ -119,6 +124,10 @@ border-control = "#1C22333D"
 # Field boundaries: at least 3:1 from the fill and every surface beneath (VL-009).
 border-field = "#7D8490"
 highlight = "#FFFFFF99"
+# The card's depth (see the dark table); `surface-1` is white here, so the sheen is clear.
+card-sheen = "#FFFFFF00"
+card-highlight = "#FFFFFFB3"
+card-shade = "#0000000A"
 shadow-ambient = "#141A2414"
 shadow-key = "#141A2426"
 accent-fill = "#185FCC"
@@ -308,15 +317,20 @@ normal = 1.5
 1 = "inset 0 1px 0 var(--highlight), 0 1px 2px var(--shadow-ambient)"
 2 = "inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key)"
 3 = "inset 0 1px 0 var(--highlight), 0 4px 12px var(--shadow-ambient), 0 24px 64px var(--shadow-key)"
-# Cards and board panels (#282 Part 2a): a hairline ring, the top highlight and a soft key shadow.
-card = "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)"
+# Cards and board panels (#282 Part 2a): the inner top highlight and bottom shade, a hairline ring
+# (the card's one edge: a card has no border of its own) and a soft key shadow.
+card = "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)"
 # A failing board panel only: a ring in `failing` and a glow in `failing-glow`. A custom property's
 # var() is resolved where it is declared (here, the root), so the state colours are named directly.
-state = "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow)"
+state = "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow)"
 
 # The materials' backdrop filter (header, menus, popovers, tooltips, the Inspector; VL-017).
 [material]
 filter = "blur(24px) saturate(180%)"
+# A card's surface sheen (cards and board panels), over `surface-1`; plain `surface-1` under
+# reduced transparency and forced colours. It fades out within a panel header's height: a chart
+# canvas paints opaque `surface-1` below it, so a longer sheen would show a seam there.
+card = "linear-gradient(180deg, var(--card-sheen), transparent var(--size-board-panel-header))"
 
 # Durations (ms) and easing. Reduced motion sets every duration to 0 ms.
 [motion]

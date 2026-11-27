@@ -13,6 +13,9 @@ pub mod colour {
         pub const BORDER_FIELD: Rgba8 = Rgba8([0x6A, 0x71, 0x7C, 0xFF]);
         pub const BRUSH: Rgba8 = Rgba8([0x5B, 0x9B, 0xFF, 0x29]);
         pub const CANVAS: Rgba8 = Rgba8([0x0E, 0x10, 0x14, 0xFF]);
+        pub const CARD_HIGHLIGHT: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x0F]);
+        pub const CARD_SHADE: Rgba8 = Rgba8([0x00, 0x00, 0x00, 0x1F]);
+        pub const CARD_SHEEN: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x09]);
         pub const CATEGORY_OTHER: Rgba8 = Rgba8([0x8A, 0x91, 0x9C, 0xFF]);
         pub const CONTROL: Rgba8 = Rgba8([0x23, 0x27, 0x2E, 0xFF]);
         pub const CONTROL_HOVER: Rgba8 = Rgba8([0x2A, 0x2F, 0x37, 0xFF]);
@@ -85,6 +88,9 @@ pub mod colour {
         pub const BORDER_FIELD: Rgba8 = Rgba8([0x7D, 0x84, 0x90, 0xFF]);
         pub const BRUSH: Rgba8 = Rgba8([0x25, 0x63, 0xC9, 0x29]);
         pub const CANVAS: Rgba8 = Rgba8([0xF2, 0xF3, 0xF6, 0xFF]);
+        pub const CARD_HIGHLIGHT: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xB3]);
+        pub const CARD_SHADE: Rgba8 = Rgba8([0x00, 0x00, 0x00, 0x0A]);
+        pub const CARD_SHEEN: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x00]);
         pub const CATEGORY_OTHER: Rgba8 = Rgba8([0x6B, 0x72, 0x80, 0xFF]);
         pub const CONTROL: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xFF]);
         pub const CONTROL_HOVER: Rgba8 = Rgba8([0xF6, 0xF7, 0xF9, 0xFF]);
@@ -265,11 +271,14 @@ pub mod elevation {
     pub const E_1: &str = "inset 0 1px 0 var(--highlight), 0 1px 2px var(--shadow-ambient)";
     pub const E_2: &str = "inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key)";
     pub const E_3: &str = "inset 0 1px 0 var(--highlight), 0 4px 12px var(--shadow-ambient), 0 24px 64px var(--shadow-key)";
-    pub const CARD: &str = "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)";
-    pub const STATE: &str = "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow)";
+    pub const CARD: &str = "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)";
+    pub const STATE: &str = "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow)";
 }
 
-pub mod material { pub const FILTER: &str = "blur(24px) saturate(180%)"; }
+pub mod material {
+    pub const CARD: &str = "linear-gradient(180deg, var(--card-sheen), transparent var(--size-board-panel-header))";
+    pub const FILTER: &str = "blur(24px) saturate(180%)";
+}
 
 pub mod line_height {
     pub const NORMAL: f32 = 1.5;

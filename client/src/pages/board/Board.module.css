@@ -200,16 +200,16 @@
   flex: 1 1 auto;
 }
 
-/* A panel is an elevated card (#282 Part 2a, VL-004 as amended): the ring is the elevation's; the
-   transparent border draws in forced colours. */
+/* A panel is an elevated card (#282 Part 2a, VL-004 as amended) with one edge, the elevation's ring:
+   no border of its own (a border sat between the ring and the inner highlight, a second edge). The
+   surface takes the card sheen; forced colours draw a border instead. */
 .panel {
   display: flex;
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
-  border: var(--border-hairline) solid transparent;
   border-radius: var(--radius-md);
-  background: var(--surface-1);
+  background: var(--material-card), var(--surface-1);
   box-shadow: var(--elevation-card);
 }
 
@@ -228,9 +228,16 @@
   box-shadow: var(--elevation-3);
 }
 
+@media (prefers-reduced-transparency: reduce) {
+  .panel {
+    background: var(--surface-1);
+  }
+}
+
 @media (forced-colors: active) {
   .panel {
-    border-color: CanvasText;
+    border: var(--border-hairline) solid CanvasText;
+    background: var(--surface-1);
     box-shadow: none;
   }
 
