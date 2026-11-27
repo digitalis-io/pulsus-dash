@@ -1,15 +1,72 @@
+/* Popovers, menus and listboxes (#282, VL-017 as amended): the menu material where the browser can
+   blur, opaque surface-1 otherwise and under reduced transparency or forced colours; elevation 2;
+   a short scale-in from the trigger. */
 .popover {
   min-width: var(--size-sidebar-collapsed);
   max-width: calc(100vw - var(--space-6));
   max-height: 80vh;
   overflow: auto;
-  border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--radius);
+  border: var(--border-hairline) solid var(--border-control);
+  border-radius: var(--radius-md);
   background: var(--surface-1);
+  box-shadow: var(--elevation-2);
   color: var(--text);
-  box-shadow: 0 var(--space-2) var(--space-6) var(--backdrop);
+  transform-origin: var(--trigger-anchor-point);
+}
+
+/* The material where the browser can blur (VL-017 as amended, #282). A browser without the
+   reduced-transparency query (Safari, Firefox) keeps it; an explicit `reduce` or forced colours
+   override it back to the opaque base below. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .popover {
+    background: var(--material-menu);
+    /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
+    -webkit-backdrop-filter: var(--material-filter);
+    backdrop-filter: var(--material-filter);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .popover {
+    background: var(--surface-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 .popover:focus-visible {
   outline: none;
+}
+
+/* VL-014, VL-016: none under reduced motion, so React Aria mounts and unmounts on one frame. */
+@media (prefers-reduced-motion: no-preference) {
+  .popover[data-entering] {
+    animation: enter var(--motion-fast) var(--motion-easing-out);
+  }
+
+  .popover[data-exiting] {
+    animation: exit var(--motion-quick) var(--motion-easing-in) forwards;
+  }
+}
+
+@keyframes enter {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes exit {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
 }

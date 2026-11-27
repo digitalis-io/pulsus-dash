@@ -15,10 +15,21 @@ html {
   font-variant-numeric: tabular-nums;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 html[data-theme='light'] {
   color-scheme: light;
+}
+
+/* The platform UI face on Apple systems (VL-010, ADR-0035; theme/platform.ts). The system face
+   tracks itself, so the Inter tracking is zeroed. Canvas text stays Inter (VL-011). */
+html[data-platform='apple'] {
+  --font-ui: var(--font-ui-apple);
+  --tracking-lg: 0;
+  --tracking-xl: 0;
+  --tracking-display: 0;
 }
 
 body {
@@ -40,6 +51,10 @@ a {
 :focus-visible {
   outline: var(--size-focus-ring) solid var(--focus);
   outline-offset: var(--size-focus-offset);
+}
+
+::selection {
+  background: var(--selection);
 }
 
 button,

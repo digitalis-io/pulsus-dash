@@ -35,6 +35,7 @@ export const REST_B_FILES: readonly string[] = [
   'explore-metrics.spec.ts',
   'fonts.spec.ts',
   'gallery-extreme.spec.ts',
+  'kit-chrome.spec.ts',
   'log-stream.spec.ts',
   'panel-editor-dialog.spec.ts',
   'theme.spec.ts',

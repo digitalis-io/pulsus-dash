@@ -18,9 +18,9 @@
   gap: var(--space-2);
   min-height: var(--size-control);
   padding: 0 var(--space-2);
-  border: var(--border-hairline) solid var(--hairline);
+  border: var(--border-hairline) solid var(--border-field);
   border-radius: var(--radius);
-  background: var(--canvas);
+  background: var(--field);
   color: var(--text);
   font: inherit;
   font-size: var(--font-size-md);
@@ -67,21 +67,18 @@
   outline: none;
 }
 
+/* Options as menu rows (#282): the focused row in the accent fill. */
 .option {
   display: flex;
   align-items: center;
   min-height: var(--size-control);
   padding: 0 var(--space-2);
-  border-radius: var(--radius);
+  border-radius: var(--radius-xs);
   color: var(--text);
   font-size: var(--font-size-md);
+  font-weight: var(--font-weight-regular);
   cursor: pointer;
   outline: none;
-}
-
-.option[data-focused],
-.option[data-hovered] {
-  background: var(--surface-hover);
 }
 
 .option[data-selected] {
@@ -89,7 +86,18 @@
   font-weight: var(--font-weight-medium);
 }
 
-.option[data-focus-visible] {
-  outline: var(--size-focus-ring) solid var(--focus);
-  outline-offset: calc(var(--size-focus-ring) * -1);
+.option[data-focused],
+.option[data-hovered] {
+  background: var(--accent-fill);
+  box-shadow: none;
+  color: var(--text-on-accent);
+}
+
+@media (forced-colors: active) {
+  .option[data-focused],
+  .option[data-hovered] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
 }

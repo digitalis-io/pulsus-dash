@@ -9,7 +9,28 @@
   min-width: 0;
   padding: 0 var(--size-page-padding);
   border-bottom: var(--border-hairline) solid var(--hairline);
+  /* Opaque unless the browser can blur (VL-017 as amended, #282). */
   background: var(--surface-1);
+}
+
+/* The material where the browser can blur (VL-017 as amended, #282). A browser without the
+   reduced-transparency query (Safari, Firefox) keeps it; an explicit `reduce` or forced colours
+   override it back to the opaque base below. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .header {
+    background: var(--material-bar);
+    /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
+    -webkit-backdrop-filter: var(--material-filter);
+    backdrop-filter: var(--material-filter);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .header {
+    background: var(--surface-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
 
 .left {
@@ -78,8 +99,9 @@
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: var(--font-size-xl);
+  font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
+  letter-spacing: var(--tracking-lg);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -92,12 +114,15 @@
   width: var(--size-control);
   height: var(--size-control);
   border: none;
-  border-radius: var(--radius);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-muted);
   font: inherit;
   font-size: var(--font-size-lg);
   cursor: pointer;
+  transition:
+    background-color var(--motion-quick) var(--motion-easing-out),
+    color var(--motion-quick) var(--motion-easing-out);
 }
 
 .star[data-selected] {
@@ -106,6 +131,11 @@
 
 .star[data-hovered] {
   background: var(--surface-hover);
+  color: var(--text);
+}
+
+.star[data-selected][data-hovered] {
+  color: var(--accent);
 }
 
 .star[data-focus-visible] {

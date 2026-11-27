@@ -7,22 +7,41 @@
 # lengths are px; durations are ms. Light colours are designed, not inverted from dark (VL-001).
 
 [color.dark]
-canvas = "#0B0D10"
-surface-1 = "#12151A"
-surface-2 = "#191D24"
-surface-hover = "#222731"
+canvas = "#0E1014"
+surface-1 = "#15171C"
+surface-2 = "#1D2026"
+surface-hover = "#262A31"
 hairline = "#FFFFFF14"
-text = "#E6E8EB"
-text-muted = "#8A919C"
-text-on-accent = "#0B0D10"
-accent = "#5B9BFF"
-focus = "#5B9BFF"
+text = "#E9EBEF"
+text-muted = "#9AA1AC"
+text-on-accent = "#F5F8FF"
+accent = "#4D9BFF"
+focus = "#4D9BFF"
 ok = "#2FB59A"
 watch = "#D9C84A"
 degraded = "#E8923A"
 failing = "#E0457B"
 unknown = "#6B7280"
-backdrop = "#0B0D10B3"
+backdrop = "#05060899"
+# The visual refresh (#282, VL-001 as amended): the source list, controls, fields and their edges,
+# the 1 px top highlight and the two shadow layers of the elevation tokens, the accent as a fill
+# (buttons, the current row, the segmented thumb, the focused menu row) and the two materials.
+sidebar = "#121418"
+control = "#23272E"
+control-hover = "#2A2F37"
+control-pressed = "#31363F"
+field = "#111317"
+border-control = "#FFFFFF29"
+# Field boundaries (fields, select triggers, unchecked boxes): at least 3:1 from the fill and every
+# surface beneath (VL-009).
+border-field = "#6A717C"
+highlight = "#FFFFFF0F"
+shadow-ambient = "#00000066"
+shadow-key = "#0000008C"
+accent-fill = "#2B68D6"
+accent-pressed = "#255CC0"
+material-bar = "#15171CE6"
+material-menu = "#1E2127EB"
 series-1 = "#7AA2D6"
 series-2 = "#C9A36B"
 series-3 = "#8FBF8F"
@@ -41,8 +60,8 @@ ramp-7 = "#8DBBEB"
 ramp-8 = "#B1D3F7"
 ramp-9 = "#D8EAFE"
 brush = "#5B9BFF29"
-# The Inspector's floating sheet (T25 §4.4): surface-1 at 94 %, under a backdrop blur.
-surface-float = "#12151AF0"
+# The geomap's floating overlay (T24-091): surface-1 at 94 %.
+surface-float = "#15171CF0"
 # The shared selection's band and log-row background (T25-006): accent at 16 %.
 selection = "#5B9BFF29"
 # Query syntax (#63 Part B): each at least 4.5:1 on surface-1 and surface-2.
@@ -71,22 +90,38 @@ pattern-ink = "#0B0D10A6"
 category-other = "#8A919C"
 
 [color.light]
-canvas = "#F5F6F8"
+canvas = "#F2F3F6"
 surface-1 = "#FFFFFF"
-surface-2 = "#ECEEF2"
-surface-hover = "#E2E5EA"
-hairline = "#0B0D1014"
-text = "#1A1D23"
-text-muted = "#555D69"
+surface-2 = "#EEF0F3"
+surface-hover = "#E5E8ED"
+hairline = "#1C223314"
+text = "#1B1E25"
+text-muted = "#565E6B"
 text-on-accent = "#FFFFFF"
-accent = "#2563C9"
-focus = "#2563C9"
+accent = "#185FCC"
+focus = "#185FCC"
 ok = "#17806A"
 watch = "#8A7A0F"
 degraded = "#A85A12"
 failing = "#B8285C"
 unknown = "#7A818C"
-backdrop = "#1A1D2366"
+backdrop = "#1B1E2540"
+# The visual refresh (#282, VL-001 as amended): see color.dark.
+sidebar = "#EBEDF1"
+control = "#FFFFFF"
+control-hover = "#F6F7F9"
+control-pressed = "#ECEEF1"
+field = "#FCFCFD"
+border-control = "#1C22333D"
+# Field boundaries: at least 3:1 from the fill and every surface beneath (VL-009).
+border-field = "#7D8490"
+highlight = "#FFFFFF99"
+shadow-ambient = "#141A2414"
+shadow-key = "#141A2426"
+accent-fill = "#185FCC"
+accent-pressed = "#1552B3"
+material-bar = "#FFFFFFD9"
+material-menu = "#FAFBFCE6"
 series-1 = "#3F6FA8"
 series-2 = "#93703A"
 series-3 = "#4E874E"
@@ -105,7 +140,7 @@ ramp-7 = "#3C6995"
 ramp-8 = "#365371"
 ramp-9 = "#313F4D"
 brush = "#2563C929"
-# The Inspector's floating sheet (T25 §4.4): surface-1 at 94 %, under a backdrop blur.
+# The geomap's floating overlay (T24-091): surface-1 at 94 %.
 surface-float = "#FFFFFFF0"
 # The shared selection's band and log-row background (T25-006): accent at 16 %.
 selection = "#2563C929"
@@ -136,6 +171,8 @@ category-other = "#6B7280"
 
 # Spacing scale (px).
 [space]
+# Insets inside a control (the segmented track, #282).
+0-5 = 2
 1 = 4
 2 = 8
 3 = 12
@@ -154,10 +191,10 @@ sidebar-expanded = 240
 sidebar-collapsed = 56
 crumb-max = 160
 tenant-badge = 32
-focus-ring = 2
-focus-offset = 2
+focus-ring = 3
+focus-offset = 1
 header = 56
-control = 32
+control = 28
 target-min = 24
 icon = 16
 avatar = 28
@@ -196,10 +233,15 @@ table-row = 28
 list-row = 36
 list-chip = 20
 
+# The radius scale (VL-019 as amended, #282): fields and tooltips; menu items and the checkbox;
+# cards, popovers, menus and the Inspector; dialogs; capsules (buttons, the segmented control,
+# the header's controls).
 [radius]
 default = 6
-# Floating sheets (the Inspector, T25 §4.4).
-float = 10
+xs = 4
+md = 10
+lg = 14
+pill = 9999
 
 # Alphas (0..1): unselected marks while a selection is relevant (T25-006).
 [opacity]
@@ -211,6 +253,8 @@ hairline = 1
 [font.family]
 ui = '"Inter Variable", system-ui, sans-serif'
 mono = '"JetBrains Mono Variable", ui-monospace, monospace'
+# The platform UI face on Apple systems (VL-010 as amended, ADR-0035; `html[data-platform='apple']`).
+ui-apple = '-apple-system, BlinkMacSystemFont, "Inter Variable", system-ui, sans-serif'
 
 # Font sizes (px).
 [font.size]
@@ -225,19 +269,41 @@ display = 32
 regular = 400
 medium = 500
 semibold = 600
+bold = 700
 
 # Glyph advance (em): JetBrains Mono's 600/1000; the engine measures axis labels with it (#68).
 [font.advance]
 mono = 0.6
 
+# Letter spacing (em) for Inter at the larger sizes; the Apple system face tracks itself (0).
+# Each within ±0.05.
+[font.tracking]
+lg = -0.011
+xl = -0.017
+display = -0.022
+
 [line-height]
 tight = 1.25
 normal = 1.5
 
+# Elevation (VL-004 as amended, #282): the only drop shadows the DOM chrome may use, hue-free, in
+# stacking order; a 1 px top highlight and an ambient and a key shadow.
+[elevation]
+1 = "inset 0 1px 0 var(--highlight), 0 1px 2px var(--shadow-ambient)"
+2 = "inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key)"
+3 = "inset 0 1px 0 var(--highlight), 0 4px 12px var(--shadow-ambient), 0 24px 64px var(--shadow-key)"
+
+# The materials' backdrop filter (header, menus, popovers, tooltips, the Inspector; VL-017).
+[material]
+filter = "blur(24px) saturate(180%)"
+
 # Durations (ms) and easing. Reduced motion sets every duration to 0 ms.
 [motion]
+# Exits and control colour changes (#282).
+quick = 100
 fast = 150
 standard = 250
 # The Inspector opening (T25 §4.4).
 float-open = 200
 easing-out = "cubic-bezier(0.2, 0, 0, 1)"
+easing-in = "cubic-bezier(0.4, 0, 1, 1)"

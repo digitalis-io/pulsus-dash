@@ -13,11 +13,19 @@ import {
   resolveTheme,
   safeStorage,
 } from './theme/theme';
+import { applyPlatform } from './theme/platform';
 import './styles/tokens.css';
 import './styles/fonts.css';
 import './styles/global.css';
 
 applyTheme(resolveTheme(readThemePref(safeStorage()), prefersLightNow()));
+
+// The platform UI face (VL-010, ADR-0035): on a failure the root keeps Inter.
+try {
+  applyPlatform(document.documentElement, navigator);
+} catch (e) {
+  console.warn(`pulsus platform face: ${e instanceof Error ? e.message : String(e)}`);
+}
 
 // React Aria injects an inline <style> (touch-action for pressable elements) unless an element with
 // this id exists. The CSP forbids inline styles, so the rule is in global.css and this marks it.

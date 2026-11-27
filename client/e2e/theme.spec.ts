@@ -22,9 +22,9 @@ test.describe('theme', () => {
     page,
   }) => {
     await open(page, '/t/demo/boards');
-    expect(await cssVar(page, '--canvas')).toBe('#0B0D10');
-    expect(await cssVar(page, '--surface-1')).toBe('#12151A');
-    expect(await cssVar(page, '--surface-2')).toBe('#191D24');
+    for (const k of ['canvas', 'surface-1', 'surface-2'] as const) {
+      expect(await cssVar(page, `--${k}`), k).toBe(colour.dark[k]);
+    }
 
     const menu = await openUserMenu(page);
     await menu.getByRole('menuitemradio', { name: 'Light' }).click();

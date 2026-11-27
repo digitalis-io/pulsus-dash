@@ -44,11 +44,27 @@ const ENGINE_SKIPS: Readonly<Record<string, Readonly<Record<string, readonly str
   },
 };
 
+/**
+ * Waits for the page's running animations (a popover's scale-in, a dialog's fade, #282): mid-way
+ * an element is translucent or scaled, so its contrast and box are not its settled ones.
+ */
+async function settled(page: Page): Promise<void> {
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ).then(() => undefined),
+  );
+}
+
 async function seriousViolations(
   page: Page,
   state = '',
   o: { include?: string; skip?: readonly string[] } = {},
 ): Promise<string[]> {
+  await settled(page);
   const engine = page.context().browser()?.browserType().name() ?? '';
   const skip = [...(ENGINE_SKIPS[engine]?.[state] ?? []), ...(o.skip ?? [])];
   const include = o.include;
@@ -68,6 +84,7 @@ async function seriousViolations(
 }
 
 async function smallTargets(page: Page): Promise<string[]> {
+  await settled(page);
   return page.evaluate(() => {
     const sel =
       'a, button, input, [role^=menuitem], [role=checkbox], [role=option], [role=gridcell] button, [role=gridcell] [role=button]';

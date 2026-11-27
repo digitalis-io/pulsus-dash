@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-25 |
+| **Version** | 1.6-rc · 2026-11-27 |
 | **Requirement area** | `VL` |
 | **Source draft** | plans/08-visual-language.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [T02](../technical/T02-vis-engine.md), [T08](../technical/T08-dom-component-kit.md) |
@@ -45,12 +45,19 @@ character: one light, fog, hairline grid, no decoration ([05](05-visualisation-c
 
 | Token | Value | Token | Value |
 |---|---|---|---|
-| `canvas` | `#0B0D10` | `surface-1` | `#12151A` |
-| `surface-2` | `#191D24` | `hairline` | `#FFFFFF` at 8% (`#FFFFFF14`) |
-| `text` | `#E6E8EB` | `text-muted` | `#8A919C` |
+| `canvas` | `#0E1014` | `surface-1` | `#15171C` |
+| `surface-2` | `#1D2026` | `hairline` | `#FFFFFF` at 8% (`#FFFFFF14`) |
+| `surface-hover` | `#262A31` | `sidebar` | `#121418` |
+| `control` / `-hover` / `-pressed` | `#23272E` / `#2A2F37` / `#31363F` | `field` | `#111317` |
+| `border-control` | `#FFFFFF29` | `border-field` | `#6A717C` |
+| `highlight` | `#FFFFFF0F` | `shadow-ambient` / `shadow-key` | `#00000066` / `#0000008C` |
+| `text` | `#E9EBEF` | `text-muted` | `#9AA1AC` |
+| `accent` / `focus` | `#4D9BFF` | `accent-fill` / `accent-pressed` | `#2B68D6` / `#255CC0` |
+| `text-on-accent` | `#F5F8FF` | `backdrop` | `#05060899` |
+| `material-bar` | `#15171CE6` | `material-menu` | `#1E2127EB` |
 | `ok` | `#2FB59A` (teal-green) | `watch` | `#D9C84A` (cool yellow) |
 | `degraded` | `#E8923A` (amber) | `failing` | `#E0457B` (red-magenta) |
-| `unknown` | `#6B7280` + hatch (hatched grey) | `accent` / `focus` | `#5B9BFF` |
+| `unknown` | `#6B7280` + hatch (hatched grey) | `surface-float` | `#15171CF0` (geomap overlay) |
 | `series-1`…`series-8` | `#7AA2D6` `#C9A36B` `#8FBF8F` `#B48FC9` `#6FB8B8` `#C98F8F` `#A8A8D9` `#BFB07A` | | |
 
 #### VL-001 — Dark-first themes, both designed
@@ -60,7 +67,7 @@ The default theme MUST be dark, using the canvas and layered surface tokens abov
 full light theme for daytime offices and printing MUST also be provided, designed with its own token
 values rather than produced by inverting the dark theme.
 
-*Acceptance:* A fresh session renders with `canvas` `#0B0D10` and surfaces `#12151A` / `#191D24`;
+*Acceptance:* A fresh session renders with `canvas` `#0E1014` and surfaces `#15171C` / `#1D2026`;
 switching to light renders every surface, text, state and series token from the light token set, and
 no light value is the arithmetic inverse of its dark value.
 
@@ -113,12 +120,15 @@ health encodings; the series palette contains none of them.
 
 Deviation MUST be shown as an additive bloom whose intensity is proportional to the anomaly score.
 It is the only visual "effect" allowed, because it carries information; no decorative glow, shadow
-or bloom MAY be used. The depth cues of §10 (lighting, fog, ground grid, contact shadows) are shading
+or bloom MAY be used in a visualisation. DOM chrome MAY use only the three hue-free elevation
+tokens (`elevation.1` to `elevation.3`: a 1 px top highlight and neutral shadows), and only to show
+stacking order (controls and cards, then popovers and menus, then dialogs). The depth cues of §10 (lighting, fog, ground grid, contact shadows) are shading
 in 3D scenes, not effects; they MUST NOT add hue or glow.
 
 *Acceptance:* Two entities with anomaly scores 0.4 and 0.8 render glows whose measured intensity
 ratio is 1 : 2 (±10%), in 2D and in 3D scenes; an entity with score 0 has no glow; no other bloom
-appears in any frame capture.
+appears in any frame capture; `ci:token-lint`'s `shadow-token` rule finds no drop shadow outside the
+elevation tokens.
 
 #### VL-005 — Victims and origin
 **MUST** · M-UI3 · NOC, SRE, Platform, Engineer
@@ -185,14 +195,18 @@ both themes; the Wall variant achieves ≥ 7:1 contrast for text and ≥ 3:1 for
 Text and interactive elements MUST meet WCAG 2.2 AA contrast in both themes, on the canvas and in the
 rooms, verified by an accessibility audit.
 
+Field boundaries (text fields, select triggers, unchecked boxes: `border-field`) MUST be at least
+3:1 from the field fill and every surface beneath, from M-UI1 (#282).
+
 *Acceptance:* Automated contrast checks find no text below 4.5:1 (3:1 for large text) and no UI
-component boundary below 3:1 in either theme; the M-UI6 AA audit passes.
+component boundary below 3:1 in either theme; `unit:ui-token-contrast` finds every field boundary
+at least 3:1; the M-UI6 AA audit passes.
 
 ## 5. Typography and numbers
 
 | Use | Font | Notes |
 |---|---|---|
-| UI | Inter (variable) | Tabular numerals wherever numbers align |
+| UI | Inter (variable); the platform UI face on Apple systems | Tabular numerals wherever numbers align |
 | Data and code (logs, queries, labels) | JetBrains Mono | — |
 | Sizes | 11 / 12 / 13 / 16 / 20 px | Compact scale; Wall is ×1.6 |
 
@@ -205,16 +219,22 @@ component boundary below 3:1 in either theme; the M-UI6 AA audit passes.
 #### VL-010 — Fonts
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC, Admin
 
-UI text MUST use Inter with tabular numerals wherever numbers align; data and code (logs, queries,
-labels) MUST use JetBrains Mono. Both fonts MUST be self-hosted with the application.
+UI text MUST use the platform UI face on Apple systems (macOS, iPadOS, iOS) and self-hosted Inter
+elsewhere, with tabular numerals wherever numbers align; data and code (logs, queries, labels) MUST
+use JetBrains Mono on every platform. Inter and JetBrains Mono MUST be self-hosted with the
+application; the platform face is the system's own and is never fetched
+([ADR-0035](../adr/0035-platform-ui-face.md)).
 
-*Acceptance:* Every UI string renders in Inter and every log, query and label in JetBrains Mono;
-numeric columns align digit for digit; no font is fetched from a third-party host.
+*Acceptance:* Every UI string renders in Inter, or on an Apple system in the platform face
+(`-apple-system` first), and every log, query and label in JetBrains Mono; numeric columns align
+digit for digit; no font is fetched from a third-party host.
 
 #### VL-011 — Canvas text matches DOM text
 **MUST** · M-UI0 · NOC, SRE, Platform, Engineer, Business, Support, IC
 
-GPU text MUST use MSDF atlases of the same fonts, so canvas text and DOM text match exactly.
+GPU text MUST use MSDF atlases of the same fonts, so canvas text and DOM text match exactly. Canvas
+text is Inter and JetBrains Mono on every platform, also where the DOM uses the platform UI face
+(VL-010).
 
 *Acceptance:* The same string at the same size rendered on the canvas and in the DOM differs by
 ≤ 1 px in advance width and baseline position.
@@ -249,6 +269,10 @@ Perspective user starts in Compact; Wall mode renders 13 px body text at 20.8 px
 | Loading | No spinners on data; thin progress shimmer on the viewport edge only after 300 ms |
 | Semantic-zoom flight (3D) | Continuous, each leg ≤ 250 ms, ease-out ([15](15-estate-navigation.md) EST-060) |
 | Floating panel open / close / content change | 200 / 150 / 150 ms crossfade, ease-out; reduced motion: instant ([T25](../technical/T25-inspector-and-pivots.md#t25-013--look-and-motion)) |
+| Popover, menu, listbox | Enter 150 ms, opacity and scale 0.98 → 1 from the trigger, ease-out; exit 100 ms opacity, ease-in |
+| Tooltip | 100 ms opacity in and out |
+| Modal dialog | Enter 200 ms, opacity and an 8 px rise, ease-out (overlay 200 ms fade); exit 150 ms opacity |
+| Control state (colour, background) | 100 ms |
 | `prefers-reduced-motion` | Instant cuts; particles replaced by static dashes with thickness; estate opens in its 2D equivalent ([15](15-estate-navigation.md) EST-063) |
 
 #### VL-014 — Purposeful motion only
@@ -259,7 +283,8 @@ MUST be no bouncing and no decorative animation.
 
 *Acceptance:* Frame captures show camera transitions ≤ 250 ms with ease-out, refresh crossfades of
 150 ms ± 1 frame, alert rings pulsing at 1 Hz, floating panels opening in 200 ms and closing or
-changing content in 150 ms with ease-out, and no other animation.
+changing content in 150 ms with ease-out, popovers entering in 150 ms and leaving in 100 ms, modal
+dialogs entering in 200 ms and leaving in 150 ms, and no other animation.
 
 #### VL-015 — No spinners on data
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -277,8 +302,9 @@ With `prefers-reduced-motion` set, transitions MUST be instant cuts and traffic 
 replaced by static dashes whose thickness encodes traffic.
 
 *Acceptance:* With `prefers-reduced-motion: reduce`, a dive shows the final pose on the next frame;
-Atlas edges show static dashes whose thickness increases with request rate; no element animates
-except the alert ring, which is shown as a static double ring.
+Atlas edges show static dashes whose thickness increases with request rate; popovers and dialogs
+appear and disappear on the next frame without animating; no element animates except the alert
+ring, which is shown as a static double ring.
 
 ## 7. Layout and chrome
 
@@ -291,7 +317,8 @@ except the alert ring, which is shown as a static double ring.
 | Time Ribbon height (Space scenes) | 40 px |
 | Base grid | 4 px |
 | Viewport gutter (inside dense views: Lens strips, small multiples) | 8 px |
-| Corner radius | 6 px |
+| Corner radius | 4 / 6 / 10 / 14 px and capsule (menu items, checkbox / fields, tooltips / cards, popovers, menus, Inspector / dialogs / buttons, segmented control, header controls) |
+| Control insets | 2 px |
 | Hairline border | 1 px at 8% contrast (`hairline`) |
 
 #### VL-017 — Application layout dimensions
@@ -299,8 +326,10 @@ except the alert ring, which is shown as a static double ring.
 
 The application layout ([02](02-information-architecture.md) IA-016) MUST use the sizes of the table
 above: a 240 px sidebar that collapses to a 56 px icon rail, a 56 px page header, 24 px page content
-padding and 16 px gaps between board panels, so boards stay roomy. The sidebar and page header are
-opaque `surface-1` with a 1 px `hairline` edge; the sidebar's top block is 56 px high, so its bottom
+padding and 16 px gaps between board panels, so boards stay roomy. The sidebar is opaque
+`sidebar`; the page header is the translucent `material-bar` where `backdrop-filter` is supported
+and no reduced transparency or forced colours apply, otherwise opaque `surface-1`; both have a 1 px
+`hairline` edge; the sidebar's top block is 56 px high, so its bottom
 hairline continues the page header's. A long page title truncates with an ellipsis before any header
 control moves or the page scrolls sideways. The time range trigger adds the absolute window of a
 relative range (for example `12:03 – 13:03 GMT`) only when the viewport is at least 1520 px wide. In
@@ -325,12 +354,12 @@ an IDE; the arrangement MUST persist per user.
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC, Admin
 
 Layout MUST use the 4 px base grid, 8 px viewport gutters inside dense views, 16 px gaps between
-board panels (VL-017), 6 px corner radius and 1 px hairline borders at 8% contrast, in canvas and DOM
-alike.
+board panels (VL-017), the radius scale of §7 (4, 6, 10, 14 px and capsule; 6 px in canvas),
+2 px insets inside controls and 1 px hairline borders at 8% contrast, in canvas and DOM alike.
 
 *Acceptance:* A layout audit of the Atlas, a Board and each room finds every position and size a
-multiple of 4 px, gutters of 8 px inside dense views and 16 px between board panels, radii of 6 px and
-borders of 1 px `hairline`.
+multiple of 4 px (control insets 2 px), gutters of 8 px inside dense views and 16 px between board
+panels, radii from the §7 scale and borders of 1 px `hairline`.
 
 ## 8. Iconography and glyphs
 
@@ -526,6 +555,13 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
     [ADR-0014](../adr/0014-typescript-react-web-client.md) §10 the sidebar and header are opaque and
     sized for legibility (VL-017, revised in place); translucency stays only for the Ribbon and
     minimap over Space scenes.
+11. **Visual refresh (1.6-rc, owner request 2026-11-27, #282).** A Mac-like finish: §3.1's chrome
+    tokens, hue-free elevation for DOM chrome only (VL-004), translucent materials for the header and
+    floating surfaces with opaque fallbacks (VL-017), the radius scale and control insets (VL-019),
+    the platform UI face on Apple systems (VL-010, [ADR-0035](../adr/0035-platform-ui-face.md)),
+    canvas text staying Inter (VL-011), popover and dialog motion (VL-014, VL-016), and field
+    boundaries at 3:1 (VL-009). State-colour text below 4.5:1 on the surfaces predates the refresh
+    and is tracked in #284.
 
 ## 13. Change log
 
@@ -538,3 +574,4 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
 | 1.3-rc | 2026-11-20 | #58, owner decision 2026-11-20: VL-002 gives log-level series the fixed colours of the new Table 8-1a (error `series-6`, warn `series-2`, info `series-1`, debug `series-5`, trace `series-4`; key hash for everything else); acceptance extended |
 | 1.4-rc | 2026-11-23 | #66 Part B: Table 8-1a adds `unknown` → `series-3`; the `level-*` tokens hold the table's hues (Q2) |
 | 1.5-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): §6 motion row for floating panels (open / close / content change 200 / 150 / 150 ms, ease-out; reduced motion instant); VL-014's acceptance adds floating panels |
+| 1.6-rc | 2026-11-27 | #282 Part 1, resolution 11: §3.1 to the refreshed chrome tokens; VL-001 acceptance `#0E1014` / `#15171C` / `#1D2026`; VL-004 allows the three elevation tokens in DOM chrome; VL-009 field boundaries ≥ 3:1; VL-010 platform UI face on Apple systems; VL-011 canvas text Inter everywhere; §6 and VL-014 popover, tooltip, dialog and control motion; VL-016 popovers and dialogs; VL-017 `material-bar` header, opaque `sidebar`; §7 and VL-019 radius scale and 2 px control insets |

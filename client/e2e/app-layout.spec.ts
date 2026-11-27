@@ -53,6 +53,8 @@ test.describe('e2e:app-layout', () => {
       expect(await page.locator('main').evaluate((m) => getComputedStyle(m).padding)).toBe('24px');
       await noHorizontalOverflow(page, 1440);
       if (url.endsWith('/b-3')) {
+        // The 16 px title (#282) fits more at 1440 px: a narrower window still truncates it.
+        await page.setViewportSize({ width: 1024, height: 900 });
         const h1 = page.getByRole('heading', { level: 1 });
         const t = await h1.evaluate((e) => ({
           overflow: e.scrollWidth > e.clientWidth,

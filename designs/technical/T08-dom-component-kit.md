@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.13-rc · 2026-11-26 |
+| **Version** | 1.14-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -106,7 +106,7 @@ This document fixes:
 | [VIZ-056](../product/05-visualisation-catalogue.md#viz-056--no-arbitrary-iframes) | §4.4, T08-009 | `ci:no-iframe`: the `security/no-iframe` rule over `client/src` and `client/e2e` finds no `iframe` element construction; `e2e:link-new-tab` |
 | [VIZ-066](../product/05-visualisation-catalogue.md#viz-066--table-view-and-csv-for-every-vis) | §4.5 (`Shift+T`), §4.4.1 (CSV) | `e2e:table-view-csv`: `Shift+T` swaps every vis for a table of the same data; "Export CSV" downloads it |
 | [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel) | §4.4 (state glyph cells and pills), §4.7 | `golden:greyscale-states`: every state distinguishable in greyscale DOM screenshots |
-| [VL-001](../product/08-visual-language.md#vl-001--dark-first-themes-both-designed) | §4.7 (themes) | `golden:theme-tokens`: fresh session renders `canvas` `#0B0D10` and surfaces `#12151A`/`#191D24`; light theme (M-UI5) values come from the light token set |
+| [VL-001](../product/08-visual-language.md#vl-001--dark-first-themes-both-designed) | §4.7 (themes) | `golden:theme-tokens`: fresh session renders `canvas` `#0E1014` and surfaces `#15171C`/`#1D2026` (#282); light theme (M-UI5) values come from the light token set |
 | [VL-002](../product/08-visual-language.md#vl-002--neutral-series-palette-with-stable-identity-colours) | §4.7 (`series_colour` in `dash-tokens`) | `unit:series-colour-stable`: same identity → same palette index on DOM legend and GPU, across reloads |
 | [VL-003](../product/08-visual-language.md#vl-003--state-colours-are-reserved-for-health) | §4.7 (state colours reserved) | `ci:token-usage`: state tokens used only by state components and marks |
 | [VL-008](../product/08-visual-language.md#vl-008--cvd-safe-palettes-and-wall-high-contrast) | §4.7 (palette validator in the token build) | `ci:palette-validator`: CVD simulations pass for state and series palettes in both themes |
@@ -116,7 +116,7 @@ This document fixes:
 | [VL-013](../product/08-visual-language.md#vl-013--density-modes) | §4.7 (density) | `golden:density`: Compact and Comfortable change type and spacing on DOM and canvas; Engineer Perspective starts Compact |
 | [VL-015](../product/08-visual-language.md#vl-015--no-spinners-on-data) | §4.4 (skeleton, shimmer; no data spinner) | `e2e:no-spinner`: with a 1 s server delay no spinner is present; the shimmer appears after 300 ms and clears on refine |
 | [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) | §4.5 (reduced motion) | `e2e:reduced-motion`: with `prefers-reduced-motion: reduce` DOM transitions are instant and the render worker receives the reduced-motion pref |
-| [VL-019](../product/08-visual-language.md#vl-019--layout-grid) | §4.7 (spacing tokens on a 4 px grid) | `ci:layout-grid`: kit CSS uses only spacing tokens (multiples of 4 px), 8 px gutters, 6 px radius, 1 px hairline |
+| [VL-019](../product/08-visual-language.md#vl-019--layout-grid) | §4.7 (spacing tokens on a 4 px grid) | `ci:layout-grid`: kit CSS uses only spacing tokens (multiples of 4 px; 2 px control insets), 8 px gutters, the radius scale (4 / 6 / 10 / 14 px and capsule, #282), 1 px hairline |
 | [VL-020](../product/08-visual-language.md#vl-020--fixed-glyph-language) | §4.4 (glyph and icon set from tokens) | `ci:single-icon-set`: every icon reference resolves to the one line set; glyph meanings come from the token table |
 | [VL-021](../product/08-visual-language.md#vl-021--one-token-source-for-canvas-and-dom) | §4.7, T08-022 | `ci:hardcoded-colour`: fails on any colour literal outside generated outputs; `golden:accent-change` |
 | [VL-022](../product/08-visual-language.md#vl-022--component-and-mark-libraries-share-the-tokens) | §4.4, §4.7, T08-007 | `ci:token-usage`: kit components reference only generated token outputs |
@@ -264,7 +264,9 @@ pub enum Route {
   breadcrumb on the left; ⌘K entry, alert count and AI dock toggle once they exist, the time range
   picker, the refresh control and the user menu on the right; IA-016, IA-020), the page content
   (24 px padding), the dock host and the overlay host (tooltips, palette, dialogs, toasts). Sidebar
-  and header are opaque `surface-1` with a `hairline` edge (VL-017). Wall mode hides them.
+  is opaque `sidebar`; the header is the translucent `material-bar` where `backdrop-filter` is
+  supported and no reduced transparency or forced colours apply, otherwise opaque `surface-1`; both
+  have a `hairline` edge (VL-017 as amended by #282). Wall mode hides them.
 - The **sidebar** lists the destinations that exist at the build and that the user's role may open
   (Boards; Explore → Metrics, Logs; Alerts and Investigations when they exist; Admin for
   administrators) and marks the current route. Its collapsed state is a user preference (`Prefs`).
@@ -320,6 +322,23 @@ pixel at the same viewport size.
 | **Restricted placeholder** | Replaces any object the principal cannot read: neutral shape, no title, "Request access" button that calls the T06 action API to notify the owning team (ENT-010). Disabled controls for missing permissions carry the same link (ENT-003) | `region` + `button` |
 | **Progress shimmer** | Thin edge shimmer on a viewport or list, shown only after a load has taken > 300 ms; there is no spinner component for data (VL-015) | `aria-busy` on the region |
 | **Basics** | Button, icon button (24×24 minimum target, WCAG 2.5.8), tabs, menu, switch, slider, splitter, badge, entity chip, state glyph (shape + colour + text, VIZ-067), pill, skeleton, empty-state, kbd hint, banner | standard patterns |
+
+**Kit look (#282, [08](../product/08-visual-language.md) VL-004, VL-017, VL-019 as amended).**
+Buttons are 28 px capsules: default `control` with a `border-control` edge and `elevation.1`,
+primary `accent-fill` with `text-on-accent`, ghost transparent; icon buttons are 28 × 28 ghost
+capsules. The segmented control is a `field` capsule track with an `accent-fill` thumb 2 px inside
+its edge (items ≥ 24 px). Text fields, select triggers and text areas are `field` with a
+`border-field` boundary (≥ 3:1, VL-009), radius 6, 28 px high (text areas at least, `rows` tall).
+The checkbox is a 16 px `xs` box, `accent-fill` when checked. Popovers, menus, listboxes,
+tooltips and the Inspector take the `material-menu` material with `elevation.2` (opaque `surface-1`
+without `backdrop-filter`, under reduced transparency or forced colours) and radius `md`
+(tooltips 6); menu and listbox rows are 28 px, radius `xs`, and the focused row is `accent-fill`
+with `text-on-accent` (forced colours: `Highlight` / `HighlightText`). Modal dialogs are
+`surface-1` sheets with `elevation.3`, radius `lg`, over an unblurred `backdrop`. Cards are
+`surface-1`, `hairline`, `md`, `elevation.1`; empty states `surface-2` without a dashed border.
+Popovers enter in 150 ms (opacity, scale 0.98) and leave in 100 ms; dialogs enter in 200 ms and
+leave in 150 ms; none animate under reduced motion. Focus rings are 3 px at a 1 px offset (fields
+0). Only the elevation tokens give drop shadows (`ci:token-lint` `shadow-token`).
 
 **M-UI1 board editor (#61 Part B, #90).** The panel editor is a modal dialog (`dialog` "Edit
 panel"), centred and of fixed size (800 × 720 px, capped to the viewport), over the dimmed board: a
@@ -577,15 +596,20 @@ elements.
 ```
 design/tokens.toml ──► client/scripts/gen-tokens.ts ──┬──► tokens.css  (CSS custom properties per theme × density)
                                                       ├──► tokens.ts   (typed constants for the TS application)
-                                                      └──► tokens.rs   (engine/crates/dash-tokens: pub const SURFACE_1: Rgba8 = Rgba8([0x12, 0x15, 0x1A, 0xFF]), …)
+                                                      └──► tokens.rs   (engine/crates/dash-tokens: pub const SURFACE_1: Rgba8 = Rgba8([0x15, 0x17, 0x1C, 0xFF]), …)
 ```
 
 - **One source** ([08 §9](../product/08-visual-language.md)). *(Revised 2026-11-21, #68.)* Colours
   are authored as sRGB hex and emitted to `tokens.rs` as sRGB-encoded `Rgba8([u8; 4])`, the same
   bytes as the CSS; the engine blends in sRGB-encoded space ([T02](T02-vis-engine.md) §4.2), so token
   alphas composite as in CSS and Canvas 2D. `tokens.rs` is committed, and `checkGenerated`
-  (`ci:token-lint`) fails when it is stale. Spacing (4 px grid), radius (6 px), hairline (1 px at 8 % contrast), type scale
-  and motion durations are emitted to both (VL-019).
+  (`ci:token-lint`) fails when it is stale. Spacing (4 px grid, a 2 px control inset), radius
+  (`xs` 4, `default` 6, `md` 10, `lg` 14, `pill`), hairline (1 px at 8 % contrast), type scale,
+  tracking (`font.tracking`, em, Inter only), elevation (`elevation.1`–`3`, hue-free box shadows,
+  DOM chrome only), material (`material.filter`) and motion durations are emitted to both (VL-004,
+  VL-019; #282). The UI face is Inter, or the platform face on Apple systems via
+  `html[data-platform="apple"]` and `font.family.ui-apple` ([ADR-0035](../adr/0035-platform-ui-face.md));
+  canvas text stays Inter and JetBrains Mono everywhere (VL-011).
 - **Themes:** `dark` (default, M-UI1), `light` (M-UI5, its own token values, never an inversion) and
   `wall-high-contrast` (M-UI6), × density `compact | comfortable | wall (×1.6, M-UI6)`. Compact is
   the Engineer Perspective default (VL-013). A switch sets `data-theme`/`data-density` on `<html>`
@@ -886,3 +910,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.11-rc | 2026-11-23 | #66 Part B: §4.4 v1 note: the M-UI1 log stream virtualises with `@tanstack/react-virtual` over a slice of ≤ 200 000 rows (fixed 20 px rows, measured with wrap), not the Fenwick table virtualiser |
 | 1.12-rc | 2026-11-25 | #164: §4.4 Inspector row links [T25](T25-inspector-and-pivots.md) (host, payload, selection, Esc ladder, pivots, look); the dock host (VL-018) is not part of T25 |
 | 1.13-rc | 2026-11-26 | #198 Part 2a: §3 VIZ-056 `ci:no-iframe` is the `security/no-iframe` ESLint rule over `client/src` and `client/e2e` (was a lint over `dash-kit`) |
+| 1.14-rc | 2026-11-27 | #282 Part 1: §4.3 sidebar opaque `sidebar`, header `material-bar` with an opaque fallback (VL-017 as amended); §4.4 kit look (shapes, elevations, materials, focus, motion); §4.7 radius scale, tracking, elevation, material and the Apple UI face (ADR-0035); Satisfies rows VL-001 (values) and VL-019 (radii) |

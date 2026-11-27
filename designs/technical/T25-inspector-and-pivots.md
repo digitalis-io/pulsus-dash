@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.10-rc · 2026-11-27 |
+| **Version** | 1.11-rc · 2026-11-27 |
 | **Milestone** | M-UI2 (host, selection, Esc ladder, pivots on boards and Explore) → M-UI4 (Pin, Create alert, Ask AI) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md), [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md), [ADR-0032](../adr/0032-selection-dims-as-one-layer.md) |
 | **Source draft** | plans/164, plans/184 (not tracked) |
@@ -249,11 +249,11 @@ applies T25-010 unchanged (the translated filters, conflicts and LogQL escaping)
 | Element | Specification |
 |---|---|
 | Placement | Inset 12 px from the right, top (below the header) and bottom of the content column; width `size.inspector` 360, ≤ content − 24 |
-| Material | `surface-float` (dark `#12151AF0`, light `#FFFFFFF0`) + `backdrop-filter: blur(20px) saturate(140%)`; 1 px `hairline`; the kit Popover's shadow; `radius.float` 10 |
+| Material | `material-menu` (dark `#1E2127EB`, light `#FAFBFCE6`) with `backdrop-filter: var(--material-filter)` (blur 24 px, saturate 180 %) where translucency is supported, else opaque `surface-1`; 1 px `hairline`; `elevation.2`; `radius.md` 10 (was `radius.float`; #282) |
 | Type and rhythm | Padding 20, with 20 between sections and hairline rules. Headings 11 px semibold, +0.06 em, upper case, `text-muted`. Title 16 semibold with an ellipsis. Value 32 `display`, tabular, with its unit at 16 muted; state colour and glyph only for a crossed threshold. Labels mono 12 |
 | Chips | 28 px pill, `surface-2`, hairline, 16 px icon, 13 px label, ↗. Hover: border `accent` at 40 %. Unavailable: dashed and `text-muted`, with the reasons in 12 px below |
 | Motion | Open: opacity and translateX 16→0 over 200 ms `easing-out`. Close 150 ms. New target, and each `push` or `pop` (a new `viewKey`, §4.8): 150 ms crossfade, the leaving layer inert, at most one leaving layer (the newest wins). Reduced motion: instant, no leaving layer |
-| Tokens (I1) | `color.surface-float`, `color.selection`, `size.inspector` 360, `size.inspector-tab` 40, `size.inspector-inset` 12, `radius.float` 10, `motion.float-open` 200, and the `[opacity]` table (`dimmed` 0.35), emitted to CSS, TypeScript and Rust |
+| Tokens (I1) | `color.material-menu` (the sheet; `color.surface-float`, now `#15171CF0`, stays for the geomap overlay), `color.selection`, `size.inspector` 360, `size.inspector-tab` 40, `size.inspector-inset` 12, `radius.md` 10, `elevation.2`, `material.filter`, `motion.float-open` 200, and the `[opacity]` table (`dimmed` 0.35), emitted to CSS, TypeScript and Rust |
 
 ### 4.5 Mockup 41
 
@@ -525,3 +525,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 | 1.8-rc | 2026-11-26 | #68 Part C2c2, per T25-002: T25-006's line rule: the unmatched series are dimmed together, one layer composited once at `dimmed` ([ADR-0032](../adr/0032-selection-dims-as-one-layer.md)); §10 `unit:selection-draw`'s line row likewise (bars unchanged) |
 | 1.9-rc | 2026-11-27 | #234 Part 3 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1b, the geomap host): §5 `registerMembers` is a per-`panelId` stack with own-entry disposers (the top live entry answers); `resolveMembers` answers `geo:` run ids from the open request's geo target |
 | 1.10-rc | 2026-11-27 | #234 Part 4 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1b, the navigation stack): §5 `inspectorModel` takes the view's `depth` (the §4.9 level prefix needs it) and the sheet renders the top view at `nav.length`; §4.8 records that the host answers `geo:` member ids from the request's top view with `resolveGeoMembers` (pure), replacing a per-frame registration; §5's `resolveMembers` comment likewise; a push or a pop expands a collapsed sheet (code review r1) |
+| 1.11-rc | 2026-11-27 | #282 Part 1: §4.4 Material row: `material-menu` with `material.filter` and an opaque `surface-1` fallback, `elevation.2`, `radius.md`; Tokens (I1): `color.material-menu` replaces `color.surface-float` for the sheet, `radius.md` replaces `radius.float`, adds `elevation.2` and `material.filter` |

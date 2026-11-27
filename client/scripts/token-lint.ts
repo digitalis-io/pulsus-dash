@@ -1,6 +1,7 @@
 /**
  * `ci:token-lint` (T01-010, T02-004, VL-021): no colour, size or duration literal and no state
- * colour outside the generated tokens and `theme/stateEncoding`. Parsers only, no regex over
+ * colour outside the generated tokens and `theme/stateEncoding`; in CSS, drop shadows come only
+ * from the elevation tokens (`shadow-token`, VL-004 as amended). Parsers only, no regex over
  * source text: CSS through `postcss` and `scripts/lib/tokenValue.ts`; TypeScript through ESLint with
  * the rules of `eslint/tokens-plugin.ts`.
  *
@@ -15,7 +16,13 @@ import postcss from 'postcss';
 import tseslint from 'typescript-eslint';
 import tokens, { TOKEN_RULE_IDS } from '../eslint/tokens-plugin.ts';
 import { InputError, runCli, type Finding } from './lib/report.ts';
-import { classifyValue, TOKEN_MESSAGES, type TokenRule } from './lib/tokenValue.ts';
+import {
+  breaksShadowToken,
+  classifyValue,
+  SHADOW_MESSAGE,
+  TOKEN_MESSAGES,
+  type TokenRule,
+} from './lib/tokenValue.ts';
 
 const CLIENT_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const GENERATED = new Set(['src/styles/tokens.css', 'src/styles/tokens.ts']);
@@ -75,6 +82,15 @@ export function lintCss(file: string, text: string): Finding[] {
   };
   root.walkDecls((d) => {
     add(classifyValue(d.value), d.source?.start?.line);
+    if (d.prop.toLowerCase() === 'box-shadow' && breaksShadowToken(d.value)) {
+      const line = d.source?.start?.line;
+      findings.push({
+        rule: 'shadow-token',
+        file,
+        ...(line === undefined ? {} : { line }),
+        message: SHADOW_MESSAGE,
+      });
+    }
   });
   root.walkAtRules((a) => {
     add(classifyValue(a.params), a.source?.start?.line, AT_RULE_RULES);

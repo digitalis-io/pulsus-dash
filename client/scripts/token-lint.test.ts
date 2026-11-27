@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { lintTokens } from './token-lint.ts';
+import { lintCss, lintTokens } from './token-lint.ts';
 
 const fixtures = fileURLToPath(new URL('./__fixtures__/token-lint/', import.meta.url));
 const clientRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -79,4 +79,31 @@ describe('token-lint real tree', () => {
   it('reports nothing for src/', async () => {
     expect(await findings(clientRoot)).toEqual([]);
   }, 30_000);
+});
+
+describe('unit:shadow-token (VL-004)', () => {
+  const shadows = (value: string): number =>
+    lintCss('src/kit/X.module.css', `.x {\n  box-shadow: ${value};\n}\n`).filter(
+      (f) => f.rule === 'shadow-token',
+    ).length;
+
+  it('reports a drop shadow that is not an elevation token', () => {
+    expect(shadows('0 2px 6px var(--backdrop)')).toBe(1);
+    expect(shadows('var(--elevation-1), 0 1px 2px var(--x)')).toBe(1);
+  });
+
+  it('allows the elevation tokens, none, inset bars and spread-only rings', () => {
+    expect(shadows('var(--elevation-2)')).toBe(0);
+    expect(shadows('none')).toBe(0);
+    expect(shadows('inset 2px 0 0 var(--accent)')).toBe(0);
+    expect(shadows('0 0 0 var(--size-focus-ring) var(--selection)')).toBe(0);
+  });
+
+  it('names the rule in its message', () => {
+    const [f] = lintCss(
+      'src/kit/X.module.css',
+      '.x { box-shadow: 0 2px 6px var(--backdrop); }',
+    ).filter((x) => x.rule === 'shadow-token');
+    expect(f?.message).toBe('drop shadows come only from the elevation tokens (VL-004)');
+  });
 });

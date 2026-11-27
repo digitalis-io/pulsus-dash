@@ -77,7 +77,7 @@ Sizes come from the tokens, at a 1440 × 900 reference:
 | Sidebar, 240 px (56 px collapsed) | Full height. Top block 56 px, its bottom hairline continuing the header's: product mark (link to Boards) and the org and tenant block. With two or more tenant bindings the tenant name is a menu button (`Switch tenant, current: <name>`) listing the bindings; choosing one opens that tenant's Boards with the current time range (push). With one binding the block is static text. Collapsed: the mark, and a 32 px org-initial menu button named "`<initial>`, switch tenant, current: `<name>`", so its name starts with the letter it shows (with a blank org name it is "Switch tenant, current: `<name>`"), when there are two or more bindings |
 | Sidebar navigation (`nav` "Main") | Boards; Explore with Metrics and Logs; Starred (the user's starred boards, from the BFF, in title order, empty text "No starred boards", "Could not load starred boards" on failure); Recent (the last five boards the user opened, from the BFF, newest first, empty text "No recent boards", "Could not load recent boards" on failure). Both are per user, the same in every browser and tenant (IA-021), and refetch on every return to the tab. Collapsed: icon links with tooltips; Starred and Recent hidden. The current page is marked with `aria-current="page"` (Boards also on a board page). Links carry the current `from`, `to` and `refresh`, and preload their page on hover and focus |
 | Sidebar footer | Admin (administrators only); the data-source line "Data source: `<tenant slug>` · `<state>`" for the current tenant (expanded sidebar only, IA-021; nothing when the tenant has no data-source state): the result of the data-source check, "Connected", "Unreachable", "Not authorised" or "Error", and "Not checked" while it is pending or when it fails (`useQuery` key `['datasource', tenant]`, reused for 60 s, no retry); and "Collapse sidebar" / "Expand sidebar" (`aria-expanded`). There is no keyboard shortcut for the toggle: `[` is the window-step key (INT-032). The state persists in `localStorage` |
-| Page header, 56 px | Left: a breadcrumb (`Boards` link on a board, `Explore` text on Explore pages, none elsewhere), the page title `<h1>` (20 px; truncates with an ellipsis, full title in `title`), and on a board the "Star board" toggle. Right, in this order: time range trigger, refresh split control, user menu. No command palette entry until the palette exists |
+| Page header, 56 px | Left: a breadcrumb (`Boards` link on a board, `Explore` text on Explore pages, none elsewhere), the page title `<h1>` (16 px semibold; truncates with an ellipsis, full title in `title`), and on a board the "Star board" toggle. Right, in this order: time range trigger, refresh split control, user menu. No command palette entry until the palette exists |
 | Page body | Scrolls; 24 px padding |
 
 The grid is `var(--size-sidebar) minmax(0, 1fr)`, so the content column shrinks instead of
@@ -231,6 +231,10 @@ The theme preference (`dark`, `light`, `system`) is kept in `localStorage['pulsu
 `prefers-color-scheme`. `src/theme/stateEncoding.ts` is the only TypeScript path to the state
 colours: each state has a class, a glyph (ok ●, watch ◐, degraded ◉, failing ■, unknown ○) and a
 label, so state is never shown by colour alone. No page uses it yet.
+
+The chrome's look (the colour and scale tokens, elevation, the materials and their fallbacks, the
+kit's shapes, focus and motion, the platform UI face on Apple systems and the `shadow-token` lint)
+is described in [Visual design](visual-design.md) (#282).
 
 ## Tokens and token-lint
 

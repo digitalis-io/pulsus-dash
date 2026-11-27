@@ -1,8 +1,50 @@
+/* Tooltips (#282): the menu material over an opaque surface-1 fallback, elevation 2, 12 px. */
 .tooltip {
   padding: var(--space-1) var(--space-2);
-  border: var(--border-hairline) solid var(--hairline);
+  border: var(--border-hairline) solid var(--border-control);
   border-radius: var(--radius);
-  background: var(--surface-2);
+  background: var(--surface-1);
+  box-shadow: var(--elevation-2);
   color: var(--text);
   font-size: var(--font-size-sm);
+}
+
+/* The material where the browser can blur (VL-017 as amended, #282). A browser without the
+   reduced-transparency query (Safari, Firefox) keeps it; an explicit `reduce` or forced colours
+   override it back to the opaque base below. */
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .tooltip {
+    background: var(--material-menu);
+    /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
+    -webkit-backdrop-filter: var(--material-filter);
+    backdrop-filter: var(--material-filter);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .tooltip {
+    background: var(--surface-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tooltip[data-entering] {
+    animation: fade var(--motion-quick) var(--motion-easing-out);
+  }
+
+  .tooltip[data-exiting] {
+    animation: fade var(--motion-quick) var(--motion-easing-in) reverse forwards;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }

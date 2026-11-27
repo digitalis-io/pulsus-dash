@@ -6,7 +6,8 @@
   height: var(--size-avatar);
   border: none;
   border-radius: 50%;
-  background: var(--series-1);
+  /* The accent fill, not a series colour: series colours are for data (VL-002, #282). */
+  background: var(--accent-fill);
   color: var(--text-on-accent);
   font: inherit;
   font-size: var(--font-size-sm);

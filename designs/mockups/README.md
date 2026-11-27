@@ -11,13 +11,16 @@ over a mockup, and a mismatch is a defect in the mockup.
 
   | Token | Value | Token | Value |
   |---|---|---|---|
-  | canvas | `#0B0D10` | surface-1 | `#12151A` |
-  | surface-2 | `#191D24` | hairline | `#FFFFFF` at 8% (`#FFFFFF14`) |
-  | text | `#E6E8EB` | text-muted | `#8A919C` |
+  | canvas | `#0E1014` | surface-1 | `#15171C` |
+  | surface-2 | `#1D2026` | hairline | `#FFFFFF` at 8% (`#FFFFFF14`) |
+  | text | `#E9EBEF` | text-muted | `#9AA1AC` |
   | ok | `#2FB59A` | watch | `#D9C84A` |
   | degraded | `#E8923A` | failing | `#E0457B` |
-  | unknown | `#6B7280` + hatch | accent / focus | `#5B9BFF` |
+  | unknown | `#6B7280` + hatch | accent / focus | `#4D9BFF` |
   | series-1…8 | `#7AA2D6 #C9A36B #8FBF8F #B48FC9 #6FB8B8 #C98F8F #A8A8D9 #BFB07A` | | |
+
+  The chrome tokens follow the #282 refresh ([08](../product/08-visual-language.md) §3.1); the
+  existing SVGs keep the earlier values until they are redrawn.
 
 - **Type:** `font-family="Inter, system-ui, sans-serif"` for the UI and
   `"JetBrains Mono, ui-monospace, monospace"` for data and code. Sizes are 11/12/13/16/20 px,

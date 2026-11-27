@@ -8,18 +8,39 @@
   cursor: pointer;
 }
 
+/* The box (#282): a field inside a 3:1 boundary; checked, the accent fill with the tick. */
 .box {
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
   width: var(--size-icon);
   height: var(--size-icon);
-  border: var(--border-hairline) solid var(--text-muted);
-  border-radius: var(--radius);
-  color: var(--accent);
+  border: var(--border-hairline) solid var(--border-field);
+  border-radius: var(--radius-xs);
+  background: var(--field);
+  color: var(--text-on-accent);
+  transition:
+    background-color var(--motion-quick) var(--motion-easing-out),
+    border-color var(--motion-quick) var(--motion-easing-out);
+}
+
+.checkbox[data-selected] .box {
+  border-color: var(--accent-fill);
+  background: var(--accent-fill);
 }
 
 .checkbox[data-focus-visible] .box {
   outline: var(--size-focus-ring) solid var(--focus);
   outline-offset: var(--size-focus-offset);
+}
+
+/* Forced colours drop the fill the tick is masked over: draw the checked box in system colours. */
+@media (forced-colors: active) {
+  .checkbox[data-selected] .box {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+  }
 }
