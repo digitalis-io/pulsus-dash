@@ -325,6 +325,12 @@ describe('unit:board-list-limit', () => {
       fireEvent.click(inPanel('p-1').getByRole('button', { name: 'Show more' }));
     });
     expect(rowNames('p-1')).toHaveLength(8);
+    // An empty answer keeps no shown rows: the next answer starts again at the limit.
+    await refetch(refs(0));
+    expect(rowNames('p-1')).toHaveLength(0);
+    await refetch(refs(20));
+    expect(rowNames('p-1')).toHaveLength(5);
+    expect(inPanel('p-1').getByRole('button', { name: 'Show more' })).toBeInTheDocument();
   });
 });
 
