@@ -722,15 +722,93 @@ impl Frames {
 /// hold 10⁸ points without a structured clone.
 #[cfg(feature = "probe")]
 impl Frames {
-    /// F1c: `pulsus_synth::reference::f1a(series, points)`'s grid (key_hash = s) as the frame's
-    /// data, through [`Frames::set_chunk`]; false (the frame unchanged) if an allocation fails.
+    /// F1c: `pulsus_synth::reference::f1a(series, points)`'s grid (key_hash = s, values from
+    /// `f1a_value`) as the frame's data, through [`Frames::set_chunk`], with a local chunk id.
+    /// Every buffer is reserved fallibly; false, with the frame unchanged, for an unknown frame, a
+    /// grid the window cannot hold (`points` 0 or above 10⁶), more than 2³¹ samples or a failed
+    /// allocation. On success the previous chunk is dropped (with the cached layer and pick that
+    /// read it) and the frame is dirty.
     pub fn synth_f1c(&mut self, id: u32, series: u32, points: u32) -> bool {
-        let _ = (id, series, points);
-        false
+        if !self.frames.contains_key(&id) {
+            return false;
+        }
+        let Some(mut chunk) = f1c_chunk(series, points) else {
+            return false;
+        };
+        let Some(cid) = self.ids.next() else {
+            return false;
+        };
+        chunk.id = cid;
+        // The previous chunk goes now: the data and the cached layer and pick that read it (the
+        // next build remakes both; the presentation on screen keeps its own until replaced).
+        if let Some(f) = self.frames.get_mut(&id) {
+            f.data = None;
+            f.layer = None;
+            f.pick = None;
+        }
+        self.set_chunk(id, Some(Arc::new(chunk)));
+        true
     }
 
     /// The frame's data (`probe_synth` checks the previous chunk was dropped).
     pub fn chunk(&self, id: u32) -> Option<Arc<Chunk>> {
         self.frames.get(&id)?.data.clone()
     }
+}
+
+/// F1c's chunk as `pulsus_synth::reference`'s grid builds it (the same time axis, metas, offsets,
+/// values and finite range), each buffer reserved with `try_reserve_exact`; None on a failure.
+#[cfg(feature = "probe")]
+fn f1c_chunk(series: u32, points: u32) -> Option<Chunk> {
+    use dash_wire::TimeAxis;
+    use dash_wire::chunk::MAX_SAMPLES;
+    use pulsus_synth::reference::{WINDOW, f1a_value};
+    if points == 0 {
+        return None;
+    }
+    let step = (WINDOW.1 / f64::from(points)) as i64;
+    if step < 1 {
+        return None;
+    }
+    let n = series as usize;
+    let total = n.checked_mul(points as usize)?;
+    if total > MAX_SAMPLES {
+        return None;
+    }
+    let mut values: Vec<f64> = Vec::new();
+    values.try_reserve_exact(total).ok()?;
+    let mut offsets: Vec<u32> = Vec::new();
+    offsets.try_reserve_exact(n.checked_add(1)?).ok()?;
+    let mut metas: Vec<SeriesMeta> = Vec::new();
+    metas.try_reserve_exact(n).ok()?;
+    offsets.push(0);
+    let mut finite: Option<(f64, f64)> = None;
+    for s in 0..n {
+        for k in 0..points {
+            let v = f1a_value(s, k);
+            if v.is_finite() {
+                finite = Some(finite.map_or((v, v), |(lo, hi)| (lo.min(v), hi.max(v))));
+            }
+            values.push(v);
+        }
+        // total ≤ 2³¹, so it fits u32.
+        offsets.push(u32::try_from(values.len()).ok()?);
+        metas.push(SeriesMeta {
+            key_hash: s as u64,
+            labels: vec![("s".into(), s.to_string())].into(),
+        });
+    }
+    Some(Chunk {
+        id: dash_wire::ChunkId(0),
+        time: TimeAxis::Grid {
+            start_ms: 0,
+            step_ms: step,
+            len: points,
+        },
+        series: metas,
+        offsets,
+        values,
+        present: None,
+        finite,
+    })
 }

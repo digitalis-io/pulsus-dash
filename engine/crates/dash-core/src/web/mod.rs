@@ -394,8 +394,16 @@ pub fn engine_probe_renew() {
 #[cfg(feature = "probe")]
 #[wasm_bindgen]
 pub fn engine_probe_synth(id: u32, series: u32, points: u32) -> u32 {
-    let _ = (id, series, points);
-    0
+    with(|e| {
+        if !e.frames.synth_f1c(id, series, points) {
+            return 0;
+        }
+        e.dirty.insert(id);
+        // At most 2³¹ samples were made; a byte count past u32 saturates.
+        let bytes = u64::from(series) * u64::from(points) * 8;
+        u32::try_from(bytes).unwrap_or(u32::MAX)
+    })
+    .unwrap_or(0)
 }
 
 /// The device px of a Resize, at least 1 and at most the device's texture limit.
