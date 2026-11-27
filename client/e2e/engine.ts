@@ -23,6 +23,8 @@ export interface Tier {
   readonly adapter: RegExp;
   /** Gated pixel goldens (false: report-only). */
   readonly goldens: boolean;
+  /** `<html data-dash-mode>`: the shared-memory engine or the single-thread one (plan #68 C2d2). */
+  readonly mode: 'mt' | 'st';
 }
 
 export const TIERS: Readonly<Record<string, Tier>> = {
@@ -32,6 +34,7 @@ export const TIERS: Readonly<Record<string, Tier>> = {
     status: '2',
     adapter: /llvmpipe/,
     goldens: true,
+    mode: 'mt',
   },
   swiftshader: {
     query: '&engine=wasm',
@@ -39,13 +42,28 @@ export const TIERS: Readonly<Record<string, Tier>> = {
     status: '1',
     adapter: /swiftshader/i,
     goldens: false,
+    mode: 'mt',
   },
 };
 
+/**
+ * A project's engine mode (plan #68 C2d2 §2): `metadata.engineMode` of the project
+ * (playwright.engine.config.ts `lavapipe-st`), `mt` without it.
+ */
+export function engineModeOf(info: TestInfo): 'mt' | 'st' {
+  return (info.project.metadata as { engineMode?: string }).engineMode === 'st' ? 'st' : 'mt';
+}
+
+/**
+ * The tier of a project: its own, or for an ST project (`metadata.tier`, `engineMode: 'st'`) that
+ * tier's with `&mode=st` in place of its `mode` flag (the ST engine on the same adapter).
+ */
 export function tierOf(info: TestInfo): Tier {
-  const t = TIERS[info.project.name];
+  const meta = info.project.metadata as { tier?: string };
+  const t = TIERS[meta.tier ?? info.project.name];
   if (t === undefined) throw new Error(`no engine tier for project ${info.project.name}`);
-  return t;
+  if (engineModeOf(info) !== 'st') return t;
+  return { ...t, query: `${t.query.replace(/&mode=[^&]*/, '')}&mode=st`, mode: 'st' };
 }
 
 /**

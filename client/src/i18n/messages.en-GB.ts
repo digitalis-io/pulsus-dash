@@ -890,6 +890,12 @@ export const messages = {
   'state.degraded': 'Degraded',
   'state.failing': 'Failing',
   'state.unknown': 'Unknown',
+
+  'engine.st.isolation': 'Reduced performance: cross-origin isolation is off (ask your admin).',
+  'engine.st.waitAsync':
+    'Reduced performance: this browser lacks a feature the fast chart engine needs.',
+  'engine.st.forced':
+    'Reduced performance: the single-thread chart engine was requested for this page.',
 } as const;
 
 export type MessageId = keyof typeof messages;

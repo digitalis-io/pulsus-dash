@@ -126,6 +126,25 @@ describe('dash-engine plugin (plan #256 §3.3)', () => {
     expect(engineAbsentMessage(true)).toBe(PROBE);
   });
 
+  it('the ST engine (plan #68 C2d2): its own module, and refused when only it is missing', async () => {
+    const p = plugin('build', true, {});
+    const st = '\0virtual:dash-engine-st';
+    expect(hook(p, 'resolveId').call(ctx, 'virtual:dash-engine-st')).toBe(st);
+    const src = String(await hook(p, 'load').call(ctx, st));
+    expect(src).toContain(`export * from '${ROOT}src/engine/wasm/gen-st/dash_core_st.js';`);
+    expect(src).toContain(
+      `export { default as wasmUrl } from '${ROOT}src/engine/wasm/gen-st/dash_core_st_bg.wasm?url';`,
+    );
+    const onlyMt = dashEngine({ root: ROOT, env: {}, exists: (f) => f.includes('/gen/') });
+    hook(onlyMt, 'configResolved').call(ctx, { command: 'build' });
+    const ST_GEN =
+      'the chart engine is not built (src/engine/wasm/gen-st/ is missing): run make engine-wasm first';
+    expect(() => hook(onlyMt, 'buildStart').call(ctx)).toThrow(ST_GEN);
+    expect(engineAbsentMessage(true, true)).toBe(
+      'the chart engine is not built (src/engine/wasm/gen-st-probe/ is missing): run make engine-wasm-probe first',
+    );
+  });
+
   it('VITEST set changes nothing: build, dev server and load still refuse', () => {
     for (const VITEST of ['true', '1']) {
       const b = plugin('build', false, { VITEST });

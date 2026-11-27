@@ -14,7 +14,8 @@ export interface Pct {
 }
 
 export type BenchGate = 'bench:frame-gallery' | 'bench:frame-line-1e8';
-export type BenchLeg = 'wasm-webgl2' | 'wasm-webgpu' | 'canvas2d';
+/** Plan #68 C2d2: `wasm-webgl2-st`, the single-thread engine on WebGL2. */
+export type BenchLeg = 'wasm-webgl2' | 'wasm-webgl2-st' | 'wasm-webgpu' | 'canvas2d';
 
 export interface BenchResult {
   gate: BenchGate;

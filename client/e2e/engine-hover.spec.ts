@@ -62,6 +62,12 @@ async function probePage(page: Page, info: TestInfo): Promise<void> {
     info.project.name === 'probe' ? PROBE_URL : `${GALLERY_URL}${tierOf(info).query}&probe=1`;
   await open(page, url);
   await page.waitForFunction(() => '__dashProbe' in window);
+  // Plan #68 C2d2: the project's engine mode (MT, or ST in `lavapipe-st`).
+  if (info.project.name !== 'probe') {
+    await expect(page.locator('html')).toHaveAttribute('data-dash-mode', tierOf(info).mode, {
+      timeout: 30_000,
+    });
+  }
 }
 
 /** A probe frame of `data`, settled: its number and first summary. */

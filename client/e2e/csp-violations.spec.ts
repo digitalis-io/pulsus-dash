@@ -173,4 +173,96 @@ test.describe('e2e:csp-violations (engine)', () => {
       expect(console).toEqual([]);
     });
   });
+
+  /**
+   * Plan #68 C2d2 (ADR-0033): the single-thread engine under the same policy. Its ST render
+   * worker is admitted; the page then cannot start any other worker script: a string URL is
+   * refused by the Trusted Types sink and a second `pulsus-engine` policy cannot be made.
+   */
+  test('the ST engine boots with no CSP or Trusted Types violation; no other worker starts', async ({
+    page,
+  }, info) => {
+    test.skip(info.project.name !== 'lavapipe', 'lavapipe only');
+    test.setTimeout(90_000);
+    await page.addInitScript(() => {
+      window.__cspViolations = [];
+      document.addEventListener('securitypolicyviolation', (e) => {
+        window.__cspViolations.push(`${e.violatedDirective} ${e.blockedURI}`);
+      });
+    });
+    const workers: string[] = [];
+    page.on('worker', (w) => workers.push(w.url()));
+    await open(page, `${GALLERY_URL}&engine=wasm&mode=st`);
+    const html = page.locator('html');
+    await expect(html).toHaveAttribute('data-dash-status', '2');
+    await expect(html).toHaveAttribute('data-dash-mode', 'st');
+    for (const c of await page
+      .locator('[data-gallery-id^="line-"] canvas:not([data-retired])')
+      .all())
+      await expect(c).toHaveAttribute('data-engine', 'wasm-webgl2');
+    expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
+    expect(await page.evaluate(() => window.__cspViolations), 'ST gallery').toEqual([]);
+    expect(workers.filter((u) => /render-st\.worker/.test(u))).toHaveLength(1);
+    const before = workers.length;
+    const r = await page.evaluate(() => {
+      const out: string[] = [];
+      try {
+        new Worker('/assets/other.js', { type: 'module' });
+        out.push('string: started');
+      } catch (e) {
+        out.push(`string: ${(e as Error).name}`);
+      }
+      try {
+        const tt = (
+          globalThis as unknown as {
+            trustedTypes: { createPolicy(n: string, r: unknown): unknown };
+          }
+        ).trustedTypes;
+        tt.createPolicy('pulsus-engine', { createScriptURL: (u: string) => u });
+        out.push('policy: made');
+      } catch (e) {
+        out.push(`policy: ${(e as Error).name}`);
+      }
+      return out;
+    });
+    expect(r).toEqual(['string: TypeError', 'policy: TypeError']);
+    await page.waitForTimeout(500);
+    expect(workers.length).toBe(before);
+  });
+
+  /**
+   * Plan #68 C2d2 (ADR-0033, review r1): the page's own `pulsus-engine` policy, under the
+   * production CSP, admits the ST render worker's URL and refuses an unrelated same-origin script,
+   * the same worker URL with a query, and a `blob:` URL, with a `TypeError` and no worker. Through
+   * the fault build's probe (`__dashProbe.policyWorker`), which calls `workers.ts` `scriptUrl`.
+   */
+  test('the pulsus-engine policy refuses an unrelated same-origin URL; no worker starts', async ({
+    page,
+  }, info) => {
+    test.skip(info.project.name !== 'lavapipe', 'lavapipe only');
+    test.setTimeout(90_000);
+    const workers: string[] = [];
+    page.on('worker', (w) => workers.push(w.url()));
+    await open(page, `${GALLERY_URL}&engine=wasm&mode=st&probe=1`);
+    await expect(page.locator('html')).toHaveAttribute('data-dash-mode', 'st');
+    await expect(page.locator('html')).toHaveAttribute('data-dash-status', '2');
+    const st = workers.find((u) => /render-st\.worker/.test(u));
+    expect(st, 'the ST render worker').toBeDefined();
+    const path = new URL(st ?? '').pathname;
+    const before = workers.length;
+    const r = await page.evaluate(
+      (urls) => {
+        const p = (window as unknown as { __dashProbe: { policyWorker(u: string): string } })
+          .__dashProbe;
+        return urls.map((u) => p.policyWorker(u));
+      },
+      ['/assets/other.js', `${path}?x=1`, 'blob:x', path],
+    );
+    // The control: the engine's own worker script is admitted (and its worker ended at once).
+    expect(r).toEqual(['TypeError', 'TypeError', 'TypeError', 'started']);
+    await page.waitForTimeout(500);
+    const started = workers.slice(before);
+    expect(started.every((u) => new URL(u).pathname === path)).toBe(true);
+    expect(started.length).toBeLessThanOrEqual(1);
+  });
 });

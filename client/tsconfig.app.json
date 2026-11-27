@@ -15,7 +15,10 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "paths": { "virtual:dash-engine": ["./src/engine/wasm/engine-module.d.ts"] }
+    "paths": {
+      "virtual:dash-engine": ["./src/engine/wasm/engine-module.d.ts"],
+      "virtual:dash-engine-st": ["./src/engine/wasm/engine-module-st.d.ts"]
+    }
   },
   "include": ["src"]
 }

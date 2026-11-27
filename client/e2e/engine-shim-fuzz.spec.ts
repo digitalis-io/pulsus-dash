@@ -17,12 +17,18 @@
  * published or counted dropped (`INPUT_OVERFLOW`, at most 8 pending per frame). Each timed dispatch
  * of the bench flushes the frame's batched records.
  */
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { galleryEntries } from '../src/dev/gallery.ts';
+import { engineModeOf } from './engine.ts';
 import { GALLERY_FROM, GALLERY_TO, GALLERY_URL, open, waitReady } from './helpers.ts';
 
 /** The gallery loads the chart engine module (and so the probe); its own frames stay idle. */
 const PROBE_URL = `${GALLERY_URL}&engine=wasm&mode=t2&probe=1`;
+/**
+ * Plan #68 C2d2: the ST engine of the probe build (project `lavapipe-st`, whose base URL is the
+ * fault build's): the probe BFF's absolute URL with `&mode=st`.
+ */
+const PROBE_ST_URL = `http://localhost:4175${GALLERY_URL}&engine=wasm&mode=st&probe=1`;
 const HOUR = 3_600_000;
 
 interface Probe {
@@ -46,6 +52,9 @@ interface Probe {
     enqueued: number;
     bad: number;
     selects: number;
+    /** ST (plan #68 C2d2): batches posted, and the most in flight end to end. */
+    batches: number;
+    batchesInFlightMax: number;
   };
   counters(): { head: number; tail: number };
 }
@@ -174,8 +183,14 @@ function ops(seed: number, count: number, dom = false): { batch: Op[]; wait: boo
   return out;
 }
 
+let st = false;
+// eslint-disable-next-line no-empty-pattern -- Playwright needs the fixtures pattern.
+test.beforeEach(({}, info: TestInfo) => {
+  st = engineModeOf(info) === 'st';
+});
+
 async function probeReady(page: Page, query = ''): Promise<void> {
-  await open(page, `${PROBE_URL}${query}`);
+  await open(page, `${st ? PROBE_ST_URL : PROBE_URL}${query}`);
   await page.waitForFunction(() => '__dashProbe' in window);
 }
 
@@ -272,8 +287,17 @@ test.describe('e2e:shim-fuzz', () => {
     expect(selects, 'Select records').toBeGreaterThan(0);
     expect(selects + r.stats.overflow).toBe(r.stats.selects);
     expect(r.stats.bad).toBe(0);
-    // More than one ring's worth went through it.
-    expect(r.stats.publishedBytes).toBeGreaterThan(0x10000);
+    // MT: more than one ring's worth went through it. ST coalesces everything pending until main's
+    // animation frame (plan #68 C2d2 §3.2), so far fewer bytes go, in many batches (below).
+    if (!st) expect(r.stats.publishedBytes).toBeGreaterThan(0x10000);
+    else expect(r.stats.publishedBytes).toBeGreaterThan(0);
+    // Plan #68 C2d2: the ST engine took the records in batches, never more than one in flight.
+    const mode = await page.locator('html').getAttribute('data-dash-mode');
+    expect(mode).toBe(st ? 'st' : 'mt');
+    if (st) {
+      expect(r.stats.batches).toBeGreaterThan(1);
+      expect(r.stats.batchesInFlightMax).toBe(1);
+    }
     for (const n of [0, 1]) {
       expect(r.last[n]).toMatchObject({ fromMs: GALLERY_FROM + n * 1000, toMs: GALLERY_TO });
       expect(r.drawn[n]).toEqual({ cssWidth: 640 + n, cssHeight: 320, dpr: 1 });
@@ -287,6 +311,7 @@ test.describe('e2e:shim-fuzz', () => {
   });
 
   test('rollover: the counters cross 2³² and the logs still match', async ({ page }) => {
+    test.skip(st, 'the shared ring only (ST has no counters)');
     test.setTimeout(180_000);
     const start = 0xffff_f000;
     await probeReady(page, `&ringStart=${String(start)}`);
@@ -300,6 +325,7 @@ test.describe('e2e:shim-fuzz', () => {
   });
 
   test('wake: one record wakes an idle worker', async ({ page }) => {
+    test.skip(st, 'the shared ring only (ST wakes on each batch)');
     test.setTimeout(120_000);
     await probeReady(page);
     await run(page, [], finalOps());
