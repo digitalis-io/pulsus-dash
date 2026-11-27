@@ -636,8 +636,8 @@ export function boardSteps(s: Script) {
         await press('Escape');
         await expect(editor.getByRole('button', { name: 'Run query' })).toBeFocused();
         await expect(editor).toBeVisible();
-        // Bar chart follows Stat (#173 Part 3b).
-        const kinds = ['Auto', 'Line', 'Bars', 'Heatmap', 'Stat', 'Bar chart', 'Logs'];
+        // Bar chart follows Stat (#173 Part 3b); Map follows Bar chart (#234 Part 3).
+        const kinds = ['Auto', 'Line', 'Bars', 'Heatmap', 'Stat', 'Bar chart', 'Map', 'Logs'];
         // Auto reads "Auto (<vis>)" once the panel has a result (plan #64 §3.8).
         for (const [i, kind] of kinds.entries()) {
           await s.on(/^button "\w+( chart)?( \(\w+\))? Visualisation"$/);
