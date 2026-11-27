@@ -140,7 +140,8 @@ fn gaps_validity_survives_the_join_at_any_bit_offset() {
 
 #[test]
 fn one_batch_is_reused_without_a_copy() {
-    let parts = batches("two-series.dsf");
+    // One series: one batch (B1 sends the first series alone).
+    let parts = batches("read-cache.dsf");
     assert_eq!(parts.len(), 1);
     let ptr = parts[0].values.as_ptr();
     let bytes = parts[0].values.len() * 8;
