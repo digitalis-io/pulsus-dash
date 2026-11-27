@@ -95,7 +95,9 @@ describe('unit:geo-marks-options', () => {
       'k05',
       null,
     ]);
-    k.scene.setSpec(geoSpec({ motion: 'cut', size: { by: 'fixed', min: 4, max: 12 }, cluster: false }));
+    k.scene.setSpec(
+      geoSpec({ motion: 'cut', size: { by: 'fixed', min: 4, max: 12 }, cluster: false }),
+    );
     k.draw();
     expect(k.marks.length).toBe(before + 1);
     const m = k.marks.at(-1);

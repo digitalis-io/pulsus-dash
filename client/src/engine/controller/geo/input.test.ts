@@ -69,15 +69,21 @@ describe('unit:geo-keys-engine', () => {
     close(k.commits[2]?.view ?? FIT, FIT);
   });
 
-  it('Shift+→ moves the centre +256 px; Shift+↓ +128 px', () => {
+  it('Shift+← moves the centre −256 px, Shift+↓ +128 px; Shift+→ stops at the world edge', () => {
     const k = keys();
     const x0 = centreX(k.ctl.view);
-    key(k.keyTarget, 'ArrowRight', { shiftKey: true });
-    expect(centreX(k.ctl.view) - x0).toBeCloseTo(256, 6);
+    key(k.keyTarget, 'ArrowLeft', { shiftKey: true });
+    expect(centreX(k.ctl.view) - x0).toBeCloseTo(-256, 6);
     const y0 = camOf(k.ctl.view).v * worldPx(k.ctl.view.zoom);
     key(k.keyTarget, 'ArrowDown', { shiftKey: true });
     expect(camOf(k.ctl.view).v * worldPx(k.ctl.view.zoom) - y0).toBeCloseTo(128, 6);
     expect(k.commits.map((c) => c.gesture)).toEqual(['keys', 'keys']);
+    // At fit the east edge is 135.84 px away: containment (T24-091) caps the 256 px pan there.
+    const f = keys();
+    key(f.keyTarget, 'ArrowRight', { shiftKey: true });
+    const S = worldPx(f.ctl.view.zoom);
+    expect(centreX(f.ctl.view)).toBeCloseTo(S - 512, 6);
+    expect(centreX(f.ctl.view) - x0).toBeCloseTo(135.84385347584475, 6);
   });
 
   it('a wheel deltaX 100 pans to lon 54.84247413793099 and commits wheel after 300 ms idle', () => {

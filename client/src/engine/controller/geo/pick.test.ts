@@ -142,11 +142,18 @@ describe('unit:geo-marks', () => {
     k.clock.advance(16);
     k.draw();
     expect(k.marks.at(-1)?.level).toBe(2);
+    // 50 ms into the 150 ms crossfade.
+    k.clock.advance(50);
+    k.draw();
     const p = pxOf(f, 'k01', viewOf(next));
     // The old k01 marker is still painted, fading out.
     const old = k.ctx
       .calls('arc')
-      .find((o) => Math.abs((o.args[0] as number) - p.x) < 0.01 && Math.abs((o.args[1] as number) - p.y) < 0.01);
+      .find(
+        (o) =>
+          Math.abs((o.args[0] as number) - p.x) < 0.01 &&
+          Math.abs((o.args[1] as number) - p.y) < 0.01,
+      );
     expect(old?.globalAlpha).toBeGreaterThan(0);
     expect(old?.globalAlpha).toBeLessThan(1);
     pointer(k.canvas, 'pointermove', p.x, p.y);

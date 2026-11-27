@@ -88,7 +88,8 @@ describe('unit:geo-camera', () => {
     const a = wheelStep(contain(camOf({ lat: 0, lon: 0, zoom: 2 }), 1024, 512), -100, 10, 256);
     expectView(viewOf(a.next), 0, -31.99118974975306, 2.2885390081777928);
     expect(a.drift).toBeLessThan(EPS);
-    const b = wheelStep(contain(camOf({ lat: 60, lon: -150, zoom: 3 }), 1024, 512), 100, 10, 10);
+    // The anchor is read on the view as given (uncontained); containment then shifts it.
+    const b = wheelStep(camOf({ lat: 60, lon: -150, zoom: 3 }), 100, 10, 10);
     expectView(viewOf(b.next), 54.85601631006218, -70.07375176558472, 2.7114609918222072);
     expect(b.drift).toBeCloseTo(281.27, 2);
   });

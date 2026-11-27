@@ -32,7 +32,12 @@ const gaz = gazT();
 /** A geomap frame of `series` (instant), gazetteer T, over `basemap` (empty by default). */
 export function frameOf(
   series: readonly SeriesFrame[] = G(),
-  o: { th?: Thresholds | null; opts?: Partial<GeomapOptions>; basemap?: Basemap; seq?: number } = {},
+  o: {
+    th?: Thresholds | null;
+    opts?: Partial<GeomapOptions>;
+    basemap?: Basemap;
+    seq?: number;
+  } = {},
 ): GeoFrame {
   const s = geoRowSet(series, 'instant', opts(o.opts), o.th ?? null, gaz, COMPLETE);
   return geoFrame(s, o.basemap ?? EMPTY_BASEMAP, o.seq ?? 1);
@@ -159,7 +164,9 @@ export interface CtlKit extends Seen {
 }
 
 /** A `GeoController` on a 1024 × 512 plot over a stage of `frame`'s real marks. */
-export function ctlKit(o: { frame?: GeoFrame; spec?: Partial<GeoMapSpec>; w?: number; h?: number } = {}): CtlKit {
+export function ctlKit(
+  o: { frame?: GeoFrame; spec?: Partial<GeoMapSpec>; w?: number; h?: number } = {},
+): CtlKit {
   const clock = fakeClock();
   const s = seen();
   const canvas = document.createElement('canvas');
@@ -183,6 +190,12 @@ export function ctlKit(o: { frame?: GeoFrame; spec?: Partial<GeoMapSpec>; w?: nu
     {
       marks,
       shown: () => shownOf(kit.frame),
+      rowWorld: (row) => {
+        const r = kit.frame.rows[row];
+        return r?.location.status === 'placed'
+          ? { u: uOf(r.location.place.lon), v: vOf(r.location.place.lat) }
+          : null;
+      },
       redraw: () => {
         redraws += 1;
       },
