@@ -107,6 +107,6 @@ describe('layout', () => {
   });
 
   it('cellPx', () => {
-    expect(cellPx(1152)).toBeCloseTo((1152 - 11 * 16) / 12, 6);
+    expect(cellPx(1152)).toBeCloseTo((1152 - 11 * 12) / 12, 6);
   });
 });

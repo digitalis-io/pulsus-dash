@@ -2,7 +2,7 @@
  * The board toolbar (plan #61 Part B §4.4), under the page header and right-aligned. View: the
  * time since the last refresh, Share and Edit board. Edit: Add panel, Add widget (plan #198 Part 3a
  * §4.4), Add section (Part C), Tags (plan #216 Part 2b §4.2), Save current time range, Discard, Save
- * and Done.
+ * and Done. In Edit mode the toolbar is a tray (`data-mode`, #282 Part 2a §4.3).
  */
 import { useEffect, useState } from 'react';
 import { formatHourMinute } from '../../i18n/format';
@@ -76,7 +76,12 @@ export type BoardToolbarProps =
 export function BoardToolbar(props: BoardToolbarProps) {
   if (props.mode === 'view') {
     return (
-      <div role="group" aria-label={t('board.actions')} className={cx(styles['toolbar'])}>
+      <div
+        role="group"
+        aria-label={t('board.actions')}
+        className={cx(styles['toolbar'])}
+        data-mode="view"
+      >
         <Updated />
         <BoardShare />
         <Button variant="primary" onPress={props.onEdit}>
@@ -87,7 +92,12 @@ export function BoardToolbar(props: BoardToolbarProps) {
   }
   const { busy, dirty } = props;
   return (
-    <div role="group" aria-label={t('board.actions')} className={cx(styles['toolbar'])}>
+    <div
+      role="group"
+      aria-label={t('board.actions')}
+      className={cx(styles['toolbar'])}
+      data-mode="edit"
+    >
       <Button onPress={props.onAdd} isDisabled={busy} data-board-add="">
         <Icon name="plus" />
         {t('board.addPanel')}
