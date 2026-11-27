@@ -84,13 +84,16 @@ naming the key. In Rust, `font::tracking::LG` is an `f32`, `elevation::E_1` and
 | The header | — | `material-bar` | — |
 | The sidebar | — | none: opaque `sidebar` | — |
 
-A material is opaque `surface-1` by default. Only inside
-`@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))` and
-`@media (prefers-reduced-transparency: no-preference) and (not (forced-colors: active))` does it
-take the translucent colour and `var(--material-filter)`. The prefixed declaration comes first:
-the minifier keeps the last of the pair and adds the other where its targets need it.
-`unit:material-fallback` (`scripts/material-fallback.test.ts`) checks the header, popover, tooltip
-and Inspector modules for this shape.
+A material's base rule is opaque `surface-1`. Inside
+`@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))` it takes the
+translucent colour and `var(--material-filter)`, with no preference query, so browsers that do not
+implement `prefers-reduced-transparency` (Safari, Firefox) still show the material. A later
+`@media (prefers-reduced-transparency: reduce), (forced-colors: active)` rule sets it back to opaque
+`surface-1` with both filters `none`. The prefixed declaration comes first: the minifier keeps the
+last of the pair and adds the other where its targets need it. `unit:material-fallback`
+(`scripts/material-fallback.test.ts`) checks the header, popover, tooltip and Inspector modules for
+this shape; `e2e:kit-materials` requires the material in Chromium, Firefox and WebKit, and the
+opaque surface under an emulated `reduce` (Chromium) and under forced colours.
 
 **Fallbacks.** Without `backdrop-filter`, under reduced transparency, or under forced colours, every
 material is opaque `surface-1` in both themes. Forced colours also drop the shadows; borders and
@@ -134,6 +137,11 @@ module, on React Aria's `data-entering` and `data-exiting`):
 Under reduced motion there is no animation, so React Aria mounts and unmounts a popover or dialog
 on the same frame (VL-016). Nothing bounces (VL-014).
 
+**Known browser difference.** In WebKit a popover leaves without its 100 ms fade: React Aria looks
+for an exit animation as it sets `data-exiting`, before WebKit has started the CSS animation, finds
+none and unmounts at once. The popover is still gone within 150 ms of Escape, which
+`e2e:kit-motion` checks there; Chromium and Firefox fade.
+
 ## The platform UI face (ADR-0035)
 
 `src/theme/platform.ts` runs in `main.tsx` before the first render:
@@ -165,7 +173,8 @@ only from the elevation tokens (VL-004)`. Visualisations never have shadows.
 1. Edit `design/tokens.toml`, in both themes for a colour (designed, not inverted).
 2. Run `npm run tokens` and commit the three generated files.
 3. For a chrome colour pair, add it to `unit:ui-token-contrast`; for a new material, use the
-   opaque-by-default shape above and add the module to `unit:material-fallback`.
+   shape above (opaque base, material inside `@supports`, the `reduce` / forced-colours override)
+   and add the module to `unit:material-fallback`.
 4. Run `make client-check`. A token that reaches the engine (every colour does) moves the engine
    goldens and the parity fixtures: regenerate them in the pinned containers (`make
    engine-goldens-update`, `npm run engine-fixtures -- --write`, the client goldens with

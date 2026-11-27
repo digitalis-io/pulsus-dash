@@ -261,8 +261,8 @@ the content width less 24 px). It never reflows the board, so nothing re-queries
 
 - **Material:** `material-menu` with `material-filter` (a 24 px backdrop blur and 180 %
   saturation), a 1 px `hairline`, `elevation-2`, `radius.md`. Without `backdrop-filter` support,
-  under `prefers-reduced-transparency` or under forced colours it is opaque `surface-1` without the
-  blur ([Visual design](visual-design.md#elevation-and-materials)). While a modal dialog is open the sheet steps aside.
+  under `prefers-reduced-transparency: reduce` or under forced colours it is opaque `surface-1`
+  without the blur; a browser without the reduced-transparency query keeps the material ([Visual design](visual-design.md#elevation-and-materials)). While a modal dialog is open the sheet steps aside.
 - **Motion:** it opens with a fade and a 16 px slide over `motion.float-open` (200 ms); a new view
   (a new target, a push or a pop: a new `viewKey`) crossfades the body over 150 ms (the outgoing
   layer is `inert` and `aria-hidden`; a third view drops it at once); a close fades over 150 ms.
