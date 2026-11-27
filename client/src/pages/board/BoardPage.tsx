@@ -6,6 +6,8 @@
  * View-mode section overrides live in the URL (`useBoardParams`). The board's event markers are
  * read once per window for every panel (`useBoardEvents`, plan #64 Part C §3.8). A widget with a
  * registry def is added from Add widget and edited in the widget editor (plan #198 Part 3a §4.4).
+ * The Edit toolbar's Tags button sets the board's tags, and Save waits for a widget editor's
+ * invalid local field to be fixed (plan #216 Part 2b §4.1, §4.2).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -46,10 +48,16 @@ import {
   panelPointer,
   type GridRef,
 } from '../../boards/editorState';
-import { fieldMessage, geomapUnsupported, saveFieldMessage } from '../../boards/fieldMessages';
+import {
+  fieldMessage,
+  geomapUnsupported,
+  saveFieldMessage,
+  tagsUnsupported,
+} from '../../boards/fieldMessages';
 import type { LayoutOp } from '../../boards/layout';
 import { invalidateBoardLists } from '../../boards/queries';
 import { checkBoardSpec } from '../../boards/spec';
+import { tagError } from '../../boards/tags';
 import { boardVariables } from '../../boards/variables';
 import { WidgetRegistryContext, type WidgetDef } from '../../widgets/registry';
 import { isDataPanel, isWidgetPanel } from '../../widgets/spec';
@@ -194,6 +202,14 @@ function BoardEditor({
   // Discard's read of the head is in flight: Edit is read-only, as while saving, so no edit or
   // save can be made that the read's response would then replace.
   const [discarding, setDiscarding] = useState(false);
+  // A widget editor's local field text that cannot be written (plan #216 Part 2b §4.1): Save is
+  // refused while it is set, and `refused` shows why on the status line.
+  const [editorInvalid, setEditorInvalid] = useState<string | null>(null);
+  const [refused, setRefused] = useState(false);
+  const onLocalInvalid = useCallback((m: string | null) => {
+    setEditorInvalid(m);
+    if (m === null) setRefused(false);
+  }, []);
   const dirty = isDirty(s);
   const saving = s.save.status === 'saving';
   const busy = saving || discarding;
@@ -284,6 +300,10 @@ function BoardEditor({
 
   const save = (etag: string = s.head.etag): void => {
     if (busy) return;
+    if (editorInvalid !== null) {
+      setRefused(true);
+      return;
+    }
     const draft = s.draft;
     const fields = checkBoardSpec(draft);
     if (fields.length > 0) {
@@ -464,14 +484,24 @@ function BoardEditor({
   )
     ? s.announce
     : '';
-  const statusText = {
-    idle: full,
-    saving: t('board.saving'),
-    saved: t('board.saved'),
-    failed: gone ? t('board.saveGone') : t('board.saveFailed'),
-    invalid: t('board.saveInvalid', { n: s.save.fields.length }),
-    discardFailed: t('board.discardFailed'),
-  }[s.save.status];
+  const statusText = refused
+    ? t('board.save.editorInvalid')
+    : {
+        idle: full,
+        saving: t('board.saving'),
+        saved: t('board.saved'),
+        failed: gone ? t('board.saveGone') : t('board.saveFailed'),
+        invalid: t('board.saveInvalid', { n: s.save.fields.length }),
+        discardFailed: t('board.discardFailed'),
+      }[s.save.status];
+  // The tags field shows a save's `/tags` error (an older server's refusal reads as such).
+  const tagField = tagError(s.save.status === 'invalid' ? s.save.fields : []);
+  const tagsError =
+    tagField === null
+      ? null
+      : tagsUnsupported(tagField)
+        ? t('board.save.tagsUnsupported')
+        : fieldMessage(tagField.messageKey);
   // Errors outside any panel and section title (the board title, the time) show under the status
   // line, and so does an older server's refusal of a map panel (plan #234 Part 1 §4.5).
   const invalid = s.save.status === 'invalid' ? s.save.fields : [];
@@ -583,6 +613,11 @@ function BoardEditor({
             }}
             onAddSection={() => {
               dispatch({ type: 'addSection' });
+            }}
+            tags={s.draft.tags ?? []}
+            tagsError={tagsError}
+            onTags={(tags) => {
+              dispatch({ type: 'setTags', tags });
             }}
             onSaveTime={(on) => {
               dispatch({
@@ -737,6 +772,7 @@ function BoardEditor({
             onClose={() => {
               dispatch({ type: 'select', id: null });
             }}
+            onLocalInvalid={onLocalInvalid}
           />
         )}
       </div>

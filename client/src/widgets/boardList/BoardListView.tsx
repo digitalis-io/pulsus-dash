@@ -14,6 +14,10 @@
  * have a meta line after the link (≤ 3 tag chips and `+k`, or "tags unknown", and `updated d MMM
  * HH:mm` in the Context's zone) as the link's description. Rows new on a same-key refresh are `data-new` (a 150 ms fade, none under
  * reduced motion).
+ *
+ * `preview` (plan #216 Part 2b §4.1, the widget editor's inert preview): the rows are plain `<li>`
+ * text (title, uid suffix, chips, time; no link, no tab stop), with no field, Show more, Retry,
+ * summary or live region, and the meter as plain text. The fetch, states and snapshot are the same.
  */
 import { useId, useMemo, useRef, useState, type ReactElement, type Ref } from 'react';
 import { Link } from 'react-router';
@@ -29,7 +33,7 @@ import { BOARD_LINK_STATE } from '../../shell/SidebarBoards';
 import { contextSearchString } from '../../state/contextSearch';
 import { useTimeZone } from '../../state/timeZone';
 import { useTimeContext } from '../../state/useTimeContext';
-import { clockText } from '../../vis/reduce';
+import { clockText, coverageText } from '../../vis/reduce';
 import { listSetSize, type ListSnapshot } from '../lists/snapshot';
 import type { ListKeys } from '../lists/useListKeys';
 import { SEARCH_MAX, type SearchCommit } from '../lists/useSearchCommit';
@@ -183,9 +187,76 @@ export interface BoardListViewProps {
   readonly onTable: (on: boolean) => void;
   readonly keys: ListKeys;
   readonly live: string;
+  /** The widget editor's inert preview. */
+  readonly preview?: boolean;
 }
 
-export function BoardListView({ ref, ...p }: BoardListViewProps): ReactElement {
+/** The preview's view: the same states, as text only (§4.1). */
+function PreviewView({ ref, ...p }: BoardListViewProps): ReactElement {
+  const { model: m, rows } = p;
+  const tz = useTimeZone();
+  const metaId = useId();
+  const late = useDelayedFlag(m.phase === 'pending', PENDING_DELAY_MS);
+  const s = m.snapshot;
+  let area: ReactElement | null = null;
+  if (m.phase === 'ok' && s !== null) {
+    const meta = m.mode === 'search' || m.mode === 'tag';
+    area = (
+      <ul className={cx(styles['rows'])} aria-labelledby={p.headingId} data-board-list-rows="">
+        {rows.map((r, i) => (
+          <li key={r.uid} className={cx(styles['row'])}>
+            <span className={cx(styles['link'])}>
+              <span className={cx(styles['title'])}>{r.title}</span>
+              {r.display !== r.title && <span className={cx(styles['uid'])}>{` · ${r.uid}`}</span>}
+              {r.current && (
+                <span className={cx(styles['muted'])}>{`, ${t('boardList.thisBoard')}`}</span>
+              )}
+            </span>
+            {meta && <Meta row={r} id={`${metaId}-${String(i)}`} tz={tz} />}
+          </li>
+        ))}
+      </ul>
+    );
+  } else if (m.phase === 'pending') {
+    area = late ? <p className={cx(styles['state'])}>{t('boardList.loading')}</p> : null;
+  } else if (m.phase === 'error' || m.notice === null) {
+    area = <p className={cx(styles['state'])}>{stateText(m)}</p>;
+  }
+  return (
+    <div
+      ref={ref}
+      className={cx(styles['root'])}
+      data-board-list=""
+      data-board-list-mode={m.mode}
+      data-board-list-phase={m.phase}
+      data-board-list-preview=""
+    >
+      {m.caption !== null && <p className={cx(styles['caption'])}>{m.caption}</p>}
+      {m.notice === 'tagNeedsServer' && (
+        <p className={cx(styles['notice'])}>{t('boardList.tagNeedsServer')}</p>
+      )}
+      {m.refreshFailed && s !== null && (
+        <p className={cx(styles['notice'])}>
+          {t('boardList.refreshFailed', { time: clockText(s.fetchedAtMs, tz) })}
+        </p>
+      )}
+      <div className={cx(styles['area'])}>{area}</div>
+      <div className={cx(styles['meter'])} data-coverage-meter="">
+        <p className={cx(styles['meterText'])}>
+          {s !== null
+            ? coverageText(s.coverage, tz)
+            : t(m.phase === 'error' ? 'meter.unavailable' : 'meter.loading')}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function BoardListView(props: BoardListViewProps): ReactElement {
+  return props.preview === true ? <PreviewView {...props} /> : <LiveView {...props} />;
+}
+
+function LiveView({ ref, ...p }: BoardListViewProps): ReactElement {
   const { model: m, rows, field, keys } = p;
   const summaryId = useId();
   const metaId = useId();

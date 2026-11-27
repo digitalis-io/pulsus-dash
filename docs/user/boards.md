@@ -356,9 +356,11 @@ in its time range. There is no way to add or edit a note on the board yet.
 
 ### Widgets
 
-A board can hold **widgets**: Text panels (notes, runbooks, a code snippet) and Clock panels (the
-time in several zones, with a countdown). A widget has no query, so it never loads data, has no
-chart, and offers no Open in Explore, Copy query or Full screen.
+A board can hold **widgets**: Text panels (notes, runbooks, a code snippet), Board lists (links to
+other boards, [below](#board-lists)) and Clock panels (the time in several zones, with a countdown).
+A widget has no query: it never runs a metrics or logs query, has no chart, and offers no Open
+in Explore, Copy query or Full screen. Text and Clock panels load nothing; a Board list loads the
+board metadata it lists (titles, tags and update times).
 
 **Text panels** show their content under the title:
 
@@ -386,7 +388,7 @@ panel:
 - **Move and resize** it in Edit mode, with the pointer or with **Move or resize** and the arrow
   keys ([moving and resizing panels](#moving-and-resizing-panels)).
 - **Duplicate** or **Remove** it from the **Panel menu**. A copy keeps the widget's content and
-  options. A Text panel's menu also has **Edit panel**.
+  options. A Text panel's and a Board list's menus also have **Edit panel**.
 - **Save** the board as usual: the widgets are kept exactly as they were.
 
 A `$name` or `${name}` in a Markdown Text panel is a board variable: it gets a chip in the
@@ -395,6 +397,29 @@ stays as written. Code-mode text is never filled in, and Clock panels have no va
 zone must be a time zone the server knows when you save a board that adds it; a zone already on the
 board stays valid. If the server refuses a widget's settings, the save lists the problem under the
 status line, as for any panel.
+
+### Board lists
+
+A **Board list** lists other boards as links, so a board can be the place a team starts from. Its
+**Show** setting picks what it lists:
+
+| Show | Lists |
+|---|---|
+| **Starred** | your starred boards, by title ("No starred boards. Star a board with ☆ in its header" when none) |
+| **Recent** | the boards you opened most recently, newest first |
+| **Search** | the boards whose title contains the search text, or that carry it as a tag; a search field on the list lets you change it |
+| **Tag** | the boards with one tag, such as `team:payments` ([board tags](#board-tags)) |
+
+Each row opens its board with the current time range; with ⌘ or Ctrl it opens in a new tab. The
+board you are on says ", this board". Search and Tag rows also show up to three of the board's tags
+and when it was last updated. The list shows **Rows** boards (10 unless set) and **Show more** adds
+as many again. On the search field, Escape clears it first.
+
+A line under the list says how complete it is, for example "showing 10 of 12", or "coverage
+unknown" from an older server. **Shift+T** on the list, or **Show as table** in the Panel menu,
+shows the rows as a table, with an **Export** to CSV; **Show list (Shift+T)** goes back. When the
+boards cannot be loaded the list says so, with **Retry**; when a refresh fails the rows stay, with
+the time they are from.
 
 ### Open in Explore
 
@@ -497,8 +522,9 @@ toolbar becomes:
 | Control | What it does |
 |---|---|
 | **Add panel** | Adds an empty 6 × 8 panel in the first free place (top to bottom, left to right) and opens it in the panel editor |
-| **Add widget** | A menu of the widgets you can add (**Text** in this version). A Text panel is 6 × 6, starts empty in Markdown, goes in the first free place, and opens in the text editor |
+| **Add widget** | A menu of the widgets you can add: **Text** and **Board list**. A Text panel is 6 × 6 and starts empty in Markdown; a Board list is 4 × 8 and starts on Starred. Each goes in the first free place and opens in its editor |
 | **Add section** | Adds an empty, expanded section at the end, named "Untitled section" until you give it a title |
+| **Tags** ("Tags (2)" with two) | The board's tags ([below](#board-tags)) |
 | **Save current time range** | Checked when the board has a saved time range. Checking saves the current one with the board; unchecking removes it |
 | **Discard** | Throws away the unsaved changes: reloads the board and returns to View mode. While it reloads, the board cannot be edited or saved |
 | **Save** (**⌘S** on macOS, **Ctrl+S** elsewhere) | Saves the changes as a new version. Disabled when there is nothing to save |
@@ -616,6 +642,43 @@ makes the board unchanged again, so **Save** is disabled once more.
 returns to the panel's menu button (to **Add panel** if the panel was removed). If the text's
 renderer cannot load, the panel says "This text couldn't be shown. Reload the page."
 
+### Adding a Board list
+
+**Add widget → Board list**, or **Edit panel** on a Board list, opens the **Edit board list**
+window. At the top, **Preview** shows the list as the board will, about a quarter of a second after
+you stop typing; it is only a picture: its rows are not links and take no keys. Below it:
+
+| Field | What it does |
+|---|---|
+| **Show** | **Starred**, **Recent**, **Search** or **Tag** ([what each lists](#board-lists)). Leaving Search drops the search text; leaving Tag drops the tag |
+| **Search text** | in Search only: the text to look for in titles and tags, at most 100 characters, no control characters. Empty lists every board |
+| **Tag** | in Tag only: one tag, such as `team:payments`. Until you enter one, the field says "Use one valid tag, in tag mode only." |
+| **Rows** | how many boards the list shows before **Show more**: a whole number from 1 to 50 |
+| **Order** | **Default**, or **Use during incidents**. Ranking by use during incidents comes with investigations (M-UI4), so for now the list keeps the default order and says so under the field and on the list |
+
+Every valid change goes into the board draft at once. A Search text with a control character, or
+over 100 characters, and a Rows value that is not a whole number from 1 to 50, stay in their field
+with the reason, and the draft keeps the last valid value. While such a field is shown, **Done** is
+disabled and saving says "Fix the highlighted field in the panel editor first". Fix the field, or
+close the window with Escape to drop the text. **Remove panel** removes the list.
+
+### Board tags
+
+Tags name what a board is about (`team:payments`, `noc`), so a [Board list](#board-lists) in Tag
+mode, or a search for the tag, can find it. In Edit mode, **Tags** in the toolbar ("Tags (2)" for a
+board with two) opens **Board tags**:
+
+- Type a tag in **Add a tag** and press **Return** (or type a comma or a space). You can paste
+  several at once, separated by commas or spaces. Capitals are made lower case.
+- Each tag shows with a **×** to remove it; **Backspace** in the empty field removes the last one.
+- A tag is lower-case letters, digits and `_ . : / -`, starting with a letter or digit, at most 64
+  characters; a board has at most 16 tags, each once. A tag that breaks a rule stays in the field
+  with the reason.
+- Escape closes the popover. **Save** saves the tags with the board.
+
+A server older than board tags refuses them: the save says "This server does not accept board tags
+yet", on the status line and under the tags, and nothing else changes. Remove the tags to save.
+
 ### Unsaved changes
 
 With unsaved changes, leaving the board for another page (a sidebar link, the breadcrumb, Explore)
@@ -644,6 +707,8 @@ but cannot be saved." Leaving the page still asks first.
 | Key | Where | What it does |
 |---|---|---|
 | **Shift+E** | a board, not while typing | Edit mode on; in Edit mode, Done |
+| **Shift+T** | a Board list, not in its search field | Show the rows as a table, and back |
+| **Return**, **Backspace** | **Add a tag** | Add the typed tags; in an empty field, remove the last tag |
 | **⌘S** / **Ctrl+S** | a board in Edit mode, anywhere | Save |
 | Arrows, **Shift**+arrows | **Move or resize** button | Move, resize |
 | **[**, **]**, **-**, **=** | anywhere but text fields and menus | Step the time window back and forward, zoom out and in |
@@ -673,12 +738,14 @@ but cannot be saved." Leaving the page still asks first.
 - Charts: no glide after a flick, no zoom by scrolling over an axis, no value zoom on heatmaps, no
   touch gestures, and other panels follow a zoom only when it ends.
 - A Text panel's content is at most 65 536 bytes (UTF-8).
+- A Board list shows 1 to 50 rows at a time and reads at most 1 000 boards; its search text is at
+  most 100 characters. A board has at most 16 tags of up to 64 characters.
 - Not yet: Clock panels drawn or added, undo and history, moving panels between sections, reordering sections, filters changing
   the queries, variable definitions and value lists, several queries in one panel, log patterns,
   saving a log panel's order and wrap, repeated panels, percentage thresholds, threshold areas,
   list legends and legend placement, adding or editing notes on the board, clicking a marker to
   compare before and after (INT-030), event markers in Explore, the anomaly strip of a
-  collapsed section, folders and tags, viewing or restoring old versions, and permissions (everyone
+  collapsed section, folders, tag suggestions, viewing or restoring old versions, and permissions (everyone
   can edit every board).
 
 ## Design references
@@ -698,5 +765,6 @@ T09-009, T09-010, T09-014, T09-015), [09 Performance contract](../../designs/pro
 (PRF-030, PRF-031), [ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md) (query planning on the
 server), [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md) (threshold lines
 and the stat sparkline). Widgets: [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md)
-(T24-002, T24-003, §5.1; Text: T24-004 to T24-009, T24-014, T24-015, T24-017, T24-018, §5.2a),
-VIZ-053 (the Text row) and VIZ-054.
+(T24-002, T24-003, §5.1; Text: T24-004 to T24-009, T24-014, T24-015, T24-017, T24-018, §5.2a;
+Board list and tags: T24-020 to T24-027, T24-029, §5.5), VIZ-053 (the Text and Board list rows),
+VIZ-054, VIZ-031 and VIZ-065.

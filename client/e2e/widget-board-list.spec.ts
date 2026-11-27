@@ -9,6 +9,9 @@
  *   and the meta line gives way (T24-022).
  * - `e2e:widget-lists-a11y`: axe in each state (held, empty, error, stale, old server, truncated)
  *   in view and Edit mode, focus repair, the T24-025 Tab order, `aria-setsize`, reduced motion.
+ * - Part 2b (plan #216 Part 2b §5): `e2e:widget-board-list (add flow)`, Add widget → Board list,
+ *   its editor and preview, a board tag, Save and reload; `e2e:widget-lists-a11y (editor)`, axe and
+ *   the Tab order of the editor over a populated preview and of the tags popover.
  */
 import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { B, findS, oldServer, wireOf } from '../src/widgets/boardList/fixtures.ts';
@@ -27,9 +30,10 @@ async function createListBoard(
   request: APIRequestContext,
   title: string,
   panels: readonly ReturnType<typeof listPanelSpec>[],
+  tags?: readonly string[],
 ): Promise<string> {
   const r = await request.post('/api/dash/v1/boards', {
-    data: { spec: { title, panels, sections: [] } },
+    data: { spec: { title, ...(tags === undefined ? {} : { tags }), panels, sections: [] } },
   });
   expect(r.status(), await r.text()).toBe(201);
   return ((await r.json()) as { uid: string }).uid;
@@ -285,6 +289,114 @@ test.describe('Board list widget', () => {
       const fresh = list.locator('[data-board-list-rows] li[data-new]');
       await expect(fresh).toHaveCount(1);
       expect(await fresh.evaluate((e) => getComputedStyle(e).animationName)).toBe('none');
+    } finally {
+      await deleteBoard(request, uid);
+    }
+  });
+
+  test('e2e:widget-board-list (add flow)', async ({ page, request }, info) => {
+    const uid = await createListBoard(
+      request,
+      `E2E board list add ${info.project.name} ${crypto.randomUUID()}`,
+      [],
+    );
+    try {
+      await routeBoardLists(page, { boards: findAnswer });
+      await page.goto(`/t/demo/board/${uid}?${BOARD_TIME}`);
+      await page.getByRole('button', { name: 'Edit board' }).click();
+      await page.getByRole('button', { name: 'Add widget' }).click();
+      await page.getByRole('menuitem', { name: 'Board list' }).click();
+      const d = page.getByRole('dialog', { name: 'Edit board list' });
+      await expect(d).toBeVisible();
+      await d.getByRole('radio', { name: 'Search' }).click();
+      await d.getByRole('textbox', { name: 'Search text' }).fill('check');
+      await d.getByRole('textbox', { name: 'Rows' }).fill('5');
+      const preview = d.getByRole('group', { name: 'Preview' });
+      await expect(preview.locator('li')).toHaveCount(2);
+      await d.getByRole('button', { name: 'Done' }).click();
+      await expect(d).toBeHidden();
+
+      await page.getByRole('button', { name: 'Tags', exact: true }).click();
+      const tags = page.getByRole('dialog', { name: 'Board tags' });
+      await tags.getByRole('textbox', { name: 'Add a tag' }).fill('team:payments');
+      await tags.getByRole('textbox', { name: 'Add a tag' }).press('Enter');
+      await expect(tags.getByRole('button', { name: 'Remove tag team:payments' })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(tags).toBeHidden();
+      await expect(page.getByRole('button', { name: 'Tags (1)' })).toBeVisible();
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(page.getByRole('status', { name: 'Save status' })).toHaveText('Saved');
+
+      await page.reload();
+      const list = panel(page, 'Untitled panel');
+      await expect(rows(list)).toHaveCount(2);
+      await expect(list.getByRole('textbox', { name: 'Search boards' })).toHaveValue('check');
+      const got = await request.get(`/api/dash/v1/boards/${uid}`);
+      expect(got.status()).toBe(200);
+      const spec = (
+        (await got.json()) as {
+          spec: { tags?: string[]; panels: { vis: { options?: unknown } }[] };
+        }
+      ).spec;
+      expect(spec.tags).toEqual(['team:payments']);
+      expect(spec.panels[0]?.vis.options).toEqual({ mode: 'search', query: 'check', limit: 5 });
+    } finally {
+      await deleteBoard(request, uid);
+    }
+  });
+
+  test('e2e:widget-lists-a11y (editor)', async ({ page, request }, info) => {
+    const uid = await createListBoard(
+      request,
+      `E2E lists a11y editor ${info.project.name} ${crypto.randomUUID()}`,
+      [listPanelSpec('p-1', 'Find', [0, 0, 6, 14], { mode: 'search', query: 'check' })],
+      ['team:payments', 'noc'],
+    );
+    const axe = async (what: string) => {
+      // #253: the pinned Firefox crashes after an axe run on a board.
+      if (info.project.name === 'firefox') return;
+      expect(await axeSerious(page), what).toEqual([]);
+    };
+    try {
+      await routeBoardLists(page, { boards: findAnswer });
+      await page.goto(`/t/demo/board/${uid}?${BOARD_TIME}`);
+      await expect(rows(panel(page, 'Find'))).toHaveCount(2);
+      await page.getByRole('button', { name: 'Edit board' }).click();
+      await page.getByRole('button', { name: 'Panel menu: Find' }).click();
+      await page.getByRole('menuitem', { name: 'Edit panel' }).click();
+      const d = page.getByRole('dialog', { name: 'Edit board list' });
+      await expect(d.getByRole('group', { name: 'Preview' }).locator('li')).toHaveCount(2);
+      await axe('editor');
+
+      // Title → Show → Search text → Rows → Order → Remove panel → Done.
+      await d.getByRole('textbox', { name: 'Title' }).focus();
+      const order = [
+        d.getByRole('radiogroup', { name: 'Show' }).locator(':focus'),
+        d.getByRole('textbox', { name: 'Search text' }),
+        d.getByRole('textbox', { name: 'Rows' }),
+        d.getByRole('button', { name: /Order/ }),
+        d.getByRole('button', { name: 'Remove panel' }),
+        d.getByRole('button', { name: 'Done' }),
+      ];
+      for (const next of order) {
+        await page.keyboard.press('Tab');
+        await expect(next).toBeFocused();
+      }
+      await d.getByRole('button', { name: 'Done' }).click();
+      await expect(d).toBeHidden();
+
+      const trigger = page.getByRole('button', { name: 'Tags (2)' });
+      await trigger.click();
+      const pop = page.getByRole('dialog', { name: 'Board tags' });
+      await expect(pop.getByRole('button', { name: 'Remove tag noc' })).toBeVisible();
+      await axe('tags popover');
+      await pop.getByRole('button', { name: 'Remove tag team:payments' }).focus();
+      await page.keyboard.press('Tab');
+      await expect(pop.getByRole('button', { name: 'Remove tag noc' })).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(pop.getByRole('textbox', { name: 'Add a tag' })).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(trigger).toBeFocused();
     } finally {
       await deleteBoard(request, uid);
     }

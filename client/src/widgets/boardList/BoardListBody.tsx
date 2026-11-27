@@ -9,6 +9,10 @@
  * (`useListKeys`) and the announcements (`useListAnnouncer`), and renders `BoardListView`. In the
  * stub and dev builds (not http), under the bench's flag, it marks each render and measures
  * `boardList:render` per commit (`bench:widget-lists`).
+ *
+ * `preview` (plan #216 Part 2b §4.1, the widget editor): every mode goes through `FixedBoardList`,
+ * a search list with `q` = its trimmed query, so the preview registers no Escape or Inspector
+ * provider; Shift+T is off and the view is inert text (`BoardListView`).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { WidgetPanelSpec } from '../../api/types';
@@ -36,6 +40,11 @@ export interface BoardListBodyProps {
   /** The table view is shown (Shift+T, the Panel menu). */
   table: boolean;
   onTable: (on: boolean) => void;
+  /**
+   * The editor's preview (plan #216 Part 2b §4.1): a search list reads its stored query through
+   * `FixedBoardList` (no field, no Esc provider) and the view draws plain, link-free rows.
+   */
+  preview?: boolean;
 }
 
 /**
@@ -120,14 +129,16 @@ function BoardListCore(p: CoreProps): ReactElement {
   }, [listKey, q, typed, mode, settledText, announce]);
 
   // Shift+T flips the table (native listener: the root is no control of its own).
-  const tableRef = useRef({ table, onTable });
+  const preview = p.preview === true;
+  const tableRef = useRef({ table, onTable, preview });
   useLayoutEffect(() => {
-    tableRef.current = { table, onTable };
+    tableRef.current = { table, onTable, preview };
   });
   useEffect(() => {
     const root = rootRef.current;
     if (root === null) return;
     const onKey = (e: KeyboardEvent): void => {
+      if (tableRef.current.preview) return;
       if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key !== 'T' && e.key !== 't') return;
       if (inTextField(e.target)) return;
@@ -179,6 +190,7 @@ function BoardListCore(p: CoreProps): ReactElement {
       onTable={onTable}
       keys={keys}
       live={live}
+      preview={preview}
     />
   );
 }
@@ -221,7 +233,8 @@ function SearchBoardList(p: ModeProps): ReactElement {
 }
 
 function FixedBoardList(p: ModeProps): ReactElement {
-  return <BoardListCore {...p} q="" field={null} typed={false} />;
+  const q = p.preview === true && p.options.mode === 'search' ? p.options.query.trim() : '';
+  return <BoardListCore {...p} q={q} field={null} typed={false} />;
 }
 
 export function BoardListBody(p: BoardListBodyProps): ReactElement {
@@ -235,7 +248,7 @@ export function BoardListBody(p: BoardListBodyProps): ReactElement {
       </div>
     );
   }
-  return options.mode === 'search' ? (
+  return options.mode === 'search' && p.preview !== true ? (
     <SearchBoardList key="search" {...p} options={options} />
   ) : (
     <FixedBoardList key="fixed" {...p} options={options} />

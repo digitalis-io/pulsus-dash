@@ -1,7 +1,7 @@
 /**
  * The text of a field error (plan #61 Part B §3.5, Appendix B-A §A.3): `message_key` → the
  * catalogue id `field.<key>` (T08-027). Unknown keys fall back to the generic "could not be read".
- * A save's errors read through `saveFieldMessage` (the old server's geomap refusal).
+ * A save's errors read through `saveFieldMessage` (an older server's geomap or tags refusal).
  */
 import type { BoardSpec, FieldError } from '../api/types';
 import { messages } from '../i18n/messages.en-GB';
@@ -25,9 +25,9 @@ const KIND_POINTER = /^(?:\/sections\/(\d+))?\/panels\/(\d+)\/vis\/kind$/;
  * the geomap as an invalid kind).
  */
 export function saveFieldMessage(spec: BoardSpec, f: FieldError): string {
-  return geomapUnsupported(spec, f)
-    ? t('board.save.geomapUnsupported')
-    : fieldMessage(f.messageKey);
+  if (geomapUnsupported(spec, f)) return t('board.save.geomapUnsupported');
+  if (tagsUnsupported(f)) return t('board.save.tagsUnsupported');
+  return fieldMessage(f.messageKey);
 }
 
 /**
@@ -46,4 +46,13 @@ export function geomapUnsupported(spec: BoardSpec, f: FieldError): boolean {
   if (m === null) return false;
   const panels = m[1] === undefined ? spec.panels : spec.sections[Number(m[1])]?.panels;
   return panels?.[Number(m[2])]?.vis.kind === 'geomap';
+}
+
+/**
+ * Whether `f` is an older server's refusal of board tags (plan #216 Part 2b §3.2; T24-029): a
+ * server before the tags version answers `board.json.unknownKey` at `/tags`, shown as "This server
+ * does not accept board tags yet".
+ */
+export function tagsUnsupported(f: FieldError): boolean {
+  return f.pointer === '/tags' && f.messageKey === 'board.json.unknownKey';
 }
