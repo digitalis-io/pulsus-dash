@@ -1,13 +1,14 @@
 /**
  * Grid geometry and keyboard layout operations (plan #61 Part B §3.6). A board grid has 12 columns
- * of 40 px rows with 16 px gaps; View and Edit mode both place panels with these numbers.
+ * of 40 px rows with 12 px gaps (`size.board-gap`, #282 Part 2a); View and Edit mode both place
+ * panels with these numbers.
  */
 import type { GridPos, PanelSpec } from '../api/types';
-import { size, space } from '../styles/tokens';
+import { size } from '../styles/tokens';
 
 export const COLS = size['board-cols'];
 export const ROW = size['board-row'];
-export const GAP = space['4'];
+export const GAP = size['board-gap'];
 
 /**
  * The server's grid rules (`server/internal/spec/validate.go`: `gridColumns`, `maxGridRow`,

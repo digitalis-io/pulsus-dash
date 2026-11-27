@@ -61,6 +61,9 @@ export const messages = {
   'board.updatedSeconds': 'Updated {n} s ago',
   'board.updatedMinutes': 'Updated {n} min ago',
   'board.updatedAt': 'Updated at {time}',
+  // The board's health status line (#282 Part 2a §4.3): the failing panels in view.
+  'board.status.failingOne': '1 panel failing',
+  'board.status.failingMany': '{n} panels failing',
   'board.remote':
     'This board was saved elsewhere (version {version}). Saving will ask which version to keep.',
   'board.reloadFailed': 'Could not reload this board. Your changes are kept.',
@@ -551,6 +554,15 @@ export const messages = {
   'time.quick.2d': 'Last 2 days',
   'time.quick.7d': 'Last 7 days',
   'time.quick.30d': 'Last 30 days',
+  // The header's inline quick ranges (#282 Part 2a, IA-020 as amended).
+  'time.presets': 'Quick range',
+  // A preset's name starts with its visible label (WCAG 2.5.3): "1h (Last 1 hour)".
+  'time.presetName': '{short} ({range})',
+  'time.short.15m': '15m',
+  'time.short.1h': '1h',
+  'time.short.6h': '6h',
+  'time.short.24h': '24h',
+  'time.short.7d': '7d',
   'time.from': 'From',
   'time.to': 'To',
   'time.apply': 'Apply',

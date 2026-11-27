@@ -283,16 +283,20 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
   merged cell is missing (no fill) when any merged bucket's count is missing (NaN); hover and the
   a11y summary read the raw buckets. A NaN cell is never filled and has no hover row (#63,
   [T02 §4.4](../../designs/technical/T02-vis-engine.md#44-lod-decimation-and-precision) gaps rule).
-- **Stat.** The formatted value, centred, in 32 px semibold. With series data whose first series has
-  at least one finite value in the window, and a frame at least 104 px tall (`SPARK_MIN_H`), a
-  **sparkline** runs under it: the rect `{ x: 12, y: h − 8 − 32, width: w − 24, height: 32 }`, the
-  window across it, the min to max of the series' finite values inside the window from its bottom to its top (mid-height when they
-  are equal), in the series colour, 1.5 px with round joins. It is a trend glyph: it joins the
-  finite points inside the window across absent and non-finite ones (a sparse series on the step
-  grid is mostly absent points), and a single finite point is a dot of radius 1.5 px. The value
-  then sits at `(h − 32 − 8) / 2`. A scalar, a series with no finite value in the window, a
-  shorter frame or a spec with `graphMode: 'none'` draws the value alone, centred, as before. The
-  board sets `graphMode: 'none'` from the panel's `options.graphMode` (`boards/panelRun.ts`,
+- **Stat** (#282 Part 2a, [Panels › Stat tiles](panels.md#stat-tiles-282-part-2a)). The formatted
+  value in 32 px semibold, left-aligned at x 12, its middle at y = min(28, h / 2); the DOM subline
+  (the threshold text) sits under it, and the head is `STAT_HEAD` = 72 px. With series data whose
+  first series has at least one finite value in the window, and a frame at least 104 px tall
+  (`SPARK_MIN_H`), a **sparkline** runs under the head: the rect `{ x: 0, y: 72, width: w,
+  height: h − 72 }`, the window across it; the finite values' max is at `y + 1.5` and their min at
+  `y + 0.75 × height` (the middle of that band when they are equal), in the series colour, 1.5 px
+  with round joins. It is a trend glyph: it joins the finite points inside the window across
+  absent and non-finite ones (a sparse series on the step grid is mostly absent points), and a
+  single finite point is a dot of radius 1.5 px. Under the line an area from the first to the last
+  finite point, closed straight down to the rect's bottom, fades from `opacity.area` to clear. A
+  scalar, a series with no finite value in the window, a shorter frame or a spec with
+  `graphMode: 'none'` draws the value alone, in the same place. The board sets `graphMode: 'none'`
+  from the panel's `options.graphMode` (`boards/panelRun.ts`,
   [T22 §5.1](../../designs/technical/T22-value-categorical-and-table-panels.md#51-seam-types-every-field-readonly-in-the-files));
   absent and `sparkline` leave it absent, which draws the sparkline (#297,
   [ADR-0037](../../designs/adr/0037-stat-graph-mode-none.md)).

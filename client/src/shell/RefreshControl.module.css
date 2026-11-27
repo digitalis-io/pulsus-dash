@@ -1,16 +1,16 @@
 .group {
   display: inline-flex;
   align-items: stretch;
-  /* A header capsule (#282): the field fill, the control edge. */
+  /* A header control (#282): the field fill, the control edge, 6 px corners. */
   height: var(--size-control);
   border: var(--border-hairline) solid var(--border-control);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius);
   background: var(--field);
 }
 
 .now {
   height: auto;
-  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+  border-radius: var(--radius) 0 0 var(--radius);
 }
 
 .divider {
@@ -24,7 +24,7 @@
   gap: var(--space-2);
   padding: 0 var(--space-3);
   border: none;
-  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
   background: transparent;
   color: var(--text);
   font: inherit;

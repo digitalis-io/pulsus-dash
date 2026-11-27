@@ -1,5 +1,5 @@
 /**
- * The visual refresh's chrome (#282 Part 1): materials, shapes, focus rings and motion of the shell
+ * The visual refresh's chrome (#282 Parts 1 and 2a): materials, shapes, focus rings and motion of the shell
  * and kit (VL-014, VL-016, VL-017, VL-019 as amended; T08-007, T08-019). Colours come from the
  * generated tokens, never literals.
  */
@@ -160,7 +160,7 @@ test.describe('kit chrome (#282)', () => {
         expect(await backdrop(l), `${browserName} ${theme} ${name} filter`).toContain('blur(24px)');
         expectColour(await css(l, 'background-color'), tok(theme, material), name);
       }
-      expect(await css(pop, 'border-top-left-radius')).toBe('10px');
+      expect(await css(pop, 'border-top-left-radius')).toBe('8px');
       expect(await css(pop, 'box-shadow')).not.toBe('none');
       await page.keyboard.press('Escape');
     }
@@ -204,20 +204,23 @@ test.describe('kit chrome (#282)', () => {
     test.setTimeout(120_000);
     const theme: Theme = 'dark';
     await open(page, '/t/demo/boards');
-    expect(await css(page.getByRole('heading', { level: 1 }), 'font-size')).toBe('16px');
+    // #282 Part 2a: the 22 px bold title; compact radii (6 px controls, 8 px popovers, 10 px dialogs).
+    const h1 = page.getByRole('heading', { level: 1 });
+    expect(await css(h1, 'font-size')).toBe('22px');
+    expect(await css(h1, 'font-weight')).toBe('700');
     await page.getByRole('button', { name: 'New board' }).click();
     const dialog = page.getByRole('dialog', { name: 'New board' });
     await dialog.waitFor();
     for (const name of ['Create', 'Cancel']) {
       const b = dialog.getByRole('button', { name, exact: true });
-      expect(await css(b, 'border-top-left-radius'), `${name} radius`).toBe('9999px');
+      expect(await css(b, 'border-top-left-radius'), `${name} radius`).toBe('6px');
       expect((await b.boundingBox())?.height ?? 0, `${name} height`).toBeCloseTo(28, 1);
     }
     const field = dialog.getByRole('textbox', { name: 'Name' });
     expect(await css(field, 'border-top-left-radius')).toBe('6px');
     await minBox(field, 'text field');
     const modal = dialog.locator('xpath=..');
-    expect(await css(modal, 'border-top-left-radius')).toBe('14px');
+    expect(await css(modal, 'border-top-left-radius')).toBe('10px');
     expect(await css(modal, 'box-shadow')).not.toBe('none');
     expect(await css(modal, 'box-shadow')).not.toBe('');
     await page.keyboard.press('Escape');
@@ -248,13 +251,14 @@ test.describe('kit chrome (#282)', () => {
     await open(page, EXPLORE_RESULT);
     const group = page.getByRole('radiogroup', { name: 'Visualisation' });
     await group.waitFor();
-    expect(await css(group, 'border-top-left-radius')).toBe('9999px');
+    expect(await css(group, 'border-top-left-radius')).toBe('6px');
     const radios = group.getByRole('radio');
     const n = await radios.count();
     expect(n).toBeGreaterThan(1);
     for (let i = 0; i < n; i++) {
       const r = radios.nth(i);
       await minBox(r, `segment ${String(i)}`);
+      expect(await css(r, 'border-top-left-radius'), `segment ${String(i)} radius`).toBe('4px');
       if ((await r.getAttribute('aria-checked')) === 'true') {
         expectColour(await css(r, 'background-color'), tok(theme, 'accent-fill'), 'selected');
         expectColour(await css(r, 'color'), tok(theme, 'text-on-accent'), 'selected text');

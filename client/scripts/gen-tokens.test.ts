@@ -23,7 +23,7 @@ describe('tokens generate', () => {
     expect(dark).toContain('--canvas: #0E1014;');
     expect(dark).toContain('--surface-1: #15171C;');
     expect(dark).toContain('--surface-2: #1D2026;');
-    expect(css).toContain('--size-sidebar-expanded: 240px;');
+    expect(css).toContain('--size-sidebar-expanded: 212px;');
   });
 
   // #282: the half step, the radius scale, tracking, elevation, material and the 28 px control.
@@ -32,8 +32,6 @@ describe('tokens generate', () => {
     const common = /\n:root \{([^}]*)\}/.exec(css)?.[1] ?? '';
     for (const decl of [
       '--space-0-5: 2px;',
-      '--radius-pill: 9999px;',
-      '--radius-lg: 14px;',
       '--tracking-xl: -0.017em;',
       '--elevation-2: inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key);',
       '--material-filter: blur(24px) saturate(180%);',
@@ -54,6 +52,40 @@ describe('tokens generate', () => {
     expect(rs).toContain(
       'pub mod material { pub const FILTER: &str = "blur(24px) saturate(180%)"; }',
     );
+  });
+
+  // #282 Part 2a (VL-017, VL-019 as amended): compact radii without a capsule, the dense layout,
+  // the 22 px title, the tint opacities and the card and state elevations.
+  it('emits the Part 2a radii, sizes, opacities, elevations and the failing glow', () => {
+    const { css } = generate(toml);
+    const common = /\n:root \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    for (const decl of [
+      '--radius: 6px;',
+      '--radius-xs: 4px;',
+      '--radius-md: 8px;',
+      '--radius-lg: 10px;',
+      '--radius-tag: 3px;',
+      '--size-sidebar-expanded: 212px;',
+      '--size-page-padding: 20px;',
+      '--size-page-padding-top: 12px;',
+      '--size-board-gap: 12px;',
+      '--size-board-panel-header: 36px;',
+      '--size-log-row: 24px;',
+      '--size-log-tag: 16px;',
+      '--font-size-title: 22px;',
+      '--opacity-tag: 0.18;',
+      '--opacity-chip: 0.12;',
+      '--opacity-area: 0.28;',
+      '--elevation-card: inset 0 1px 0 var(--highlight), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient);',
+      '--elevation-state: inset 0 1px 0 var(--highlight), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow);',
+    ]) {
+      expect(common, decl).toContain(decl);
+    }
+    expect(css).not.toContain('--radius-pill');
+    const dark = /:root,\n:root\[data-theme="dark"\] \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(dark).toContain('--failing-glow: #E0457B26;');
+    const light = /:root\[data-theme="light"\] \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(light).toContain('--failing-glow: #B8285C1A;');
   });
 
   it('rejects a tracking value outside ±0.05 and an unsafe string, naming the key', () => {

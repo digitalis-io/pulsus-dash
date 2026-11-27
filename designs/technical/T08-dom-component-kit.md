@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.14-rc · 2026-11-27 |
+| **Version** | 1.15-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (React application: store, router, tokens, keymap, kit core, application layout) → M-UI2 (tree, viewport a11y mirror, dock host) → M-UI3 (Explorer, Atlas mirror) → M-UI5 (remapping room, presets, Board editor forms) → M-UI6 (WCAG 2.2 AA audit) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md) |
 | **Source draft** | plans/tech/T08-dom-component-kit.md (not tracked) |
@@ -116,7 +116,7 @@ This document fixes:
 | [VL-013](../product/08-visual-language.md#vl-013--density-modes) | §4.7 (density) | `golden:density`: Compact and Comfortable change type and spacing on DOM and canvas; Engineer Perspective starts Compact |
 | [VL-015](../product/08-visual-language.md#vl-015--no-spinners-on-data) | §4.4 (skeleton, shimmer; no data spinner) | `e2e:no-spinner`: with a 1 s server delay no spinner is present; the shimmer appears after 300 ms and clears on refine |
 | [VL-016](../product/08-visual-language.md#vl-016--reduced-motion) | §4.5 (reduced motion) | `e2e:reduced-motion`: with `prefers-reduced-motion: reduce` DOM transitions are instant and the render worker receives the reduced-motion pref |
-| [VL-019](../product/08-visual-language.md#vl-019--layout-grid) | §4.7 (spacing tokens on a 4 px grid) | `ci:layout-grid`: kit CSS uses only spacing tokens (multiples of 4 px; 2 px control insets), 8 px gutters, the radius scale (4 / 6 / 10 / 14 px and capsule, #282), 1 px hairline |
+| [VL-019](../product/08-visual-language.md#vl-019--layout-grid) | §4.7 (spacing tokens on a 4 px grid) | `ci:layout-grid`: kit CSS uses only spacing tokens (multiples of 4 px; 2 px control insets), 8 px gutters, the radius scale (3 / 4 / 6 / 8 / 10 px, no capsule, #282 Part 2a; `unit:radius-scale`), 1 px hairline |
 | [VL-020](../product/08-visual-language.md#vl-020--fixed-glyph-language) | §4.4 (glyph and icon set from tokens) | `ci:single-icon-set`: every icon reference resolves to the one line set; glyph meanings come from the token table |
 | [VL-021](../product/08-visual-language.md#vl-021--one-token-source-for-canvas-and-dom) | §4.7, T08-022 | `ci:hardcoded-colour`: fails on any colour literal outside generated outputs; `golden:accent-change` |
 | [VL-022](../product/08-visual-language.md#vl-022--component-and-mark-libraries-share-the-tokens) | §4.4, §4.7, T08-007 | `ci:token-usage`: kit components reference only generated token outputs |
@@ -323,19 +323,34 @@ pixel at the same viewport size.
 | **Progress shimmer** | Thin edge shimmer on a viewport or list, shown only after a load has taken > 300 ms; there is no spinner component for data (VL-015) | `aria-busy` on the region |
 | **Basics** | Button, icon button (24×24 minimum target, WCAG 2.5.8), tabs, menu, switch, slider, splitter, badge, entity chip, state glyph (shape + colour + text, VIZ-067), pill, skeleton, empty-state, kbd hint, banner | standard patterns |
 
-**Kit look (#282, [08](../product/08-visual-language.md) VL-004, VL-017, VL-019 as amended).**
-Buttons are 28 px capsules: default `control` with a `border-control` edge and `elevation.1`,
-primary `accent-fill` with `text-on-accent`, ghost transparent; icon buttons are 28 × 28 ghost
-capsules. The segmented control is a `field` capsule track with an `accent-fill` thumb 2 px inside
-its edge (items ≥ 24 px). Text fields, select triggers and text areas are `field` with a
+**Kit look (#282 Parts 1 and 2a, [08](../product/08-visual-language.md) VL-004, VL-017, VL-019 as
+amended).** Buttons are 28 px high with radius 6: default `control` with a `border-control` edge
+and `elevation.1`, primary `accent-fill` with `text-on-accent`, ghost transparent; icon buttons are
+28 × 28 ghost buttons, radius 6. The segmented control is a `field` track (radius 6) with an
+`accent-fill` thumb (radius `xs`) 2 px inside its edge (items ≥ 24 px); its `value` may be `null`
+(no option selected, as the header's inline presets for any other range), and an option's
+`ariaLabel` names it when its label is an abbreviation, starting with the label (WCAG 2.5.3: "1h"
+is "1h (Last 1 hour)"). Text fields, select triggers and text areas are `field` with a
 `border-field` boundary (≥ 3:1, VL-009), radius 6, 28 px high (text areas at least, `rows` tall).
 The checkbox is a 16 px `xs` box, `accent-fill` when checked. Popovers, menus, listboxes,
 tooltips and the Inspector take the `material-menu` material with `elevation.2` (opaque `surface-1`
-without `backdrop-filter`, under reduced transparency or forced colours) and radius `md`
-(tooltips 6); menu and listbox rows are 28 px, radius `xs`, and the focused row is `accent-fill`
+without `backdrop-filter`, under reduced transparency or forced colours) and radius `md` (8 px;
+tooltips 6); menu and listbox rows are 28 px, radius `xs`, and the focused row is `accent-fill`
 with `text-on-accent` (forced colours: `Highlight` / `HighlightText`). Modal dialogs are
-`surface-1` sheets with `elevation.3`, radius `lg`, over an unblurred `backdrop`. Cards are
-`surface-1`, `hairline`, `md`, `elevation.1`; empty states `surface-2` without a dashed border.
+`surface-1` sheets with `elevation.3`, radius `lg` (10 px), over an unblurred `backdrop`. Cards
+(and board panels) are `surface-1`, radius `md`, padding 12 px, `elevation.card` (its hairline ring
+is the edge; a transparent 1 px border draws in `CanvasText` under forced colours); empty states
+`surface-2`, radius `md`, padding 16 px, without a dashed border. The Inspector's pivot chips are
+radius `xs`. The state glyph has a `tag` variant (`StateGlyph variant="tag"`): 20 px high, padding
+0 4 px, radius `tag` (3 px), the state colour as a tint at `opacity.tag`; the glyph in the state
+colour and the 11 px semibold label in `text`, never state-coloured text on a tint (VL-009).
+**The tint pattern:** tags and chips are tinted with a token colour at a token opacity by a
+pseudo-element (`position: relative; isolation: isolate` on the element; `::before` at `inset: 0`,
+`z-index: -1`, `border-radius: inherit`, `background: var(--tint)`, `opacity:
+var(--opacity-tag)` or `var(--opacity-chip)`), because `color-mix()` is a colour literal to
+`ci:token-lint`; under forced colours the element takes a 1 px `CanvasText` border and the
+pseudo-element is hidden. `unit:radius-scale` checks every `border-radius*` in the client's CSS
+against the scale.
 Popovers enter in 150 ms (opacity, scale 0.98) and leave in 100 ms; dialogs enter in 200 ms and
 leave in 150 ms; none animate under reduced motion. Focus rings are 3 px at a 1 px offset (fields
 0). Only the elevation tokens give drop shadows (`ci:token-lint` `shadow-token`).
@@ -604,9 +619,10 @@ design/tokens.toml ──► client/scripts/gen-tokens.ts ──┬──► tok
   bytes as the CSS; the engine blends in sRGB-encoded space ([T02](T02-vis-engine.md) §4.2), so token
   alphas composite as in CSS and Canvas 2D. `tokens.rs` is committed, and `checkGenerated`
   (`ci:token-lint`) fails when it is stale. Spacing (4 px grid, a 2 px control inset), radius
-  (`xs` 4, `default` 6, `md` 10, `lg` 14, `pill`), hairline (1 px at 8 % contrast), type scale,
-  tracking (`font.tracking`, em, Inter only), elevation (`elevation.1`–`3`, hue-free box shadows,
-  DOM chrome only), material (`material.filter`) and motion durations are emitted to both (VL-004,
+  (`tag` 3, `xs` 4, `default` 6, `md` 8, `lg` 10; no capsule since #282 Part 2a), hairline (1 px at
+  8 % contrast), type scale, tracking (`font.tracking`, em, Inter only), opacity (`dimmed`; `tag`,
+  `chip` and `area`), elevation (`elevation.1`–`3` and `card`, hue-free box shadows, DOM chrome
+  only; `state`, a failing board panel only), material (`material.filter`) and motion durations are emitted to both (VL-004,
   VL-019; #282). The UI face is Inter, or the platform face on Apple systems via
   `html[data-platform="apple"]` and `font.family.ui-apple` ([ADR-0035](../adr/0035-platform-ui-face.md));
   canvas text stays Inter and JetBrains Mono everywhere (VL-011).
@@ -911,3 +927,4 @@ shown as the restricted placeholder or omitted, never as a dead "Access denied" 
 | 1.12-rc | 2026-11-25 | #164: §4.4 Inspector row links [T25](T25-inspector-and-pivots.md) (host, payload, selection, Esc ladder, pivots, look); the dock host (VL-018) is not part of T25 |
 | 1.13-rc | 2026-11-26 | #198 Part 2a: §3 VIZ-056 `ci:no-iframe` is the `security/no-iframe` ESLint rule over `client/src` and `client/e2e` (was a lint over `dash-kit`) |
 | 1.14-rc | 2026-11-27 | #282 Part 1: §4.3 sidebar opaque `sidebar`, header `material-bar` with an opaque fallback (VL-017 as amended); §4.4 kit look (shapes, elevations, materials, focus, motion); §4.7 radius scale, tracking, elevation, material and the Apple UI face (ADR-0035); Satisfies rows VL-001 (values) and VL-019 (radii) |
+| 1.15-rc | 2026-11-27 | #282 Part 2a: §4.4 kit look: radius 6 for buttons, icon buttons and the segmented track, `xs` items, `md` 8 and `lg` 10; cards on `elevation.card`; the StateGlyph `tag` variant; SegmentedControl's nullable value and `ariaLabel`; the tint pattern; `unit:radius-scale`; §4.7 radii 3/4/6/8/10 without a capsule, opacities and elevations; Satisfies row VL-019 |

@@ -19,7 +19,8 @@
 .main {
   flex: 1 1 auto;
   min-width: 0;
-  padding: var(--size-page-padding);
+  /* Dense (#282 Part 2a, VL-017 as amended): 12 px above, 20 px at the sides and below. */
+  padding: var(--size-page-padding-top) var(--size-page-padding) var(--size-page-padding);
 }
 
 .main:focus {

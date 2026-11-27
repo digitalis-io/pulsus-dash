@@ -11,9 +11,13 @@ import { logFrame, pageRows, seriesResult, streamInfo, streamsResult } from '../
 import { SelectionContext } from '../inspector/host';
 import type { Selection } from '../inspector/types';
 import { scriptedLogsApi } from '../test/scriptedLogsApi';
+import { size } from '../styles/tokens';
 import { RowEstimates } from './estimates';
 import { LogPager, type LogPagerInput } from './logPager';
 import { LogStream, type LogStreamHandle, type LogStreamProps } from './LogStream';
+
+/** One unwrapped row (`size.log-row`). */
+const ROW = size['log-row'];
 
 const input: LogPagerInput = {
   tenant: 'demo',
@@ -184,7 +188,7 @@ describe('unit:log-stream', () => {
     const { synth, pager } = await synthPager(10);
     mount({ pager });
     const before = synth.calls.length;
-    await scrollTo(10_000 * 20);
+    await scrollTo(10_000 * ROW);
     await waitFor(() => {
       expect(synth.calls.length).toBeGreaterThan(before);
     });
@@ -244,7 +248,7 @@ describe('unit:log-stream', () => {
       expect(api.calls).toHaveLength(3);
     });
     // To the bottom of page 1, then page 2 lands: page 0 is evicted.
-    await scrollTo(2000 * 20 - 400);
+    await scrollTo(2000 * ROW - 400);
     await act(() => api.resolve(2, page(2)));
     await waitFor(() => {
       expect(pager.buffer.firstOrd).toBe(1000);
@@ -335,7 +339,7 @@ describe('unit:log-stream', () => {
     await waitFor(() => {
       expect(api.calls).toHaveLength(3);
     });
-    await scrollTo(2000 * 20 - 400);
+    await scrollTo(2000 * ROW - 400);
     await act(() => api.resolve(2, page(2)));
     await waitFor(() => {
       expect(pager.buffer.firstOrd).toBe(1000);
@@ -425,7 +429,7 @@ describe('unit:log-stream', () => {
     fireEvent.touchStart(scroller(), { touches: [{ clientY: 300 }] });
     // The finger drags into the slice's bottom margin, then stays down past the scroll reset.
     fireEvent.touchMove(scroller(), { touches: [{ clientY: 100 }] });
-    await scrollTo(1700 * 20);
+    await scrollTo(1700 * ROW);
     await settle();
     expect(onReslice).not.toHaveBeenCalled();
     expect(onScrollWrite).not.toHaveBeenCalled();
@@ -489,7 +493,7 @@ describe('unit:log-stream-prefetch (plan #67)', () => {
       await new Promise((r) => setTimeout(r, 0));
     });
     expect(a.synth.calls.length - sent).toBe(0);
-    await scrollTo(960 * 20);
+    await scrollTo(960 * ROW);
     await waitFor(() => {
       expect(a.synth.calls.length - sent).toBe(1);
     });

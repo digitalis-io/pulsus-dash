@@ -98,7 +98,7 @@
 }
 
 .link:hover {
-  background: var(--surface-2);
+  background: var(--surface-hover);
 }
 
 .link:focus-visible {
@@ -173,7 +173,7 @@
   white-space: nowrap;
   padding: 0 var(--space-2);
   border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--radius);
+  border-radius: var(--radius-tag);
   color: var(--text-muted);
   font-size: var(--font-size-xs);
 }

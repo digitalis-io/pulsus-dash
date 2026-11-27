@@ -88,3 +88,9 @@ export function rampIndex(count: number, maxCount: number): number | null {
   if (!(count > 0) || !(maxCount > 0)) return null;
   return Math.min(8, Math.floor((9 * count) / maxCount));
 }
+
+/** '#RRGGBB' + alpha → '#RRGGBBAA' (alpha clamped to 0..1, rounded to a byte, uppercase). */
+export function withAlpha(hex: string, alpha: number): string {
+  const a = Math.round(Math.min(1, Math.max(0, alpha)) * 255);
+  return `${hex.slice(0, 7)}${a.toString(16).padStart(2, '0')}`.toUpperCase();
+}

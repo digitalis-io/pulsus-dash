@@ -1,0 +1,12 @@
+.pill {
+  border-radius: var(--radius-pill);
+}
+
+.chip {
+  border-top-left-radius: var(--space-8);
+}
+
+.ok {
+  border-radius: var(--radius-tag);
+  border-start-start-radius: calc(var(--radius-md) - var(--radius-xs));
+}

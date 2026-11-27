@@ -36,6 +36,7 @@ import {
 import { BoardFiltersContext } from '../../boards/boardFilters';
 import { BoardEventsContext, useBoardEvents } from '../../boards/boardEvents';
 import { boardKeyAction } from '../../boards/boardKeys';
+import { BoardHealthContext, useBoardHealthStore } from '../../boards/boardHealth';
 import { BoardRunProvider } from '../../boards/boardRun';
 import { boardTimeInit, isTimeReady, type TimeTarget } from '../../boards/boardTime';
 import {
@@ -67,6 +68,7 @@ import type { InspectOrigin } from '../../inspector/types';
 import { cx } from '../../kit/cx';
 import { EmptyState } from '../../kit/EmptyState';
 import { ContextSummary } from '../../shell/ContextSummary';
+import { StateEncoding } from '../../theme/stateEncoding';
 import { usePageTitle } from '../../shell/PageTitle';
 import type { BoardLinkState } from '../../shell/SidebarBoards';
 import { useShellRoute } from '../../shell/useShellRoute';
@@ -594,10 +596,26 @@ function BoardEditor({
       ? t('board.events.truncated')
       : '';
 
+  // The failing panels in view (#282 Part 2a §4.9): reported by each mounted board panel.
+  const { health, failing } = useBoardHealthStore();
+
   const page = (
     <div className={cx(styles['page'])}>
       <div className={cx(styles['bar'])}>
         <ContextSummary />
+        {failing > 0 && (
+          <span className={cx(styles['health'])} data-board-health="">
+            <span
+              aria-hidden="true"
+              className={cx(styles['healthGlyph'], StateEncoding.failing.className)}
+            >
+              {StateEncoding.failing.glyph}
+            </span>
+            {failing === 1
+              ? t('board.status.failingOne')
+              : t('board.status.failingMany', { n: failing })}
+          </span>
+        )}
         <BoardFilterBar variables={boardVariables(s.draft)} state={boardParams} />
         {edit ? (
           <BoardToolbar
@@ -822,14 +840,16 @@ function BoardEditor({
       <BoardEventsContext.Provider value={events}>
         <BoardModeContext.Provider value={s.mode}>
           <BoardFiltersContext.Provider value={boardFilters}>
-            <InspectorHost
-              surface="board"
-              filters={boardParams.params.filters}
-              originKey={originKey}
-              onEditQuery={onEditQuery}
-            >
-              {page}
-            </InspectorHost>
+            <BoardHealthContext.Provider value={health}>
+              <InspectorHost
+                surface="board"
+                filters={boardParams.params.filters}
+                originKey={originKey}
+                onEditQuery={onEditQuery}
+              >
+                {page}
+              </InspectorHost>
+            </BoardHealthContext.Provider>
           </BoardFiltersContext.Provider>
         </BoardModeContext.Provider>
       </BoardEventsContext.Provider>

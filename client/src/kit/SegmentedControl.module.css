@@ -1,13 +1,13 @@
-/* The segmented control (#282, VL-019 as amended): a field-filled capsule track, 28 px, with an
-   accent-filled thumb on the selected item, 2 px in from the track's outer edge (the 1 px edge
-   and 1 px of padding), so 24 px items fit. */
+/* The segmented control (#282, VL-019 as amended): a field-filled track, 28 px, with 6 px corners
+   and an accent-filled thumb (4 px corners) on the selected item, 2 px in from the track's outer
+   edge (the 1 px edge and 1 px of padding), so 24 px items fit. */
 .group {
   display: inline-flex;
   gap: 0;
   min-height: var(--size-control);
   padding: calc(var(--space-0-5) - var(--border-hairline));
   border: var(--border-hairline) solid var(--border-control);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius);
   background: var(--field);
 }
 
@@ -15,7 +15,7 @@
   min-height: var(--size-target-min);
   padding: 0 var(--space-3);
   border: 0;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-muted);
   font: inherit;

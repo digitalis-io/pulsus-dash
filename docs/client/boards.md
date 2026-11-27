@@ -18,6 +18,7 @@ widget never reaches anything on this page.
 | `src/boards/visibility.ts`, `panelWidths.ts` | the shared viewport tracker; the panel width store |
 | `src/boards/boardTime.ts` | `boardTimeInit`, `isTimeReady` (first open) |
 | `src/boards/boardEvents.ts` | `useBoardEvents`, `BoardEventsContext`, `NO_EVENTS`, `toMarkers` (event markers) |
+| `src/boards/boardHealth.ts` | `BoardHealthContext`, `useBoardHealthStore`, `useReportHealth` (the health status line, [below](#panel-chrome-and-the-health-status-line-282-part-2a)) |
 | `src/boards/exploreLink.ts` | `exploreHref` |
 | `src/boards/useQueryLanguage.ts` | one `LANGUAGES[id]()` per language per page load; `null` loads none |
 | `src/pages/board/PanelFrame.tsx`, `PanelNotices.tsx`, `PanelEditor.tsx` | the panel chrome (a widget's `WidgetFrame`, else `DataPanelFrame`), the completeness badge, the editor |
@@ -572,7 +573,7 @@ the stat chip and the threshold labels all use it.
 | Vis | DOM |
 |---|---|
 | line, bars | `.frameStack[data-legend]`: the chart cell, then the legend when `legend` is `table` and there are rows: `[data-panel-legend="table"]` (`SeriesTable` with Mean, Max, Last, at most `LEGEND_ROWS` = 50) or `LegendCompact` (`[data-panel-legend="compact"]`) |
-| stat | `.statStack[data-stat-stack]`: `[data-stat-chip][data-state]` (`StateGlyph`) when the panel has thresholds, the chart cell, then `[data-stat-threshold]` (with `data-crossed` when the value crossed a step) |
+| stat | `.statStack[data-stat-stack]`: the chart cell filling the body, and `[data-stat-threshold]` over it as the subline (with `data-crossed` when the value crossed a step). The chip is the header's tag, `[data-stat-chip][data-state]` (`StateGlyph` variant `tag`), when the panel has thresholds ([Panels › Stat tiles](panels.md#stat-tiles-282-part-2a)) |
 | heatmap | the chart alone: no legend; thresholds are ignored |
 
 - **Layout.** `useLegendLayout()` observes the stack's content height (one `ResizeObserver`): the
@@ -582,10 +583,11 @@ the stat chip and the threshold labels all use it.
 - **First frame (#90).** The stack is measured once when it attaches (in the commit), and a line
   or bars chart mounts only then, so the layout is final before the chart is sized. In the same
   commit the chart cell's size goes into the panel's size memo, which the chart pre-sizes from: a
-  chart under a legend, or a stat under its chip, is sized once and draws in its first frame.
-- **Compact.** One button per series (`[data-legend-item]`, at least 24 px tall, `title` = the full
-  name) with its swatch, name and last value; "Legend table" (`[data-legend-table]`) opens the same
-  table in a popover dialog named by the caption.
+  chart under a legend, or a stat's full-body chart, is sized once and draws in its first frame.
+- **Compact.** One chip per series (`[data-legend-item]`, 24 px tall, `title` = the full name,
+  `data-series` = its colour index + 1) with its swatch, name and last value; "Legend table"
+  (`[data-legend-table]`) opens the same table in a popover dialog named by the caption. The chip's
+  look is in [Panels › Legend chips](panels.md#legend-chips-282-part-2a).
 - **Isolation and sort.** `isolatedKey` and the sort are `PanelChart` state: never saved, never in
   the URL, and no request (the frame is `panelFrame(view, key)`). The isolation applies only while
   the rows still have the key.
@@ -594,7 +596,43 @@ the stat chip and the threshold labels all use it.
   the hidden state name.
 - **Stat.** `v = statValue(view.data)` (finite, else null). The chip is `unknown` for no value, the
   crossed step's state, or `ok`; the text is the crossed step (in its state's colour, `data-crossed`)
-  or the next step (muted), as `<glyph> <displayText>`.
+  or the next step (muted), as `<glyph> <displayText>`. `panelHealth(view)` is that chip state for a
+  stat frame with thresholds, else null.
+
+## Panel chrome and the health status line (#282 Part 2a)
+
+The board's look ([VL-004, VL-017 and VL-019 as amended](../../designs/product/08-visual-language.md),
+[Visual design](visual-design.md)):
+
+| Element | Look |
+|---|---|
+| Panel (`.panel`) | `surface-1`, 8 px corners, `elevation-card` (its ring replaces the border; the 1 px border is transparent and draws in `CanvasText` under forced colours) |
+| Header | 36 px (`size.board-panel-header`): the title (13 px semibold), the unit, the stat tag, the completeness badge (4 px corners); the tools fade in over `motion.quick` on hover and focus |
+| Failing stat panel | `data-stat-state="failing"` and the failing StateEncoding class: `elevation-state`, a ring and a glow in the failing colour (`failing-glow`). Under forced colours a 2 px `CanvasText` border. The ring encodes health together with the tag's glyph (VL-007); no other state has a ring |
+| Edited panel (Edit mode, `data-selected`) | a 3 px `accent` outline at 1 px offset |
+| Dragged panel | `elevation-3` |
+| Grid | 12 columns of 40 px rows with 12 px gaps (`size.board-gap`; `GAP` in `boards/layout.ts`). Saved boards keep their grid units, so an 8-row panel is 404 px tall (was 432) |
+| Page | 12 px between the bar, the status lines and the grids; notices are `surface-2` with 6 px corners, no dashed border |
+| Edit toolbar (`[role=group][data-mode="edit"]`) | a `surface-2` tray, 8 px corners, 4 px padding and gap; the Tags chips have 3 px corners |
+
+**The health status line.** In the bar, after the Context summary, `<span data-board-health>` shows
+the failing glyph ■ (`aria-hidden`, the failing colour) and "1 panel failing" or "n panels failing"
+in `text-muted` 12 px; nothing when none is failing. It is not a live region: each panel's tag
+carries its own state.
+
+Each mounted board panel (`DataPanelFrame`) calls `useReportHealth(panel.id, panelHealth(view) ===
+'failing')`: it reports when the value changes and forgets the panel on unmount. `BoardPage` owns
+`useBoardHealthStore()`: the reports are a `Map` in a ref, and the count is state that changes only
+when the number of failing panels does. So the line counts the panels **in view**: a collapsed
+section's panels are unmounted and do not count until it is expanded, and full screen and the
+editor preview render the body without the frame, so they never report a second time. A
+`PanelFrame` without the provider (outside a board) reports nothing.
+
+**The quick presets.** The header's time control shows the 15m, 1h, 6h, 24h and 7d presets inline
+from 1280 px wide (IA-020 as amended): a SegmentedControl named "Quick range", each option named by
+its visible label, then its full range ("1h (Last 1 hour)", so the name starts with what is shown,
+WCAG 2.5.3). The current range's preset is checked, none for any other range;
+choosing one sets `from=now-<range>&to=now`. The trigger still opens the time range dialog.
 
 ### The editor's Thresholds and Legend
 

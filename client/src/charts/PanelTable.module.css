@@ -39,8 +39,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--radius);
+  /* The panel is the card (#282 Part 2a §4.5): no border of its own. */
   font-size: var(--font-size-sm);
 }
 
@@ -53,8 +52,10 @@
   position: sticky;
   z-index: 1;
   top: 0;
-  background: var(--surface-2);
+  background: var(--surface-1);
   color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
 }
 
 .body {
@@ -74,6 +75,10 @@
   top: 0;
   right: 0;
   left: 0;
+}
+
+.bodyRow:hover {
+  background: var(--surface-hover);
 }
 
 .bodyRow[aria-selected='true'] {

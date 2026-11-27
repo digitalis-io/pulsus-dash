@@ -660,6 +660,10 @@ test.describe('Text widget', () => {
       // runs, with the `label` rule off or the scan scoped to the grid; never without axe): axe runs
       // in Chromium and WebKit, and every other step in all three.
       const axe = info.project.name !== 'firefox';
+      // Running transitions first (the header presets fade as the board's time replaces the URL).
+      await page.evaluate(() =>
+        Promise.all(document.getAnimations().map((x) => x.finished.catch(() => undefined))),
+      );
       if (axe) expect(await axeSerious(page)).toEqual([]);
 
       // T24-017: the panel menu, the region, then its links.
@@ -680,6 +684,10 @@ test.describe('Text widget', () => {
         name: t('widget.text.previewLabel', { title: 'Note' }),
       });
       await expect(preview).toContainText('Short.');
+      // The dialog's entrance and the segmented thumb's colour change run first.
+      await page.evaluate(() =>
+        Promise.all(document.getAnimations().map((x) => x.finished.catch(() => undefined))),
+      );
       if (axe) expect(await axeSerious(page)).toEqual([]);
       await editor
         .getByRole('textbox', { name: t('widget.text.content') })
