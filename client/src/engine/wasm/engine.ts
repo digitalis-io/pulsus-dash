@@ -101,8 +101,8 @@ export interface ProbeHost {
   chunk(id: number): Promise<ChunkInfo | null>;
   /** The probe build (plan #68 C2d1): the render worker traps. */
   trap(): void;
-  /** Plan #68 D2: the worker's chunk table, `{count, bytes}` (null in ST). */
-  chunks(): Promise<{ count: number; bytes: number } | null>;
+  /** Plan #68 D2: the worker's chunk table and its decodes in flight (null in ST). */
+  chunks(): Promise<ChunkStats | null>;
 }
 
 /**
@@ -139,6 +139,8 @@ export interface Backend {
   openDecode(): DecodeSessionLike;
   /** Plan #68 D2 §4.2: `series` (by identity) is the worker's chunk `ref` (`chunkRefs.register`). */
   registerChunk(series: readonly SeriesFrame[], ref: ChunkRef): void;
+  /** A decoded chunk no array will hold: `chunk-release` now (review r1 #2). */
+  releaseChunk(ref: ChunkRef): void;
 }
 
 /** A decoded range as the worker posts it (the API layer's `DecodedRange`). */
@@ -157,6 +159,14 @@ export interface DecodeSessionLike {
   abort(): void;
   onCredit(cb: (bytes: number) => void): void;
   readonly result: Promise<DecodedMessage>;
+}
+
+/** The worker's chunk table: entries, bytes, bytes no frame holds, decodes in flight. */
+export interface ChunkStats {
+  readonly count: number;
+  readonly bytes: number;
+  readonly unheld: number;
+  readonly inflight: number;
 }
 
 /** DSF decodes open at once (`DecodeService::MAX_IN_FLIGHT`). */
@@ -318,7 +328,9 @@ class EngineHost implements Backend {
       case 'decoded': {
         const s = this.sessions.get(m.req);
         this.sessions.delete(m.req);
-        s?.resolve({ chunk: m.chunk, epoch: m.epoch, head: m.head, ts: m.ts, vs: m.vs });
+        // The session is gone (aborted while the result was in flight): nobody will hold it.
+        if (s === undefined) this.releaseChunk({ chunk: m.chunk, epoch: m.epoch });
+        else s.resolve({ chunk: m.chunk, epoch: m.epoch, head: m.head, ts: m.ts, vs: m.vs });
         return;
       }
       case 'decode-failed': {
@@ -352,6 +364,16 @@ class EngineHost implements Backend {
 
   registerChunk(series: readonly SeriesFrame[], ref: ChunkRef): void {
     register(series, ref);
+  }
+
+  releaseChunk(ref: ChunkRef): void {
+    const worker = this.render?.worker;
+    if (this.state !== 'ready' || worker === undefined) return;
+    worker.postMessage({
+      t: 'chunk-release',
+      chunk: ref.chunk,
+      epoch: ref.epoch,
+    } satisfies MainToRender);
   }
 
   openDecode(): DecodeSessionLike {
@@ -492,9 +514,9 @@ class EngineHost implements Backend {
         worker.postMessage({ t: 'probe-trap' } satisfies MainToRender);
       },
       chunks: () =>
-        new Promise<{ count: number; bytes: number } | null>((resolve) => {
+        new Promise<ChunkStats | null>((resolve) => {
           this.statWaits.push((json) => {
-            resolve(JSON.parse(json) as { count: number; bytes: number } | null);
+            resolve(JSON.parse(json) as ChunkStats | null);
           });
           worker.postMessage({ t: 'chunk-stats' } satisfies MainToRender);
         }),

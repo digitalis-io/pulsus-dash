@@ -62,6 +62,8 @@ export interface RangeDecoder {
   decode(body: ReadableStream<Uint8Array>, signal?: AbortSignal): Promise<DecodedRange>;
   /** The result's series array is the chunk's (by identity, `chunkRefs`). */
   register(series: readonly SeriesFrame[], m: DecodedRange): void;
+  /** A decoded chunk no array will hold (the result was refused or abandoned): free it now. */
+  release(m: DecodedRange): void;
 }
 
 export type DeclineReason = 'limit' | 'ids' | 'busy' | 'gone';
@@ -182,6 +184,7 @@ function abortReason(signal: AbortSignal): Error {
 export function streamDecoder(
   open: () => DecodeSession,
   register: RangeDecoder['register'],
+  release: RangeDecoder['release'],
 ): RangeDecoder {
   return {
     async decode(body, signal) {
@@ -259,6 +262,8 @@ export function streamDecoder(
       } catch (e) {
         s.abort();
         cancel();
+        // A result that arrived anyway (an abort racing the last read) is never registered.
+        void s.result.then(release, () => undefined);
         if (aborted() && signal !== undefined) {
           decodeStats.aborted++;
           throw abortReason(signal);
@@ -270,5 +275,6 @@ export function streamDecoder(
       }
     },
     register,
+    release,
   };
 }

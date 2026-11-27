@@ -30,7 +30,7 @@
  * | `chunk(n)` | the probe build: `{series, points, bytes}` of the frame's current chunk (points: series 0's samples), or null |
  * | `policyWorker(url)` | plan #68 C2d2: a module worker from `url` through the real `pulsus-engine` policy; `started` or the error's name (an unrelated URL: `TypeError`) |
  * | `failed(n)`, `trap()` | the frame's `onFail` reasons (`restart`, `trap`, `surface`, …); the probe build: the render worker traps for real (plan #68 C2d1) |
- * | `decodes()`, `chunks()`, `decoder(on)` | plan #68 D2: the DSF decodes (begun, done, failed, aborted, retried as JSON, by-reference `setData`); the worker's chunk table (count, bytes); the range decoder slot off or back on |
+ * | `decodes()`, `chunks()`, `decoder(on)` | plan #68 D2: the DSF decodes (begun, done, failed, aborted, retried as JSON, by-reference `setData`); the worker's chunk table (count, bytes, unheld bytes, decodes in flight); the range decoder slot off or back on |
  *
  * A frame's canvas is at (0, `o.top ?? 0`) CSS px.
  *
@@ -53,7 +53,14 @@ import type {
 } from '../engine/api';
 import { Canvas2DEngine } from '../engine/canvas2d/Canvas2DEngine';
 import { ControlledFrame } from '../engine/controlled';
-import type { Backend, ChunkInfo, EngineProbe, ProbeHost, SynthAck } from '../engine/wasm/engine';
+import type {
+  Backend,
+  ChunkInfo,
+  ChunkStats,
+  EngineProbe,
+  ProbeHost,
+  SynthAck,
+} from '../engine/wasm/engine';
 import { WasmFrame } from '../engine/wasm/frame';
 import type { InputRec } from '../engine/wasm/ring';
 import { scriptUrl } from '../engine/wasm/workers';
@@ -183,8 +190,8 @@ export interface DashProbe {
     retried: number;
     byRef: number;
   };
-  /** Plan #68 D2: the worker's chunk table, `{count, bytes}`; null without an MT engine. */
-  chunks(): Promise<{ count: number; bytes: number } | null>;
+  /** Plan #68 D2: the worker's chunk table and decodes in flight; null without an MT engine. */
+  chunks(): Promise<ChunkStats | null>;
   /** Plan #68 D2: the range decoder slot off (`false`: every range query JSON) or back on. */
   decoder(on: boolean): void;
 }

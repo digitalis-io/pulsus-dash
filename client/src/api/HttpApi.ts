@@ -543,6 +543,8 @@ export class HttpApi implements Api {
     try {
       result = rangeFromDecoded(m, Date.now());
     } catch (e) {
+      // The chunk is in the worker's table already, and no array will hold it.
+      decoder.release(m);
       if (e instanceof DecodeError) {
         throw wireInvalid(`${e.message} at ${e.path === '' ? '/' : e.path}`);
       }

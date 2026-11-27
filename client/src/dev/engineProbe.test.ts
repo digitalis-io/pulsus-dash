@@ -56,6 +56,7 @@ function setup() {
       throw new Error('no decodes in this test');
     },
     registerChunk: () => undefined,
+    releaseChunk: () => undefined,
     createFrame(canvas: OffscreenCanvas, init: FrameInit, onFail: (r: string) => void) {
       const f = new WasmFrame({ postMessage: () => undefined }, ++id, canvas, init, onFail);
       frames.push(f);

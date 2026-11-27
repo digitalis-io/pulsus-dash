@@ -985,6 +985,8 @@ class FakeSession implements DecodeSession {
   constructor(
     private readonly outcome: Outcome,
     credit = true,
+    /** Called at `end`, before the result settles (an abort racing the last read). */
+    private readonly onEnd?: () => void,
   ) {
     this.autoCredit = credit;
     this.result = new Promise((ok, no) => {
@@ -1002,6 +1004,7 @@ class FakeSession implements DecodeSession {
   }
   end(): void {
     this.ended = true;
+    this.onEnd?.();
     this.finish();
   }
   abort(): void {
@@ -1056,10 +1059,11 @@ const TWO_JSON = routeJson('two-series');
 function dsfApi(
   outcomes: Outcome[],
   responses: (() => Response)[],
-  o: { credit?: boolean; busy?: boolean } = {},
+  o: { credit?: boolean; busy?: boolean; onEnd?: () => void } = {},
 ) {
   const sessions: FakeSession[] = [];
   const registered: unknown[] = [];
+  const released: DecodedRange[] = [];
   setRangeDecoder(
     streamDecoder(
       () => {
@@ -1069,16 +1073,18 @@ function dsfApi(
         const s = new FakeSession(
           outcomes[sessions.length] ?? outcomes[0] ?? { kind: 'declined', reason: 'gone' },
           o.credit ?? true,
+          o.onEnd,
         );
         sessions.push(s);
         return s;
       },
       (series) => registered.push(series),
+      (m) => released.push(m),
     ),
   );
   let n = 0;
   const t = api(() => Promise.resolve((responses[n++] ?? (() => json(200, TWO_JSON)))()));
-  return { ...t, sessions, registered };
+  return { ...t, sessions, registered, released };
 }
 
 const accept = (r: Request | undefined) => r?.headers.get('Accept') ?? '';
@@ -1169,8 +1175,31 @@ describe('query range dsf (plan #68 D2 §4.1, §4.4)', () => {
       expect(t.requests).toHaveLength(1);
       expect(mark.mock.calls.filter((c) => c[0] === 'rum:wire_invalid')).toHaveLength(1);
       expect(t.registered).toEqual([]);
+      // Review r1 #2: the worker's chunk of the refused result is released at once.
+      expect(t.released).toEqual([m]);
     });
   }
+
+  it('release: an abort racing the last read releases the result that arrived anyway', async () => {
+    const ctrl = new AbortController();
+    const t = dsfApi([{ kind: 'decoded', m: TWO }], [() => dsfResponse([new Uint8Array(8)]).res], {
+      onEnd: () => {
+        ctrl.abort();
+      },
+    });
+    const e = await rejection(t.api.queryRange('demo', R, ctrl.signal));
+    expect((e as { name?: string }).name).toBe('AbortError');
+    await vi.waitFor(() => {
+      expect(t.released).toEqual([TWO]);
+    });
+    expect(t.registered).toEqual([]);
+  });
+
+  it('release: a decoded result is not released', async () => {
+    const t = dsfApi([{ kind: 'decoded', m: TWO }], [() => dsfResponse([new Uint8Array(8)]).res]);
+    await t.api.queryRange('demo', R);
+    expect(t.released).toEqual([]);
+  });
 
   it('query range dsf: two slow streams pause at the threshold and resume on credit', async () => {
     const MiB = 1 << 20;

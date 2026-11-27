@@ -38,6 +38,9 @@ function fillDecoder(b: Backend): void {
       (series, m) => {
         b.registerChunk(series, { chunk: m.chunk, epoch: m.epoch });
       },
+      (m) => {
+        b.releaseChunk({ chunk: m.chunk, epoch: m.epoch });
+      },
     ),
   );
 }
