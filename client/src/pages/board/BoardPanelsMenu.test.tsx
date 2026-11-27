@@ -44,7 +44,8 @@ import {
 } from '../../test/fakeIntersectionObserver';
 import { F } from '../../test/fakePromSource';
 import { installResizeObserver, resizeAll } from '../../test/fakeResizeObserver';
-import { C0, R_A } from '../../test/rangeFixtures';
+import { BY_VERSION_Q, C0, R_A, rangeByVersion } from '../../test/rangeFixtures';
+import { logPanel, metric, openLogBoard, type LogBoard } from '../../test/boardLogKit';
 import { seedWith } from '../../test/seeds';
 
 vi.mock('../../editor/editor', () => import('../../test/fakeEditor'));
@@ -759,5 +760,88 @@ describe('query field while the board is busy (review r1 #2)', () => {
     await t.user.click(screen.getByRole('button', { name: 'Discard' }));
     const again = await editorOn(t, 'Requests');
     await nothingRuns(t, again);
+  });
+});
+
+describe('panel menu: bar chart toggles (#173 Part 3b §4.3)', () => {
+  const menuNames = async (t: Board | LogBoard, title: string): Promise<string[]> => {
+    await openMenu(t, title);
+    const menu = await screen.findByRole('menu', { name: `Panel menu: ${title}` });
+    const names = within(menu)
+      .getAllByRole('menuitem')
+      .map((m) => m.textContent);
+    await t.user.keyboard('{Escape}');
+    return names;
+  };
+  const TOGGLES = ['Show as table', 'Show baseline ghost', 'Show anomalies'];
+
+  it('a bar chart panel has the table, ghost and anomaly toggles; a line panel has none', async () => {
+    const t = openBoard([
+      panel('p-1', 'Versions', BY_VERSION_Q, 'barchart'),
+      panel('p-2', 'Lines', BY_VERSION_Q, 'line'),
+    ]);
+    t.range.mockImplementation(() => Promise.resolve(rangeByVersion()));
+    await ready('Versions', 'Lines');
+    show('Versions', 'Lines');
+    await waitFor(() => {
+      expect(panelOf('Versions')).toHaveAttribute('data-panel-vis', 'barchart');
+    });
+    const bars = await menuNames(t, 'Versions');
+    expect(bars.slice(-3)).toEqual(TOGGLES);
+    const lines = await menuNames(t, 'Lines');
+    for (const n of TOGGLES) expect(lines).not.toContain(n);
+
+    const before = t.range.mock.calls.length;
+    await openMenu(t, 'Versions');
+    await t.user.click(await screen.findByRole('menuitem', { name: 'Show baseline ghost' }));
+    await waitFor(() => {
+      expect(t.range.mock.calls.length).toBe(before + 2);
+    });
+    expect(await menuNames(t, 'Versions')).toContain('Hide baseline ghost');
+  });
+
+  it('a bar chart has the header badge: Partial data when truncated, Warnings when warned (PRF-031)', async () => {
+    const t = openBoard([
+      panel('p-1', 'Truncated', 'bars_a', 'barchart'),
+      panel('p-2', 'Warned', 'bars_b', 'barchart'),
+    ]);
+    t.range.mockImplementation((_tenant, req) =>
+      Promise.resolve({
+        ...rangeByVersion(1, req.query),
+        completeness:
+          req.query === 'bars_a'
+            ? { ...C0, truncated: true, warnings: ['w1'] }
+            : { ...C0, warnings: ['w2'] },
+      }),
+    );
+    await ready('Truncated', 'Warned');
+    show('Truncated', 'Warned');
+    await waitFor(() => {
+      expect(panelOf('Truncated')).toHaveAttribute('data-panel-vis', 'barchart');
+    });
+    await t.user.click(await screen.findByRole('button', { name: 'Partial data: Truncated' }));
+    const notices = await screen.findByRole('status', { name: 'Query notices' });
+    expect(notices).toHaveTextContent('w1');
+    expect(within(notices).getByRole('button', { name: 'Narrow the time range' })).toBeVisible();
+    await t.user.keyboard('{Escape}');
+    await t.user.click(await screen.findByRole('button', { name: 'Warnings: Warned' }));
+    expect(await screen.findByRole('status', { name: 'Query notices' })).toHaveTextContent('w2');
+  });
+
+  it('a LogQL bar chart has no ghost item', async () => {
+    const t = openLogBoard([logPanel('p-1', 'Rates', 'rate({app="a"}[1m])', 'barchart')]);
+    await ready('Rates');
+    show('Rates');
+    await waitFor(() => {
+      expect(t.logs).toHaveLength(1);
+    });
+    await t.logs[0]?.resolve(metric(['a', 'b']));
+    await waitFor(() => {
+      expect(panelOf('Rates')).toHaveAttribute('data-panel-vis', 'barchart');
+    });
+    const names = await menuNames(t, 'Rates');
+    expect(names).toContain('Show as table');
+    expect(names).toContain('Show anomalies');
+    expect(names).not.toContain('Show baseline ghost');
   });
 });

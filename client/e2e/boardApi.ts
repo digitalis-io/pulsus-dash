@@ -11,8 +11,8 @@ export interface PanelInput {
   title: string;
   text: string;
   grid: [number, number, number, number];
-  /** The panel's `vis`; absent = `{ kind: 'auto' }`. */
-  vis?: Record<string, unknown>;
+  /** The panel's `vis` (its kind, and `options` such as a bar chart's); absent = `{ kind: 'auto' }`. */
+  vis?: { kind: string; options?: Record<string, unknown> } & Record<string, unknown>;
   /** The query language; absent = `promql`. */
   lang?: 'promql' | 'logql';
 }

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.15-rc · 2026-11-26 |
+| **Version** | 1.16-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -975,7 +975,12 @@ keeps it. LogQL panels: for a panel without `legacyAuto` (and the editor's draft
 answer takes the ordered auto-vis decision (rows 5–8, then the rest) and its editor label is that
 decision's; a `legacyAuto` panel keeps exactly today's result (the fixed line, label Line) until
 edited and saved; a log-line answer keeps today's handling. Explore never picks row 8 (no geomap kind
-there yet). Import follows §4.19; its output passes the map-sync validator.
+there yet). Import follows §4.19; its output passes the map-sync validator. **Rows 8 and 11
+together** (#173 Part 3b, [T22](T22-value-categorical-and-table-panels.md) §4.5): the map-sync
+spec version's `legacyAuto` covers row 11 (reduced categories → bar chart) as well as row 8. Until
+map-sync, a board `auto` panel chooses from the pre-bars set; at map-sync every stored `auto` panel
+is marked `legacyAuto` and keeps that legacy set (no row 8, no row 11), and a panel saved at
+map-sync or later gets both rows, under this rule's preview and save rules. #237 implements it.
 
 ### 4.2 Markdown node table (`commonmark` → output)
 
@@ -3114,3 +3119,4 @@ None.
 | 1.13-rc | 2026-11-26 | #198 Part 3b (A1): §7 `bench:text-widget-render` (the `markdown:render:<bucket>` measures in stub and dev builds, board P, the steps, the measured numbers) and the M0, M1 and M2 rungs with their triggers. §10: `e2e:widget-text` adds the Add widget flow and the named region; `e2e:widget-text-xss` runs the whole corpus in the browser (the generated case list with digests, skip reasons and image request paths; one case per fresh context against a committed per-browser load baseline; the exact CSP; a Trusted Types canary) with canaries; `e2e:widget-a11y` gains the Text rows; `golden:widget-gallery` lands the two Text pages; new `unit:xss-e2e-cases` and `unit:widget-gallery-route`. §11: Part 3b landed, A1 landed |
 | 1.14-rc | 2026-11-26 | #222 (part B2, I5): §5.9 `orgWide` only with `entity`, repeated values, upper-case ids and repeated single parameters → 400, a missing cursor partner reported on its own pointer; the 403 bodies (`scope_denied`, "data scope denied" without fields, "outside your data scope" with `/entity` `annotations.entity.scope` or `annotations.scope`); `orgWideHidden` is a count the BFF sends null when scoped. §6: `P` with `@>` and `jsonb_build_array`, byte-identical in list and delete; `org_wide_hidden` computed unconditionally. §10.2: `unit:entity-id` in `entity/entity_test.go`, the itests in `annotations/annotations_itest_test.go`, and `itest:annotations-old-binary` runs by `make itest-old-binary` (local) |
 | 1.15-rc | 2026-11-26 | #231 (part E step 1a, E1): §5.11 the `types.ts` interfaces, `GeoData`, `geoLoader`, the `aliases.ts` exports (`normKey`, `GEO_AUTO_RULES`, `GEO_ALIAS_KEYS`), the decoders in `decode.ts` re-exported by `assets.ts`, the URLs of `urls.ts` and the `geo-assets` build input. §5.12: the assets' keys are in the listed order (`v`, `q`, then the data members), not sorted, as the §10.3 RT bytes already were. §5.13: the shapes of `sources.json` and `manifest.json`, and `--notices`; the cloud list's coverage rule (each provider's published list, azure restricted-access regions included) and the example rows reconciled with the lists of 2026-11-26 (gcp `europe-west1` is St. Ghislain; a country or state location becomes a curated city) |
+| 1.16-rc | 2026-11-27 | #173 Part 3b ([T22](T22-value-categorical-and-table-panels.md) §4.5): T24-099 (§4.1) — the map-sync spec version's `legacyAuto` covers auto-vis rows 8 and 11 together: pre-map-sync panels keep the legacy set, panels saved at map-sync or later get both rows; #237 implements it, and #173 adds no spec version |

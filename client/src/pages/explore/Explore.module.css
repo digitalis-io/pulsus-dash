@@ -192,6 +192,11 @@
   min-width: 0;
 }
 
+/* The bar chart (#173 Part 3b §4.4): a chart's height, and the meter's line under it. */
+.bars {
+  height: calc(var(--size-chart) + var(--size-control));
+}
+
 .shimmer {
   position: absolute;
   inset: 0 0 auto 0;

@@ -154,9 +154,9 @@ export const BOARD_LIMIT = Object.freeze({ min: 1, max: 50 } as const);
 
 /**
  * The kinds a stored spec may name that this version does not draw yet: such a panel sends no
- * query and shows `panel.kindUnavailable`. Shrinks in Part 2 (barchart) and I3 (pie).
+ * query and shows `panel.kindUnavailable`. The bar chart left it in #173 Part 3b; pie leaves in I3.
  */
-export const PENDING_KINDS: ReadonlySet<PanelVisKind> = new Set<PanelVisKind>(['barchart', 'pie']);
+export const PENDING_KINDS: ReadonlySet<PanelVisKind> = new Set<PanelVisKind>(['pie']);
 
 export interface BarchartOptions {
   readonly reducer: Reducer;

@@ -53,11 +53,13 @@ From the response, `planned.rateApplied` and `planned.histogram` feed auto-vis a
 ## The key
 
 ```
-['data', 'panel', tenant, id, text, vars, kind, stepMs, fromMs, toMs]   // a run
-['data', 'panel', tenant, id, text, null]                               // idle: nothing can be sent
+['data', 'panel', tenant, id, text, vars, kind, stepMs, fromMs, toMs, baselineMs]   // a run
+['data', 'panel', tenant, id, text, null]                                           // idle: nothing can be sent
 ```
 
-The head is indices 0–6 (`PANEL_KEY_HEAD`). `vars` is the JSON of the `panelVars` pairs. The idle
+The head is indices 0–6 (`PANEL_KEY_HEAD`). `baselineMs` is a bar chart's baseline offset in ms,
+or null when the panel runs no baseline ([below](#the-baseline-run)); a LogQL panel's is always
+null. `vars` is the JSON of the `panelVars` pairs. The idle
 key is used while the run is blocked, the language or width is unknown, or the board's time is not
 set; it is never enabled. The prefix `['data']` puts panels under the shell's refresh rule
 ([Client application › Routes](README.md#routes-adr-0017): every `['data']` key carries the
@@ -133,7 +135,7 @@ First match; the text is from `messages.en-GB.ts`.
 
 | Condition | View | Text |
 |---|---|---|
-| a pending kind (Bar chart, Pie; PromQL or LogQL) | message `kindUnavailable` | "This chart type isn't available in this version yet." |
+| a pending kind (Pie; PromQL or LogQL) | message `kindUnavailable` | "This chart type isn't available in this version yet." |
 | PromQL, visualisation Logs | message `logs` | "A metric query has no log lines. Choose Auto or a chart." |
 | blank text | message `empty` | "Add a query" |
 | a referenced variable without a value | message `variable` | "Set a value for `$a, $b` to run this panel" |
@@ -143,6 +145,7 @@ First match; the text is from `messages.en-GB.ts`.
 | no outcome yet | loading | "Loading" |
 | a string result | message `string` | "String result: …" |
 | `framePlan` notice | message `noBuckets` / `tooManyTimestamps` | Explore's texts |
+| saved Bar chart, a series or scalar result | `category` ([below](#bar-chart-panels-173-part-3b)) | |
 | LogQL | the LogQL rows ([below](#panel-views)) | |
 | otherwise | frame | `framePlan(chooseVis(saved or auto, autoVis(planned, result)), …)` |
 
@@ -167,28 +170,95 @@ never carry them. `panelFrame(view, key)` is the frame with series `key` isolate
 `framePlan` isolation, thresholds carried over), and `legendRows(result)` the legend rows
 (`seriesRows`, cached per result).
 
-### Pending kinds
+### Bar chart panels (#173 Part 3b)
 
 Board spec v3 (#173 Part 1, [the boards API](../server/boards-api.md#visoptions-v3)) stores the
-kinds `barchart` and `pie` and their `vis.options`, before boards can draw them (the bar chart
-comes to boards with #173 Part 3, the pie with T22 I3). `PENDING_KINDS` (`boards/options.ts`) lists
-them. #173 Part 2 ships the bar chart's engine seam, drawing, fit and meter
-([Charts](charts.md#bar-chart-adr-0028), [Categorical panels](panels.md)), shown only in the chart
-gallery. #173 Part 3a adds the bar chart's keys, brush, pick decision, table view and the
-`BarchartOptionsField` (below), still at unit and component level: boards keep both kinds pending. Such a panel is blocked before anything is sent, in both languages
-(`usePanelRun`/`useLogPanelRun` set `pre` to `kindUnavailable`, ahead of every other check), so it
-makes no request, and shows the message above. Its saved spec, options included, is kept as it
-is. Open in Explore opens such a panel's query on Auto, and a LogQL panel of a pending kind maps to
-the `logs-frame` path (unused while it is blocked). The editor lists Bar chart and Pie only as the
-disabled option of a panel that stores them. The auto-vis row 11 (bar chart) is not in the boards'
-`available` set either, so an `auto` panel with a `reducer` over a few range series is still a line
-(`unit:autovis-table`, and the boundary tests in `boards/panelRun.test.ts` and
-`pages/board/PanelEditorKinds.test.tsx`).
+kinds `barchart` and `pie` and their `vis.options`. Part 3b draws the bar chart on boards: a saved
+`barchart` panel of a series or scalar result is a **category view** (`categoryView`,
+`boards/panelRun.ts`) holding the panel's `barchartModel` (T22 §4.2,
+[Categorical panels](panels.md)), with `data-panel-state="frame"` and `data-panel-vis="barchart"`.
+The model is cached on every input: the result and the baseline result by object identity, then
+the title, the rate, `vis.options` and `vis.thresholds` by their JSON, so a rename or an options
+edit builds a new model and a remount (the Edit grid, full screen, the preview) reuses it. A
+LogQL bar chart (the `logs-frame` path, or a stream panel's series phase) is a category view of
+the metric answer, without a baseline. A string result is the `string` message.
 
-#### Bar chart options and a kind change (#173 Part 3a)
+**Auto is unchanged.** A board `auto` panel calls `autoVis` with the default set (`SHIPPED_VIS`),
+on the stored spec and on the editor's draft alike, so row 11 never fires on a board and a stored
+`auto` panel never switches to bars (T22 §4.5, owner): the bar chart is chosen in the editor.
+Map-sync's `legacyAuto` ([T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md)
+T24-099, #237) brings rows 8 and 11 to panels saved from then on.
 
-`BarchartOptionsField` (`pages/board/BarchartOptionsField.tsx`; Part 3b mounts it in the editor)
-edits a bar chart's `vis.options` (T22 §6.1): Reducer (Last, First, Mean, Min, Max, Sum, Count),
+**Pie stays pending.** `PENDING_KINDS` (`boards/options.ts`) is `{pie}`: such a panel is blocked
+before anything is sent, in both languages (`pre` = `kindUnavailable`), shows the message above,
+and keeps its saved spec. The editor lists Pie only as the disabled option of a panel that stores
+it; Open in Explore opens it on Auto.
+
+#### The panel body
+
+`CategoryPanel` (`pages/board/PanelFrame.tsx`) renders `CategoryChart` with the model, the
+panel's session toggles and the pick context `{surface: 'board', filters, origin, window}`:
+the board's `f=` filters (`BoardFiltersContext`, provided by `BoardPage` from `useBoardParams`),
+the Inspector origin of the panel and the Context window. The coverage meter's **Narrow** opens
+Explore with the panel's query (`vis=barchart`), or zooms in when the panel has no Explore link yet
+(T22-006). `onPick` decides with `barAction` and the panel applies it:
+
+| Action | Effect, in order |
+|---|---|
+| `click` | `onInspect(target, source, returnFocus)`: writes the bar's selection and opens the Inspector on the `mark` target; then the filter toggle when the bar has a label pair (`setFilter`, a push) |
+| `brush` | `onSelect(selection, 'brush')`: the keys are the selection, no Inspector |
+| `clear` (an empty pick) | `onEmptyClick()`: the selection is cleared |
+| `none` | nothing |
+
+A table row's name button picks its row as a click. **Full screen** renders the same body with the
+same toggles and actions; because the modal makes the Inspector inert, a click there closes the
+dialog first, then inspects with focus returning to the panel's listbox (else the panel). A brush
+and a clear act in place. The editor's preview has the pick context but no pick, and no table
+toggle.
+
+**Filters are interim** (T22-007): a click toggles `f=<label>=<value>` (a filter already holding
+that pair is removed, any other value of the label is replaced) and the filter bar shows the chip,
+but no panel query reads `f=` until #193, so nothing runs again. The query and vis stay the same,
+so the Inspector stays open (T25-012). Bars without a label pair say why in the tooltip
+(`barHint`).
+
+#### The panel menu toggles
+
+A category view's menu adds, after Copy query, three session toggles (`useState` in the panel,
+never saved, shared with full screen):
+
+| Item | Off / on | Effect |
+|---|---|---|
+| Show as table / Show chart | `table` | the `PanelTable` view (also Shift+T in the chart) |
+| Show baseline ghost / Hide baseline ghost | `ghost` (PromQL only) | the dashed baseline outline; with no `baselineOffset`, a 1 d baseline run |
+| Show anomalies / Hide anomalies | `anomaly` | the anomaly flag on the spec; the tooltip says there are no scores |
+
+#### The baseline run
+
+`usePromPanelRun` takes `ghost`. For a `barchart` panel the offset is
+`baselineOffset(vis.options, ghost)` (the option, else 1 d with the ghost on, else none) and
+`baselineMs = OFFSET_MS[offset]`, the key's last element; any other kind has none. With an offset
+the panel's one query function sends the main request and the same body on the window moved back
+by `baselineMs` (range: both ends, the same `widthPx`; instant: `atMs`), under one run controller
+linked to the query's signal:
+
+| Case | Result |
+|---|---|
+| both answer | the main outcome with `baseline` = the shifted result; the bars carry its values (tooltip `baseline <v>`, the ghost, the meter's baseline completeness) |
+| the baseline fails | the main outcome with `baseline: 'failed'`: the panel never fails, the bars draw without a ghost and the note "Baseline unavailable: the shifted query failed." shows |
+| the main request fails | the run controller aborts the baseline; the panel shows the main error as before |
+| the query's signal aborts (a new key, an unmount) | both requests abort; the run rejects with the main request's `AbortError` (no error view) |
+
+A late baseline after the controller aborted settles an unread promise. The offset is outside the
+key's head, so a ghost toggle keeps the previous outcome as the placeholder. With neither the
+option nor the ghost the panel sends one request, as before.
+
+#### Bar chart options and a kind change (#173 Parts 3a and 3b)
+
+The editor offers **Bar chart** after Stat (Part 3b). For a bar chart it shows Thresholds and
+`BarchartOptionsField` (`pages/board/BarchartOptionsField.tsx`) in place of Legend: `errorAt(key)`
+reads the field errors at `/vis/options/<key>`, and a change writes `{...vis, options}`, or drops
+`options` when no key is left. The field edits a bar chart's `vis.options` (T22 §6.1): Reducer (Last, First, Mean, Min, Max, Sum, Count),
 Category label (a text field, placeholder `Automatic`, trimmed; empty removes the key), Sort
 (Value, descending; Value, ascending; Name; Query order), Orientation (Horizontal, Vertical),
 Value labels (a checkbox), Min and Max (text fields: empty removes the key, a finite number writes
@@ -204,8 +274,8 @@ and its `tag` as for `mode: tag`), then drops `max` when min ≥ max and `textMo
 when it is `value` with the `grid` layout. So a stat's `orientation: 'auto'` does not survive a
 change to the bar chart (T22 §6.1).
 
-`data-panel-state` on the panel's root is the view kind or the message state, and `data-panel-vis`
-the drawn vis of a frame. The completeness badge (`PanelNotices`: **Partial data** or **Warnings**,
+`data-panel-state` on the panel's root is the view kind or the message state (`frame` for a
+category view), and `data-panel-vis` the drawn vis of a frame or `barchart`. The completeness badge (`PanelNotices`: **Partial data** or **Warnings**,
 labelled "`<badge>`: `<title>`") shows with any frame or message of an outcome and opens Explore's
 `CompletenessNotice` in a popover.
 
@@ -467,8 +537,8 @@ screen view and the editor's preview. The stub (`StubApi.listAnnotations`) has n
 ## Open in Explore
 
 `exploreHref(tenant, panel, search, run.expanded)`: for PromQL,
-`/t/<tenant>/explore/metrics<board time>&q=<expanded>` plus `&vis=<kind>` unless the kind is Auto
-or Logs; for LogQL, `/t/<tenant>/explore/logs<board time>&q=<expanded>`, and null without
+`/t/<tenant>/explore/metrics<board time>&q=<expanded>` plus `&vis=<kind>` unless the kind is Auto,
+Logs or Pie (a bar chart opens `vis=barchart`, #173 Part 3b); for LogQL, `/t/<tenant>/explore/logs<board time>&q=<expanded>`, and null without
 `expanded` (a stream panel's is its pager's `planned`, `streamMeta`). For PromQL `run.expanded` is
 `planned.expanded` of the **current key's own** response: the data the key was fetched under
 (`PanelOutcome.key`, compared with `sameKey`) and not a placeholder, or, after an error, the
@@ -480,7 +550,8 @@ absolute window) keeps the link.
 ## The panel menu
 
 Edit panel, **Duplicate**, **Remove**, **Open in Explore** (a React Aria `MenuItem` with `href`,
-routed through the app's router) and Copy query. Duplicate and Remove dispatch `enterEdit`, then
+routed through the app's router) and Copy query; a bar chart adds its three toggles
+([above](#the-panel-menu-toggles)). Duplicate and Remove dispatch `enterEdit`, then
 `duplicatePanel` (the copy at `firstFree` of the same grid, title "`<title>` (copy)" cut to 200
 code points, announced in the live region) or `removePanel` (focus then moves to Add panel); both
 are disabled while a save is in flight.
@@ -627,6 +698,7 @@ After the blocked and error rows (`empty`, `variable`, `refused` as PromQL's):
 | stream | `series`, Logs | message `logs`: "A metric query has no log lines. Choose Auto or a chart." | |
 | `logs-bars` | `streams` | frame `volumePlan(volume)`, thresholds, legend, `volume: true` | `bars` |
 | `logs-bars`, `logs-frame` | `series` | frame of the saved vis (PromQL's code) | the vis |
+| `logs-frame` (Bar chart), stream `series` (Bar chart) | `series` | `category` of the answer, no baseline; the menu has no ghost item | `barchart` |
 | `logs-frame` | `streams` | message `notMetric`: "Line, Heatmap and Stat draw metric queries. Choose Auto, Logs or Bars for log lines." | |
 | frame | no outcome | `loading` | |
 
@@ -698,6 +770,15 @@ failing 0.05 "SLO breach").
   and §5.5; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v3 upcast).
 - Board spec v3 and the pending kinds (#173 Parts 1 and 2):
   [T22](../../designs/technical/T22-value-categorical-and-table-panels.md) §6.1 (`vis.options`),
-  T22-002 and §4.5 (row 11 not available on boards until Part 3);
+  T22-002 and §4.5 (row 11 is not in the boards' set);
   [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v2 upcast); the categorical
   transforms are on [the panels page](panels.md).
+- Bar chart panels (#173 Part 3b):
+  [T22](../../designs/technical/T22-value-categorical-and-table-panels.md) T22-006 (the meter's
+  Narrow), T22-007 (the board filter, interim until #193), T22-008 (selection and brush), T22-011
+  (the toggles), T22-012 (the baseline run), T22-013 (the table view), §4.5 (board auto keeps the
+  default set); [T25](../../designs/technical/T25-inspector-and-pivots.md) T25-006, T25-012;
+  [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) VIZ-003,
+  VIZ-027, VIZ-037, VIZ-066;
+  [ADR-0028](../../designs/adr/0028-chart-seam-bar-chart.md),
+  [ADR-0029](../../designs/adr/0029-bar-chart-keys-and-brush.md).

@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { InstantResult, PlannedQuery, RangeResult, VolumeResult } from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
 import { EMPTY_COMPLETENESS, fixture, H1, N } from '../test/histogramFixtures';
-import { byVersion, threeKeys } from '../test/categoryFixtures';
+import { BY_VERSION, byVersion, fkey, threeKeys } from '../test/categoryFixtures';
 import {
   autoVis,
   chooseVis,
+  EXPLORE_VIS,
   fromInstant,
   fromRange,
   SHIPPED_VIS,
@@ -247,5 +248,30 @@ describe('unit:autovis-table row 11 (#173 Part 2)', () => {
       rule: 14,
     });
     expect(SHIPPED_VIS.has('barchart')).toBe(false);
+  });
+});
+
+describe('unit:autovis-table (surfaces, #173 Part 3b)', () => {
+  it('Explore passes EXPLORE_VIS: row 11 fires for an instant answer, not for a bare range', () => {
+    expect(EXPLORE_VIS.has('barchart')).toBe(true);
+    for (const k of SHIPPED_VIS) expect(EXPLORE_VIS.has(k)).toBe(true);
+    expect(autoVis({ ...NO, result: byVersion(), available: EXPLORE_VIS })).toEqual({
+      vis: 'barchart',
+      rule: 11,
+    });
+    const ranged = fromRange(
+      range(
+        BY_VERSION.map((v, i) => ({
+          key: fkey(i + 1),
+          labels: v.labels,
+          timestamps: new Float64Array([0, 5000, 10000]),
+          values: new Float64Array([v.value, v.value, v.value]),
+        })),
+      ),
+    );
+    expect(autoVis({ ...NO, result: ranged, available: EXPLORE_VIS })).toEqual({
+      vis: 'line',
+      rule: 14,
+    });
   });
 });
