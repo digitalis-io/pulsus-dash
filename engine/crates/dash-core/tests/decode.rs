@@ -14,8 +14,9 @@ mod wirekit;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use dash_core::decode::{ChunkTable, DecodeService, Done, Failure};
@@ -26,22 +27,17 @@ use dash_wire::{
 use serde_json::{Map, Value, json};
 
 // ---------------------------------------------------------------------------------------------
-// A counting allocator: the largest allocation, and how many of one watched size.
+// A counting allocator: the largest allocation.
 
 static LARGEST: AtomicUsize = AtomicUsize::new(0);
-static WATCH: AtomicUsize = AtomicUsize::new(0);
-static HITS: AtomicUsize = AtomicUsize::new(0);
 
 struct Counting;
 
 // SAFETY: every method forwards to `System` with the caller's arguments unchanged; the only
-// additions are atomic counters, which do not allocate.
+// addition is an atomic maximum, which does not allocate.
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         LARGEST.fetch_max(layout.size(), Ordering::Relaxed);
-        if layout.size() == WATCH.load(Ordering::Relaxed) {
-            HITS.fetch_add(1, Ordering::Relaxed);
-        }
         // SAFETY: the caller upholds `GlobalAlloc::alloc`'s contract for `layout`.
         unsafe { System.alloc(layout) }
     }
@@ -387,12 +383,9 @@ fn pings(bytes: usize) -> Vec<u8> {
 #[test]
 fn decode_service() {
     let mut svc = DecodeService::new(1);
-    let threads = Arc::new(Mutex::new(BTreeSet::new()));
-    let seen = Arc::clone(&threads);
+    let (seen, threads) = mpsc::channel();
     svc.set_task_hook(Arc::new(move || {
-        if let Ok(mut s) = seen.lock() {
-            s.insert(format!("{:?}", std::thread::current().id()));
-        }
+        let _ = seen.send(format!("{:?}", std::thread::current().id()));
     }));
     let render = format!("{:?}", std::thread::current().id());
     let mut rng = Mulberry(68);
@@ -474,7 +467,7 @@ fn decode_service() {
         .unwrap_or_else(|| panic!("the gaps result"));
     assert_eq!(gaps.len(), 61);
     assert!(!svc.busy(), "every request ended");
-    let threads = threads.lock().map(|s| s.clone()).unwrap_or_default();
+    let threads: BTreeSet<String> = threads.try_iter().collect();
     assert!(!threads.is_empty(), "pool tasks ran");
     assert!(
         !threads.contains(&render),
@@ -719,13 +712,8 @@ fn chunk_table() {
     let mut svc = DecodeService::new(1);
     let body = route("read-cache");
     let len = 61usize;
-    WATCH.store(len * 8, Ordering::Relaxed);
-    HITS.store(0, Ordering::Relaxed);
+    // The join reuses the one batch (no copy: `dash-wire` `join::one_batch_is_reused_without_a_copy`).
     let c = chunk_of(&decode_one(&mut svc, 1, &body));
-    let hits = HITS.load(Ordering::Relaxed);
-    WATCH.store(0, Ordering::Relaxed);
-    // The batch's values, `ts` and `vs[0]`: no fourth copy for the join.
-    assert!(hits <= 3, "{hits} allocations of the values' size");
     assert!(svc.table().unheld_bytes() >= len * 8);
     let got = svc.table_mut().get(1, c);
     assert!(matches!(
@@ -743,4 +731,45 @@ fn chunk_table() {
         z.get(1, a.unwrap_or(0)).is_none(),
         "unheld beyond the cap: evicted"
     );
+}
+
+/// `bench:decode-r1` (T04-015, plan #68 D2 §5), report-only in MT: the decode and the join of the
+/// `many` route fixture (600 series × 11 points) on the native pool, in one push and split as the
+/// browser reads it (64 KiB reads). Run with `--ignored --nocapture`.
+#[test]
+#[ignore = "bench:decode-r1, report-only"]
+fn decode_bench() {
+    let body = route("many");
+    let reads: Vec<Vec<u8>> = body.chunks(64 << 10).map(<[u8]>::to_vec).collect();
+    for (name, pieces) in [("one push", vec![body.clone()]), ("64 KiB reads", reads)] {
+        let mut svc = DecodeService::new(1);
+        let mut times = Vec::new();
+        for req in 1..=200u32 {
+            let t0 = Instant::now();
+            svc.begin(req);
+            for p in &pieces {
+                svc.push(req, p);
+            }
+            svc.end(req);
+            let mut out = Vec::new();
+            // Polled without sleeping, as the render worker's ticks would, but at once.
+            while !finished(&out, req) {
+                svc.pump();
+                out.extend(svc.take_done());
+                std::thread::yield_now();
+            }
+            times.push(t0.elapsed().as_secs_f64() * 1e3);
+            assert!(matches!(result_of(&out, req), Some(Done::Decoded(_))));
+            *svc.table_mut() = ChunkTable::new(1);
+        }
+        times.sort_by(f64::total_cmp);
+        let q = |p: f64| times[((times.len() - 1) as f64 * p) as usize];
+        println!(
+            "bench:decode-r1 many ({name}, {} bytes): p50 {:.3} ms, p95 {:.3} ms, max {:.3} ms",
+            body.len(),
+            q(0.5),
+            q(0.95),
+            q(1.0)
+        );
+    }
 }

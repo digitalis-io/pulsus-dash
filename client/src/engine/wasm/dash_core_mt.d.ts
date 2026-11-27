@@ -18,6 +18,43 @@ export class BootStatus {
 }
 
 /**
+ * A registered series array was collected: its table entry goes (another epoch's is ignored).
+ */
+export function engine_chunk_release(chunk: number, epoch: number): void;
+
+/**
+ * The chunk table's entries and bytes, `{count, bytes}` JSON (the probe's `chunks()`).
+ */
+export function engine_chunk_stats(): string;
+
+/**
+ * Decode `req`'s fetch was aborted: its queue, decoder and chunks are dropped.
+ */
+export function engine_decode_abort(req: number): void;
+
+/**
+ * Plan #68 D2 §3.1: a DSF decode begins (`busy` beyond two in flight).
+ */
+export function engine_decode_begin(req: number): void;
+
+/**
+ * One fetch read of decode `req`, of any size (copied into slabs here).
+ */
+export function engine_decode_chunk(req: number, bytes: Uint8Array | number[]): void;
+
+/**
+ * The end of decode `req`'s body.
+ */
+export function engine_decode_end(req: number): void;
+
+/**
+ * The decode results since the last call, as the messages the worker posts (§3.1): `decode-credit`
+ * `{req, bytes}`; `decoded` `{req, chunk, epoch, head (JSON), ts, vs}`; `decode-failed` `{req,
+ * kind, message, row, coverage (JSON or null), planned}`. Called at tick start.
+ */
+export function engine_decode_take(): Array<any>;
+
+/**
  * The function that schedules the next animation frame; called when the engine needs a tick
  * outside the frame loop (device loss, restore).
  */
@@ -64,6 +101,13 @@ export function frame_data_series(id: number, key: string, names: string[], valu
 export function frame_dispose(id: number): void;
 
 /**
+ * `setData` by reference (plan #68 D2 §4.2): the table's chunk `chunk` of epoch `epoch` becomes
+ * frame `id`'s data (`Frames::set_chunk`); false when it is of another epoch or was evicted (the
+ * worker answers `chunk-missing`).
+ */
+export function frame_set_chunk_ref(id: number, chunk: number, epoch: number): boolean;
+
+/**
  * The frame's event markers' times, ms (`EventMarker.atMs` in call order, NaN kept; plan #68 C2c1
  * §3.3): a layer input, so the frame is rebuilt.
  */
@@ -102,6 +146,13 @@ export interface InitOutput {
     readonly __wbg_set_bootstatus_cb: (a: number, b: number) => void;
     readonly __wbg_set_bootstatus_status: (a: number, b: number) => void;
     readonly bootstatus_adapter: (a: number) => [number, number];
+    readonly engine_chunk_release: (a: number, b: number) => void;
+    readonly engine_chunk_stats: () => [number, number];
+    readonly engine_decode_abort: (a: number) => void;
+    readonly engine_decode_begin: (a: number) => void;
+    readonly engine_decode_chunk: (a: number, b: number, c: number) => void;
+    readonly engine_decode_end: (a: number) => void;
+    readonly engine_decode_take: () => any;
     readonly engine_on_wake: (a: any) => void;
     readonly engine_start: (a: number, b: number, c: number) => any;
     readonly engine_tick: (a: number) => [number, number];
@@ -112,6 +163,7 @@ export interface InitOutput {
     readonly frame_data_end: (a: number) => [number, number];
     readonly frame_data_series: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number];
     readonly frame_dispose: (a: number) => void;
+    readonly frame_set_chunk_ref: (a: number, b: number, c: number) => number;
     readonly frame_set_events: (a: number, b: number, c: number) => void;
     readonly frame_set_selection: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly frame_set_spec: (a: number, b: number, c: number) => [number, number];
@@ -121,12 +173,12 @@ export interface InitOutput {
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___js_sys_5ad0944f19124a33___Function_fn_wasm_bindgen_fdf7a4a3b6a46677___JsValue_____wasm_bindgen_fdf7a4a3b6a46677___sys__Undefined___js_sys_5ad0944f19124a33___Function_fn_wasm_bindgen_fdf7a4a3b6a46677___JsValue_____wasm_bindgen_fdf7a4a3b6a46677___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue__core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true_: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true_: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__28: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__29: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__36: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__37: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___js_sys_5ad0944f19124a33___futures__task__wait_async_polyfill__MessageEvent______true_: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true_: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__26: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__27: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__34: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__35: (a: number, b: number, c: any) => void;
     readonly memory: WebAssembly.Memory;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

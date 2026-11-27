@@ -21,6 +21,11 @@
 //! memory; main cannot write its ring, so input comes as batches of the same records
 //! (`engine_input_batch`), queued here and applied at the start of the next tick, after the
 //! ring's (empty) drain.
+//!
+//! Plan #68 D2 (§3.2, MT only): the DSF decode service (`crate::decode`) and its chunk table.
+//! `engine_decode_*` feed it; `engine_decode_take` (at tick start) returns its results for the
+//! worker to post; `frame_set_chunk_ref` makes a table chunk a frame's data, and
+//! `engine_chunk_release` drops a collected array's entry. While decodes run the loop keeps ticking.
 
 mod control;
 mod gpu;
@@ -114,6 +119,12 @@ struct Engine {
     losses: LossPolicy,
     restoring: bool,
     dead: bool,
+    /// The boot epoch (`BOOT_EPOCH`): every chunk reference carries it.
+    #[cfg(feature = "mt")]
+    epoch: u32,
+    /// Plan #68 D2: the DSF decodes and the chunk table (MT).
+    #[cfg(feature = "mt")]
+    decode: crate::decode::DecodeService,
 }
 
 thread_local! {
@@ -188,6 +199,10 @@ pub async fn engine_start(force_t2: bool, caps_bits: u32, epoch: u32) -> BootSta
                     losses: LossPolicy::default(),
                     restoring: false,
                     dead: false,
+                    #[cfg(feature = "mt")]
+                    epoch,
+                    #[cfg(feature = "mt")]
+                    decode: crate::decode::DecodeService::new(epoch),
                 });
             });
             cb.set_status(status);
@@ -331,7 +346,12 @@ pub fn engine_wants_frame() -> bool {
         if e.dead {
             return false;
         }
-        let busy = !e.dirty.is_empty()
+        #[cfg(feature = "mt")]
+        let decoding = e.decode.busy();
+        #[cfg(not(feature = "mt"))]
+        let decoding = false;
+        let busy = decoding
+            || !e.dirty.is_empty()
             || !e.batched.is_empty()
             || !e.awaiting.is_empty()
             || !e.queued.is_empty()
@@ -359,6 +379,143 @@ pub fn engine_input_batch(bytes: &[u8]) -> u32 {
         u32::try_from(e.batched.len() - before).unwrap_or(u32::MAX)
     })
     .unwrap_or(0)
+}
+
+/// Plan #68 D2 §3.1: a DSF decode begins (`busy` beyond two in flight).
+#[cfg(feature = "mt")]
+#[wasm_bindgen]
+pub fn engine_decode_begin(req: u32) {
+    with(|e| {
+        e.decode.begin(req);
+        e.decode.pump();
+    });
+}
+
+/// One fetch read of decode `req`, of any size (copied into slabs here).
+#[cfg(feature = "mt")]
+#[wasm_bindgen]
+pub fn engine_decode_chunk(req: u32, bytes: &[u8]) {
+    with(|e| {
+        e.decode.push(req, bytes);
+        e.decode.pump();
+    });
+}
+
+/// The end of decode `req`'s body.
+#[cfg(feature = "mt")]
+#[wasm_bindgen]
+pub fn engine_decode_end(req: u32) {
+    with(|e| {
+        e.decode.end(req);
+        e.decode.pump();
+    });
+}
+
+/// Decode `req`'s fetch was aborted: its queue, decoder and chunks are dropped.
+#[cfg(feature = "mt")]
+#[wasm_bindgen]
+pub fn engine_decode_abort(req: u32) {
+    with(|e| e.decode.abort(req));
+}
+
+#[cfg(feature = "mt")]
+fn set(o: &js_sys::Object, k: &str, v: &JsValue) {
+    let _ = js_sys::Reflect::set(o, &JsValue::from_str(k), v);
+}
+
+#[cfg(feature = "mt")]
+fn json_or_null(v: Option<&serde_json::Value>) -> JsValue {
+    v.map_or(JsValue::NULL, |v| JsValue::from_str(&v.to_string()))
+}
+
+/// The decode results since the last call, as the messages the worker posts (§3.1): `decode-credit`
+/// `{req, bytes}`; `decoded` `{req, chunk, epoch, head (JSON), ts, vs}`; `decode-failed` `{req,
+/// kind, message, row, coverage (JSON or null), planned}`. Called at tick start.
+#[cfg(feature = "mt")]
+#[wasm_bindgen]
+pub fn engine_decode_take() -> js_sys::Array {
+    use crate::decode::Done;
+    let out = js_sys::Array::new();
+    let done = with(|e| e.decode.take_done()).unwrap_or_default();
+    for d in done {
+        let o = js_sys::Object::new();
+        match d {
+            Done::Credit { req, bytes } => {
+                set(&o, "t", &"decode-credit".into());
+                set(&o, "req", &req.into());
+                set(&o, "bytes", &JsValue::from_f64(bytes as f64));
+            }
+            Done::Decoded(m) => {
+                set(&o, "t", &"decoded".into());
+                set(&o, "req", &m.req.into());
+                set(&o, "chunk", &m.chunk.into());
+                set(&o, "epoch", &m.epoch.into());
+                set(&o, "head", &JsValue::from_str(&m.head.to_string()));
+                set(
+                    &o,
+                    "ts",
+                    &js_sys::Float64Array::from(m.ts.as_slice()).into(),
+                );
+                let vs = js_sys::Array::new();
+                for v in &m.vs {
+                    vs.push(&js_sys::Float64Array::from(v.as_slice()).into());
+                }
+                set(&o, "vs", &vs.into());
+            }
+            Done::Failed(f) => {
+                set(&o, "t", &"decode-failed".into());
+                set(&o, "req", &f.req.into());
+                set(&o, "kind", &f.kind.as_str().into());
+                set(&o, "message", &f.message.as_str().into());
+                set(&o, "row", &json_or_null(f.row.as_ref()));
+                set(&o, "coverage", &json_or_null(f.coverage.as_ref()));
+                set(
+                    &o,
+                    "planned",
+                    &f.planned
+                        .as_deref()
+                        .map_or(JsValue::NULL, JsValue::from_str),
+                );
+            }
+        }
+        out.push(&o);
+    }
+    out
+}
+
+/// `setData` by reference (plan #68 D2 §4.2): the table's chunk `chunk` of epoch `epoch` becomes
+/// frame `id`'s data (`Frames::set_chunk`); false when it is of another epoch or was evicted (the
+/// worker answers `chunk-missing`).
+#[cfg(feature = "mt")]
+#[wasm_bindgen]
+pub fn frame_set_chunk_ref(id: u32, chunk: u32, epoch: u32) -> bool {
+    with(|e| {
+        let Some(c) = e.decode.table_mut().get(epoch, chunk) else {
+            return false;
+        };
+        e.frames.set_chunk(id, Some(c));
+        e.dirty.insert(id);
+        true
+    })
+    .unwrap_or(false)
+}
+
+/// A registered series array was collected: its table entry goes (another epoch's is ignored).
+#[cfg(feature = "mt")]
+#[wasm_bindgen]
+pub fn engine_chunk_release(chunk: u32, epoch: u32) {
+    with(|e| e.decode.table_mut().release(epoch, chunk));
+}
+
+/// The chunk table's entries and bytes, `{count, bytes}` JSON (the probe's `chunks()`).
+#[cfg(feature = "mt")]
+#[wasm_bindgen]
+pub fn engine_chunk_stats() -> String {
+    with(|e| {
+        let t = e.decode.table();
+        serde_json::json!({"count": t.len(), "bytes": t.bytes(), "epoch": e.epoch}).to_string()
+    })
+    .unwrap_or_else(|| "null".to_owned())
 }
 
 /// The probe log's bound.
