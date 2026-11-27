@@ -8,6 +8,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
 import { BOARDS_API, createBoard, deleteBoard } from './boardApi.ts';
+import { plotOf, plotX } from './helpers.ts';
 
 const FROM = '2026-01-01T00:00:00.000Z';
 const TO = '2026-01-01T01:00:00.000Z';
@@ -82,10 +83,14 @@ test.describe('e2e:board-units (fake)', () => {
       .slice(2)
       .map((s) => s.trim());
     expect(cells).toEqual(['1.5 MiB/s', '3 MiB/s', '3 MiB/s']);
+    // Over the 00:40 sample (2 MiB/s), the pointer snaps to it.
     const frame = rx.locator('[data-chart-frame]');
+    const plot = await plotOf(frame);
     const box = await frame.boundingBox();
     if (box === null) throw new Error('no box');
-    await page.mouse.move(box.x + box.width * 0.6, box.y + box.height * 0.5);
+    const at = Date.parse('2026-01-01T00:40:00.000Z');
+    const x = plotX(box.x, plot, at, Date.parse(FROM), Date.parse(TO));
+    await page.mouse.move(x, box.y + plot.y + plot.height * 0.5);
     const tip = frame.locator('[data-chart-tooltip]');
     await expect(tip).toBeVisible();
     await expect(tip.locator('[data-value]').first()).toHaveText(/(B|KiB|MiB)\/s$/);
