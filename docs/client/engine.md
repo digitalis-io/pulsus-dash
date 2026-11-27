@@ -1068,7 +1068,8 @@ Without storage the flag lasts for the page only; a reload tries the engine agai
   disposes it (the engine's own layout for given inputs); `id(n)` is its engine id and
   `stats().enqueued` counts the Camera records probe frames enqueued. In the probe build,
   `synth(n, {series, points})` makes F1c the frame's data in the worker, and resolves with
-  `{ok, bytes}` ([measuring frames](#measuring-frames-part-c2d1)).
+  `{ok, bytes, reason?}`; `chunk(n)` describes the frame's chunk
+  ([measuring frames](#measuring-frames-part-c2d1)).
 
 ### Building
 
@@ -1209,19 +1210,24 @@ Both renderers time their frames with User Timing:
 Both are cleared from the buffer at once, so only a `PerformanceObserver` sees them. Filter them
 by `detail.frame`, since every frame on the page marks.
 
-**The harness** (`client/e2e/bench/frameBench.ts`) has three parts:
-- **`drive(page, canvas, frameId, steps)`** runs a script in the page, one step per animation
-  frame: a wheel at the plot's centre, a drag from it, or a hover at a fraction of the plot. The
-  plot comes from `data-plot` on the canvas or its frame. `drive` then waits two frames and
-  500 ms. It returns the frame's `chart-present` times, its `chart-draw` spans and the script's
-  span.
+**The harness** (`client/e2e/bench/frameBench.ts`) has these parts:
+- **`drive(page, canvas, frameId, steps, boxMs)`** runs a script in the page, one step per
+  animation frame: a wheel at the plot's centre, a drag from it, or a hover at a fraction of the
+  plot. The plot comes from `data-plot` on the canvas or its frame. After the script it waits two
+  frames and 500 ms, then keeps collecting until the frame has presented twice
+  (`collectUntil`, run in the page from its source). If `boxMs` passes first it stops and sets
+  `timedOut`. It returns the frame's `chart-present` times, its `chart-draw` spans, the span, the
+  steps dispatched and `timedOut`.
+- **`open(page, url)`** loads a page without Playwright's fake clock, which hides User Timing
+  entries, and waits for a frame's first `a11y`.
 - **`SCRIPT`** is 40 zoom-ins, a 40-step pan of −20 px per step, and 40 zoom-outs. **`HOVER`** is
   120 hover steps across the plot and back.
 - **`report(info, results)`** appends to `test-results/bench/<gate>.json` and annotates.
 
-`summarise` (`client/scripts/lib/benchStats.ts`) turns the marks into a `BenchResult`. The interval
+`summarise` (`client/scripts/lib/benchStats.ts`) turns a drive into a `BenchResult`. The interval
 between marks inside the span is the frame time, and the measures are the draw time; each reports
-p50, p95, p99 and max by nearest rank. The gates and the JSON fields are in
+p50, p95, p99 and max by nearest rank (NaN, `null` in the JSON, when empty). `coalescing` is
+steps per presented frame. `budgets` marks PRF-001 and PRF-002 `ok`, `over` or `n/a`. The gates and the JSON fields are in
 [build and CI](../development/build-and-ci.md#frame-benches).
 
 **10⁸ points without `setData`.** A `setData` of 10⁸ points would be 1.6 GB on the main thread
@@ -1238,12 +1244,20 @@ and a structured clone. Instead, the probe build's `synth(n, {series, points})` 
   frame is dirty.
 
 The worker answers `{t: 'probe-synth', id, ok, bytes}`, where `bytes` is the values' bytes, 0 when
-not `ok`. The probe resolves with that answer. A 120 s timeout, a `fatal` or a worker restart while
-waiting count as `ok: false`.
+not `ok`. The probe resolves with `{ok, bytes, reason?}`. When not `ok`, `reason` is one of:
+- `alloc`: the worker's answer;
+- `fatal` or `restart`: the engine went first;
+- `timeout`: no answer in 120 s, or the third argument's milliseconds.
 
-`bench:frame-line-1e8` treats `ok: false` at 10⁸ as a host without the memory. It records each
-case `skipped: 'memory'`, reloads the page for a fresh worker, and runs the cases at 10⁷ (1 000 ×
-10⁴) as `1e7-…`. The wasm memory's ceiling is 2 GiB, and 10⁸ f64 values are 800 MB.
+`synthFault('alloc' | 'silent' | 'fatal')` simulates one of these outcomes for the next `synth`
+only, for the bench's outcome test. `chunk(n)` asks the worker (`engine_probe_chunk`) for
+`{series, points, bytes}` of the frame's chunk (points are series 0's samples), or null.
+
+`bench:frame-line-1e8` treats `alloc` at 10⁸ as a host without the memory. It records each case
+`skipped: 'memory'`, reloads the page for a fresh worker, and runs the cases at 10⁷ (1 000 ×
+10⁴) as `1e7-…`. A `fatal` fails the run. A timeout or a restart records the case `timedOut` and
+goes on after a reload. The wasm memory's ceiling is 2 GiB, and 10⁸ f64 values are 800 MB. On
+the lavapipe gate host a 10⁸ synthesis takes about 4 s and each presentation about 3 s.
 
 ## Limits
 

@@ -282,10 +282,15 @@ harness (`client/e2e/bench/frameBench.ts`):
   render worker through the probe build (`Frames::set_chunk`). Its cases are plain, selected
   (m = 1 and m = 500) and hover. On a host without the memory for 10⁸ it reports 10⁷
   (1 000 × 10⁴), and the lab runs 10⁸.
+- **Pacing.** The script is an open loop: when the engine presents more slowly than the main
+  thread's frames, the input ring coalesces (T03-020), and each case reports its steps and
+  `coalescing` (steps per presented frame). After the script the harness collects until the frame
+  has presented twice. Each case has a time box (60 s in the gallery, 120 s at 10⁸); a case that
+  runs out is recorded `timedOut`, which is a figure, not a failure.
 - **Status.** On the gate host (`make engine-bench`) both are report-only until the lab exists
-  (§7.1, T05-006). Only their sanity checks fail a run: at least 100 frames per case, the window
-  moved, a hover on at least 90 % of the hover steps, and no failed frame. PRF-001 and PRF-002
-  are printed beside each result as `ok` or `over`.
+  (§7.1, T05-006). Only relative sanity checks fail a run: at least 2 presented frames, the window
+  moved by a script, a hover that moved the crosshair, and no failed frame or `fatal`. PRF-001
+  and PRF-002 are printed beside each result as `ok`, `over`, or `n/a` when there is no interval.
 
 **Per surface** (scripted `.pdrec` scenarios from [13](../product/13-core-flow-storyboard.md) and
 [09 §4](../product/09-performance-contract.md#4-load--data-latency), run against the M-size synthetic
@@ -1431,4 +1436,4 @@ Meta-testing:
 | 1.67-rc | 2026-11-26 | #173 Part 3a ([T22](T22-value-categorical-and-table-panels.md) I1, [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md)): §7.1's T22 block adds `unit:barchart-keys`, `unit:barchart-brush`, `unit:bar-list`, `unit:bar-list-selected`, `unit:bar-action`, `unit:mark-tooltip`, `unit:panel-table`, `unit:panel-table-active`, `unit:panel-table-button`, `unit:category-chart-table`, `unit:baseline-window` and `unit:barchart-options-field` (PR); `unit:barchart-events` (`PickEvent.source`, a drag brushes), `unit:board-options` (valid values on a kind change), `unit:inspector-model` (the `mark` target) and `unit:escape-ladder` (a marked listbox) amended. Numbered after #68 Part C2c1's 1.66-rc (the 1.56-rc to 1.66-rc rows are other issues') |
 | 1.68-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md), the engine is the default renderer): §7.1 `e2e:mode-matrix` as M1–M15 and the amended integrity leg (the reload after a failed boot makes no engine request); new `e2e:canvas2d-pin` and `ci:engine-built`; the main suite's builds pin Canvas 2D and the engine suite proves the default |
 | 1.69-rc | 2026-11-26 | #68 Part C2c2 (the selection on engine frames, [ADR-0032](../adr/0032-selection-dims-as-one-layer.md)): §7.1 new `e2e:engine-selection`; `golden:engine-overlay` adds `line-50-selection`; `e2e:selection-sources` gains the engine leg; `unit:selection-draw`'s line case is the scratch layer plus one composite at `dimmed`. Numbered after #256's 1.68-rc |
-| 1.70-rc | 2026-11-26 | #68 Part C2d1 (the frame benches): §4.3 `bench:frame-gallery` and `bench:frame-line-1e8` run on the committed harness (in-page scripted pan, zoom and hover; `chart-present` intervals and `chart-draw` measures; p50, p95, p99, max), report-only on the gate host (`make engine-bench`) until the lab; 10⁷ where the host lacks the memory for 10⁸; the selected (m = 1, 500) and hover cases |
+| 1.70-rc | 2026-11-26 | #68 Part C2d1 (the frame benches): §4.3 `bench:frame-gallery` and `bench:frame-line-1e8` run on the committed harness (in-page scripted pan, zoom and hover; `chart-present` intervals and `chart-draw` measures; p50, p95, p99, max), report-only on the gate host (`make engine-bench`) until the lab; relative sanity checks, per-case time boxes (`timedOut`), steps and coalescing; 10⁷ where the host lacks the memory for 10⁸; the selected (m = 1, 500) and hover cases |
