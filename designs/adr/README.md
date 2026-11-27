@@ -23,7 +23,7 @@
 | [0019](0019-chart-frame-drawn-event-and-frame-id.md) | The chart engine seam reports completed draws (`drawn`) and carries a frame identity (`FrameInit.id`); amends 0014 §3 | **Accepted** (2026-11-21) |
 | [0020](0020-chart-camera-commit-and-value-range.md) | The chart engine seam reports camera commits (`commit`) and carries a value-axis range (`valueRange`, `valueAxis`); amends 0014 §3 | **Accepted** (2026-11-21) |
 | [0021](0021-query-planning-is-server-side.md) | Query planning (substitution, rate rewrites, size limits) is server-side, in the Go language modules; the browser sends inputs, not a plan; amends 0015 "Query validation" | **Accepted** (2026-11-21) |
-| [0022](0022-chart-thresholds-and-stat-sparkline.md) | The chart engine seam carries threshold lines (`thresholds`, `thresholdLabels`) and draws a stat sparkline; amends 0014 §3 | **Accepted** (2026-11-22; amended by 0031) |
+| [0022](0022-chart-thresholds-and-stat-sparkline.md) | The chart engine seam carries threshold lines (`thresholds`, `thresholdLabels`) and draws a stat sparkline; amends 0014 §3 | **Accepted** (2026-11-22; amended by 0031, 0037) |
 | [0023](0023-chart-event-markers.md) | The chart engine seam carries event markers (`setEvents`, `eventLabels`), drawn as lines over the series with labels in a band above the plot; amends 0014 §3 | **Accepted** (2026-11-23; amended by 0031) |
 | [0024](0024-markdown-runtime-dependencies.md) | Markdown runtime dependencies: `commonmark`, `parse5` and `parse5-sax-parser` join the runtime allowlist, the parse5 tree and tokenizer used together as a union; amends 0014 §7 | **Accepted** (2026-11-25) |
 | [0025](0025-chart-frame-selection.md) | The chart engine seam carries the selection (`setSelection`, the `select` item) and draws it in the layer pass; amends 0014 §3 | **Accepted** (2026-11-25; amended by 0032) |
@@ -37,6 +37,7 @@
 | [0033](0033-st-render-worker-script.md) | The `pulsus-engine` policy admits the single-thread render worker (three exact URLs); pages that are not isolated, and browsers without `Atomics.waitAsync`, get the ST engine; amends 0026 | **Accepted** (2026-11-27) |
 | [0034](0034-grid-part-joined-into-one-chunk.md) | A streamed grid part's batch chunks are joined into one chunk on the pool (one more exact-size copy); the MT engine's DSF memory contract; DSF is MT-only until #281; amends T04-015 | **Accepted** (2026-11-27) |
 | [0035](0035-platform-ui-face.md) | The platform UI face on Apple systems (`html[data-platform="apple"]`); Inter and JetBrains Mono stay self-hosted and draw every canvas; amends 0014 §1 | **Accepted** (on merge of #282 Part 1) |
+| [0037](0037-stat-graph-mode-none.md) | A stat's graph mode `none` draws the value alone, centred, with no sparkline; absent means sparkline; amends 0022 decision 4 | **Accepted** (on merge of the #297 fix) |
 
 Format: context, decision, consequences. An ADR is immutable once Accepted. It can be changed
 only by a later ADR that supersedes it.
