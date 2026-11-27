@@ -521,8 +521,9 @@ test.describe('panels-categorical (fake)', () => {
     const p = panel(page, 'Many');
     await drawn(p);
     const plot = await plotOf(frameIn(p));
-    expect(plot.height).toBeGreaterThanOrEqual(588);
-    expect(plot.height).toBeLessThan(602);
+    // 13 rows of 40 px with 12 px gaps, under a 36 px header (#282 Part 2a).
+    expect(plot.height).toBeGreaterThanOrEqual(544);
+    expect(plot.height).toBeLessThan(558);
     await expect(p.locator('[data-coverage-meter]')).toHaveText('showing 42 of 250; kept min, max');
     await listIn(p).focus();
     await page.keyboard.press('Shift+T');

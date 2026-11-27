@@ -128,7 +128,7 @@ small cap, or very long lines filling the text cap) would load a page at one end
 
 | Topic | Rule |
 |---|---|
-| Height | without wrap every row is `size.log-row` (24 px since #282 Part 2a) and never measured, so the extent is exact; with wrap rows are measured (border box, at least one line), estimated by `wrapLines` at `perLine` = ⌊line width / (`font.size.sm` × `font.advance.mono`)⌋ columns (line width: the first mounted line, before any the scroller − 240 px). An estimate is kept (`logs/estimates.ts`) while its row is held or in the slice, so an evicted row in the slice keeps its height as a placeholder, and dropped after, so the cache is bounded by the buffer and the slice however far the reader pages. A wrapped line shows at most 100 lines (2 000 px) and scrolls inside its row beyond that |
+| Height | without wrap every row is `size.log-row` (24 px since #282 Part 2a) and never measured, so the extent is exact; with wrap rows are measured (border box, at least one line), estimated by `wrapLines` at `perLine` = ⌊line width / (`font.size.sm` × `font.advance.mono`)⌋ columns (line width: the first mounted line, before any the scroller − 240 px). An estimate is kept (`logs/estimates.ts`) while its row is held or in the slice, so an evicted row in the slice keeps its height as a placeholder, and dropped after, so the cache is bounded by the buffer and the slice however far the reader pages. A wrapped line shows at most 100 lines (2 400 px) and scrolls inside its row beyond that |
 | Gutter | the level tag (#282 Part 2a; `[data-log-glyph]`, `aria-hidden`): the three-letter glyph (`CRT ERR WRN INF DBG TRC UNK`) in 11 px semibold mono `text`, 16 px high (`size.log-tag`, 4 px above and below in the 24 px row), three glyphs plus 8 px wide, 3 px corners, on a tint of the level's colour (`--level-<level>`, default `--level-unknown`) at `opacity.tag` through the [tint pattern](visual-design.md#the-tint-pattern-part-2a); then the level name for screen readers (VIZ-067: never colour alone). In forced colours the tag has a `CanvasText` border and no tint; the glyph still names the level (T08-019) |
 | Row | 4 px inline padding; an inspectable row's hover is `surface-hover` with 4 px corners; the selected row is unchanged. The scroller has no border, corners or fill of its own: the card or the panel is the surface (its focus ring is kept) |
 | Timestamp | `formatLogTime(ms, tz)`: `2026-01-01 00:58:20.000` in the browser's zone (`useTimeZone()`), milliseconds truncated from the nanosecond timestamp |
@@ -174,7 +174,7 @@ page sets `data-prefilled="true"` and exposes `window.__logStreamBench` (`scroll
 - `e2e:log-stream` (`e2e/log-stream.spec.ts`, Chromium, Firefox and WebKit; E6 Chromium only): the
   top row keeps its ordinal and offset across far-end eviction and re-slicing with fixed and
   wrapped rows (wheel) and touch (no `scrollTop` write during the gesture); the last of 10⁶ held
-  rows is reachable; a wrapped slice stays within 8 × 10⁶ px with rows of at most 2 000 px and does
+  rows is reachable; a wrapped slice stays within 8 × 10⁶ px with rows of at most 100 lines (2 400 px at 24 px rows) and does
   not re-slice at rest; rows taller than estimated (40 000-character lines at a pinned 1 440 × 900
   viewport) are re-sliced back within the bound, at rest and while scrolling; wrapping keeps the
   top row.

@@ -172,8 +172,8 @@ async function shellLoops(s: Script): Promise<void> {
       'link "Service overview"',
       'link "Admin"',
       'button "Collapse sidebar"',
-      // The inline quick ranges (#282 Part 2a): one tab stop, the checked preset.
-      'radio "1h (Last 1 hour)"',
+      // The inline quick ranges (#282 Part 2a): one tab stop, the group's first preset.
+      'radio "15m (Last 15 minutes)"',
       TRIGGER,
       'button "Refresh now"',
       'button "Auto-refresh interval: Off"',
@@ -191,7 +191,8 @@ async function shellLoops(s: Script): Promise<void> {
   // IA-020 as amended (#282 Part 2a): the inline presets by Tab and the arrow keys.
   await test.step('L1b Quick presets', async () => {
     await s.goto('/t/demo/boards');
-    await s.focus('radio "1h (Last 1 hour)"');
+    await s.focus('radio "15m (Last 15 minutes)"');
+    await press('ArrowRight');
     await press('ArrowRight');
     expect(await h.focusName()).toBe('radio "6h (Last 6 hours)"');
     await press('Space');
