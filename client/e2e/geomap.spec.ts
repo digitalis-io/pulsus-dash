@@ -1,7 +1,8 @@
 /**
  * The geomap panel (plan #234 Part 3 §5; T24 §10.4, §10.5): `e2e:geomap-offline` (the gallery's
  * offline page draws the bundled basemap with no other origin), `e2e:geomap` (a board's map panel on
- * fixture G: the Inspector, the Esc ladder, the table and its CSV), `e2e:geomap-a11y` (axe in each
+ * fixture G: the Inspector, the Esc ladder, the table and its CSV; Part 4's drill-down leg through
+ * the Inspector's navigation stack), `e2e:geomap-a11y` (axe in each
  * state, the Tab order, the camera keys, reduced motion) and `e2e:geomap-chunk` (a failed host or
  * scene chunk: Retry, or an engine that keeps the failed module: Reload).
  *
@@ -249,6 +250,64 @@ test.describe('geomap board (http BFF)', () => {
     );
     expect(csv).toBe(want);
     expect(nameOf(keyOf(7))).toBe('k07');
+  });
+
+  test('e2e:geomap (drill-down): other (11) → its first group → its row → Back → Back → Esc', async ({
+    page,
+    request,
+  }, info) => {
+    uid = await createBoard(request, `geomap nav ${info.project.name} ${crypto.randomUUID()}`, [
+      map(),
+    ]);
+    await routes(page, { [MAP_Q]: (q) => ({ status: 200, body: answer(q, G) }) });
+    await open(page, boardUrl(uid));
+    const p = panelOf(page, 'm');
+    await expect(p.locator('[data-geo-list] button').first()).toHaveText(/^Cluster of 5/);
+    const sheet = inspector(page);
+    const h2 = sheet.getByRole('heading', { level: 2 });
+    const path = sheet.getByRole('navigation', { name: 'Inspector path' });
+    const firstEntry = sheet.locator('[data-section="members"] li button').first();
+    const other = p.getByRole('button', { name: /^other \(11\)/ });
+    const G8 = '{geohash="u4pruydqqvj"}';
+    // By keys: the legend's aggregate opens the Inspector on its heading.
+    await other.focus();
+    await page.keyboard.press('Enter');
+    await expect(h2).toHaveText('other (11)');
+    await expect(h2).toBeFocused();
+    await expect(path).toHaveCount(0);
+    await expect(surface(p)).toHaveAttribute('data-selection-keys', /,/);
+    // Its first entry: the group of k08.
+    await expect(firstEntry).toHaveText(G8);
+    await firstEntry.focus();
+    await page.keyboard.press('Enter');
+    await expect(h2).toHaveText(G8);
+    await expect(h2).toBeFocused();
+    await expect(path.locator('li')).toHaveText(['other (11)', G8]);
+    await expect(sheet.getByRole('button', { name: 'Back to other (11)' })).toBeVisible();
+    // That group's row: the marker k08.
+    await firstEntry.focus();
+    await page.keyboard.press('Enter');
+    await expect(path.locator('li')).toHaveText(['other (11)', G8, G8]);
+    await expect(h2).toBeFocused();
+    await expect(sheet.locator('[data-section="members"]')).toHaveCount(0);
+    await expect(surface(p)).toHaveAttribute('data-selection-keys', keyOf(8));
+    // Back, Back: the group, then the aggregate.
+    await sheet.getByRole('button', { name: `Back to ${G8}` }).focus();
+    await page.keyboard.press('Enter');
+    await expect(path.locator('li')).toHaveText(['other (11)', G8]);
+    await expect(h2).toBeFocused();
+    await sheet.getByRole('button', { name: 'Back to other (11)' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(path).toHaveCount(0);
+    await expect(h2).toHaveText('other (11)');
+    await expect(h2).toBeFocused();
+    // Esc clears the selection, then closes and returns focus to the legend entry.
+    await page.keyboard.press('Escape');
+    await expect(surface(p)).toHaveAttribute('data-selection-keys', '');
+    await expect(sheet).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(sheet).toHaveCount(0);
+    await expect(other).toBeFocused();
   });
 
   test('e2e:geomap-a11y: axe in each state, the Tab order, the keys, reduced motion', async ({

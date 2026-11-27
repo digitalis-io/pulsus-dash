@@ -90,6 +90,13 @@ export interface SelectionSource {
   readonly panelId: string | null;
 }
 
+/** A deeper view inside the open request (T25 §4.8): its target, selection and breadcrumb title. */
+export interface NavView {
+  readonly target: InspectorTarget;
+  readonly selection: Selection;
+  readonly title: string;
+}
+
 export interface InspectRequest {
   readonly origin: InspectOrigin;
   readonly target: InspectorTarget;

@@ -125,6 +125,7 @@ export function geoMembers(g: GeoInspectorTarget, panelId: string | null): Membe
     runs: null,
     resolve:
       m.length > MEMBERS_SHOWN && panelId !== null ? { panelId, runId: `geo:${g.id}` } : null,
+    next: null,
   };
 }
 

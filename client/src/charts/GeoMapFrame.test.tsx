@@ -18,19 +18,28 @@ import {
   type GeoModule,
 } from '../engine/canvas2d/Canvas2DEngine';
 import type { SeriesFrame } from '../data/frames';
-import type { ChartEngine, GeoMapSpec, GeoMarksEvent, GeoView } from '../engine/api';
+import type { ChartEngine, GeoView } from '../engine/api';
 import { ChartEngineContext } from '../engine/index';
-import type { InspectorTarget } from '../inspector/types';
-import { useChartInspect } from '../inspector/useChartInspect';
 import { geoMapChunk, GeoMapBody } from '../pages/board/GeoMapBody';
-import { fakeEngine, type FakeEngine, type FakeFrame } from '../test/fakeEngine';
+import { fakeEngine, type FakeFrame } from '../test/fakeEngine';
 import { installResizeObserver } from '../test/fakeResizeObserver';
-import { frameOf, sceneKit } from '../test/geoKit';
-import { GEO_DATA, hostProps, installGridLayout, MS, runOf } from '../test/geoHostKit';
+import { frameOf } from '../test/geoKit';
+import { GEO_DATA, hostProps, installGridLayout, runOf } from '../test/geoHostKit';
 import { renderHost, stubReducedMotion, type HostHarness } from '../test/inspectorKit';
+import {
+  emitMarks,
+  host,
+  Inspecting,
+  type Kit,
+  listButtons,
+  marksOf,
+  seen,
+  SIZE,
+  specOf,
+} from '../test/geoFrameKit';
 import { recordingContext } from '../test/recordingContext';
 import { G, M12, O2, S1, TH } from '../vis/geo/fixtures/series';
-import type { GeoFrame, GeoRowSet } from '../vis/geo/frame';
+import type { GeoRowSet } from '../vis/geo/frame';
 import GeoMapFrame, { type GeoMapFrameHostProps } from './GeoMapFrame';
 
 /** `(d)` of `unit:geo-states`: k12 marked `ok`, a set `validateGeoRows` refuses (`value`). */
@@ -66,122 +75,11 @@ afterEach(() => {
   hook.k12ok = false;
 });
 
-const SIZE = { current: { width: 1024, height: 512 } };
 const C: GeoView = { lat: 50, lon: 5, zoom: 4 };
 const D: GeoView = { lat: 40, lon: -70, zoom: 5 };
 const E: GeoView = { lat: 1, lon: 103, zoom: 6 };
 const V10: GeoView = { lat: 10, lon: 10, zoom: 4 };
 const BOUNDS = { west: -10, south: -10, east: 10, north: 10 };
-
-/** The inspected targets, in order (the wrapper records each one). */
-const seen: InspectorTarget[] = [];
-
-/** A board panel's inspect props over the real host, recording each target. */
-function Inspecting({ p }: { p: GeoMapFrameHostProps }) {
-  const inspect = useChartInspect({
-    surface: 'board',
-    panelId: p.panelId,
-    title: p.title,
-    query: { lang: 'promql', text: 'up' },
-    unit: MS,
-  });
-  const base = inspect.onInspect;
-  return (
-    <GeoMapFrame
-      {...p}
-      {...(base === undefined
-        ? {}
-        : {
-            onInspect: (t, s, rf) => {
-              seen.push(t);
-              base(t, s, rf);
-            },
-          })}
-    />
-  );
-}
-
-interface Kit {
-  readonly h: HostHarness;
-  engine: ChartEngine;
-  props: GeoMapFrameHostProps;
-  set(p: Partial<GeoMapFrameHostProps>): void;
-  swap(e: ChartEngine): void;
-  frame(): FakeFrame;
-  root(): HTMLElement;
-  live(): string;
-}
-
-function host(p: GeoMapFrameHostProps, engine: ChartEngine = fakeEngine(), extra?: ReactNode): Kit {
-  seen.length = 0;
-  const node = (k: { engine: ChartEngine; props: GeoMapFrameHostProps }): ReactNode => (
-    <ChartEngineContext.Provider value={k.engine}>
-      <button type="button" data-outside="">
-        outside
-      </button>
-      <div data-panel-id={k.props.panelId}>
-        <Inspecting p={k.props} />
-      </div>
-      {extra}
-    </ChartEngineContext.Provider>
-  );
-  const state = { engine, props: { sizeMemo: SIZE, fill: true, ...p } };
-  const h = renderHost(node(state));
-  return {
-    h,
-    get engine() {
-      return state.engine;
-    },
-    get props() {
-      return state.props;
-    },
-    set(q) {
-      state.props = { ...state.props, ...q };
-      h.rerender(node(state));
-    },
-    swap(e) {
-      state.engine = e;
-      h.rerender(node(state));
-    },
-    frame() {
-      const f = (state.engine as FakeEngine).frames.at(-1);
-      expect(f, 'an engine frame').toBeDefined();
-      if (f === undefined) throw new Error('no frame');
-      return f;
-    },
-    root() {
-      const r = document.querySelector<HTMLElement>('[data-geomap]');
-      expect(r, 'the geomap root').not.toBeNull();
-      if (r === null) throw new Error('no geomap root');
-      return r;
-    },
-    live() {
-      return document.querySelector('[data-geo-live]')?.textContent ?? '';
-    },
-  };
-}
-
-const specOf = (f: FakeFrame): GeoMapSpec => f.last('setSpec')?.[0] as GeoMapSpec;
-
-/** The scene's marks for `f` at fit (or `view`). */
-function marksOf(f: GeoFrame, view: GeoView | null = null): GeoMarksEvent {
-  const k = sceneKit({ frame: f, spec: { view, motion: 'cut' } });
-  const m = k.marks.at(-1);
-  if (m === undefined) throw new Error('no geoMarks');
-  return m;
-}
-
-const G_TH = (): GeoFrame => frameOf(G(), { th: TH });
-
-function emitMarks(f: FakeFrame, m: GeoMarksEvent = marksOf(G_TH())): void {
-  act(() => {
-    f.emit('geoMarks', m);
-  });
-}
-
-const listButtons = (): HTMLButtonElement[] => [
-  ...document.querySelectorAll<HTMLButtonElement>('[data-geo-list] button'),
-];
 
 describe('unit:geo-host', () => {
   it('three subscriptions; the view hand-off (a)–(e); an engine swap (f)', () => {
@@ -750,11 +648,19 @@ describe('unit:geo-preview-members (a), (b)', () => {
     expect(k.h.selection()).toBe(`${m12keys.join(',')}|null|null`);
   });
 
-  it('(b) an editor preview never registers, inspects or selects; the open target is unchanged', () => {
+  it('(b) an editor preview never registers, inspects or selects; the open snapshot is unchanged', () => {
     const engine = fakeEngine();
     const k = host(M(), engine);
     openCluster(k.frame());
+    // Part 4: a view pushed from the open request; the preview cannot change it either.
+    const first = document.querySelector<HTMLElement>('[data-section="members"] li button');
+    expect(first, 'entry 0 is a button').not.toBeNull();
+    if (first === null) return;
+    fireEvent.click(first);
+    const m01 = '{lat="10", lon="10", pod="p01"}';
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(m01);
     const sel = k.h.selection();
+    expect(sel).toBe('m01|null|null');
     const withPreview = (on: boolean) => (
       <ChartEngineContext.Provider value={engine}>
         <div data-panel-id="p1">
@@ -769,16 +675,18 @@ describe('unit:geo-preview-members (a), (b)', () => {
     act(() => {
       preview.emit('select', {
         source: 'pointer',
-        item: { kind: 'geo', id: 'm01', keys: ['m01'] },
+        item: { kind: 'geo', id: 'm02', keys: ['m02'] },
       });
-      preview.emit('geoBrush', { keys: ['m02'] });
+      preview.emit('geoBrush', { keys: ['m03'] });
       preview.emit('select', { source: 'pointer', item: null });
     });
-    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Cluster of 12');
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(m01);
     expect(k.h.selection()).toBe(sel);
     k.h.rerender(withPreview(false));
     expect(register).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Cluster of 12' }));
+    expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Cluster of 12');
     moreGives12();
-    expect(k.h.selection()).toBe(sel);
+    expect(k.h.selection()).toBe(`${m12keys.join(',')}|null|null`);
   });
 });

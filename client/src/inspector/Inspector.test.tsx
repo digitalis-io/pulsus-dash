@@ -4,7 +4,11 @@ import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatValue } from '../i18n/format';
 import { P_ORIGIN, P_TARGET, pRequest, renderHost, stubReducedMotion } from '../test/inspectorKit';
-import type { InspectRequest } from './types';
+import { selectionOf } from '../charts/inspectTarget';
+import { frameOf } from '../test/geoKit';
+import { N } from '../vis/geo/fixtures/series';
+import { geoTarget } from '../vis/geo/targets';
+import type { InspectorTarget, InspectRequest } from './types';
 
 const S = { kind: 'time', base: 's' } as const;
 
@@ -199,5 +203,131 @@ describe('unit:inspector-crossfade', () => {
     expect(layers()[0]?.textContent).toContain('B');
     fireEvent.click(screen.getByRole('button', { name: 'Close Inspector' }));
     expect(document.querySelector('[data-inspector]')).toBeNull();
+  });
+});
+
+describe('unit:inspector-viewkey', () => {
+  const n = frameOf(N(), { opts: { groupBy: 'env' } });
+  const agg = geoTarget(n, n.seq, { kind: 'aggregate' });
+  const geoReq = (source: 'pointer' | 'keyboard'): InspectRequest => {
+    const target: InspectorTarget = { type: 'geo', target: agg };
+    return pRequest({
+      origin: { ...P_ORIGIN, title: 'Latency map', unit: { kind: 'time', base: 'ms' } },
+      target,
+      selection: selectionOf(target),
+      source,
+    });
+  };
+  const entry = (name: string): HTMLElement =>
+    within(
+      document.querySelector<HTMLElement>('[data-section="members"]') as HTMLElement,
+    ).getByRole('button', { name });
+  const back = (): HTMLElement => screen.getByRole('button', { name: /^Back to / });
+  const h2 = (): HTMLElement => screen.getByRole('heading', { level: 2 });
+  const live = (): string => document.querySelector('[data-inspector-live]')?.textContent ?? '';
+
+  function outsideFocused(): HTMLElement {
+    const outside = screen.getByRole('button', { name: 'outside' });
+    act(() => {
+      outside.focus();
+    });
+    return outside;
+  }
+
+  it('normal motion: each push and pop leaves one inert layer for 150 ms and focuses the h2', () => {
+    restore = stubReducedMotion(false);
+    vi.useFakeTimers();
+    const h = renderHost(<button type="button">outside</button>);
+    const outside = outsideFocused();
+    h.inspect(geoReq('pointer'));
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    // A pointer open keeps focus.
+    expect(document.activeElement).toBe(outside);
+    fireEvent.click(entry('e7'));
+    expect(layers()).toHaveLength(2);
+    const old = layers().find((l) => l.hasAttribute('data-leaving'));
+    expect(old).toHaveAttribute('inert');
+    expect(old?.textContent).toContain('other (12)');
+    expect(document.activeElement).toBe(h2());
+    expect(h2()).toHaveTextContent('e7');
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(layers()).toHaveLength(1);
+    fireEvent.click(back());
+    expect(layers()).toHaveLength(2);
+    expect(document.activeElement).toBe(h2());
+    expect(h2()).toHaveTextContent('other (12)');
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    // Three quick pushes: at most one leaving layer, the third on top.
+    fireEvent.click(entry('e7'));
+    fireEvent.click(back());
+    fireEvent.click(entry('e8'));
+    fireEvent.click(back());
+    fireEvent.click(entry('e9'));
+    expect(layers().filter((l) => l.hasAttribute('data-leaving')).length).toBeLessThanOrEqual(1);
+    expect(layers().filter((l) => !l.hasAttribute('data-leaving'))).toHaveLength(1);
+    expect(h2()).toHaveTextContent('e9');
+    expect(document.activeElement).toBe(h2());
+  });
+
+  it('reduced motion: no leaving layer on a push or a pop; a keyboard open focuses the h2', () => {
+    restore = stubReducedMotion(true);
+    const h = renderHost(<button type="button">outside</button>);
+    outsideFocused();
+    h.inspect(geoReq('keyboard'));
+    expect(document.activeElement).toBe(h2());
+    fireEvent.click(entry('e7'));
+    expect(layers()).toHaveLength(1);
+    expect(document.activeElement).toBe(h2());
+    fireEvent.click(back());
+    expect(layers()).toHaveLength(1);
+    expect(h2()).toHaveTextContent('other (12)');
+    expect(document.activeElement).toBe(h2());
+  });
+
+  it('point P, then Q (key 1:0:root): as today; each announced, P again later too', () => {
+    restore = stubReducedMotion(false);
+    vi.useFakeTimers();
+    const h = renderHost(<button type="button">outside</button>);
+    const outside = outsideFocused();
+    h.inspect(titled('P'));
+    expect(document.activeElement).toBe(outside);
+    expect(live()).toBe(`Inspector: P, ${formatValue(2.84, S)} at 13:41:20`);
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    h.inspect(titled('Q', { source: 'keyboard' }));
+    expect(layers()).toHaveLength(2);
+    expect(document.activeElement).toBe(h2());
+    expect(live()).toBe(`Inspector: Q, ${formatValue(2.84, S)} at 13:41:20`);
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    h.inspect(titled('P'));
+    expect(live()).toBe(`Inspector: P, ${formatValue(2.84, S)} at 13:41:20`);
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+    // The same text again: cleared, then rewritten on the next frame.
+    h.inspect(titled('P'));
+    expect(live()).toBe('');
+    act(() => {
+      vi.advanceTimersByTime(20);
+    });
+    expect(live()).toBe(`Inspector: P, ${formatValue(2.84, S)} at 13:41:20`);
+  });
+
+  it('reduced motion: P → Q replaces the layer at once', () => {
+    restore = stubReducedMotion(true);
+    const h = renderHost();
+    h.inspect(titled('P'));
+    h.inspect(titled('Q'));
+    expect(layers()).toHaveLength(1);
+    expect(layers()[0]?.textContent).toContain('Q');
   });
 });

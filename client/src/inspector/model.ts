@@ -327,7 +327,9 @@ function actions(env: InspectorEnv): InspectorAction[] {
   ];
 }
 
-export function inspectorModel(req: InspectRequest, env: InspectorEnv): InspectorModel {
+export function inspectorModel(req: InspectRequest, env: InspectorEnv, depth = 0): InspectorModel {
+  // eslint-disable-next-line @typescript-eslint/no-meaningless-void-operator -- a stub until Part 4 lands
+  void depth;
   const q = req.origin.query;
   const query =
     q === null ? null : ({ lang: q.lang === 'promql' ? 'PromQL' : 'LogQL', text: q.text } as const);
