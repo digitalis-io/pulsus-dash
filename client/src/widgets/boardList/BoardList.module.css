@@ -1,0 +1,170 @@
+/*
+ * A Board list (plan #216 Part 2a §4.3; T24-027): the field, caption, notice, the list area, the
+ * meter. Tokens only: 36 px rows with hairlines, hover surface-2, a 2 px focus ring, 20 px chips,
+ * no state colour; rows new on a refresh fade in (150 ms), cut under reduced motion.
+ */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  font-size: var(--font-size-sm);
+}
+
+.invalid {
+  width: 100%;
+  height: 100%;
+}
+
+.caption,
+.notice p,
+.stateText {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.notice {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.area {
+  display: flex;
+  position: relative;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 0;
+  overflow: auto;
+}
+
+.tableArea {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.rows {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  border-bottom: var(--border-hairline) solid var(--hairline);
+}
+
+.row[data-new] {
+  animation: fade-in var(--motion-fast) var(--motion-easing-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row[data-new] {
+    animation: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.link {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: var(--size-list-row);
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius);
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.link:hover {
+  background: var(--surface-2);
+}
+
+.link:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: calc(var(--size-focus-ring) * -1);
+}
+
+.title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.uid {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.meta {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  margin-left: auto;
+  overflow: hidden;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: var(--size-list-chip);
+  padding: 0 var(--space-2);
+  border: var(--border-hairline) solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.state {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.state:focus-visible {
+  outline: var(--size-focus-ring) solid var(--focus);
+}
+
+.meter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-width: 0;
+}
+
+.meterText {
+  overflow: hidden;
+  margin: 0;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.srOnly {
+  position: absolute;
+  width: var(--border-hairline);
+  height: var(--border-hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

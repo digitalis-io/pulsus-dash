@@ -92,6 +92,8 @@ describe('unit:list-keyboard', () => {
       void h.queryClient.invalidateQueries({ queryKey: ['starred'] });
     });
     await tick();
+    // After an empty answer the next one starts again at the limit.
+    expect(rowLinks('p-1')).toHaveLength(10);
     act(() => {
       rowLinks('p-1')[0]?.focus();
     });
