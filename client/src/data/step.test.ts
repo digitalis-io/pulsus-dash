@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import logCasesRaw from '../../../wire/fixtures/json/log-step.json?raw';
 import casesRaw from '../../../wire/fixtures/json/promql-step.json?raw';
-import { rateWindowMs } from '../api/stub/plan';
 import { LOG_LADDER_MS, PROM_LADDER_MS, logGrid, promGrid, type Grid } from './step';
 
 interface StepCase {
@@ -48,19 +47,5 @@ describe('unit:promql-step (TS half)', () => {
 
   it('matches every case of log-step.json (unit:log-step)', () => {
     check(logCasesRaw, 14, logGrid);
-  });
-
-  // #303 acceptance, as Go's TestStepAndWindow303.
-  it.each([
-    ['6 h at 560 px', 21_600_000, 560, 30_000, 60_000],
-    ['15 min at 1 200 px', 900_000, 1200, 15_000, 60_000],
-    ['1 h at 1 200 px', 3_600_000, 1200, 15_000, 60_000],
-    ['24 h at 1 000 px', 86_400_000, 1000, 60_000, 75_000],
-    ['30 d at 560 px', 2_592_000_000, 560, 3_600_000, 3_615_000],
-  ])('%s: step and rate window', (_, span, w, step, window) => {
-    const to = 1_767_225_600_000;
-    const g = promGrid(to - span, to, w);
-    expect(g?.stepMs).toBe(step);
-    expect(rateWindowMs(step)).toBe(window);
   });
 });
