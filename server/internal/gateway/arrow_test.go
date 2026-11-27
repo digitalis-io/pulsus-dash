@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/digitalis-io/pulsus-dash/server/internal/arrowwire"
 	"github.com/digitalis-io/pulsus-dash/server/internal/arrowwire/wiretest"
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
@@ -590,6 +592,39 @@ func BenchmarkRangeBody(b *testing.B) {
 				n = rec.Body.Len()
 			}
 			b.ReportMetric(float64(n), "body_bytes")
+		})
+	}
+}
+
+// ENT-006, T06-002 (review r1 #1): a restricted, an empty and an unset data scope are denied
+// with DSF asked for exactly as with JSON (the same status and envelope, Vary: Accept), and no
+// upstream query is sent.
+func TestRangeDSFScopeDenied(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		scope core.DataScope
+	}{
+		{"restricted", core.ScopedTenant(core.ScopeClause{Attrs: map[string][]string{"env": {"staging"}}})},
+		{"empty", core.ScopedTenant(core.ScopeClause{Bindings: []uuid.UUID{}})},
+		{"unset", core.DataScope{}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			prev := dataScope
+			dataScope = func() core.DataScope { return c.scope }
+			defer func() { dataScope = prev }()
+			fake, url := fakeharness.Start(t)
+			h, _ := queryGateway(t, url, pulsusdb.Options{})
+			j, d := serve(h, counterReq, ""), serve(h, counterReq, dsfAccept)
+			wantError(t, c.name+" JSON", j, 403, "scope_denied", "-", "")
+			if d.Code != j.Code || !bytes.Equal(d.Body.Bytes(), j.Body.Bytes()) || d.Header().Get("Content-Type") != "application/json" ||
+				d.Header().Get("Vary") != "Accept" || j.Header().Get("Vary") != "Accept" {
+				t.Errorf("DSF %d %q %s, JSON %d %s", d.Code, d.Header().Get("Content-Type"), d.Body.String(), j.Code, j.Body.String())
+			}
+			for _, r := range fake.Requests() {
+				if r.Path == "/api/v1/query_range" || r.Path == "/api/v1/query" {
+					t.Errorf("an upstream query was sent: %s %s", r.Method, r.Path)
+				}
+			}
 		})
 	}
 }

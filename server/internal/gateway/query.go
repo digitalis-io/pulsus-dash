@@ -50,12 +50,16 @@ func (q *dataRoutes) now() time.Time {
 	return time.Now()
 }
 
+// dataScope is the data scope of every data call: the full tenant until T10 (M-UI6). It is a
+// test seam (arrow_test.go: a restricted or empty scope is denied the same for JSON and DSF);
+// production code never changes it.
+var dataScope = core.FullTenantScope
+
 // dataRequestCtxFrom is the RequestCtx of every data call: the request's (organisation, actor
-// and request ID) with the resolved tenant, the fixed local principal (D12) and the full-tenant
-// scope.
+// and request ID) with the resolved tenant, the fixed local principal (D12) and dataScope.
 func dataRequestCtxFrom(ctx context.Context, t core.TenantCtx) *core.RequestCtx {
 	rc := *rcFrom(ctx)
-	rc.Tenant, rc.Principal, rc.Scope, rc.Priority = t, core.LocalPrincipal, core.FullTenantScope(), core.PriorityInteractive
+	rc.Tenant, rc.Principal, rc.Scope, rc.Priority = t, core.LocalPrincipal, dataScope(), core.PriorityInteractive
 	if rc.RequestID == "" {
 		rc.RequestID, _ = ctx.Value(requestIDKey{}).(string)
 	}
