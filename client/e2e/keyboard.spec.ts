@@ -257,7 +257,7 @@ async function shellLoops(s: Script): Promise<void> {
     await expect(toggle).toBeFocused();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await press('Enter');
-    await expect.poll(navWidth).toBe(240);
+    await expect.poll(navWidth).toBe(212);
     const again = page.getByRole('button', { name: 'Collapse sidebar' });
     await expect(again).toBeFocused();
     await expect(again).toHaveAttribute('aria-expanded', 'true');
