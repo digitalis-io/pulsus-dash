@@ -1,17 +1,55 @@
-/* The segmented control (#282, VL-019 as amended): a field-filled track, 28 px, with 6 px corners
-   and an accent-filled thumb (4 px corners) on the selected item, 2 px in from the track's outer
-   edge (the 1 px edge and 1 px of padding), so 24 px items fit. */
+/* The segmented control (#282, VL-019 as amended): a quiet track, 28 px, with 6 px corners; one
+   raised thumb (4 px corners, a tiny shadow) slides under the selected item, 2 px in from the
+   track's outer edge, so 24 px items fit. The `toolbar` tone has no track of its own. */
 .group {
+  position: relative;
   display: inline-flex;
   gap: 0;
   min-height: var(--size-control);
-  padding: calc(var(--space-0-5) - var(--border-hairline));
-  border: var(--border-hairline) solid var(--border-control);
+  padding: var(--space-0-5);
   border-radius: var(--radius);
-  background: var(--field);
+  background: var(--segment-track);
+}
+
+.toolbar {
+  min-height: var(--size-target-min);
+  padding: 0;
+  background: transparent;
+}
+
+.thumb {
+  position: absolute;
+  top: var(--space-0-5);
+  bottom: var(--space-0-5);
+  left: 0;
+  width: calc(var(--thumb-w, 0) * var(--border-hairline));
+  border-radius: var(--radius-xs);
+  background: var(--segment-thumb);
+  box-shadow: var(--elevation-1);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(calc(var(--thumb-x, 0) * var(--border-hairline)))
+    scaleX(var(--thumb-from, 1));
+  transform-origin: left center;
+  transition: transform var(--motion-slide) var(--motion-easing-spring);
+  will-change: transform;
+}
+
+.thumb[data-flip] {
+  transition: none;
+}
+
+.toolbar .thumb {
+  top: 0;
+  bottom: 0;
+}
+
+.group[data-thumb] .thumb {
+  opacity: 1;
 }
 
 .item {
+  position: relative;
   min-height: var(--size-target-min);
   padding: 0 var(--space-3);
   border: 0;
@@ -22,19 +60,30 @@
   font-size: var(--font-size-sm);
   cursor: default;
   transition:
-    background-color var(--motion-quick) var(--motion-easing-out),
-    color var(--motion-quick) var(--motion-easing-out);
+    background-color var(--motion-hover) var(--motion-easing-out),
+    color var(--motion-hover) var(--motion-easing-out);
+}
+
+.toolbar .item {
+  padding: 0 var(--space-2);
 }
 
 .item[data-hovered] {
+  background: var(--row-hover);
   color: var(--text);
 }
 
 .item[data-selected] {
-  background: var(--accent-fill);
+  background: var(--segment-thumb);
   box-shadow: var(--elevation-1);
-  color: var(--text-on-accent);
+  color: var(--text);
   font-weight: var(--font-weight-medium);
+}
+
+/* Placed, the thumb draws the selected fill. */
+.group[data-thumb] .item[data-selected] {
+  background: transparent;
+  box-shadow: none;
 }
 
 .item[data-focus-visible] {
@@ -43,7 +92,9 @@
 }
 
 @media (forced-colors: active) {
-  .item[data-selected] {
+  .thumb,
+  .item[data-selected],
+  .group[data-thumb] .item[data-selected] {
     forced-color-adjust: none;
     background: Highlight;
     color: HighlightText;

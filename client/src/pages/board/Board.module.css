@@ -109,6 +109,27 @@
   overflow: hidden;
 }
 
+/* The second row is quiet: borderless chips on the faint track, the add action as text. */
+.filterBar .chip {
+  background: var(--segment-track);
+  font-weight: var(--font-weight-regular);
+  transition: background-color var(--motion-hover) var(--motion-easing-out);
+}
+
+.filterBar .chip[data-hovered],
+.filterBar .chip[data-pressed] {
+  background: var(--row-hover);
+}
+
+.filterBar .addFilter {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.filterBar .addFilter[data-hovered] {
+  color: var(--text);
+}
+
 .chipKey {
   color: var(--text-muted);
 }

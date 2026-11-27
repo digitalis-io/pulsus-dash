@@ -60,6 +60,7 @@ export function TimeRangePicker() {
       <span className={cx(styles['presets'])}>
         <SegmentedControl
           label={t('time.presets')}
+          tone="toolbar"
           options={options}
           value={presetOf(quickRangeOf(search))}
           onChange={(q) => {

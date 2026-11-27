@@ -1,3 +1,8 @@
+/* The sidebar (#282, VL-017): a material a shade off the canvas with a faint vertical gradient,
+   separated from the content by light (a soft 6 % inner edge), not a line. Rows are inset 8 px,
+   28 px tall with 6 px corners; one shared indicator slides to the current row. Icons sit 20 px
+   from the edge in both states (a row inset 8 px, the icon 12 px into it), centred in the 56 px
+   rail, so nothing moves sideways as the sidebar collapses. */
 .sidebar {
   position: sticky;
   top: 0;
@@ -6,10 +11,8 @@
   height: 100vh;
   min-width: 0;
   overflow: hidden;
-  /* The source list (#282, VL-017): an opaque sidebar surface, never a material. */
-  background: var(--sidebar);
-  /* The right hairline is drawn inside the 240 px, so the column and the nav are the same width. */
-  box-shadow: inset calc(var(--border-hairline) * -1) 0 0 var(--hairline);
+  background: linear-gradient(180deg, var(--sidebar-top), var(--sidebar-bottom));
+  box-shadow: inset calc(var(--border-hairline) * -1) 0 0 var(--sidebar-edge);
 }
 
 .top {
@@ -18,19 +21,21 @@
   align-items: center;
   gap: var(--space-2);
   height: var(--size-header);
-  padding: 0 var(--space-3);
-  border-bottom: var(--border-hairline) solid var(--hairline);
+  padding: 0 var(--space-2) 0 var(--space-4);
 }
 
+/* The app glyph in a small rounded square. */
 .mark {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
-  width: var(--size-control);
-  height: var(--size-control);
+  width: var(--size-target-min);
+  height: var(--size-target-min);
   border-radius: var(--radius);
-  color: var(--accent);
+  background: var(--accent-fill);
+  box-shadow: var(--elevation-1);
+  color: var(--text-on-accent);
 }
 
 .mark:focus-visible,
@@ -40,31 +45,64 @@
 }
 
 .markIcon {
-  width: var(--font-size-xl);
-  height: var(--font-size-xl);
+  width: var(--size-icon);
+  height: var(--size-icon);
 }
 
 .rail {
   display: flex;
-  justify-content: center;
-  padding: var(--space-2) 0 0;
+  padding: 0 0 var(--space-1) var(--space-3);
 }
 
 .nav {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
 }
 
+/* The shared current-row indicator: placed by the sidebar with a transform; it slides between rows
+   only once placed (`live`). */
+.indicator {
+  position: absolute;
+  top: 0;
+  right: var(--space-2);
+  left: var(--space-2);
+  height: var(--size-control);
+  border-radius: var(--radius);
+  background: var(--row-selected);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(var(--indicator-y, 0) * var(--border-hairline)));
+  will-change: transform;
+}
+
+.nav[data-indicator] .indicator {
+  opacity: 1;
+}
+
+.nav[data-indicator='live'] .indicator {
+  transition:
+    transform var(--motion-slide) var(--motion-easing-spring),
+    background-color var(--motion-hover) var(--motion-easing-out);
+}
+
+/* The solid accent only while the sidebar has keyboard focus. */
+.sidebar:has(:focus-visible) .indicator {
+  background: var(--accent-fill);
+}
+
 .groups {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  padding: var(--space-3) 0;
+  padding: var(--space-1) 0 var(--space-3);
   overflow-y: auto;
 }
 
 .list {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -77,50 +115,74 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: var(--size-control);
-  padding: 0 var(--space-2);
+  height: var(--size-control);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  overflow: hidden;
   border-radius: var(--radius);
   color: var(--text);
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-regular);
   text-decoration: none;
-  transition: background-color var(--motion-quick) var(--motion-easing-out);
+  transition:
+    background-color var(--motion-hover) var(--motion-easing-out),
+    color var(--motion-slide) var(--motion-easing-out);
 }
 
-/* Row icons (and the starred mark) in the accent; the current row's in text-on-accent. */
-.link > [aria-hidden='true'] {
+.link > [aria-hidden='true'],
+.star {
+  flex: none;
+  width: var(--size-icon);
+  height: var(--size-icon);
   color: var(--accent);
+  opacity: var(--opacity-icon);
+  transition: color var(--motion-slide) var(--motion-easing-out);
 }
 
 .link:hover {
-  background: var(--surface-hover);
+  background: var(--row-hover);
 }
 
-/* The current row (#282, VL-017): an accent fill, expanded and collapsed alike; no inset bar. */
-.link[aria-current='page'] {
-  background: var(--accent-fill);
-  color: var(--text-on-accent);
-  font-weight: var(--font-weight-semibold);
+/* The current row: the indicator draws its fill; until it is placed, the row draws its own. */
+.link[aria-current='page'],
+.link[aria-current='page']:hover {
+  background: transparent;
+  color: var(--text-on-row-selected);
+}
+
+.nav:not([data-indicator]) .link[aria-current='page'] {
+  background: var(--row-selected);
 }
 
 .link[aria-current='page'] > [aria-hidden='true'] {
+  color: currentcolor;
+  opacity: 1;
+}
+
+.sidebar:has(:focus-visible) .link[aria-current='page'] {
   color: var(--text-on-accent);
 }
 
+.sidebar:has(:focus-visible) .nav:not([data-indicator]) .link[aria-current='page'] {
+  background: var(--accent-fill);
+}
+
 @media (forced-colors: active) {
-  .link[aria-current='page'] {
+  .indicator,
+  .nav:not([data-indicator]) .link[aria-current='page'] {
     forced-color-adjust: none;
     background: Highlight;
-    color: HighlightText;
   }
 
+  .link[aria-current='page'],
   .link[aria-current='page'] > [aria-hidden='true'] {
+    forced-color-adjust: none;
     color: HighlightText;
   }
 }
 
+/* Board rows without a mark: the title lines up with the labels of the rows with icons. */
 .nested {
-  padding-left: var(--space-6);
+  padding-left: calc(var(--space-3) + var(--size-icon) + var(--space-2));
 }
 
 .label {
@@ -131,60 +193,124 @@
 }
 
 .star {
-  flex: none;
-  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-sm);
+  line-height: 1;
 }
 
 .heading {
   margin: var(--space-4) var(--space-4) var(--space-1);
+  overflow: hidden;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
 }
 
 .empty {
   margin: 0;
   padding: var(--space-1) var(--space-4);
+  overflow: hidden;
   color: var(--text-muted);
   font-size: var(--font-size-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .footerLinks {
   padding-top: var(--space-2);
-  padding-bottom: var(--space-1);
-  border-top: var(--border-hairline) solid var(--hairline);
 }
 
 .footer {
   flex: none;
-  padding: var(--space-1) var(--space-2) var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-3);
 }
 
+/* The data-source status: a quiet row, a state dot and muted text. */
 .dataSource {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--size-control);
   margin: 0;
-  padding: var(--space-1) var(--space-2);
+  padding: 0 0 0 var(--space-3);
   overflow: hidden;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   white-space: nowrap;
+}
+
+.dotBox {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-icon);
+}
+
+.dot {
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: 50%;
+  background: var(--state-colour);
+}
+
+.dataSourceText {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .toggle {
   width: 100%;
+  height: var(--size-control);
+  min-height: var(--size-control);
   justify-content: flex-start;
-  padding: 0 var(--space-2);
+  gap: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  overflow: hidden;
   color: var(--text-muted);
   font-weight: var(--font-weight-regular);
+  transition: background-color var(--motion-hover) var(--motion-easing-out);
 }
 
-.sidebar[data-state='collapsed'] .top {
-  justify-content: center;
-  padding: 0;
+.toggle > [aria-hidden='true'] {
+  flex: none;
 }
 
-.sidebar[data-state='collapsed'] .link,
-.sidebar[data-state='collapsed'] .toggle {
-  justify-content: center;
-  padding: 0;
+/* Collapsing and expanding: the column's width animates (AppShell); the labels fade in as it
+   widens and fade out (`data-leaving`) as it narrows. */
+@media (prefers-reduced-motion: no-preference) {
+  .label,
+  .heading,
+  .empty,
+  .dataSourceText,
+  .top > :not(.mark) {
+    animation: label-in var(--motion-sidebar) var(--motion-easing-out);
+  }
+}
+
+.sidebar[data-leaving] .label,
+.sidebar[data-leaving] .heading,
+.sidebar[data-leaving] .empty,
+.sidebar[data-leaving] .dataSource,
+.sidebar[data-leaving] .top > :not(.mark) {
+  opacity: 0;
+  transition: opacity var(--motion-sidebar) var(--motion-easing-out);
+}
+
+@keyframes label-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.footer .toggle[data-hovered] {
+  background: var(--row-hover);
 }
