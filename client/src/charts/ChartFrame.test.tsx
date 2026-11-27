@@ -1028,7 +1028,8 @@ describe('stale spans and reduced motion (#304 §4.3, Part B §4.5)', () => {
   });
 
   it('reduced motion', async () => {
-    const reduce = vi.spyOn(window, 'matchMedia').mockImplementation(
+    vi.stubGlobal(
+      'matchMedia',
       (q: string) =>
         ({
           matches: q.includes('prefers-reduced-motion: reduce'),
@@ -1049,7 +1050,7 @@ describe('stale spans and reduced motion (#304 §4.3, Part B §4.5)', () => {
       expect(d?.kind).toBe('series');
       expect(d !== undefined && 'transition' in d ? d.transition : undefined).toBeUndefined();
     } finally {
-      reduce.mockRestore();
+      vi.unstubAllGlobals();
     }
   });
 });
