@@ -42,13 +42,16 @@ type Match struct {
 
 // Response is what the fake answers. Body is served byte for byte as it appears in the file;
 // BodyText (exclusive with Body) is served byte for byte as the string's value, for text bodies.
+// HangAfterBody writes and flushes the body, then holds the response open until the request is
+// cancelled: a stream that stalls part-way (plan #68 D2, a decode cancelled after it began).
 type Response struct {
-	Status   int               `json:"status"`
-	Headers  map[string]string `json:"headers"`
-	Body     json.RawMessage   `json:"body"`
-	DelayMs  int               `json:"delay_ms"`
-	Hang     bool              `json:"hang"`
-	BodyText *string           `json:"body_text,omitempty"`
+	Status        int               `json:"status"`
+	Headers       map[string]string `json:"headers"`
+	Body          json.RawMessage   `json:"body"`
+	DelayMs       int               `json:"delay_ms"`
+	Hang          bool              `json:"hang"`
+	HangAfterBody bool              `json:"hang_after_body,omitempty"`
+	BodyText      *string           `json:"body_text,omitempty"`
 }
 
 //go:embed testdata/*.json

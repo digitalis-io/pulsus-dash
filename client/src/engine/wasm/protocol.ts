@@ -39,6 +39,8 @@ export interface BootMessage {
   readonly mainTimeOrigin: number;
   /** Pool threads (MT only). */
   readonly pool?: number;
+  /** Plan #68 D2: the boot epoch (`BOOT_EPOCH`, 1 at boot, +1 per restart): chunk references carry it. */
+  readonly epoch?: number;
   /** Fault builds only: the fault's name (`engine/faults.ts`). */
   readonly fault?: string;
   /** The probe build only: the input ring's counters start here (`engine_probe_ring_start`). */
@@ -71,6 +73,25 @@ export type MainToRender =
   | { readonly t: 'input' }
   /** ST (plan #68 C2d2 §3.2): records `[0, len)` of `buf` (transferred), in the ring's format. */
   | { readonly t: 'input-batch'; readonly buf: ArrayBuffer; readonly len: number }
+  /**
+   * Plan #68 D2 §3.1 (MT): a DSF decode. `req` is page-unique; each fetch read goes as its exact
+   * bytes (transferred), in order; `decode-end` at the end of the body, `decode-abort` on an abort.
+   */
+  | { readonly t: 'decode-begin'; readonly req: number }
+  | { readonly t: 'decode-chunk'; readonly req: number; readonly buf: ArrayBuffer }
+  | { readonly t: 'decode-end'; readonly req: number }
+  | { readonly t: 'decode-abort'; readonly req: number }
+  /** `setData` by reference: the worker answers `chunk-missing` for another epoch or an evicted id. */
+  | {
+      readonly t: 'data-chunk';
+      readonly id: number;
+      readonly chunk: number;
+      readonly epoch: number;
+    }
+  /** The registered series array was collected; another epoch's release is ignored. */
+  | { readonly t: 'chunk-release'; readonly chunk: number; readonly epoch: number }
+  /** The probe: the chunk table's count and bytes. */
+  | { readonly t: 'chunk-stats' }
   /** The probe build: post the decoded input records back. */
   | { readonly t: 'probe-input' }
   /** The probe build (plan #68 C2b §3.4): hold the frame after its presentation of `seq`. */
@@ -110,6 +131,32 @@ export type RenderToMain =
       readonly bad: number;
     }
   | { readonly t: 'spawn-pool'; readonly ptr: number }
+  /** Plan #68 D2 §3.1: bytes the pool has consumed of decode `req`. */
+  | { readonly t: 'decode-credit'; readonly req: number; readonly bytes: number }
+  /** A decoded range: the chunk's table id and epoch, the head, `ts` and `vs` (transferred). */
+  | {
+      readonly t: 'decoded';
+      readonly req: number;
+      readonly chunk: number;
+      readonly epoch: number;
+      readonly head: DecodedHeadWire;
+      readonly ts: Float64Array;
+      readonly vs: Float64Array[];
+    }
+  | {
+      readonly t: 'decode-failed';
+      readonly req: number;
+      readonly kind: DecodeFailKind;
+      readonly message: string;
+      /** `error`: the `error/1` row, the coverage so far and `dash.planned`. */
+      readonly row?: unknown;
+      readonly coverage?: unknown;
+      readonly planned?: string | null;
+    }
+  /** A `data-chunk` the worker could not resolve: the frame posts its values. */
+  | { readonly t: 'chunk-missing'; readonly id: number; readonly chunk: number }
+  /** `chunk-stats`' answer: `{count, bytes}` JSON. */
+  | { readonly t: 'chunk-stats'; readonly json: string }
   | { readonly t: 'events'; readonly json: string }
   /** The probe build: `engine_probe_input()`, a JSON array of `InputRec`. */
   | { readonly t: 'probe-input'; readonly json: string }
@@ -122,6 +169,19 @@ export type RenderToMain =
     }
   /** The probe build: `probe-chunk`'s answer, `{series, points, bytes}` JSON or `null`. */
   | { readonly t: 'probe-chunk'; readonly id: number; readonly json: string };
+
+/** Why a decode failed (plan #68 D2 §3.1). */
+export type DecodeFailKind = 'error' | 'limit' | 'invalid' | 'ids' | 'busy';
+
+/** The `decoded` head as the worker posts it (the API layer's `DecodedHead`). */
+export interface DecodedHeadWire {
+  readonly startMs: number;
+  readonly endMs: number;
+  readonly stepMs: number;
+  readonly planned: string | null;
+  readonly coverage: unknown;
+  readonly series: readonly { readonly key: string; readonly labels: Record<string, string> }[];
+}
 
 export interface PoolMessage {
   readonly t: 'pool';

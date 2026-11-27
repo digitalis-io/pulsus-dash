@@ -51,6 +51,12 @@ function setup() {
   let id = 0;
   const backend: Backend = {
     tier: 't2',
+    mode: 'mt',
+    openDecode() {
+      throw new Error('no decodes in this test');
+    },
+    registerChunk: () => undefined,
+    releaseChunk: () => undefined,
     createFrame(canvas: OffscreenCanvas, init: FrameInit, onFail: (r: string) => void) {
       const f = new WasmFrame({ postMessage: () => undefined }, ++id, canvas, init, onFail);
       frames.push(f);
@@ -71,6 +77,7 @@ function setup() {
     synth: () => Promise.resolve({ ok: false, bytes: 0, reason: 'alloc' }),
     chunk: () => Promise.resolve(null),
     trap: () => undefined,
+    chunks: () => Promise.resolve(null),
   };
   const probe = createProbe({ backend: () => Promise.resolve(backend), host: () => host });
   return { ring, view, frames, probe };

@@ -387,7 +387,11 @@ fn e_semantic() {
     ))));
     assert!(is_schema(&schema(&kv("dash.grid.step_ms", "0"))));
     assert!(is_schema(&schema(&kv("dash.grid.len", "0"))));
-    assert!(is_schema(&schema(&kv("dash.grid.len", "4194305"))));
+    // Past `max_grid_len`: a B3 limit (plan #68 D2), not a schema error.
+    assert_eq!(
+        schema(&kv("dash.grid.len", "4194305")),
+        Some(PartError::Limit("grid len"))
+    );
     assert!(is_schema(&schema(&kv(
         "dash.grid.requested_start_ms",
         "1767225605000"

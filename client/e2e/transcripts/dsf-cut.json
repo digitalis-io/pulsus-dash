@@ -1,0 +1,10 @@
+{
+  "name": "dsf-cut",
+  "provenance": {"synthetic": "plan #68 D2 E5: a matrix cut after its first series (the BFF fails mid-stream), 30 s steps from 2026-11-19 12:00"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "dsf_cut"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-dsf-cut-1"},
+    "body_text": "{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[{\"metric\":{\"__name__\":\"dsf_cut\",\"s\":\"a\"},\"values\":[[1795089600,\"1\"],[1795089630,\"2\"],[1795089660,\"3\"]]},{\"metric\":{\"__name__\":\"dsf_cut\",\"s\":\"b\"},\"values\":[[1795089600,"
+  }
+}

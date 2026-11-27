@@ -1,0 +1,1 @@
+{"status":400,"retry_after":null,"body":{"error":{"code":"virtual_unsupported","fields":[{"message_key":"query.reserved","pointer":"/query"}],"hint":{"reserved":"ALERTS"},"message":"ALERTS is a reserved Pulsus Dash name and is not supported yet (it may appear only inside a string)"}}}

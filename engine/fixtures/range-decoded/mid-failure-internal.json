@@ -1,0 +1,26 @@
+{
+  "coverage": {
+    "data_end": 1795093200000,
+    "infos": [],
+    "read_cache": null,
+    "read_cache_through": null,
+    "truncated": false,
+    "truncation_reason": null,
+    "upstream_query_ids": [
+      "fake-route-1"
+    ],
+    "warnings": []
+  },
+  "kind": "error",
+  "message": "internal error",
+  "planned": "{\"query\":\"rate(x_total{job=\\\"a\\\"}[4m])\",\"expanded\":\"x_total{job=\\\"a\\\"}\",\"bytes\":26,\"value_type\":\"vector\",\"rate_candidate\":true,\"rate_applied\":true,\"histogram\":false,\"step_ms\":60000,\"rate_window_ms\":240000}",
+  "row": {
+    "code": 8,
+    "http_status": 500,
+    "message": "internal error",
+    "position": null,
+    "retry_after_ms": null,
+    "suggestion": null
+  },
+  "t": "decode-failed"
+}

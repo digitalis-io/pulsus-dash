@@ -15,6 +15,8 @@ export const ENGINE_ONLY_SPECS = [
   'engine-hover.spec.ts',
   'engine-layer.spec.ts',
   'engine-selection.spec.ts',
+  // Plan #68 D2: range data as DSF to the MT engine (lavapipe; E6 on lavapipe-st).
+  'engine-dsf.spec.ts',
   // The frame benches (plan #68 C2d1): the engine config's `bench` project only.
   'bench-frame-gallery.spec.ts',
   'bench-frame-line-1e8.spec.ts',

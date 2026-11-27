@@ -1,0 +1,15 @@
+{
+  "coverage": null,
+  "kind": "error",
+  "message": "writer refused",
+  "planned": null,
+  "row": {
+    "code": 8,
+    "http_status": 500,
+    "message": "writer refused",
+    "position": null,
+    "retry_after_ms": null,
+    "suggestion": null
+  },
+  "t": "decode-failed"
+}

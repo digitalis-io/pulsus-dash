@@ -41,6 +41,15 @@ const deps: RouterDeps = {
 };
 const router = createAppRouter(deps, { kind: 'browser' });
 
+// Fault builds with `?probe=1` (plan #68 D2 §5): the e2e suite refetches and clears the queries
+// through `__dashProbeQueries` (a release build has neither this block nor the global).
+if (
+  import.meta.env.VITE_ENGINE_FAULTS === '1' &&
+  new URLSearchParams(location.search).get('probe') === '1'
+) {
+  (globalThis as { __dashProbeQueries?: unknown }).__dashProbeQueries = deps.queryClient;
+}
+
 const root = document.getElementById('root');
 if (root === null) throw new Error('index.html has no #root element');
 createRoot(root).render(

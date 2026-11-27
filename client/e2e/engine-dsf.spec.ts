@@ -1,0 +1,508 @@
+/**
+ * `e2e:engine-dsf` (plan #68 D2 §5, E1–E6): range data reaches the MT engine as DSF, decoded on
+ * the pool, and the line frame takes the chunk by reference. Project `lavapipe` (WebGL2 on the
+ * pinned Mesa) against the http BFF over the PulsusDB fake (port 4174, as the engine leg of
+ * `e2e:selection-sources`), on the fault build with `?probe=1`; E6 on `lavapipe-st`.
+ *
+ * A board's first query can run before the engine boots and so goes as JSON (R3); each case
+ * refetches once the engine is up (`__dashProbeQueries.invalidateQueries()`), which asks for DSF.
+ */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { colour } from '../src/styles/tokens.ts';
+import { HTTP_BFF } from './bff.ts';
+import { createBoard, deleteBoard, type PanelInput } from './boardApi.ts';
+import { compareImages, decodePng, engineModeOf } from './engine.ts';
+import { fakeRequests } from './fake.ts';
+import { boardUrl, panel, S_FROM, S_TO } from './inspectorBoards.ts';
+
+const RANGE = '/api/dash/v1/query/promql/range';
+const DSF = 'application/vnd.pulsus.dash-stream';
+const ENGINE = '&engine=wasm&mode=t2&probe=1';
+/** `max_payload` (`wire/schemas/limits.json`). */
+const MAX_PAYLOAD = 64 << 20;
+
+/** The worker's chunk table and its decodes in flight (`__dashProbe.chunks()`). */
+interface ChunkStats {
+  count: number;
+  bytes: number;
+  unheld: number;
+  inflight: number;
+}
+
+interface Decodes {
+  begun: number;
+  done: number;
+  failed: number;
+  retried: number;
+  aborted: number;
+  credited: number;
+  byRef: number;
+}
+
+declare global {
+  interface Window {
+    __dashProbe?: {
+      decodes(): Decodes;
+      chunks(): Promise<ChunkStats | null>;
+      decoder(on: boolean): void;
+    };
+    __dashProbeQueries?: {
+      invalidateQueries(f?: { predicate: (q: { queryKey: unknown }) => boolean }): Promise<void>;
+      cancelQueries(): Promise<void>;
+      clear(): void;
+    };
+    __bodyReads: string[];
+  }
+}
+
+const LINE: PanelInput[] = [
+  { id: 'a', title: 'A', text: 'inspector_two', grid: [0, 0, 12, 8], vis: { kind: 'line' } },
+];
+
+test.use({ baseURL: HTTP_BFF, viewport: { width: 1440, height: 900 } });
+
+const only = (info: TestInfo, project: string): void => {
+  test.skip(info.project.name !== project, `${project} project only`);
+};
+
+/** `Response.json`/`text`/`arrayBuffer` calls on main, by URL (installed before the page). */
+async function spyBodyReads(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    window.__bodyReads = [];
+    for (const m of ['json', 'text', 'arrayBuffer', 'blob'] as const) {
+      const orig = Reflect.get(Response.prototype, m) as (this: Response) => Promise<unknown>;
+      Object.defineProperty(Response.prototype, m, {
+        value: function (this: Response) {
+          window.__bodyReads.push(`${m} ${this.url}`);
+          return orig.call(this);
+        },
+      });
+    }
+  });
+}
+
+async function withLineBoard(
+  page: Page,
+  request: Parameters<typeof createBoard>[0],
+  panels: PanelInput[],
+  extra: string,
+  body: (uid: string) => Promise<void>,
+): Promise<void> {
+  const uid = await createBoard(request, `engine dsf ${crypto.randomUUID()}`, panels);
+  try {
+    await page.goto(boardUrl(uid, S_FROM, S_TO, extra));
+    await page.locator('html[data-shell-ready="true"]').waitFor();
+    await body(uid);
+  } finally {
+    await deleteBoard(request, uid);
+  }
+}
+
+/** The panel's line frame on the engine, ready. */
+async function onEngine(page: Page, id: string): Promise<void> {
+  await expect(panel(page, id).locator('[data-frame-ready="true"]')).toHaveCount(1, {
+    timeout: 30_000,
+  });
+  await expect(panel(page, id).locator('canvas:not([data-retired])')).toHaveAttribute(
+    'data-engine',
+    'wasm-webgl2',
+  );
+}
+
+const decodes = (page: Page): Promise<Decodes> =>
+  page.evaluate(() => {
+    const p = window.__dashProbe;
+    if (p === undefined) throw new Error('no probe');
+    return p.decodes();
+  });
+
+const chunkStats = (page: Page): Promise<ChunkStats | null> =>
+  page.evaluate(() => window.__dashProbe?.chunks() ?? Promise.resolve(null));
+
+/** Refetches every query (the engine is up now: range queries ask for DSF). */
+async function refetch(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await window.__dashProbeQueries?.invalidateQueries();
+  });
+}
+
+/** The range requests from now on: their `Accept`, and their responses' `Content-Type`. */
+function rangeTraffic(page: Page): { accept: string[]; type: string[] } {
+  const t = { accept: [] as string[], type: [] as string[] };
+  page.on('request', (r) => {
+    if (new URL(r.url()).pathname === RANGE) t.accept.push(r.headers()['accept'] ?? '');
+  });
+  page.on('response', (r) => {
+    if (new URL(r.url()).pathname === RANGE) t.type.push(r.headers()['content-type'] ?? '');
+  });
+  return t;
+}
+
+/** The panel's legend as it reads: its rows' names and last values. */
+const legend = (page: Page, id: string): Promise<string> =>
+  panel(page, id).locator('[data-panel-legend]').innerText();
+
+/** The legend's rows (each has a Select toggle). */
+const legendRows = (page: Page, id: string) =>
+  panel(page, id).getByRole('button', { name: /^Select / });
+
+/** A device-scale screenshot of the panel's live canvas, under the test's output. */
+async function shot(page: Page, id: string, info: TestInfo, name: string): Promise<string> {
+  const c = panel(page, id).locator('canvas:not([data-retired])');
+  const path = info.outputPath(`${name}.png`);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, await c.screenshot({ scale: 'device' }));
+  return path;
+}
+
+/** Waits for the panel's frame to settle after a refetch (two drawn frames apart). */
+async function settled(page: Page): Promise<void> {
+  await page.evaluate(() => new Promise((r) => setTimeout(r, 750)));
+}
+
+test.describe('e2e:engine-dsf', () => {
+  test('e2e:engine-dsf E1 board line panel: DSF to the engine, by reference', async ({
+    page,
+    request,
+  }, info) => {
+    only(info, 'lavapipe');
+    test.setTimeout(120_000);
+    let reference = '';
+    await withLineBoard(page, request, LINE, '&engine=canvas2d', async () => {
+      await expect(panel(page, 'a').locator('[data-frame-ready="true"]')).toHaveCount(1);
+      await expect(legendRows(page, 'a')).toHaveCount(2);
+      reference = await legend(page, 'a');
+    });
+    expect(reference).toContain('inspector_two');
+    await spyBodyReads(page);
+    await withLineBoard(page, request, LINE, ENGINE, async () => {
+      await onEngine(page, 'a');
+      const traffic = rangeTraffic(page);
+      const before = await decodes(page);
+      await page.evaluate(() => (window.__bodyReads = []));
+      await refetch(page);
+      await expect.poll(async () => (await decodes(page)).done - before.done).toBe(1);
+      await settled(page);
+      expect(traffic.accept).toEqual([`${DSF};v=1, application/json;q=0.1`]);
+      expect(traffic.type).toEqual([`${DSF};v=1`]);
+      const d = await decodes(page);
+      expect(d.byRef - before.byRef).toBeGreaterThanOrEqual(1);
+      expect(d.retried - before.retried).toBe(0);
+      const reads = await page.evaluate(() => window.__bodyReads);
+      expect(reads.filter((r) => r.includes(RANGE))).toEqual([]);
+      expect(await legend(page, 'a')).toEqual(reference);
+    });
+  });
+
+  test('e2e:engine-dsf E2 pixels: the DSF chunk draws as the values do', async ({
+    page,
+    request,
+  }, info) => {
+    only(info, 'lavapipe');
+    test.setTimeout(120_000);
+    await withLineBoard(page, request, LINE, ENGINE, async () => {
+      await onEngine(page, 'a');
+      const before = await decodes(page);
+      await refetch(page);
+      await expect.poll(async () => (await decodes(page)).byRef - before.byRef).toBeGreaterThan(0);
+      await settled(page);
+      const dsf = await shot(page, 'a', info, 'dsf');
+      await page.evaluate(() => window.__dashProbe?.decoder(false));
+      await refetch(page);
+      await settled(page);
+      const after = await decodes(page);
+      const values = await shot(page, 'a', info, 'values');
+      expect(after.done).toBe((await decodes(page)).done);
+      const r = compareImages(dsf, values, { max: 0.001, tileMax: 0.05 });
+      expect(r.code, r.out).toBe(0);
+    });
+  });
+
+  test('e2e:engine-dsf E3 hover and selection on the DSF chunk', async ({
+    page,
+    request,
+  }, info) => {
+    only(info, 'lavapipe');
+    test.setTimeout(120_000);
+    await withLineBoard(page, request, LINE, ENGINE, async () => {
+      await onEngine(page, 'a');
+      const canvas = panel(page, 'a').locator('canvas:not([data-retired])');
+      const box = await canvas.boundingBox();
+      if (box === null) throw new Error('no canvas box');
+      const hoverRows = async (): Promise<string> => {
+        await page.mouse.move(box.x + 5, box.y + 5);
+        await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
+        const tip = panel(page, 'a').locator('[data-chart-tooltip]');
+        await expect(tip).toBeVisible();
+        return tip.innerText();
+      };
+      // The JSON run (the decoder disabled), then the DSF run.
+      await page.evaluate(() => window.__dashProbe?.decoder(false));
+      await refetch(page);
+      await settled(page);
+      const json = await hoverRows();
+      await page.evaluate(() => window.__dashProbe?.decoder(true));
+      const before = await decodes(page);
+      await refetch(page);
+      await expect.poll(async () => (await decodes(page)).byRef - before.byRef).toBeGreaterThan(0);
+      await settled(page);
+      expect(await hoverRows()).toBe(json);
+      await page.mouse.move(0, 0);
+      // C2c2's S1 check: the legend's Select highlights the key on the next frame.
+      await settled(page);
+      const none = await canvas.screenshot();
+      const toggle = panel(page, 'a').getByRole('button', {
+        name: /^Select inspector_two\{series="k1"\}/,
+      });
+      await toggle.click();
+      await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      const focus = [1, 3, 5].map((i) => parseInt(colour.dark.focus.slice(i, i + 2), 16));
+      await expect
+        .poll(
+          async () => {
+            const s = await canvas.screenshot();
+            if (s.equals(none)) return 'unchanged';
+            const img = decodePng(s);
+            let n = 0;
+            for (let i = 0; i < img.px.length; i += 4) {
+              const d = Math.max(
+                ...[0, 1, 2].map((c) => Math.abs((img.px[i + c] ?? 0) - (focus[c] ?? 0))),
+              );
+              if (d <= 8) n++;
+            }
+            return n >= 50 ? 'focused' : `focus pixels ${String(n)}`;
+          },
+          { timeout: 10_000 },
+        )
+        .toBe('focused');
+    });
+  });
+
+  test('e2e:engine-dsf E4 supersede and release', async ({ page, request }, info) => {
+    only(info, 'lavapipe');
+    test.setTimeout(150_000);
+    // A slow answer (800 ms), so each newer window supersedes the request in flight.
+    const SLOW: PanelInput[] = [
+      { id: 's', title: 'S', text: 'dsf_slow', grid: [0, 0, 12, 8], vis: { kind: 'line' } },
+    ];
+    await withLineBoard(page, request, SLOW, ENGINE, async () => {
+      await onEngine(page, 's');
+      const failedRange: string[] = [];
+      page.on('requestfailed', (r) => {
+        if (new URL(r.url()).pathname === RANGE) failedRange.push(r.failure()?.errorText ?? '');
+      });
+      const before = await decodes(page);
+      // Five refetches in a row, each superseding the one in flight (`cancelRefetch`): the fake
+      // answers one fixed grid and the BFF refuses off-grid samples, so the window stays.
+      await page.evaluate(async () => {
+        for (let k = 0; k < 5; k++) {
+          void window.__dashProbeQueries?.invalidateQueries();
+          await new Promise((r) => setTimeout(r, 150));
+        }
+      });
+      // Every decode begun ends (done, failed or aborted); the superseded requests were aborted.
+      await expect
+        .poll(
+          async () => {
+            const d = await decodes(page);
+            const ended = d.done + d.failed + d.aborted;
+            return d.done > before.done && ended === d.begun ? 'settled' : JSON.stringify(d);
+          },
+          { timeout: 30_000 },
+        )
+        .toBe('settled');
+      expect(failedRange.length).toBeGreaterThanOrEqual(1);
+      await expect
+        .poll(async () => (await fakeRequests(request, { state: 'cancelled' })).length)
+        .toBeGreaterThanOrEqual(1);
+      await expect(panel(page, 's').locator('[data-frame-ready="true"]')).toHaveCount(1);
+      // The query cache dropped and collected: the table keeps only the frames' own chunks.
+      const cdp = await page.context().newCDPSession(page);
+      await page.evaluate(() => window.__dashProbeQueries?.clear());
+      await expect
+        .poll(
+          async () => {
+            await cdp.send('HeapProfiler.collectGarbage');
+            await page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
+            return (await chunkStats(page))?.count ?? -1;
+          },
+          { timeout: 30_000 },
+        )
+        .toBeLessThanOrEqual(1);
+    });
+  });
+
+  test('e2e:engine-dsf E4b a decode cancelled after it began releases its request', async ({
+    page,
+    request,
+  }, info) => {
+    only(info, 'lavapipe');
+    test.setTimeout(120_000);
+    // The healthy panel boots the engine; the stalling one's stream sends the DSF header and its
+    // first batch, then stalls until cancelled (review r1 #3).
+    const STALL: PanelInput[] = [
+      ...LINE,
+      { id: 't', title: 'T', text: 'dsf_stall', grid: [0, 8, 12, 8], vis: { kind: 'line' } },
+    ];
+    await withLineBoard(page, request, STALL, ENGINE, async () => {
+      await onEngine(page, 'a');
+      // The stalling panel's first fetch may have gone before the boot (JSON) and never ends:
+      // cancel it, so the next fetch is a DSF one.
+      const cancel = () =>
+        page.evaluate(async () => {
+          await window.__dashProbeQueries?.cancelQueries();
+        });
+      await cancel();
+      await expect.poll(async () => (await chunkStats(page))?.inflight).toBe(0);
+      const table = await chunkStats(page);
+      const start = await decodes(page);
+      // Refetch the stalling panel alone (not awaited: its answer never ends). Its decode begins
+      // and stays in flight in the worker.
+      await page.evaluate(() => {
+        void window.__dashProbeQueries?.invalidateQueries({
+          predicate: (q) => JSON.stringify(q.queryKey).includes('dsf_stall'),
+        });
+      });
+      await expect
+        .poll(async () => (await chunkStats(page))?.inflight, { timeout: 30_000 })
+        .toBe(1);
+      // The pool has consumed its body bytes (the header and the first batch, credited), so the
+      // cancel lands mid-decode, not before the decoding began.
+      await expect
+        .poll(async () => (await decodes(page)).credited - start.credited, { timeout: 30_000 })
+        .toBeGreaterThan(0);
+      expect((await chunkStats(page))?.inflight).toBe(1);
+      const before = await decodes(page);
+      expect(before.begun - start.begun).toBe(1);
+      // Cancel it: its fetch aborts mid-decode, and the worker drops the request.
+      await cancel();
+      // The stalled decode is aborted (and any other still reading at the cancel).
+      await expect
+        .poll(async () => (await decodes(page)).aborted - before.aborted, { timeout: 30_000 })
+        .toBeGreaterThanOrEqual(1);
+      await expect
+        .poll(async () => {
+          const c = await chunkStats(page);
+          // No request left in flight, and the stalled one left no chunk (the healthy panel's
+          // refetch added at most one).
+          return c === null
+            ? 'none'
+            : `${String(c.inflight)} ${String(c.count <= (table?.count ?? 0) + 1)}`;
+        })
+        .toBe('0 true');
+      await expect
+        .poll(async () => (await fakeRequests(request, { state: 'cancelled' })).length)
+        .toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  test('e2e:engine-dsf E5b a refused planned object releases the decoded chunk', async ({
+    page,
+    request,
+  }, info) => {
+    only(info, 'lavapipe');
+    test.setTimeout(120_000);
+    // The DSF body's `dash.planned` gets a `value_type` decodePlanned refuses (same length).
+    await page.route(`**${RANGE}**`, async (route) => {
+      const accept = route.request().headers()['accept'] ?? '';
+      if (!accept.includes(DSF)) {
+        await route.continue();
+        return;
+      }
+      const res = await route.fetch();
+      const body = Buffer.from(await res.body());
+      const from = Buffer.from('"value_type":"vector"');
+      const at = body.indexOf(from);
+      if (at >= 0) Buffer.from('"value_type":"vectoX"').copy(body, at);
+      await route.fulfill({ response: res, body });
+    });
+    await withLineBoard(page, request, LINE, ENGINE, async () => {
+      await onEngine(page, 'a');
+      await expect.poll(async () => (await chunkStats(page))?.count).toBe(0);
+      const before = await decodes(page);
+      await refetch(page);
+      await expect.poll(async () => (await decodes(page)).done - before.done).toBe(1);
+      await expect(panel(page, 'a').locator('[role="alert"]').first()).toBeVisible();
+      // The chunk the worker decoded is released: nothing held, nothing left in the table.
+      await expect
+        .poll(async () => {
+          const c = await chunkStats(page);
+          return c === null
+            ? 'none'
+            : `${String(c.count)} ${String(c.unheld)} ${String(c.inflight)}`;
+        })
+        .toBe('0 0 0');
+    });
+  });
+
+  test('e2e:engine-dsf E5 failure and limit', async ({ page, request }, info) => {
+    only(info, 'lavapipe');
+    test.setTimeout(150_000);
+    // The healthy line panel boots the engine; the cut panel then fails after the header.
+    const CUT: PanelInput[] = [
+      ...LINE,
+      { id: 'c', title: 'C', text: 'dsf_cut', grid: [0, 8, 12, 8], vis: { kind: 'line' } },
+    ];
+    const errorText = (id: string) => panel(page, id).locator('[role="alert"]').first();
+    const errorState = (id: string) =>
+      panel(page, id)
+        .locator('[data-panel-state="error"]')
+        .or(panel(page, id).and(page.locator('[data-panel-state="error"]')));
+    // The JSON run's error state.
+    await withLineBoard(page, request, CUT, '&engine=canvas2d', async () => {
+      await expect(errorText('c')).toBeVisible({ timeout: 30_000 });
+      await expect(errorState('c')).toHaveCount(1);
+    });
+    await withLineBoard(page, request, CUT, ENGINE, async () => {
+      await onEngine(page, 'a');
+      const before = await decodes(page);
+      await refetch(page);
+      await expect.poll(async () => (await decodes(page)).failed - before.failed).toBe(1);
+      // The same error state as the JSON run (the in-band row's class, not a transport cut).
+      await expect(errorText('c')).toBeVisible();
+      await expect(errorState('c')).toHaveCount(1);
+      expect((await decodes(page)).retried - before.retried).toBe(0);
+    });
+    // Over a B3 limit: the DSF body is refused and retried once as JSON, which draws all series.
+    await page.route(`**${RANGE}**`, async (route) => {
+      const accept = route.request().headers()['accept'] ?? '';
+      if (!accept.includes(DSF)) {
+        await route.continue();
+        return;
+      }
+      const h = Buffer.alloc(64);
+      h[0] = 1;
+      h[1] = 1;
+      h.writeUInt32LE(1, 4);
+      h.writeUInt32LE(MAX_PAYLOAD + 8, 8);
+      await route.fulfill({ status: 200, headers: { 'Content-Type': `${DSF};v=1` }, body: h });
+    });
+    await withLineBoard(page, request, LINE, ENGINE, async () => {
+      await onEngine(page, 'a');
+      const before = await decodes(page);
+      await refetch(page);
+      await expect.poll(async () => (await decodes(page)).retried - before.retried).toBe(1);
+      await settled(page);
+      await expect(legendRows(page, 'a')).toHaveCount(2);
+      await expect(panel(page, 'a').locator('[data-frame-ready="true"]')).toHaveCount(1);
+    });
+  });
+
+  test('e2e:engine-dsf E6 ST stays JSON', async ({ page, request }, info) => {
+    test.skip(engineModeOf(info) !== 'st', 'the lavapipe-st project only');
+    test.setTimeout(120_000);
+    await withLineBoard(page, request, LINE, '&engine=wasm&mode=st&probe=1', async () => {
+      await onEngine(page, 'a');
+      await expect(page.locator('html')).toHaveAttribute('data-dash-mode', 'st');
+      const traffic = rangeTraffic(page);
+      await refetch(page);
+      await expect.poll(() => traffic.type.length).toBeGreaterThanOrEqual(1);
+      expect(traffic.accept.some((a) => a.includes(DSF))).toBe(false);
+      expect(traffic.type.every((t) => t.startsWith('application/json'))).toBe(true);
+      await settled(page);
+      await expect(legendRows(page, 'a')).toHaveCount(2);
+    });
+  });
+});

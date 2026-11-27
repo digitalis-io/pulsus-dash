@@ -11,6 +11,7 @@ pub mod decode;
 pub mod dsf;
 pub(crate) mod fb;
 pub(crate) mod ipc;
+pub mod join;
 pub mod limits;
 pub(crate) mod schema;
 
@@ -24,4 +25,5 @@ pub use coverage::{Coverage, ErrorRow, Phase, STR_LIST_ELEMENT_BYTES, StrList};
 pub use decode::{BodyDecoder, Event, GridInfo, MAX_GRID_LEN, PartError, Verdict};
 pub use dsf::{DsfError, Frame, FrameHeader, FrameSplitter, FrameType, HEADER_LEN, MAX_PAYLOAD};
 pub use ipc::IpcError;
+pub use join::{JoinError, join_grid, joined_size};
 pub use limits::{Limits, MAX_CHUNK, SOURCE_BUFFER};

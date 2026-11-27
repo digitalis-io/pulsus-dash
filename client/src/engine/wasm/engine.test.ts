@@ -538,3 +538,40 @@ describe('the ST backend (plan #68 C2d2 §3.3)', () => {
     expect(document.documentElement.dataset['dashStatus']).toBe('4');
   });
 });
+
+describe('decode sessions (plan #68 D2, review r1 #2)', () => {
+  const head = { startMs: 0, endMs: 0, stepMs: 1, planned: null, coverage: null, series: [] };
+  const decoded = (req: number, chunk: number) => ({
+    t: 'decoded',
+    req,
+    chunk,
+    epoch: 1,
+    head,
+    ts: new Float64Array(1),
+    vs: [],
+  });
+
+  it('a decoded result of an aborted session releases its chunk', async () => {
+    const { b, w } = await backend();
+    const s = b.openDecode();
+    const req = (w.sent.find((m) => m.t === 'decode-begin')?.['req'] ?? 0) as number;
+    s.abort();
+    w.message(decoded(req, 7));
+    expect(w.sent.filter((m) => m.t === 'chunk-release')).toEqual([
+      { t: 'chunk-release', chunk: 7, epoch: 1 },
+    ]);
+  });
+
+  it('a decoded result of an open session resolves it, nothing released', async () => {
+    const { b, w } = await backend();
+    const s = b.openDecode();
+    const req = (w.sent.find((m) => m.t === 'decode-begin')?.['req'] ?? 0) as number;
+    w.message(decoded(req, 9));
+    await expect(s.result).resolves.toMatchObject({ chunk: 9, epoch: 1 });
+    expect(w.sent.filter((m) => m.t === 'chunk-release')).toEqual([]);
+    b.releaseChunk({ chunk: 9, epoch: 1 });
+    expect(w.sent.filter((m) => m.t === 'chunk-release')).toEqual([
+      { t: 'chunk-release', chunk: 9, epoch: 1 },
+    ]);
+  });
+});
