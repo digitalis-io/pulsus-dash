@@ -255,8 +255,8 @@ func TestDirectCreateGrant(t *testing.T) {
 			if _, err := Migrate(itestCtx(t), db.OwnerURL, MigrateOptions{Seed: testSeed}); err != nil {
 				t.Fatalf("migrate after the revoke: %v", err)
 			}
-			if v := storetest.QueryInt(t, db.SuperURL, "SELECT max(version_id) FROM goose_db_version WHERE is_applied"); v != 5 {
-				t.Errorf("schema version %d, want 5", v)
+			if v := storetest.QueryInt(t, db.SuperURL, "SELECT max(version_id) FROM goose_db_version WHERE is_applied"); v != 6 {
+				t.Errorf("schema version %d, want 6", v)
 			}
 			for _, r := range []string{"pulsus_app", "pulsus_maint"} {
 				if v := storetest.QueryString(t, db.SuperURL, "SELECT has_schema_privilege($1, 'public', 'CREATE')::text", r); v != "false" {

@@ -11,9 +11,10 @@ import (
 // narrowed scope, a new endpoint, database, scope org, credential reference or kind each give a
 // new one; a credential rotated under the same reference (the reference unchanged) gives the same.
 func TestScopeEpoch(t *testing.T) {
+	ref := "env:" + "PULSUS_TOKEN" // a reference string, never a credential (T19-010)
 	b := TenantBinding{OrgID: OrgID(uuid.MustParse("01900000-0000-7000-8000-0000000000aa")),
 		ID: uuid.MustParse("01900000-0000-7000-8000-000000000001"), Slug: "demo",
-		DatasourceURL: "http://pulsus.invalid:9090", Kind: "pulsusdb", CredentialsRef: "env:PULSUS_TOKEN", ScopeSeq: 1}
+		DatasourceURL: "http://pulsus.invalid:9090", Kind: "pulsusdb", CredentialsRef: ref, ScopeSeq: 1}
 	base := ScopeEpoch(LocalPrincipal.ID, b, FullTenantScope())
 	if !regexp.MustCompile(`^[0-9a-f]{16}$`).MatchString(base) {
 		t.Fatalf("epoch %q", base)
