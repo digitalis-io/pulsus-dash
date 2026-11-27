@@ -7,11 +7,12 @@
  */
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
-import { fakeRequests, runShift, sec } from './fake.ts';
+import { covering, fakeRequests, runShift } from './fake.ts';
 import { open, searchOf, timeTrigger, waitReady } from './helpers.ts';
 
 const W0 = Date.UTC(2026, 0, 1);
 const HOUR = 3_600_000;
+const DAY = 86_400_000;
 const MIN = 60_000;
 
 function exploreUrl(q: string | null, fromMs = W0, toMs = W0 + HOUR, extra = ''): string {
@@ -174,42 +175,29 @@ test.describe('e2e:explore (fake)', () => {
   });
 
   test('e2e:explore-cancel', async ({ page, request }, info) => {
+    // A day apart (#304): adjacent windows share the range store's buckets (and a step keeps what
+    // the next window still needs), so each step is a URL change, 100 ms apart.
     const A = Date.UTC(2026, 0, 2 + idx(info)) + runShift(info);
-    const B = A + HOUR;
-    const C = B + HOUR;
+    const B = A + DAY;
+    const C = B + DAY;
     await open(page, exploreUrl('slow_metric', A, A + HOUR));
     await expect(statusLine(page)).toHaveText(/^0 series · step 15 s/, { timeout: 5_000 });
-    await page.locator('h1').click();
     const t0 = Date.now();
-    await page.keyboard.press(']');
+    const at = async (start: number) =>
+      (await covering(request, start, start + HOUR, { query: 'slow_metric' }))
+        .filter((r) => r.receivedAtMs >= t0)
+        .map((r) => r.state);
+    const go = (u: string) =>
+      page.evaluate((url) => {
+        history.pushState(null, '', url);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, u);
+    await go(exploreUrl('slow_metric', B, B + HOUR));
+    await expect.poll(() => at(B), { intervals: [10], timeout: 150 }).toHaveLength(1);
+    await go(exploreUrl('slow_metric', C, C + HOUR));
+    expect(Date.now() - t0).toBeLessThanOrEqual(400);
     await expect
-      .poll(
-        () =>
-          fakeRequests(request, {
-            path: '/api/v1/query_range',
-            query: 'slow_metric',
-            start: sec(B),
-          }),
-        { intervals: [10], timeout: 150 },
-      )
-      .toHaveLength(1);
-    await page.keyboard.press(']');
-    expect(Date.now() - t0).toBeLessThanOrEqual(200);
-    await expect
-      .poll(
-        async () => {
-          const at = async (start: number) =>
-            (
-              await fakeRequests(request, {
-                path: '/api/v1/query_range',
-                query: 'slow_metric',
-                start: sec(start),
-              })
-            ).map((r) => r.state);
-          return { b: await at(B), c: await at(C) };
-        },
-        { timeout: 6_000 },
-      )
+      .poll(async () => ({ b: await at(B), c: await at(C) }), { timeout: 6_000 })
       .toEqual({ b: ['cancelled'], c: ['completed'] });
     await expect(timeTrigger(page)).toContainText(new Date(C).toISOString().slice(11, 16));
     await expect(statusLine(page)).toHaveText(/^0 series/);
@@ -228,9 +216,8 @@ test.describe('e2e:explore (fake)', () => {
       .poll(
         async () =>
           (
-            await fakeRequests(request, {
+            await covering(request, T + 15 * MIN, T + 45 * MIN, {
               query: 'topk(1000, up)',
-              start: sec(T + 15 * MIN),
               state: 'completed',
             })
           ).length,
@@ -243,7 +230,7 @@ test.describe('e2e:explore (fake)', () => {
     await expect
       .poll(
         async () =>
-          (await fakeRequests(request, { query: '{__name__=~".+"}', start: sec(T + 15 * MIN) }))
+          (await covering(request, T + 15 * MIN, T + 45 * MIN, { query: '{__name__=~".+"}' }))
             .length,
       )
       .toBeGreaterThanOrEqual(1);
@@ -257,13 +244,8 @@ test.describe('e2e:explore (fake)', () => {
     await expect
       .poll(
         async () =>
-          (
-            await fakeRequests(request, {
-              query: 'empty_metric',
-              start: sec(R),
-              state: 'completed',
-            })
-          ).length,
+          (await covering(request, R, R + HOUR, { query: 'empty_metric', state: 'completed' }))
+            .length,
       )
       .toBe(2);
   });

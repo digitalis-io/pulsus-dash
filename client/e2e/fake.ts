@@ -33,6 +33,21 @@ export async function fakeRequests(
   return all.filter((r) => want.every(([k, v]) => r[k] === v));
 }
 
+/**
+ * The `query_range` records whose grid covers `[fromMs, toMs]` (and match `f`): a store-backed
+ * panel asks for bucket-aligned runs (#304), so a window's request starts at or before it and ends
+ * at or after it; flank and ladder requests (outside the window) do not cover it.
+ */
+export async function covering(
+  request: APIRequestContext,
+  fromMs: number,
+  toMs: number,
+  f: Partial<FakeRequest> = {},
+): Promise<FakeRequest[]> {
+  const all = await fakeRequests(request, { path: '/api/v1/query_range', ...f });
+  return all.filter((r) => Number(r.start) * 1000 <= fromMs && Number(r.end) * 1000 >= toMs);
+}
+
 /** POST /__fake/reset (expects 204). Single-worker debugging only (plan #63 §4.5). */
 export async function resetFake(request: APIRequestContext): Promise<void> {
   const resp = await request.post(`${FAKE}/__fake/reset`);

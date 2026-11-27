@@ -1,10 +1,10 @@
 {
   "name": "slow-final-chromium",
-  "provenance": {"synthetic": "e2e:board-cancel's final window (chromium, day 2 + 2 h): a series the superseded windows never answer"},
-  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "slow_metric", "form": {"start": "1770084000"}},
+  "provenance": {"synthetic": "e2e:board-cancel's final window (chromium, day 2 + 2 d), its bucket-aligned start (#304): a series the superseded windows never answer"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query_prefix": "slow_metric", "form": {"start": "1770247680"}},
   "response": {
     "status": 200,
     "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-slow-final-chromium-1"},
-    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"slow_metric","window":"final"},"values":[[1770084000,"7"],[1770085800,"42"]]}]}}
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"slow_metric","window":"final"},"values":[[1770249600,"7"],[1770251400,"42"]]}]}}
   }
 }
