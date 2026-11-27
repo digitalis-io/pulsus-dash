@@ -380,6 +380,78 @@ describe('engine', () => {
     expect(short.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 50]);
   });
 
+  it('stat graphMode none (#297): the value alone at mid-height, no sparkline', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const s = seriesFrame(K(3), [W0, W0 + 30 * MIN, W0 + 60 * MIN], [1, 3, 2]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' }, graphMode: 'none' };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    const layer = h.layer();
+    expect(layer.calls('stroke')).toHaveLength(0);
+    expect(layer.calls('arc')).toHaveLength(0);
+    expect(layer.calls('fillText')[0]?.args).toEqual(['2', 150, 80]);
+    // `sparkline`, as absent, draws it.
+    const spark = harness(Canvas2DEngine);
+    show(
+      spark,
+      { ...spec, graphMode: 'sparkline' },
+      seriesData(s),
+      { fromMs: W0, toMs: W0 + 60 * MIN },
+      [300, 160, 1],
+    );
+    expect(spark.layer().calls('stroke')).toHaveLength(1);
+    expect(spark.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 60]);
+  });
+
+  it('a restored 2D context is repainted (#296): the value and the sparkline again', () => {
+    const h = harness(Canvas2DEngine);
+    const W0 = Date.UTC(2026, 10, 19, 12);
+    const MIN = 60_000;
+    const s = seriesFrame(K(3), [W0, W0 + 30 * MIN, W0 + 60 * MIN], [1, 3, 2]);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
+    const drawn = h.drawn.length;
+    h.layer().clearOps();
+    h.visible().clearOps();
+    // The browser dropped the canvas's backing store and gave it back blank (no input changed).
+    h.canvas.dispatchEvent(new Event('contextrestored'));
+    expect(h.queued()).toBe(1);
+    h.flush();
+    expect(h.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 60]);
+    expect(h.layer().calls('stroke')).toHaveLength(1);
+    expect(h.visible().calls('drawImage')).toHaveLength(1);
+    expect(h.drawn.length).toBe(drawn + 1);
+    // The layer canvas's own restore repaints too.
+    h.layer().clearOps();
+    h.visible().clearOps();
+    h.layerCanvas().dispatchEvent(new Event('contextrestored'));
+    expect(h.queued()).toBe(1);
+    h.flush();
+    expect(h.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 60]);
+    expect(h.layer().calls('stroke')).toHaveLength(1);
+    expect(h.visible().calls('drawImage')).toHaveLength(1);
+    expect(h.drawn.length).toBe(drawn + 2);
+  });
+
+  it('dispose removes the contextrestored listeners of both canvases (#296)', () => {
+    const h = harness(Canvas2DEngine);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, { kind: 'scalar', scalar: { value: 7, timestampMs: 0 } }, { fromMs: 0, toMs: 1 });
+    const offVisible = vi.spyOn(h.canvas, 'removeEventListener');
+    const offLayer = vi.spyOn(h.layerCanvas(), 'removeEventListener');
+    h.frame.dispose();
+    const restored = (spy: typeof offVisible) =>
+      spy.mock.calls.filter((c) => c[0] === 'contextrestored');
+    expect(restored(offVisible)).toHaveLength(1);
+    expect(restored(offLayer)).toHaveLength(1);
+    // The same handler that was added: a later restore draws nothing.
+    expect(restored(offLayer)[0]?.[1]).toBe(restored(offVisible)[0]?.[1]);
+    h.canvas.dispatchEvent(new Event('contextrestored'));
+    h.layerCanvas().dispatchEvent(new Event('contextrestored'));
+    expect(h.queued()).toBe(0);
+  });
+
   it('hover: snaps to the nearest sample and reports every series', () => {
     const h = harness(Canvas2DEngine);
     const t0 = 1_000_000;
@@ -487,7 +559,8 @@ describe('engine', () => {
     expect(h.queued()).toBe(1);
     h.frame.dispose();
     expect(h.queued()).toBe(0);
-    expect(onCanvas).toHaveBeenCalledTimes(12);
+    // The controller's 12 and the frame's `contextrestored` (#296).
+    expect(onCanvas).toHaveBeenCalledTimes(13);
     // keydown, focus (the bar chart's focus mark, ADR-0029) and focusout.
     expect(onTarget).toHaveBeenCalledTimes(3);
     expect(h.canvas.width).toBe(0);

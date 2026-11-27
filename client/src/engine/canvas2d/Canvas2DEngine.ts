@@ -3,6 +3,8 @@
  * `Canvas2DFrame` per `<canvas>`, on the main thread. Inputs only store values and schedule one
  * frame; the frame redraws a cached layer when an input changed, then blits it and draws the
  * overlay (crosshair, hover dots, box band), and reports the completed draw (`drawn`, ADR-0019).
+ * A canvas whose 2D context the browser lost and restored (`contextrestored`) is blank: the frame
+ * draws the layer and the visible canvas again from its stored inputs (#296).
  *
  * The interim 2D camera (#93, T02 §4.6, ADR-0020) is the shared `FrameController`
  * (`controller/controller.ts`, plan #68 C2a2): a view (time window and value range) previewed every
@@ -303,6 +305,10 @@ class Canvas2DFrame implements ChartFrame {
       },
       hooks,
     );
+    // A lost 2D context comes back blank (`contextrestored`, HTML canvas): repaint the layer and
+    // the visible canvas from the stored inputs (#296). Nothing else redraws a frame whose inputs
+    // did not change, such as a stat that only scrolled out of view and back.
+    for (const c of [canvas, this.layer]) c.addEventListener('contextrestored', this.onRestored);
     for (const f of [AXIS_FONT, STAT_FONT]) {
       const loaded = (): void => {
         forgetValueBands(this.layerCtx);
@@ -451,6 +457,7 @@ class Canvas2DFrame implements ChartFrame {
     this.listeners.clear();
     releaseScratch(this.dim);
     for (const c of [this.canvas, this.layer]) {
+      c.removeEventListener('contextrestored', this.onRestored);
       c.width = 0;
       c.height = 0;
     }
@@ -613,6 +620,11 @@ class Canvas2DFrame implements ChartFrame {
   private emit<E extends keyof FrameEvents>(e: E, ev: FrameEvents[E]): void {
     for (const cb of [...(this.listeners.get(e) ?? [])]) (cb as (x: FrameEvents[E]) => void)(ev);
   }
+
+  /** A canvas's 2D context was restored with a blank bitmap: draw everything again. */
+  private readonly onRestored = (): void => {
+    this.invalidate();
+  };
 
   /** A stored input changed: redraw the layer and clear the hover. */
   private changed(): void {

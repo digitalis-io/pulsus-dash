@@ -3,6 +3,7 @@
 | | |
 |---|---|
 | **Status** | Accepted (2026-11-22, on merge of #64 Part B, under the owner's standing authorisation for pipeline design changes) |
+| **Amended by** | [ADR-0037](0037-stat-graph-mode-none.md) (decision 4: `graphMode: 'none'` draws the value alone) |
 | **Amends** | [ADR-0014](0014-typescript-react-web-client.md) §3, the `ChartFrame` seam, after [ADR-0019](0019-chart-frame-drawn-event-and-frame-id.md) and [ADR-0020](0020-chart-camera-commit-and-value-range.md): two additive members and one drawing rule. The rest of ADR-0014 is unchanged |
 | **Source** | Issue #64, the owner's scope addition of 2026-11-19 (threshold lines with their labels; stat tiles with a sparkline) |
 | **See** | [T02](../technical/T02-vis-engine.md) §4.5, T02-003, T02-004, T02-009; Table 5-1 (Stat); VIZ-011, VIZ-057, VIZ-067 |

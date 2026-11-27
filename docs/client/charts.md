@@ -22,7 +22,7 @@ application code.
 
 | Type | Meaning |
 |---|---|
-| `VisSpec` | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`), `stat` or `barchart` (`BarchartSpec`, below); each has a `title` and a `unit`. Line and bars take an optional `valueRange` (`{ min, max }`, `min < max`, finite): the user's value-axis pin; absent means auto (#93). Line and bars also take an optional `thresholds` (`ThresholdLine[]`: `{ value, state, label }`, `state` `watch`, `degraded` or `failing`; at most 8 drawn, in order; [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)). Data, never code |
+| `VisSpec` | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`), `stat` (an optional `graphMode`: `'sparkline'` or `'none'`, absent = `sparkline`; T22 §5.1) or `barchart` (`BarchartSpec`, below); each has a `title` and a `unit`. Line and bars take an optional `valueRange` (`{ min, max }`, `min < max`, finite): the user's value-axis pin; absent means auto (#93). Line and bars also take an optional `thresholds` (`ThresholdLine[]`: `{ value, state, label }`, `state` `watch`, `degraded` or `failing`; at most 8 drawn, in order; [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)). Data, never code |
 | `BarchartSpec` | `barchart` (ADR-0028): `title`, `unit`, `orientation` (`horizontal` or `vertical`), `valueLabels`, `names?: 'hidden'` (set by the panel's fit), `valueRange?`, `thresholds?`, `ghost` (a dashed bar at each finite baseline) and `anomaly` (nothing drawn until Epic #9) |
 | `FrameData` | `series` (`SeriesFrame[]`), `heatmap` (`HeatmapFrame`), `scalar` (`ScalarFrame`) or `categories` (`CategoryRow[]`, at most 200, in draw order, and the panel's `Coverage`; ADR-0028), from `src/data/frames.ts` |
 | `ChartEngine.createFrame(canvas, { timeZone, keyTarget })` | One frame per canvas. `keyTarget` is the element whose key presses move the crosshair (the slider); for barchart the mirror listbox ([ADR-0029](../../designs/adr/0029-bar-chart-keys-and-brush.md)); `null` for stat |
@@ -59,6 +59,15 @@ frame. The frame redraws the layer canvas only when an input changed, records
 the summary changed, and blits the layer under the overlay (crosshair, hover dots, brush band). At
 most one `hover` is emitted per frame. Every draw starts with `setTransform(dpr, 0, 0, dpr, 0, 0)`,
 and the backing store is `round(css × dpr)`.
+
+A canvas keeps its pixels while it is out of view: scrolling a frame away and back draws nothing.
+When the browser loses a 2D context (a GPU reset, or memory reclaimed from a GPU-backed canvas) it
+gives the canvas back blank and fires `contextrestored` on it. The frame listens for that event on
+its visible canvas and on its layer canvas, and then draws both again from its stored inputs;
+`dispose()` removes the listeners. Without it a frame whose inputs do not change again, such as a
+stat tile, would stay blank. This is hardening for #296 (stat tiles reported blank after scrolling
+out of view and back): the report did not reproduce in headless Chromium, Firefox or WebKit, and a
+lost context is the likely cause but is not confirmed.
 
 ### Adding a chart
 
@@ -262,8 +271,12 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
   are equal), in the series colour, 1.5 px with round joins. It is a trend glyph: it joins the
   finite points inside the window across absent and non-finite ones (a sparse series on the step
   grid is mostly absent points), and a single finite point is a dot of radius 1.5 px. The value
-  then sits at `(h − 32 − 8) / 2`. A scalar, a series with no finite value in the window or a
-  shorter frame draws the value alone, centred, as before.
+  then sits at `(h − 32 − 8) / 2`. A scalar, a series with no finite value in the window, a
+  shorter frame or a spec with `graphMode: 'none'` draws the value alone, centred, as before. The
+  board sets `graphMode: 'none'` from the panel's `options.graphMode` (`boards/panelRun.ts`,
+  [T22 §5.1](../../designs/technical/T22-value-categorical-and-table-panels.md#51-seam-types-every-field-readonly-in-the-files));
+  absent and `sparkline` leave it absent, which draws the sparkline (#297,
+  [ADR-0037](../../designs/adr/0037-stat-graph-mode-none.md)).
 
 ### Threshold lines (ADR-0022, #64 Part B)
 
@@ -866,6 +879,7 @@ form in #68/#62).
 `valueAxis`); [ADR-0025](../../designs/adr/0025-chart-frame-selection.md) (`setSelection`,
 `select`); [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)
 (`thresholds`, `thresholdLabels`, the stat sparkline);
+[ADR-0037](../../designs/adr/0037-stat-graph-mode-none.md) (the stat's `graphMode: 'none'`);
 [ADR-0023](../../designs/adr/0023-chart-event-markers.md) (`setEvents`, `eventLabels`, the event
 mark); [ADR-0028](../../designs/adr/0028-chart-seam-bar-chart.md) (the bar chart: `barchart`,
 `categories`, `mark`, `pick`, `coverage`, the extent and the layout);
