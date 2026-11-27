@@ -12,18 +12,19 @@ import type { QueryShape, ValueType } from '../../editor/lang/types';
 import { kindOfType, metricKind, type MetricKind } from '../../explore/metricKind';
 import type { FieldError, VarValue } from '../types';
 
+import type { RegexString } from './vars';
 import {
+  anyStructured,
   checkValue,
+  mirror,
+  NO_TRACKER,
   rangeMessage,
-  RegexString,
-  renderValue,
-  Tracker,
   unrepresentable,
   unrepresentableMessage,
   WHERE,
   type Ctx,
   type Refusal,
-} from './vars';
+} from './varsCore';
 
 export const MAX_RAW_BYTES = 131_072,
   MAX_SENT_BYTES = 65_536,
@@ -547,7 +548,7 @@ function substitute(
     const key = `${typeof v === 'string' ? 'none' : c.kind}:${name}`;
     let r = renders.get(key);
     if (r === undefined) {
-      const text = renderValue(v, c);
+      const text = typeof v === 'string' ? v : (mod?.renderValue(v, c) ?? null);
       r = text === null ? null : encoder.encode(text);
       renders.set(key, r);
     }
@@ -583,14 +584,16 @@ function substitute(
     }
     size += to - copyFrom;
   };
-  const t = new Tracker(false);
+  // The contexts matter only for a structured value: without one, no mirror is loaded.
+  const mod = anyStructured(vars) ? mirror() : null;
+  const t = mod === null ? NO_TRACKER : new mod.Tracker(false);
   let sctx: Ctx = { kind: 'none', where: WHERE.topLevel };
   const strings = { rx: null as RegexString | null };
   const open = (st: LexState, at: number): void => {
     sctx = t.string();
     strings.rx =
-      sctx.kind === 're'
-        ? new RegexString(st === 'dq' ? '"' : st === 'sq' ? "'" : '', at + 1)
+      mod !== null && sctx.kind === 're'
+        ? new mod.RegexString(st === 'dq' ? '"' : st === 'sq' ? "'" : '', at + 1)
         : null;
   };
   const closeString = (at: number): void => {

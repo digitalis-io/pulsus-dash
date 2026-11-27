@@ -3,7 +3,8 @@
  * fixture along the stub path (`prepare`, `classify`, `floorStep`, `expandedAt`, `stubShape`,
  * `plan`) and gives the Go planner's results; and the fixture's tables.
  */
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { loadMirror } from './varsCore';
 import { expand, expandedOf, fieldsOf, FIXTURE, plannedOf, type FixtureCase } from './planFixture';
 import {
   __test,
@@ -60,6 +61,11 @@ function expectResult(c: FixtureCase, r: StubPlanned | StubPlanError): void {
     expect({ ...r }).toEqual(want);
   } else throw new Error(`${c.name}: neither planned nor error`);
 }
+
+// The structured-value cases need the rest of the mirror (plan #289), loaded on demand.
+beforeAll(async () => {
+  await loadMirror();
+});
 
 describe('unit:plan-parity (TS)', () => {
   // A case only the server's probe guard refuses is the server's (plan #289 §3.4).

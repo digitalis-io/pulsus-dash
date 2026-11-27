@@ -3,9 +3,16 @@
  * `spec/variables.go`, in its order and pointer format (`unit:board-spec`, TS = Go).
  */
 import type { BoardVariable } from '../api/types';
-import { MAX_SELECTION_BYTES, selectionBytes } from './resolveVariables';
 import { parseVariableQuery } from './variableQuery';
 import { referencedVariables, VARIABLE_NAME } from './variableRefs';
+
+/**
+ * A multi default's decoded values, as a JSON array, are at most this many bytes
+ * (`vars.MaxSelectionBytes`; here, not from `resolveVariables`, to keep the initial chunk lean).
+ */
+const MAX_SELECTION_BYTES = 65_536;
+const selectionBytes = (vs: readonly string[]): number =>
+  new TextEncoder().encode(JSON.stringify(vs)).length;
 
 export const MAX_VARIABLES = 32;
 const MAX_LABEL = 100;

@@ -3,7 +3,8 @@
  * planner mirror runs every case of the shared fixture as the Go planner does, by its outcome
  * (plan #116 §3.5), and the fixture's tables.
  */
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { loadMirror } from './varsCore';
 import {
   expand,
   LOGS_FIXTURE,
@@ -61,6 +62,11 @@ function spans(c: LogsPlanCase, tag: 'prepared' | 'planned') {
     .filter((s) => s.text === tag)
     .map((s) => ({ from: s.from, to: s.to, reserved: s.reserved }));
 }
+
+// The structured-value cases need the rest of the mirror (plan #289), loaded on demand.
+beforeAll(async () => {
+  await loadMirror();
+});
 
 describe('unit:plan-parity (TS, logs)', () => {
   // A case only the server's probe guard refuses is the server's (plan #289 §3.4).

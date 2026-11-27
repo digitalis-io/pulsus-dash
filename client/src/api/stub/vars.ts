@@ -1,32 +1,17 @@
 /**
- * The StubApi mirror of the server's `vars` package (plan #289 §3.4, T07-031): the forms of a
- * variable value, their bounds, how a structured value is written in its context, the token
- * context of a query and the regex position rules. The server's probe guard is not mirrored: the
- * stub relies on the server for it (the fixture's `server_only` cases).
+ * The StubApi mirror of the server's `vars` package (plan #289 §3.4, T07-031), loaded on demand
+ * (`varsCore.loadMirror`, so a stub build's initial chunk does not carry it): how a structured
+ * value is written in its context, the token context of a query and the regex position rules. The
+ * server's probe guard is not mirrored: the stub relies on the server for it (the fixture's
+ * `server_only` cases).
  */
 import type { VarValue } from '../types';
+import { WHERE, type Ctx, type CtxKind, type Refusal } from './varsCore';
 
-export type CtxKind = 'none' | 'eq' | 're' | 'top';
+export { WHERE, type Ctx, type CtxKind, type Refusal };
 
-export interface Ctx {
-  readonly kind: CtxKind;
-  readonly where: string;
-}
+const utf8 = (s: string): number => new TextEncoder().encode(s).length;
 
-export const WHERE = {
-  topLevel: 'top level',
-  functionArgument: 'function argument',
-  comment: 'comment',
-  orFilter: 'or filter',
-  patternFilter: 'pattern filter',
-  equality: 'equality match',
-  regex: 'regex',
-  regexClass: 'regex class',
-  regexEscape: 'regex escape',
-  regexQuoted: 'regex quoted text',
-} as const;
-
-/** The LogQL stages whose strings and references are refused, named by their keyword. */
 export const STAGE_KEYWORDS: readonly string[] = [
   'json',
   'logfmt',
@@ -41,39 +26,6 @@ export const STAGE_KEYWORDS: readonly string[] = [
   'decolorize',
   'distinct',
 ];
-
-export const MAX_VALUE_BYTES = 4096;
-export const MAX_VALUES = 200;
-export const MAX_SELECTION_BYTES = 65_536;
-
-const encoder = new TextEncoder();
-const utf8 = (s: string): number => encoder.encode(s).length;
-
-export const isLegacy = (v: VarValue): v is string => typeof v === 'string';
-
-/** UTF-8 bytes of `vs` as `JSON.stringify` writes it (the server's `SelectionBytes`). */
-export function selectionBytes(vs: readonly string[]): number {
-  return utf8(JSON.stringify(vs));
-}
-
-/** Row 5 of a value (`vars.Check`). */
-export function checkValue(v: VarValue): boolean {
-  if (isLegacy(v)) return utf8(v) <= MAX_VALUE_BYTES;
-  if ('all' in v) return v.all.length > 0 && utf8(v.all) <= MAX_VALUE_BYTES;
-  return (
-    v.values.length >= 1 &&
-    v.values.length <= MAX_VALUES &&
-    v.values.every((s) => utf8(s) <= MAX_VALUE_BYTES) &&
-    selectionBytes(v.values) <= MAX_SELECTION_BYTES
-  );
-}
-
-/** The message of a refused value (`vars.RangeMessage`). */
-export function rangeMessage(v: VarValue): string {
-  if (isLegacy(v)) return 'a variable value must be UTF-8 and at most 4096 bytes';
-  if ('all' in v) return "a variable's all value must be UTF-8 and 1 to 4096 bytes";
-  return 'a variable must have 1 to 200 values, each UTF-8 and at most 4096 bytes, and at most 65536 bytes in all';
-}
 
 /** Go's `regexp.QuoteMeta`. */
 export function quoteMeta(s: string): string {
@@ -93,7 +45,7 @@ export function topToken(s: string): boolean {
 
 /** `vars.Render`: the text before the string encoding, or null when refused. */
 export function renderValue(v: VarValue, c: Ctx): string | null {
-  if (isLegacy(v)) return v;
+  if (typeof v === 'string') return v;
   if ('all' in v) return c.kind === 're' ? v.all : null;
   const vs = v.values;
   switch (c.kind) {
@@ -381,13 +333,6 @@ export function unquote(raw: string, quote: string): string | null {
   return out;
 }
 
-/** A reference refused for its context (where set) or by row 7b (where ''). */
-export interface Refusal {
-  readonly name: string;
-  readonly at: number;
-  readonly where: string;
-}
-
 /** An open regex string's parts (`vars.RegexString`); `raw` slices are UTF-8 bytes. */
 export class RegexString {
   private readonly parts: RegexPart[] = [];
@@ -432,17 +377,4 @@ export class RegexString {
     }
     return out;
   }
-}
-
-/** The refused names, distinct, by first refused reference, and the first one's place. */
-export function unrepresentable(rs: readonly Refusal[]): { names: string[]; where: string } {
-  const sorted = [...rs].sort((a, b) => a.at - b.at);
-  const names: string[] = [];
-  for (const r of sorted) if (!names.includes(r.name)) names.push(r.name);
-  return { names, where: sorted[0]?.where ?? '' };
-}
-
-/** The refusal message of row 7b and T07-031. */
-export function unrepresentableMessage(names: readonly string[], where: string): string {
-  return `the value of variable $${names.join(', $')} cannot be written where it is referenced${where === '' ? '' : ` (in ${where})`}`;
 }
