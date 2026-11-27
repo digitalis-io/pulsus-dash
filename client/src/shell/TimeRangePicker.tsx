@@ -53,7 +53,7 @@ export function TimeRangePicker() {
   const options: SegmentedOption<Preset>[] = PRESETS.map((q) => ({
     id: q,
     label: t(SHORT[q]),
-    ariaLabel: quickRangeLabel(q),
+    ariaLabel: t('time.presetName', { short: t(SHORT[q]), range: quickRangeLabel(q) }),
   }));
   return (
     <div role="group" aria-label={t('time.dialog')} className={cx(styles['group'])}>

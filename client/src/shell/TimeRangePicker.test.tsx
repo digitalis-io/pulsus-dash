@@ -39,23 +39,30 @@ describe('picker quick range', () => {
 
 // IA-020 as amended (#282 Part 2a): five presets inline before the trigger.
 describe('unit:quick-presets', () => {
-  const NAMES = ['Last 15 minutes', 'Last 1 hour', 'Last 6 hours', 'Last 24 hours', 'Last 7 days'];
+  // Each name starts with the visible label (WCAG 2.5.3), then the full range.
+  const NAMES = [
+    '15m (Last 15 minutes)',
+    '1h (Last 1 hour)',
+    '6h (Last 6 hours)',
+    '24h (Last 24 hours)',
+    '7d (Last 7 days)',
+  ];
 
   it('shows five presets, checks the current one and sets the range', async () => {
     const { router, user } = renderApp('/t/demo/boards?from=now-6h&to=now&refresh=off');
     const group = await screen.findByRole('radiogroup', { name: 'Quick range' });
     const radios = within(group).getAllByRole('radio');
     expect(radios.map((r) => r.getAttribute('aria-label') ?? r.textContent)).toEqual(NAMES);
-    expect(within(group).getByRole('radio', { name: 'Last 6 hours' })).toBeChecked();
-    expect(within(group).getByRole('radio', { name: 'Last 6 hours' })).toHaveTextContent('6h');
+    expect(within(group).getByRole('radio', { name: '6h (Last 6 hours)' })).toBeChecked();
+    expect(within(group).getByRole('radio', { name: '6h (Last 6 hours)' })).toHaveTextContent('6h');
     expect(group.closest('[role="group"]')).toHaveAccessibleName('Time range');
-    await user.click(within(group).getByRole('radio', { name: 'Last 1 hour' }));
+    await user.click(within(group).getByRole('radio', { name: '1h (Last 1 hour)' }));
     await waitFor(() => {
       expect(router.state.location.search).toContain('from=now-1h&to=now');
     });
     await waitFor(() => {
       const now = screen.getByRole('radiogroup', { name: 'Quick range' });
-      expect(within(now).getByRole('radio', { name: 'Last 1 hour' })).toBeChecked();
+      expect(within(now).getByRole('radio', { name: '1h (Last 1 hour)' })).toBeChecked();
     });
     const dialog = await openPicker(user);
     expect(dialog).toBeInTheDocument();
