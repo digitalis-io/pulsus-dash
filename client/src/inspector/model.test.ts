@@ -387,8 +387,15 @@ describe('unit:geo-inspect (T24 §4.13, T25 §4.9; plan #234 Part 3 §4.5)', () 
     expect(fact(m, 'Draw')).toBe('On the map');
     expect(m.members).toBeNull();
     expect(pivot(m.pivots, 'explore')?.href).not.toBeNull();
-    expect(pivot(m.pivots, 'logs')?.href).toBeNull();
-    expect(pivot(m.pivots, 'logs')?.reason).toBe(
+    expect(pivot(m.pivots, 'explore')?.context).toContain(
+      'Filters not applied in Explore yet: env',
+    );
+    // T25-010: the selector is the identity AND the filters, so f=env=prod alone enables Logs.
+    expect(logsQ(m.pivots)).toBe('{env="prod"}');
+    // With no filter, k01 has no log stream label: Logs is off.
+    const bare = inspectorModel(req(marker('k01')), pEnv());
+    expect(pivot(bare.pivots, 'logs')?.href).toBeNull();
+    expect(pivot(bare.pivots, 'logs')?.reason).toBe(
       'No log stream label on this series (needs service_name or job)',
     );
     expect(m.announce).toBe('Inspector: {cloud_region="eu-west-1"}, 120 ms, ok');

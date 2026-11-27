@@ -225,7 +225,7 @@ export const BOARD_LIMIT = Object.freeze({ min: 1, max: 50 } as const);
  * query and shows `panel.kindUnavailable`. The bar chart left it in #173 Part 3b; pie leaves in I3,
  * the geomap in #234 Part 3.
  */
-export const PENDING_KINDS: ReadonlySet<PanelVisKind> = new Set<PanelVisKind>(['pie', 'geomap']);
+export const PENDING_KINDS: ReadonlySet<PanelVisKind> = new Set<PanelVisKind>(['pie']);
 
 export interface BarchartOptions {
   readonly reducer: Reducer;

@@ -3,7 +3,7 @@
  * the `GeoMapFrame` chunk's import rejects once (Retry remounts the boundary and imports again) or
  * twice (Reload). The line panel and the header stay usable throughout.
  */
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   installIntersectionObserver,
@@ -42,10 +42,11 @@ describe('unit:geo-chunk-failed', () => {
   it('(a) reject, then resolve: the error with Retry, the line panel renders; Retry imports again', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const real = geoMapChunk.load;
+    // The chunk fails until Retry (the board may mount the panel more than once meanwhile).
+    let failing = true;
     const load = vi
       .spyOn(geoMapChunk, 'load')
-      .mockImplementationOnce(() => Promise.reject(new Error('chunk failed')))
-      .mockImplementation(real);
+      .mockImplementation(() => (failing ? Promise.reject(new Error('chunk failed')) : real()));
     openBoard(PANELS);
     await ready('Map', 'Line');
     show('Map', 'Line');
@@ -54,11 +55,16 @@ describe('unit:geo-chunk-failed', () => {
     expect(screen.getByRole('heading', { level: 3, name: 'Line' })).not.toBeNull();
     const map = document.querySelector('[data-panel-id="p-1"]');
     expect(map?.querySelector('[data-geomap]')).toBeNull();
+    const before = load.mock.calls.length;
+    failing = false;
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await flushAll();
-    expect(load).toHaveBeenCalledTimes(2);
+    // A new boundary and a second import.
+    expect(load.mock.calls.length).toBeGreaterThan(before);
     expect(screen.queryByText("Map couldn't load")).toBeNull();
-    expect(map?.querySelector('[data-geomap]')).not.toBeNull();
+    await waitFor(() => {
+      expect(map?.querySelector('[data-geomap]')).not.toBeNull();
+    });
   });
 
   it('(b) reject twice: after Retry the Reload text and button', async () => {

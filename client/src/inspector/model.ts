@@ -19,6 +19,7 @@ import { contextSearchString } from '../state/contextSearch';
 import { writeLogsParams } from '../state/logsParams';
 import { printTimeExpr } from '../state/timeExpr';
 import { StateEncoding, type State } from '../theme/stateEncoding';
+import { geoModel } from './geoModel';
 import { logsSelector, pivotWindow } from './pivots';
 import type {
   InspectorAction,
@@ -160,17 +161,21 @@ function body(req: InspectRequest, tz: string): Body {
         copyValue: String(mark.value),
       };
     }
-    case 'geo':
-      // Stub (tests first).
+    case 'geo': {
+      // `inspectorModel` renders geo targets through `geoModel` (T24 §4.13).
+      const g = geoModel(target.target, unit, origin.panelId);
       return {
-        ...base,
-        subheading: '',
-        primary: '',
-        facts: [],
-        labels: [],
-        announce: '',
-        copyValue: '',
+        subheading: g.subheading,
+        primary: g.primary,
+        primaryKind: g.primaryKind,
+        primaryState: g.primaryState,
+        facts: g.facts,
+        labels: g.labels,
+        extraLabels: g.extraLabels,
+        announce: g.announce,
+        copyValue: g.copyValue,
       };
+    }
     case 'logLine': {
       const ms = Number(target.tsNs / 1_000_000n);
       const level = t(LEVEL_NAME[target.level]);
@@ -324,12 +329,25 @@ function actions(env: InspectorEnv): InspectorAction[] {
 
 export function inspectorModel(req: InspectRequest, env: InspectorEnv): InspectorModel {
   const q = req.origin.query;
+  const query =
+    q === null ? null : ({ lang: q.lang === 'promql' ? 'PromQL' : 'LogQL', text: q.text } as const);
+  const target = req.target;
+  if (target.type === 'geo') {
+    // T24 §4.13: a marker gets the T25 `mark` pivots over the origin window; the others none.
+    const g = target.target;
+    return {
+      ...geoModel(g, req.origin.unit ?? NONE, req.origin.panelId),
+      pivots: g.kind === 'marker' ? pivots(req, env) : [],
+      query,
+      actions: actions(env),
+    };
+  }
   return {
     heading: req.origin.title,
     ...body(req, env.timeZone),
     members: null,
     pivots: pivots(req, env),
-    query: q === null ? null : { lang: q.lang === 'promql' ? 'PromQL' : 'LogQL', text: q.text },
+    query,
     actions: actions(env),
   };
 }

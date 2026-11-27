@@ -4,7 +4,9 @@
  * `__vite-browser-external` id, the empty stand-in a browser build gets for one) or
  * `parse5-sax-parser`'s `SAXParser` entry, which extends `node:stream`. Part 3a (§3.4; ADR-0014
  * §8): no Markdown module is in the static closure of `index.html` or the board route, and the
- * Markdown entry is its own lazy chunk (`markdownInRoute`).
+ * Markdown entry is its own lazy chunk (`markdownInRoute`). Plan #234 Part 3 (§4.8): no geomap
+ * module is in the initial closure, the board route holds only the geo targets and the Inspector's
+ * geo model, and the host and the scene are dynamic entries (`geoInRoute`).
  */
 import type { Finding } from './report.ts';
 
@@ -225,13 +227,134 @@ export function markdownInRoute(
   return out;
 }
 
-/** Stub (tests first): the geo rule of plan #234 Part 3 §4.8. */
+/**
+ * The geomap code (plan #234 Part 3 §4.8; ADR-0014 §8): the geo data, the engine's geo controller
+ * and painter, the host's parts, the host and the Inspector's geo model.
+ */
+export const GEO_MODULES: readonly RegExp[] = [
+  /\/src\/vis\/geo\//,
+  /\/src\/engine\/(canvas2d|controller)\/geo\//,
+  /\/src\/charts\/geo\//,
+  /\/src\/charts\/GeoMapFrame\.tsx$/,
+  /\/src\/inspector\/geoModel\.ts$/,
+];
+/** What the board route may hold of it: the targets and the model the shared Inspector needs. */
+export const GEO_BOARD_ALLOWED: readonly RegExp[] = [
+  /\/src\/vis\/geo\/targets\.ts$/,
+  /\/src\/inspector\/geoModel\.ts$/,
+];
+/** The strict roots (nothing geo) and the board route (the allowed modules only). */
+export const GEO_ROOTS: readonly { root: string; allowed: readonly RegExp[] }[] = [
+  { root: 'index.html', allowed: [] },
+  { root: 'src/pages/boards/BoardsPage.tsx', allowed: [] },
+  { root: 'src/pages/board/BoardPage.tsx', allowed: GEO_BOARD_ALLOWED },
+];
+/** The geo dynamic entries: the host and the engine's scene. */
+export const GEO_ENTRIES = [
+  'src/charts/GeoMapFrame.tsx',
+  'src/engine/canvas2d/geo/scene.ts',
+] as const;
+
+export type GeoRule =
+  | 'geo-in-route'
+  | 'missing-route-root'
+  | 'bad-manifest-import'
+  | 'unmapped-chunk'
+  | 'missing-geo-entry';
+
+export interface GeoFinding extends Finding {
+  rule: GeoRule;
+  chunk?: string;
+  module?: string;
+}
+
+/**
+ * The geo rule (plan #234 Part 3 §4.8), fail-closed like `markdownInRoute`: no `GEO_MODULES` id in
+ * the static closure of `index.html` or the boards list; the board route only the targets and the
+ * Inspector's model; a missing root, an unknown import or an unmapped chunk is a finding; each
+ * `GEO_ENTRIES` module present and a dynamic entry (`missing-geo-entry`). Each finding once, in
+ * root then walk order.
+ */
 export function geoInRoute(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   manifest: Manifest,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   chunks: Readonly<Record<string, readonly string[]>>,
   file = 'manifest.json',
-): MarkdownFinding[] {
-  return [{ rule: 'unmapped-chunk', file, subject: 'stub', message: 'stub (tests first)' }];
+): GeoFinding[] {
+  const out: GeoFinding[] = [];
+  const seen = new Set<string>();
+  const once = (key: string, f: GeoFinding): void => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(f);
+  };
+  for (const { root, allowed } of GEO_ROOTS) {
+    if (manifest[root] === undefined) {
+      once(`root:${root}`, {
+        rule: 'missing-route-root',
+        file,
+        subject: root,
+        message: `the manifest has no ${root}: the route's closure cannot be checked`,
+      });
+      continue;
+    }
+    const visited = new Set<string>();
+    const stack: string[] = [root];
+    while (stack.length > 0) {
+      const key = stack.pop() ?? '';
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const c = manifest[key];
+      if (c === undefined) {
+        once(`import:${key}`, {
+          rule: 'bad-manifest-import',
+          file,
+          subject: key,
+          message: `${key} is imported but absent from the manifest: the closure cannot be followed`,
+        });
+        continue;
+      }
+      const ids = chunks[c.file];
+      if (ids === undefined) {
+        once(`unmapped:${c.file}`, {
+          rule: 'unmapped-chunk',
+          file,
+          chunk: c.file,
+          subject: c.file,
+          message: `chunk ${c.file} (of ${key}) has no module list in modules.json`,
+        });
+      } else {
+        for (const module of ids) {
+          if (!GEO_MODULES.some((re) => re.test(module))) continue;
+          if (allowed.some((re) => re.test(module))) continue;
+          once(`geo:${c.file}:${module}`, {
+            rule: 'geo-in-route',
+            file,
+            chunk: c.file,
+            module,
+            subject: module,
+            message: `chunk ${c.file} holds ${shown(module)} in the static closure of ${root}: the geomap loads only with its dynamic entries (ADR-0014 §8)`,
+          });
+        }
+      }
+      for (const i of [...(c.imports ?? [])].reverse()) stack.push(i);
+    }
+  }
+  for (const entry of GEO_ENTRIES) {
+    const c = manifest[entry];
+    const problem =
+      c === undefined
+        ? 'is absent from the manifest'
+        : c.isDynamicEntry !== true
+          ? 'is not a dynamic entry'
+          : null;
+    if (problem === null) continue;
+    out.push({
+      rule: 'missing-geo-entry',
+      file,
+      subject: entry,
+      ...(c === undefined ? {} : { chunk: c.file }),
+      message: `${entry} ${problem}`,
+    });
+  }
+  return out;
 }

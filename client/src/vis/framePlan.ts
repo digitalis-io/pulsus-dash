@@ -83,8 +83,8 @@ export function framePlan(
   r: ExploreResult,
   o: { readonly isolatedKey: string | null; readonly title: string; readonly rateApplied: boolean },
 ): FramePlan {
-  // Stub (tests first).
-  if (vis === 'geomap') return framePlan('line', r, o);
+  // A geomap is planned by `vis/geo/plan.ts` (T24-088), never here.
+  if (vis === 'geomap') return { spec: null, data: null, notice: 'geomap' };
   if (r.kind === 'string') return { spec: null, data: null, notice: 'string' };
   // A bar chart is planned by `vis/barchart.ts` (ADR-0028): Explore draws it from its model, and
   // this line plan only carries the unit of the Inspector's origin.

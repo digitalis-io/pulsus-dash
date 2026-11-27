@@ -26,7 +26,7 @@ import { geoMapChunk, GeoMapBody } from '../pages/board/GeoMapBody';
 import { fakeEngine, type FakeEngine, type FakeFrame } from '../test/fakeEngine';
 import { installResizeObserver } from '../test/fakeResizeObserver';
 import { frameOf, sceneKit } from '../test/geoKit';
-import { GEO_DATA, hostProps, MS, runOf } from '../test/geoHostKit';
+import { GEO_DATA, hostProps, installGridLayout, MS, runOf } from '../test/geoHostKit';
 import { renderHost, stubReducedMotion, type HostHarness } from '../test/inspectorKit';
 import { recordingContext } from '../test/recordingContext';
 import { G, M12, O2, S1, TH } from '../vis/geo/fixtures/series';
@@ -51,13 +51,16 @@ vi.mock('../vis/geo/frame', async (importOriginal) => {
 });
 
 let restoreMotion: () => void = () => undefined;
+let restoreGrid: () => void = () => undefined;
 beforeEach(() => {
   installResizeObserver();
   restoreMotion = stubReducedMotion(true);
+  restoreGrid = installGridLayout();
 });
 afterEach(() => {
   cleanup();
   restoreMotion();
+  restoreGrid();
   vi.useRealTimers();
   vi.restoreAllMocks();
   hook.k12ok = false;

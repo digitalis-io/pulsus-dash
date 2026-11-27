@@ -2,9 +2,21 @@
  * Inspector targets of the chart kinds (T25 §4.2, T25-002, plan #192 §3): the engine's `HoverItem`
  * of a keyboard row, the `InspectorTarget` an item names, and the selection an inspect writes.
  */
-import { bucketEnd, seriesName, statValue, type SeriesFrame } from '../data/frames';
-import type { FrameData, HoverItem, HoverRow, TimeHoverEvent, VisSpec } from '../engine/api';
+import { bucketEnd, EMPTY_COVERAGE, seriesName, statValue, type SeriesFrame } from '../data/frames';
+import type { FrameData, HoverItem, HoverRow, TimeHoverEvent, Unit, VisSpec } from '../engine/api';
+import { formatValue } from '../i18n/format';
+import { t } from '../i18n/t';
 import type { InspectorTarget, Selection } from '../inspector/types';
+import type { GeoFrame, GeoRow, GeoRowSet } from '../vis/geo/frame';
+import { geoPlace, geoTarget, seedOrdered, worstState } from '../vis/geo/targets';
+
+/** No rows: the target of a geo item on data that is not a geomap's (never drawn). */
+const EMPTY_SET: GeoRowSet = Object.freeze({
+  rows: [],
+  groups: [],
+  groupBy: null,
+  coverage: EMPTY_COVERAGE,
+});
 
 const seriesOf = (d: FrameData): readonly SeriesFrame[] => (d.kind === 'series' ? d.series : []);
 
@@ -41,12 +53,19 @@ export function hoverItemOf(
   return { kind: 'point', key: row.key, tMs: hover.tMs, value: row.value };
 }
 
-/** The target of a time chart's or a bar's item; the geomap's are `GeoMapFrame`'s (#234 Part 3). */
-export function targetOf(
-  spec: VisSpec,
-  data: FrameData,
-  item: Exclude<HoverItem, { kind: 'geo' }>,
-): InspectorTarget {
+/**
+ * The target of an item: a time chart's point or bucket, or a geomap mark (T24 §5.14): a
+ * snapshot of the frame's rows, a `marker` for a row key and a `cluster` for `cluster:` + seed.
+ */
+export function targetOf(spec: VisSpec, data: FrameData, item: HoverItem): InspectorTarget {
+  if (item.kind === 'geo') {
+    const geo = data.kind === 'geo' ? data.geo : null;
+    const kind = item.id.startsWith('cluster:') ? ('cluster' as const) : ('marker' as const);
+    return {
+      type: 'geo',
+      target: geoTarget(geo ?? EMPTY_SET, geo?.seq ?? 0, { kind, id: item.id, keys: item.keys }),
+    };
+  }
   if (item.kind === 'bucket') {
     const bounds = data.kind === 'heatmap' ? data.heatmap.bounds : new Float64Array(0);
     const lower = item.index === 0 ? null : (bounds[item.index - 1] ?? null);
@@ -136,7 +155,41 @@ export function selectionOf(t: InspectorTarget): Selection {
       };
     }
     case 'geo':
-      // Stub (tests first).
-      return { keys: [], fromMs: null, toMs: null };
+      // A mark, cluster, group or the aggregate selects its rows (T24-092).
+      return { keys: t.target.rows.map((r) => r.key), fromMs: null, toMs: null };
   }
+}
+
+/** The most names a cluster's tooltip lists, in seed order. */
+const TOOLTIP_NAMES = 5;
+
+/**
+ * A geomap mark's tooltip lines (T24 §5.14): a marker `‹name›`, `‹value›[ · ‹state›]`, `‹place›`; a
+ * cluster `Cluster of ‹n›`, `[worst ‹state›]`, its first five names in seed order `[, +k more]`.
+ * The state parts only with thresholds.
+ */
+export function geoTooltip(
+  geo: GeoFrame,
+  item: Extract<HoverItem, { kind: 'geo' }>,
+  unit: Unit,
+): string[] {
+  const byKey = new Map(geo.rows.map((r) => [r.key, r]));
+  const rows = item.keys.map((k) => byKey.get(k)).filter((r): r is GeoRow => r !== undefined);
+  if (!item.id.startsWith('cluster:')) {
+    const r = rows[0];
+    if (r === undefined) return [];
+    const value = formatValue(r.value, unit);
+    const lines = [r.name, r.state === null ? value : `${value} · ${r.state}`];
+    const place = geoPlace(r);
+    if (place !== '') lines.push(place);
+    return lines;
+  }
+  const lines = [t('geo.cluster.title', { n: rows.length })];
+  const worst = worstState(rows);
+  if (worst !== null) lines.push(t('geo.list.worst', { state: worst }));
+  const names = seedOrdered(rows).map((r) => r.name);
+  const shown = names.slice(0, TOOLTIP_NAMES).join(', ');
+  const more = names.length - TOOLTIP_NAMES;
+  lines.push(more > 0 ? `${shown}, ${t('geo.tooltip.more', { k: more })}` : shown);
+  return lines;
 }

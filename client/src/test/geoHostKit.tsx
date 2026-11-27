@@ -84,3 +84,31 @@ export function hostProps(
     geoData: o.geoData ?? GEO_DATA,
   };
 }
+
+/**
+ * The table's grid (`[role=grid]`) is 1200 × 900 in jsdom, so every row of a fixture is mounted by
+ * the virtualiser; other elements keep their jsdom sizes. Returns the restore.
+ */
+export function installGridLayout(): () => void {
+  const names = ['clientWidth', 'clientHeight', 'offsetWidth', 'offsetHeight'] as const;
+  const saved = names.map(
+    (n) => [n, Object.getOwnPropertyDescriptor(HTMLElement.prototype, n)] as const,
+  );
+  for (const n of names) {
+    const base = Object.getOwnPropertyDescriptor(HTMLElement.prototype, n);
+    Object.defineProperty(HTMLElement.prototype, n, {
+      configurable: true,
+      get(this: HTMLElement): number {
+        if (this.getAttribute('role') === 'grid') return n.endsWith('Width') ? 1200 : 900;
+        const v: unknown = base?.get?.call(this);
+        return typeof v === 'number' ? v : 0;
+      },
+    });
+  }
+  return () => {
+    for (const [n, d] of saved) {
+      if (d === undefined) Reflect.deleteProperty(HTMLElement.prototype, n);
+      else Object.defineProperty(HTMLElement.prototype, n, d);
+    }
+  };
+}

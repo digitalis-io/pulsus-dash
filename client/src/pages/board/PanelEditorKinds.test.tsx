@@ -133,12 +133,15 @@ describe('draft preview (T22 §4.5, owner)', () => {
     expect(visTrigger(e.d)).toHaveTextContent('Auto (Line)');
   });
 
-  it('a stored map shows as a disabled option', async () => {
-    const e = await editor({ kind: 'geomap' });
+  it('Map is an enabled kind with its defaults: no options fieldset, no Legend (#234 Part 3)', async () => {
+    const e = await editor({ kind: 'line' });
+    await choose(e.t, visTrigger(e.d), 'Map');
+    await saveNow(e, 1);
+    expect(e.save()[0]).toEqual({ kind: 'geomap' });
+    expect(within(e.d).queryByRole('button', { name: /Legend$/ })).toBeNull();
     await e.t.user.click(visTrigger(e.d));
     const map = (await screen.findAllByRole('option')).find((o) => o.textContent === 'Map');
-    expect(map).toBeDefined();
-    expect(map).toHaveAttribute('aria-disabled', 'true');
+    expect(map).not.toHaveAttribute('aria-disabled', 'true');
   });
 
   it('a v6 server’s refusal of a map reads as unsupported in the editor; other errors keep their text (#234 Part 1 §4.5)', async () => {

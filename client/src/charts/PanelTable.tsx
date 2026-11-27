@@ -8,6 +8,10 @@
  * PageUp/PageDown move, each scrolling it into view; Enter picks it. `aria-activedescendant` names
  * the active row, which the range extractor keeps mounted when it is scrolled away; new rows clear
  * it. Positions are set through CSSOM (no inline styles: CSP style-src, T01-010).
+ *
+ * A geomap's table (plan #234 Part 3 §3.3, T25-016) adds a leading 24 px `aria-pressed` select
+ * toggle and an Inspect button in each row's first cell, and a visible note on a selected row the
+ * caller names ("Not placed").
  */
 import { defaultRangeExtractor, useVirtualizer, type Range } from '@tanstack/react-virtual';
 import {
@@ -46,6 +50,8 @@ export interface PanelTableProps {
   onInspectRow?: (key: string, el: HTMLElement) => void;
   /** A visible note on a highlighted row ("Not placed"); null for none. */
   rowNote?: (key: string) => string | null;
+  /** Focus the first row's toggle once its row is mounted, else the grid (the geomap's Show table). */
+  focusFirstToggle?: boolean;
 }
 
 /** Downloads `rows` as `csvFileName(title)`; the object URL is revoked on the next task. */
@@ -66,6 +72,10 @@ export function PanelTable({
   selected,
   onRow,
   onClose,
+  toggle,
+  onInspectRow,
+  rowNote,
+  focusFirstToggle = false,
 }: PanelTableProps): JSX.Element {
   const tableId = useId();
   const gridRef = useRef<HTMLDivElement>(null);
@@ -151,6 +161,27 @@ export function PanelTable({
     e.preventDefault();
   };
 
+  // More columns than the bar chart's six: a wider grid that scrolls sideways (CSSOM, T01-010).
+  const wide = rows.columns.length > 6;
+  useLayoutEffect(() => {
+    gridRef.current?.style.setProperty('--table-cols', String(rows.columns.length - 1));
+  }, [rows.columns.length]);
+
+  // Show table (T24 §4.12): the first toggle once the virtualiser has mounted its row.
+  const pendingFocus = useRef(focusFirstToggle);
+  useLayoutEffect(() => {
+    if (!pendingFocus.current) return;
+    const grid = gridRef.current;
+    const toggle = grid?.querySelector<HTMLElement>('[data-row-toggle]');
+    if (toggle !== null && toggle !== undefined) {
+      pendingFocus.current = false;
+      toggle.focus();
+    } else if (n === 0) {
+      pendingFocus.current = false;
+      grid?.focus();
+    }
+  });
+
   const rowId = (i: number): string => `${tableId}-r${String(i)}`;
   return (
     <div className={cx(styles['root'])} data-panel-table="">
@@ -179,7 +210,7 @@ export function PanelTable({
         aria-colcount={rows.columns.length}
         aria-readonly="true"
         {...(active === null ? {} : { 'aria-activedescendant': rowId(active) })}
-        className={cx(styles['grid'])}
+        className={cx(styles['grid'], wide ? styles['wide'] : undefined)}
         onKeyDown={onKeyDown}
       >
         <div role="rowgroup" className={cx(styles['head'])}>
@@ -196,6 +227,7 @@ export function PanelTable({
             const r = rows.rows[it.index];
             if (r === undefined) return null;
             const key = r.mark.key;
+            const note = selected.has(key) ? (rowNote?.(key) ?? null) : null;
             return (
               <div
                 key={key}
@@ -216,6 +248,18 @@ export function PanelTable({
                     aria-colindex={k + 1}
                     className={cx(styles['cell'])}
                   >
+                    {k === 0 && toggle !== undefined && (
+                      <button
+                        type="button"
+                        className={cx(styles['toggle'])}
+                        aria-pressed={selected.has(key)}
+                        aria-label={toggle.label(key)}
+                        data-row-toggle=""
+                        onClick={() => {
+                          toggle.onToggle(key);
+                        }}
+                      />
+                    )}
                     {k === 0 && onRow !== undefined ? (
                       <button
                         type="button"
@@ -228,6 +272,23 @@ export function PanelTable({
                       </button>
                     ) : (
                       c
+                    )}
+                    {k === 0 && onInspectRow !== undefined && (
+                      <button
+                        type="button"
+                        className={cx(styles['inspect'])}
+                        data-row-inspect=""
+                        onClick={(e) => {
+                          onInspectRow(key, e.currentTarget);
+                        }}
+                      >
+                        {t('geo.table.inspect')}
+                      </button>
+                    )}
+                    {k === 0 && note !== null && (
+                      <span className={cx(styles['note'])} data-row-note="">
+                        {note}
+                      </span>
                     )}
                   </div>
                 ))}

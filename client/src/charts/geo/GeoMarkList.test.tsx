@@ -5,7 +5,7 @@
  * the repair order on new marks. The marks come from the real scene at each view.
  */
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { ChartFrame as EngineFrame, GeoMarksEvent, GeoView } from '../../engine/api';
 import { camOf, panPx, viewOf } from '../../engine/controller/geo/camera';
 import { worldPx } from '../../engine/controller/geo/project';
@@ -190,9 +190,14 @@ describe('unit:geo-list', () => {
 describe('unit:geo-list-keys', () => {
   it('↓, End, Home, PageDown, Enter; handled keys stop, Esc propagates', () => {
     const k = list(G_TH());
+    // The page's ladder listens on the document (T25-007).
     const parent = vi.fn();
-    document.querySelector('[data-parent]')?.addEventListener('keydown', (e) => {
-      parent((e as KeyboardEvent).key);
+    const onDoc = (e: KeyboardEvent): void => {
+      parent(e.key);
+    };
+    document.addEventListener('keydown', onDoc);
+    onTestFinished(() => {
+      document.removeEventListener('keydown', onDoc);
     });
     const b = k.buttons();
     act(() => {
@@ -251,7 +256,10 @@ describe('unit:geo-list-keys', () => {
       },
     });
     const parent = vi.fn();
-    document.querySelector('[data-parent]')?.addEventListener('keydown', parent);
+    document.addEventListener('keydown', parent);
+    onTestFinished(() => {
+      document.removeEventListener('keydown', parent);
+    });
     const k05 = k.buttons()[2] as HTMLButtonElement;
     act(() => {
       k05.focus();

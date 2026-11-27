@@ -14,7 +14,9 @@
       "src/editor/lang/promql/promql.ts",
       "src/editor/lang/logql/logql.ts",
       "src/editor/logqlEditor.ts",
-      "src/widgets/text/TextMarkdown.tsx"
+      "src/widgets/text/TextMarkdown.tsx",
+      "src/charts/GeoMapFrame.tsx",
+      "src/engine/canvas2d/geo/scene.ts"
     ],
     "fonts": ["inter-latin-wght-normal", "jetbrains-mono-latin-wght-normal"],
     "initialCss": true,

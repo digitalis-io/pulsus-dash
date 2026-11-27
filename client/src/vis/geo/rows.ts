@@ -16,8 +16,7 @@ import {
   type PanelRows,
 } from '../reduce';
 import type { GeoRow, GeoRowSet } from './frame';
-import type { LocationResult } from './locate';
-import { geoPlace } from './targets';
+import { geoPlace, locationDetail } from './targets';
 
 function codeUnitOrder(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -25,24 +24,6 @@ function codeUnitOrder(a: string, b: string): number {
 
 /** A number as the table holds it: `String(v)` (±Infinity by name); NaN empty. */
 const numberCell = (v: number): string => (Number.isNaN(v) ? '' : String(v));
-
-/** `location_detail` (§4.14): why a row is not placed; empty when placed or without a location. */
-function locationDetail(l: LocationResult): string {
-  switch (l.status) {
-    case 'invalid':
-      return `${l.reason} ${l.key}`;
-    case 'unknownCode':
-      return `${l.source} ${l.key}=${l.value}`;
-    case 'providerMismatch':
-      return `${l.provider}: ${l.candidates.join('; ')}`;
-    case 'ambiguous':
-      return `${l.reason}: ${l.candidates.join('; ')}`;
-    case 'placed':
-    case 'noLocation':
-    case 'gazetteerUnavailable':
-      return '';
-  }
-}
 
 /** The row as a T22 mark (no baseline, no anomaly). */
 function markOf(r: GeoRow): Mark {

@@ -5,7 +5,9 @@
  */
 import type { Labels } from '../../data/frames';
 import { t } from '../../i18n/t';
+import type { State } from '../../theme/stateEncoding';
 import type { GeoRow, GeoRowSet, GroupId } from './frame';
+import type { LocationResult } from './locate';
 
 export interface GeoMemberEntry {
   readonly text: string;
@@ -127,12 +129,84 @@ export function geoPlace(r: GeoRow): string {
   return p.name ?? t('geo.place.coords', { lat: p.lat.toFixed(4), lon: p.lon.toFixed(4) });
 }
 
-/** The full member list of a geo target's `geo:` run id (plan #234 Part 3 §4.5). Stub (tests first). */
+/** The prefix of a cluster's mark id; the rest is its seed key. */
+export const CLUSTER_PREFIX = 'cluster:';
+
+/** A cluster id's seed key; null for a marker id. */
+export function seedOf(id: string): string | null {
+  return id.startsWith(CLUSTER_PREFIX) ? id.slice(CLUSTER_PREFIX.length) : null;
+}
+
+/** rank (T24 §4.11): failing 4, degraded 3, watch 2, else 0. */
+export function geoRank(s: State | null): number {
+  switch (s) {
+    case 'failing':
+      return 4;
+    case 'degraded':
+      return 3;
+    case 'watch':
+      return 2;
+    default:
+      return 0;
+  }
+}
+
+/** The worst threshold state of `rows` (ok and unknown included); null without thresholds. */
+export function worstState(rows: readonly GeoRow[]): State | null {
+  let worst: State | null = null;
+  let at = -1;
+  for (const r of rows) {
+    if (r.state === null) continue;
+    const k = r.state === 'unknown' ? -1 : geoRank(r.state) + (r.state === 'ok' ? 1 : 0);
+    if (worst === null || k > at) {
+      worst = r.state;
+      at = k;
+    }
+  }
+  return worst;
+}
+
+/** `rows` in seed order (T24 §4.11): (−rank, −|v|, key). */
+export function seedOrdered(rows: readonly GeoRow[]): GeoRow[] {
+  return [...rows].sort(
+    (a, b) =>
+      geoRank(b.state) - geoRank(a.state) ||
+      Math.abs(b.value) - Math.abs(a.value) ||
+      (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+  );
+}
+
+/** `location_detail` (§4.14): why a row is not placed; empty when placed or without a location. */
+export function locationDetail(l: LocationResult): string {
+  switch (l.status) {
+    case 'invalid':
+      return `${l.reason} ${l.key}`;
+    case 'unknownCode':
+      return `${l.source} ${l.key}=${l.value}`;
+    case 'providerMismatch':
+      return `${l.provider}: ${l.candidates.join('; ')}`;
+    case 'ambiguous':
+      return `${l.reason}: ${l.candidates.join('; ')}`;
+    case 'placed':
+    case 'noLocation':
+    case 'gazetteerUnavailable':
+      return '';
+  }
+}
+
+/**
+ * The full member list behind `geo:` + `top.id` (T25 §4.9; plan #234 Part 3 §4.5 with Part 4
+ * §4.4): every entry's text and labels, from the target's own snapshot; null for another id or a
+ * marker. The host answers `geo:` ids from the open request with it.
+ */
 export function resolveGeoMembers(
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   top: GeoInspectorTarget,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   runId: string,
 ): { texts: string[]; members: []; labels: Labels[] } | null {
-  return null;
+  if (top.members === null || runId !== `geo:${top.id}`) return null;
+  return {
+    texts: top.members.map((m) => m.text),
+    members: [],
+    labels: top.members.map((m) => m.labels),
+  };
 }

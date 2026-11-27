@@ -94,7 +94,9 @@ export type PanelView =
       /** The baseline run failed: the bars draw without a ghost, with the note. */
       readonly baselineFailed: boolean;
       readonly lang: 'promql' | 'logql';
-    };
+    }
+  /** A geomap panel (plan #234 Part 3 §4.7): its host plans the run, loading and error included. */
+  | { readonly kind: 'geomap' };
 
 /** The most rows a panel legend shows (plan #64 Part B §4.5). */
 export const LEGEND_ROWS = 50;
@@ -403,6 +405,12 @@ export function panelView(run: PanelRun, panelVis: DataPanelSpec['vis'], title: 
     default:
       break;
   }
+  // A geomap's host renders loading and the error itself (T24-088); a LogQL log answer has no
+  // values to place.
+  if (vis === 'geomap') {
+    const streams = run.outcome?.logKind === 'streams' || run.stream?.state?.phase === 'streams';
+    return streams ? message('notMetric', t('panel.logs.notMetric')) : { kind: 'geomap' };
+  }
   if (run.error !== null) {
     const ev = errorView(run.error, run.diagnostics) ?? { text: t('error.generic'), narrow: false };
     return {
@@ -456,9 +464,9 @@ export function panelView(run: PanelRun, panelVis: DataPanelSpec['vis'], title: 
     rateApplied: o.planned.rateApplied,
     result: r,
   });
-  // PromQL `logs` and the pending kinds (pie, geomap) are blocked above; any other saved kind
-  // overrides the auto vis.
-  const saved = vis === 'logs' || vis === 'pie' || vis === 'geomap' ? 'auto' : vis;
+  // PromQL `logs` and the pending kind pie are blocked above, a geomap routed to its host; any
+  // other saved kind overrides the auto vis.
+  const saved = vis === 'logs' || vis === 'pie' ? 'auto' : vis;
   const chosen = chooseVis(saved, auto) ?? 'line';
   return frameView(chosen, r, o.planned.rateApplied, panelVis, title);
 }

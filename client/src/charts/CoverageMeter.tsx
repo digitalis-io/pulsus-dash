@@ -23,17 +23,29 @@ const warned = (c: Completeness | null): c is Completeness =>
 export function CoverageMeter({
   coverage,
   onNarrow,
+  focusable = false,
+  timeZone,
 }: {
   coverage: Coverage;
   onNarrow: () => void;
+  /** A tab stop even as a status line (the geomap's Tab order ends at its meter, T24-093). */
+  focusable?: boolean;
+  /** The zone of `stale (HH:mm:ss)`; default the browser's. */
+  timeZone?: string;
 }): JSX.Element {
-  const text = coverageText(coverage);
+  const text = coverageText(coverage, timeZone);
   const query = warned(coverage.query) ? coverage.query : null;
   const baseline = warned(coverage.baseline) ? coverage.baseline : null;
   if (query === null && baseline === null) {
     return (
       <div className={cx(styles['meter'])} data-coverage-meter="">
-        <p role="status" className={cx(styles['meterText'])}>
+        <p
+          role="status"
+          className={cx(styles['meterText'])}
+          // The geomap's meter closes its Tab order (T24-093).
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+          tabIndex={focusable ? 0 : undefined}
+        >
           {text}
         </p>
       </div>

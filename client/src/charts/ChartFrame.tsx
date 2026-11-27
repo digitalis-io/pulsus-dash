@@ -85,7 +85,10 @@ import {
   tooltipLeft,
   valueUnit,
 } from './chartText';
-import { hoverItemOf, statTarget, targetOf } from './inspectTarget';
+import { geoTooltip, hoverItemOf, statTarget, targetOf } from './inspectTarget';
+
+/** The geomap tooltip's offset from the pointer, CSS px. */
+const GEO_TIP_GAP = 12;
 
 /** `min,max,manual|auto` of the drawn value axis (#173 Part 3b §3.1); none without one. */
 function valueAxisAttr(s: FrameSummary | null): string | undefined {
@@ -262,6 +265,9 @@ export function ChartFrame({
   onEmptyClick,
   onPick,
   markLines,
+  onFrame,
+  onSummary,
+  surface = 'chart',
 }: ChartFrameProps) {
   const engine = useContext(ChartEngineContext);
   const { window: win, dispatch } = useTimeContext();
@@ -276,7 +282,9 @@ export function ChartFrame({
   const isStat = spec.kind === 'stat';
   // A bar chart has no crosshair: its bars report `mark` and `pick` (ADR-0028).
   const isBar = spec.kind === 'barchart';
-  const noCrosshair = isStat || isBar;
+  // A geomap's host div is its plot surface and key target (T24 §5.14): no crosshair or label targets.
+  const isGeo = surface === 'geo';
+  const noCrosshair = isStat || isBar || isGeo;
 
   // The value-axis pin (#93): a kind or unit change drops it. Clearing it during render (React's
   // "adjust state during render") re-runs the render with no pin before any effect or paint, so a
@@ -315,6 +323,8 @@ export function ChartFrame({
     onInspect,
     onEmptyClick,
     onPick,
+    onFrame,
+    onSummary,
   });
   useLayoutEffect(() => {
     latest.current = {
@@ -331,6 +341,8 @@ export function ChartFrame({
       onInspect,
       onEmptyClick,
       onPick,
+      onFrame,
+      onSummary,
     };
   });
   // The page selection (T25-006): every frame draws it, the source included.
@@ -342,6 +354,7 @@ export function ChartFrame({
   const [{ hover, selected }, setHoverState] = useState<HoverState>({ hover: null, selected: 0 });
   const [mark, setMark] = useState<MarkEvent | null>(null);
   const markRef = useRef<HTMLDivElement>(null);
+  const geoTipRef = useRef<HTMLDivElement>(null);
   const barListId = useId();
   const [unsupported, setUnsupported] = useState(false);
   const ownSize = useRef<FrameSize | null>(null);
@@ -360,15 +373,20 @@ export function ChartFrame({
     host.dataset['frameId'] = id;
     const canvas = document.createElement('canvas');
     canvas.className = cx(styles['canvas']);
-    canvas.setAttribute('role', 'img');
-    canvas.setAttribute('aria-label', latest.current.spec.title);
+    if (isGeo) {
+      // The surface (the host div) carries the map's name; the list reads its marks (T24-093).
+      canvas.setAttribute('aria-hidden', 'true');
+    } else {
+      canvas.setAttribute('role', 'img');
+      canvas.setAttribute('aria-label', latest.current.spec.title);
+    }
     host.insertBefore(canvas, host.firstChild);
     canvasRef.current = canvas;
     let frame: EngineFrame;
     try {
       frame = engine.createFrame(canvas, {
         timeZone: tz,
-        keyTarget: isBar ? listRef.current : isStat ? null : sliderRef.current,
+        keyTarget: isGeo ? host : isBar ? listRef.current : isStat ? null : sliderRef.current,
         id,
       });
     } catch (e) {
@@ -408,6 +426,7 @@ export function ChartFrame({
     const offs = [
       frame.on('a11y', (s) => {
         setSummary(s);
+        latest.current.onSummary?.(s);
       }),
       frame.on('hover', (h) => {
         setHoverState({ hover: h, selected: 0 });
@@ -450,9 +469,9 @@ export function ChartFrame({
           l.onEmptyClick?.();
           return;
         }
-        // A geomap's marks are its host's to inspect (ADR-0027; #234 Part 3).
-        if (e.item.kind === 'geo') return;
-        l.onInspect?.(targetOf(l.spec, l.frameData, e.item), e.source, sliderRef.current);
+        // A geomap mark returns focus to the map's surface (T24-092).
+        const back = e.item.kind === 'geo' ? hostRef.current : sliderRef.current;
+        l.onInspect?.(targetOf(l.spec, l.frameData, e.item), e.source, back);
       }),
       frame.on('drawn', (d) => {
         // A draw at a superseded size leaves the progress up.
@@ -468,6 +487,7 @@ export function ChartFrame({
     frame.setTheme(l.theme);
     frame.setEvents(l.events);
     frame.setSelection(selectionRef.current);
+    l.onFrame?.(frame);
     // A new canvas is blank.
     setDrawnTo(false, false);
     // A new fill frame takes the host's last size at once, so it draws in its first frame.
@@ -504,6 +524,7 @@ export function ChartFrame({
     watchDpr();
 
     return () => {
+      latest.current.onFrame?.(null);
       for (const off of offs) off();
       ro.disconnect();
       mql?.removeEventListener('change', onDpr);
@@ -514,7 +535,7 @@ export function ChartFrame({
       canvasRef.current = null;
       setDrawnTo(false, false);
     };
-  }, [engine, tz, noCrosshair, isBar, isStat, fill, memo]);
+  }, [engine, tz, noCrosshair, isBar, isStat, isGeo, fill, memo]);
 
   useEffect(() => {
     // A kind change on a kept frame clears its canvas (the engine), so it is not drawn.
@@ -545,6 +566,7 @@ export function ChartFrame({
   // The summary label follows the spec (title, unit, kind) and the zone as well as the summary: the
   // engine emits `a11y` only when the numbers change.
   useEffect(() => {
+    if (isGeo) return;
     canvasRef.current?.setAttribute(
       'aria-label',
       summary === null ? spec.title : summaryLabel(spec, summary, tz),
@@ -552,7 +574,7 @@ export function ChartFrame({
     // A bar chart's bars, by name and value, for assistive technology (T22-013 subset, VIZ-068).
     if (isBar) canvasRef.current?.setAttribute('aria-describedby', barListId);
     else canvasRef.current?.removeAttribute('aria-describedby');
-  }, [spec, summary, tz, engine, isStat, isBar, barListId]);
+  }, [spec, summary, tz, engine, isStat, isBar, isGeo, barListId]);
 
   // Tooltip beside the crosshair, flipped left at the host's right edge (CSSOM, T18-004).
   useLayoutEffect(() => {
@@ -562,6 +584,20 @@ export function ChartFrame({
     const left = tooltipLeft(hover.xCss, tip.offsetWidth, host.clientWidth);
     tip.style.translate = `${px(left)} ${px(summary?.plot.y ?? 0)}`;
   }, [hover, summary, selected]);
+
+  // The geomap's tooltip beside the hovered mark, flipped at the edges (CSSOM, T18-004).
+  useLayoutEffect(() => {
+    const tip = geoTipRef.current;
+    const host = hostRef.current;
+    if (tip === null || host === null || hover === null || !isGeo) return;
+    const left = tooltipLeft(hover.xCss, tip.offsetWidth, host.clientWidth);
+    const below = hover.yCss + GEO_TIP_GAP;
+    const top =
+      host.clientHeight > 0 && below + tip.offsetHeight > host.clientHeight
+        ? Math.max(0, hover.yCss - GEO_TIP_GAP - tip.offsetHeight)
+        : below;
+    tip.style.translate = `${px(left)} ${px(top)}`;
+  }, [hover, isGeo]);
 
   // The bar chart's tooltip beside the marked bar, centred on its band (CSSOM, T18-004).
   useLayoutEffect(() => {
@@ -617,6 +653,11 @@ export function ChartFrame({
   };
 
   const plot = summary?.plot ?? null;
+  const geoItem = isGeo && hover !== null && 'item' in hover ? hover.item : null;
+  const geoLines =
+    geoItem === null || frameData.kind !== 'geo'
+      ? []
+      : geoTooltip(frameData.geo, geoItem, spec.unit);
   const markRow =
     mark === null || frameData.kind !== 'categories'
       ? undefined
@@ -634,6 +675,16 @@ export function ChartFrame({
       data-selection-keys={selection === null ? '' : selection.keys.join(',')}
       data-plot={plot === null ? undefined : [plot.x, plot.y, plot.width, plot.height].join(',')}
       data-value-axis={valueAxisAttr(summary)}
+      {...(isGeo
+        ? {
+            // The map's plot surface: the engine's camera keys land here (T24-091).
+            tabIndex: 0,
+            role: 'application',
+            'aria-roledescription': t('geo.surface.role'),
+            'aria-label': spec.title,
+            'data-surface': 'geo',
+          }
+        : {})}
     >
       {!noCrosshair && (
         <div
@@ -695,13 +746,30 @@ export function ChartFrame({
           timeZone={tz}
         />
       )}
+      {isGeo && (
+        <div
+          ref={geoTipRef}
+          className={cx(styles['tooltip'])}
+          data-chart-tooltip=""
+          aria-hidden="true"
+          hidden={geoLines.length === 0}
+        >
+          {geoLines.map((line, i) => (
+            <div key={`${String(i)}:${line}`} className={cx(styles['row'])} data-tooltip-line="">
+              {line}
+            </div>
+          ))}
+        </div>
+      )}
       {!isStat &&
+        !isGeo &&
         (summary?.thresholdLabels ?? [])
           .filter((b) => b.clipped)
           .map((b) => (
             <ThresholdHit key={`${String(b.box.x)},${String(b.box.y)}`} box={b.box} text={b.text} />
           ))}
       {!isStat &&
+        !isGeo &&
         (summary?.eventLabels ?? []).map((b) => (
           <EventHit
             key={b.ids.join(',')}
@@ -726,7 +794,7 @@ export function ChartFrame({
           </Button>
         </div>
       )}
-      {!isBar && summary !== null && summary.seriesShown < summary.seriesTotal && (
+      {!isBar && !isGeo && summary !== null && summary.seriesShown < summary.seriesTotal && (
         <p className={cx(styles['notice'])} role="status">
           {t('chart.truncated', { shown: summary.seriesShown, total: summary.seriesTotal })}
         </p>
