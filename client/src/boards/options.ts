@@ -1,6 +1,7 @@
 /**
  * Panel options (board spec v3; T22 §6.1, plan #173 Part 1 §3.3 and §3.6; the widget keys by board
- * spec v5, plan #198 Part 1, T24 §5.1; the board list keys by v6, plan #216 Part 1, T24 §5.5): the
+ * spec v5, plan #198 Part 1, T24 §5.1; the board list keys by v6, plan #216 Part 1, T24 §5.5; the
+ * geomap keys by v7, plan #234 Part 1 §3.3, T24 §5.15): the
  * keys each kind allows, their types, members and values, the kinds not drawn yet, a kind change
  * (valid values only, #173 Part 3a), and the bar chart's defaults. The Go tables
  * (`server/internal/spec/shape.go`, `validate.go`) are the same; both
@@ -9,6 +10,7 @@
 import type { DataPanelSpec, DataVisKind, PanelVisKind, VisOptions } from '../api/types';
 import type { Reducer } from '../data/frames';
 import type { GeomapOptions } from '../vis/geo/frame';
+import type { LocationOption } from '../vis/geo/locate';
 // A cycle with `spec.ts`, safe: neither module reads the other's bindings while it loads.
 import { optionValueValid } from './spec';
 
@@ -43,6 +45,14 @@ export const OPTION_ORDER: readonly OptionKey[] = Object.freeze([
   'query',
   'tag',
   'limit',
+  'location',
+  'size',
+  'colour',
+  'groupBy',
+  'symbol',
+  'cluster',
+  'wheelZoom',
+  'view',
 ] as const);
 
 /** The JSON type of each key (the shape pass). */
@@ -75,6 +85,14 @@ export const OPTION_TYPES: Readonly<
   query: 'string',
   tag: 'string',
   limit: 'number',
+  location: 'object',
+  size: 'object',
+  colour: 'string',
+  groupBy: 'string',
+  symbol: 'string',
+  cluster: 'bool',
+  wheelZoom: 'bool',
+  view: 'object',
 });
 
 /**
@@ -85,6 +103,28 @@ export const OPTION_MEMBERS = Object.freeze({
   zones: ['tz', 'label'],
   countdown: ['to', 'label', 'after'],
 } as const satisfies Partial<Record<OptionKey, readonly string[]>>);
+
+/** The keys whose value may be JSON null, the same stored value as absent (board spec v7). */
+export const OPTION_NULLABLE: readonly OptionKey[] = Object.freeze(['groupBy', 'view'] as const);
+
+/**
+ * The geomap's object keys (board spec v7; the Go `locationShape`, `sizeShape`, `viewShape`): each
+ * member's JSON type and whether it is required.
+ */
+export const OPTION_OBJECT_MEMBERS = Object.freeze({
+  location: {
+    mode: ['string', 'required'],
+    lat: ['string', 'optional'],
+    lon: ['string', 'optional'],
+    field: ['string', 'optional'],
+    gazetteer: ['string', 'optional'],
+    country: ['string', 'optional'],
+  },
+  size: { by: ['string', 'optional'], min: ['number', 'optional'], max: ['number', 'optional'] },
+  view: { lat: ['number', 'required'], lon: ['number', 'required'], zoom: ['number', 'required'] },
+} as const satisfies Partial<
+  Record<OptionKey, Record<string, readonly ['string' | 'number', 'required' | 'optional']>>
+>);
 
 /** The keys each kind allows, in `OPTION_ORDER`; any other key is `board.json.unknownKey`. */
 export const OPTION_KEYS: Readonly<Record<PanelVisKind, readonly OptionKey[]>> = Object.freeze({
@@ -119,12 +159,24 @@ export const OPTION_KEYS: Readonly<Record<PanelVisKind, readonly OptionKey[]>> =
   text: ['mode', 'content', 'language'],
   clock: ['zones', 'hourCycle', 'seconds', 'date', 'countdown'],
   boardList: ['sort', 'mode', 'query', 'tag', 'limit'],
+  geomap: [
+    'reducer',
+    'labels',
+    'location',
+    'size',
+    'colour',
+    'groupBy',
+    'symbol',
+    'cluster',
+    'wheelZoom',
+    'view',
+  ],
 });
 
 /**
  * The allowed values of the enum keys; `orientation` also allows `auto` on stat. `sort` and `mode`
  * are shared: a board list takes `boardListSort` and `boardListMode` instead (the Go
- * `boardListSorts`, `boardListModes`).
+ * `boardListSorts`, `boardListModes`), and a geomap's `labels` takes `geomapLabels`.
  */
 export const OPTION_VALUES = Object.freeze({
   reducer: ['last', 'first', 'mean', 'min', 'max', 'sum', 'count'],
@@ -143,10 +195,26 @@ export const OPTION_VALUES = Object.freeze({
   after: ['countUp', 'hide'],
   boardListMode: ['starred', 'recent', 'search', 'tag'],
   boardListSort: ['default', 'incidents'],
+  geomapLabels: ['auto', 'none'],
+  locationMode: ['auto', 'coords', 'geohash', 'lookup'],
+  gazetteer: ['country', 'region', 'iata', 'cloud'],
+  sizeBy: ['value', 'fixed'],
+  colour: ['group', 'state'],
+  symbol: ['circle', 'square', 'triangle', 'diamond'],
 } as const satisfies Record<string, readonly string[]>);
 
 /** `|min|` and `|max|` are at most this. */
 export const MAX_OPTION_ABS = 1e15;
+
+/** A geomap's marker radii (CSS px): 2 ≤ min ≤ max ≤ 40, defaults 4 and 20 (the Go `geoSize*`). */
+export const GEO_SIZE = Object.freeze({ min: 2, max: 40, defaultMin: 4, defaultMax: 20 } as const);
+/** A geomap's view bounds (ADR-0027): |lat| ≤ 85.0511, −180 ≤ lon < 180, 0 ≤ zoom ≤ 14. */
+export const GEO_VIEW = Object.freeze({
+  maxLat: 85.0511,
+  minLon: -180,
+  lonEnd: 180,
+  maxZoom: 14,
+} as const);
 
 /** A board list's search text is at most this many characters (the Go `maxBoardQueryRunes`). */
 export const MAX_BOARD_QUERY = 100;
@@ -155,9 +223,10 @@ export const BOARD_LIMIT = Object.freeze({ min: 1, max: 50 } as const);
 
 /**
  * The kinds a stored spec may name that this version does not draw yet: such a panel sends no
- * query and shows `panel.kindUnavailable`. The bar chart left it in #173 Part 3b; pie leaves in I3.
+ * query and shows `panel.kindUnavailable`. The bar chart left it in #173 Part 3b; pie leaves in I3,
+ * the geomap in #234 Part 3.
  */
-export const PENDING_KINDS: ReadonlySet<PanelVisKind> = new Set<PanelVisKind>(['pie']);
+export const PENDING_KINDS: ReadonlySet<PanelVisKind> = new Set<PanelVisKind>(['pie', 'geomap']);
 
 export interface BarchartOptions {
   readonly reducer: Reducer;
@@ -172,15 +241,52 @@ export interface BarchartOptions {
 
 export { optionValueValid };
 
-/** Stub (#234 Part 1, tests first). */
-export const OPTION_NULLABLE: readonly OptionKey[] = [];
-/** Stub (#234 Part 1, tests first). */
-export const OPTION_OBJECT_MEMBERS = {};
+/**
+ * A geomap's location option as `locate` reads it (T24 §5.11): the members of its mode only; a
+ * valid stored value always has them.
+ */
+function locationOf(l: NonNullable<VisOptions['location']>): LocationOption {
+  switch (l.mode) {
+    case 'auto':
+      return { mode: 'auto' };
+    case 'coords':
+      return { mode: 'coords', lat: l.lat ?? '', lon: l.lon ?? '' };
+    case 'geohash':
+      return { mode: 'geohash', field: l.field ?? '' };
+    case 'lookup':
+      return {
+        mode: 'lookup',
+        field: l.field ?? '',
+        gazetteer: l.gazetteer ?? 'country',
+        ...(l.country === undefined ? {} : { country: l.country }),
+      };
+  }
+}
 
-/** Stub (#234 Part 1, tests first). */
+/**
+ * A geomap's options with the T24 §5.15 defaults (plan #234 Part 1 §3.3): auto location, `last`,
+ * size by value 4–20, group colour, no group label, circles, auto labels, clustering and wheel
+ * zoom on, and no stored view (fit). A null `groupBy` or `view` is the default. `o` is valid.
+ */
 export function geomapOptions(o: VisOptions | undefined): GeomapOptions {
-  void o;
-  return {} as GeomapOptions;
+  const size = o?.size;
+  const view = o?.view ?? null;
+  return {
+    location: o?.location === undefined ? { mode: 'auto' } : locationOf(o.location),
+    reducer: o?.reducer ?? 'last',
+    size: {
+      by: size?.by ?? 'value',
+      min: size?.min ?? GEO_SIZE.defaultMin,
+      max: size?.max ?? GEO_SIZE.defaultMax,
+    },
+    colour: o?.colour ?? 'group',
+    groupBy: o?.groupBy ?? null,
+    symbol: o?.symbol ?? 'circle',
+    labels: o?.labels === 'none' ? 'none' : 'auto',
+    cluster: o?.cluster ?? true,
+    wheelZoom: o?.wheelZoom ?? true,
+    view: view === null ? null : { lat: view.lat, lon: view.lon, zoom: view.zoom },
+  };
 }
 
 /**

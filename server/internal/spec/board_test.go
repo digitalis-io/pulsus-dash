@@ -103,8 +103,16 @@ func TestUpcasterAcceptsV1Unchanged(t *testing.T) {
 			if got, want := canon(t, b6), canon(t, raw); !bytes.Equal(got, want) {
 				t.Errorf("DecodeBoard(raw, 6) = %s, want %s", got, want)
 			}
-			if _, err := DecodeBoard(raw, 7); !errors.Is(err, ErrSchemaTooNew) {
-				t.Errorf("DecodeBoard(raw, 7) = %v, want ErrSchemaTooNew", err)
+			// Version 7 adds the geomap (#234 Part 1): the identity again.
+			b7, err := DecodeBoard(raw, 7)
+			if err != nil {
+				t.Fatalf("DecodeBoard(raw, 7): %v", err)
+			}
+			if got, want := canon(t, b7), canon(t, raw); !bytes.Equal(got, want) {
+				t.Errorf("DecodeBoard(raw, 7) = %s, want %s", got, want)
+			}
+			if _, err := DecodeBoard(raw, 8); !errors.Is(err, ErrSchemaTooNew) {
+				t.Errorf("DecodeBoard(raw, 8) = %v, want ErrSchemaTooNew", err)
 			}
 			if _, err := DecodeBoard(raw, 0); !errors.Is(err, ErrSchemaVersion) {
 				t.Errorf("DecodeBoard(raw, 0) = %v, want ErrSchemaVersion", err)
@@ -151,8 +159,8 @@ func TestDecodeBoardUpTo(t *testing.T) {
 	if got, want := canon(t, b), canon(t, raw); !bytes.Equal(got, want) {
 		t.Errorf("DecodeBoardUpTo(raw, 2, 2) = %s, want %s", got, want)
 	}
-	if BoardSchemaVersion != 6 {
-		t.Errorf("BoardSchemaVersion = %d, want 6", BoardSchemaVersion)
+	if BoardSchemaVersion != 7 {
+		t.Errorf("BoardSchemaVersion = %d, want 7", BoardSchemaVersion)
 	}
 }
 

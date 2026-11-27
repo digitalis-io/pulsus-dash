@@ -46,7 +46,7 @@ import {
   panelPointer,
   type GridRef,
 } from '../../boards/editorState';
-import { fieldMessage } from '../../boards/fieldMessages';
+import { fieldMessage, geomapUnsupported, saveFieldMessage } from '../../boards/fieldMessages';
 import type { LayoutOp } from '../../boards/layout';
 import { invalidateBoardLists } from '../../boards/queries';
 import { checkBoardSpec } from '../../boards/spec';
@@ -473,10 +473,12 @@ function BoardEditor({
     discardFailed: t('board.discardFailed'),
   }[s.save.status];
   // Errors outside any panel and section title (the board title, the time) show under the status
-  // line.
+  // line, and so does an older server's refusal of a map panel (plan #234 Part 1 §4.5).
   const invalid = s.save.status === 'invalid' ? s.save.fields : [];
   const boardErrors = invalid.filter(
-    (f) => !PANEL_POINTER.test(f.pointer) && !SECTION_TITLE_POINTER.test(f.pointer),
+    (f) =>
+      geomapUnsupported(s.draft, f) ||
+      (!PANEL_POINTER.test(f.pointer) && !SECTION_TITLE_POINTER.test(f.pointer)),
   );
   const titleErrorOf = (j: number): string | null => {
     const f = invalid.find((x) => x.pointer === `/sections/${String(j)}/title`);
@@ -618,7 +620,7 @@ function BoardEditor({
       )}
       {boardErrors.map((f) => (
         <p key={f.pointer} className={cx(styles['status'])}>
-          {fieldMessage(f.messageKey)}
+          {saveFieldMessage(s.draft, f)}
         </p>
       ))}
       <p aria-live="polite" className={cx(styles['live'])} data-board-live="">

@@ -1,5 +1,5 @@
 // Package spec is the board spec (plan #61 §3.4; v2 by plan #64 Part B §3.1, v3 by #173 Part 1, v4 by
-// #215, v5 by #198 Part 1, v6 by #216 Part 1): strict,
+// #215, v5 by #198 Part 1, v6 by #216 Part 1, v7 by #234 Part 1): strict,
 // presence-aware decoding, validation with JSON-pointer field errors, the upcaster entry point
 // (T11 §4.0), canonical JSON and the RFC 6902 patch recorded in the audit trail (T11-006).
 package spec
@@ -15,8 +15,9 @@ import (
 // 2 adds vis.thresholds and vis.legend (#64 Part B); 3 adds vis.options and the kinds barchart and
 // pie (#173); 4 adds tags (#215, T24-029); 5 adds widgets: query optional, the kinds text and clock
 // and their options (#198 Part 1, T24-003); 6 adds the board list widget, the kind boardList and its
-// options (#216 Part 1, T24 §5.5). Each version is a subset of the next.
-const BoardSchemaVersion int64 = 6 // adds the board list (#216 Part 1)
+// options (#216 Part 1, T24 §5.5); 7 adds the geomap, the kind geomap and its options (#234 Part 1,
+// T24 §5.15). Each version is a subset of the next.
+const BoardSchemaVersion int64 = 7 // adds the geomap (#234 Part 1)
 
 // Board is a board spec. Panels are the ungrouped panels drawn above the sections. Tags are 0 to
 // 16 unique AnnotationTags in their order; an empty list is the same as none (no key).
@@ -66,8 +67,8 @@ type Query struct {
 	Text string `json:"text"`
 }
 
-// Vis is a panel's visualisation: auto, line, bars, heatmap, stat, logs, barchart or pie (data
-// panels), or the widgets text, clock and boardList.
+// Vis is a panel's visualisation: auto, line, bars, heatmap, stat, logs, barchart, pie or geomap
+// (data panels), or the widgets text, clock and boardList.
 type Vis struct {
 	Kind       string      `json:"kind"`
 	Thresholds *Thresholds `json:"thresholds,omitempty"`
@@ -249,7 +250,7 @@ func DecodeBoard(raw []byte, schemaVersion int64) (Board, error) {
 }
 
 // DecodeBoardUpTo decodes a stored spec of schemaVersion when schemaMax is the newest version the
-// caller reads. Versions 1 to 6 decode unchanged (each is a subset of the next: the identity upcast); a
+// caller reads. Versions 1 to 7 decode unchanged (each is a subset of the next: the identity upcast); a
 // version above schemaMax returns ErrSchemaTooNew and a version below 1 ErrSchemaVersion. With
 // schemaMax 1 it decodes as the previous release did (plan #64 Part B §4.7).
 func DecodeBoardUpTo(raw []byte, schemaVersion, schemaMax int64) (Board, error) {

@@ -1,7 +1,8 @@
 /**
- * Board spec v6 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2, v3 by plan #173
+ * Board spec v7 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2, v3 by plan #173
  * Part 1 §3.2–3.4, v4 by plan #215 §3.7: tags, accepted and kept; v5 by plan #198 Part 1 §4.1:
- * widgets, query optional, text and clock; v6 by plan #216 Part 1 §4.1: the board list): the
+ * widgets, query optional, text and clock; v6 by plan #216 Part 1 §4.1: the board list; v7 by plan
+ * #234 Part 1 §3.3: the geomap): the
  * server's validator
  * (`server/internal/spec/shape.go`, `validate.go`) ported to parsed JSON, canonical JSON and panel
  * ids. The two are held together by the shared fixtures `api/fixtures/board-spec/`.
@@ -26,10 +27,14 @@ import { MAX_THRESHOLD_STEPS } from '../vis/thresholds';
 import { fits, overlaps } from './layout';
 import {
   BOARD_LIMIT,
+  GEO_SIZE,
+  GEO_VIEW,
   MAX_BOARD_QUERY,
   MAX_OPTION_ABS,
   OPTION_KEYS,
   OPTION_MEMBERS,
+  OPTION_NULLABLE,
+  OPTION_OBJECT_MEMBERS,
   OPTION_TYPES,
   OPTION_VALUES,
   type OptionKey,
@@ -100,6 +105,7 @@ const VIS_KINDS: readonly string[] = [
   'text',
   'clock',
   'boardList',
+  'geomap',
 ];
 const TIME_PATTERN =
   /^(now|now\/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$/;
@@ -117,6 +123,8 @@ interface ValueType {
   kind: Kind;
   shape?: readonly Field[];
   elem?: ValueType;
+  /** JSON null is accepted (board spec v7: the geomap's `groupBy` and `view`). */
+  nullable?: boolean;
 }
 
 interface Field {
@@ -149,6 +157,17 @@ function membersShape(names: readonly string[]): ValueType {
   return obj(names.map((n) => req(n, tString)));
 }
 
+/** The shape of a geomap object key (`OPTION_OBJECT_MEMBERS`): typed members, required or not. */
+function typedShape(
+  members: Readonly<Record<string, readonly ['string' | 'number', 'required' | 'optional']>>,
+): ValueType {
+  return obj(
+    Object.entries(members).map(([n, [type, presence]]) =>
+      (presence === 'required' ? req : opt)(n, type === 'number' ? tNumber : tString),
+    ),
+  );
+}
+
 let optionValueTypes: Readonly<Record<string, ValueType>> | null = null;
 
 /**
@@ -165,8 +184,12 @@ function optionValueType(k: string): ValueType {
     ),
     zones: { kind: 'array', elem: membersShape(OPTION_MEMBERS.zones) },
     countdown: membersShape(OPTION_MEMBERS.countdown),
+    location: typedShape(OPTION_OBJECT_MEMBERS.location),
+    size: typedShape(OPTION_OBJECT_MEMBERS.size),
+    view: typedShape(OPTION_OBJECT_MEMBERS.view),
   });
-  return optionValueTypes[k] ?? tString;
+  const t = optionValueTypes[k] ?? tString;
+  return (OPTION_NULLABLE as readonly string[]).includes(k) ? { ...t, nullable: true } : t;
 }
 
 /** A kind's options shape (`shape.go` `optionShape`): its keys, optional and typed. */
@@ -224,7 +247,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 /** The shape pass (`shape.go`): exact keys, required keys, no null, types, int32 grid values. */
 function checkShape(c: Collector, pointer: string, value: unknown, t: ValueType): void {
   if (value === null) {
-    c.add(pointer, 'board.json.null');
+    if (t.nullable !== true) c.add(pointer, 'board.json.null');
     return;
   }
   switch (t.kind) {
@@ -285,6 +308,41 @@ function checkShape(c: Collector, pointer: string, value: unknown, t: ValueType)
         checkShape(c, deferred.pointer, deferred.value, obj(optionShape(tag as PanelVisKind)));
       }
     }
+  }
+}
+
+/** A region's country prefix: ISO 3166-1 alpha-2, upper case (the Go `countryPattern`). */
+const COUNTRY = /^[A-Z]{2}$/;
+
+/**
+ * Whether a geomap's location is valid (the Go `validLocation`, T24 §5.11): a listed mode with
+ * exactly its members — coords `lat` and `lon`, geohash `field`, lookup `field` and `gazetteer`,
+ * and `country` only for the region gazetteer — each label key a `FILTER_LABEL`.
+ */
+function validLocation(l: NonNullable<VisOptions['location']>): boolean {
+  const present = Object.keys(l).filter((k) => k !== 'mode');
+  const exactly = (...keys: string[]): boolean =>
+    present.every((k) => keys.includes(k)) &&
+    keys.every((k) => k === 'country' || present.includes(k));
+  const label = (v: string | undefined): boolean => v !== undefined && FILTER_LABEL.test(v);
+  switch (l.mode as string) {
+    case 'auto':
+      return present.length === 0;
+    case 'coords':
+      return exactly('lat', 'lon') && label(l.lat) && label(l.lon);
+    case 'geohash':
+      return exactly('field') && label(l.field);
+    case 'lookup': {
+      const region = l.gazetteer === 'region';
+      return (
+        exactly('field', 'gazetteer', ...(region ? ['country'] : [])) &&
+        label(l.field) &&
+        (OPTION_VALUES.gazetteer as readonly string[]).includes(l.gazetteer ?? '') &&
+        (l.country === undefined || (region && COUNTRY.test(l.country)))
+      );
+    }
+    default:
+      return false;
   }
 }
 
@@ -401,6 +459,9 @@ function checkRules(c: Collector, b: BoardSpec): void {
     }
     if (v.options !== undefined && VIS_KINDS.includes(v.kind)) {
       options(`${pointer}/options`, v.kind, v.options);
+      if (v.kind === 'geomap') {
+        geomapOptions(`${pointer}/options`, v.options, (th?.steps.length ?? 0) > 0);
+      }
     }
   };
   // The option values (`validate.go` `options`, plan #173 Part 1 §3.4): each present key in
@@ -429,7 +490,11 @@ function checkRules(c: Collector, b: BoardSpec): void {
     if (o.max !== undefined && (!bound(o.max) || (minValid && (o.min ?? 0) >= o.max))) {
       c.add(`${pointer}/max`, invalid('max'));
     }
-    enumOf('labels', o.labels, OPTION_VALUES.labels);
+    enumOf(
+      'labels',
+      o.labels,
+      kind === 'geomap' ? OPTION_VALUES.geomapLabels : OPTION_VALUES.labels,
+    );
     enumOf('layout', o.layout, OPTION_VALUES.layout);
     enumOf('colourMode', o.colourMode, OPTION_VALUES.colourMode);
     if (o.textMode !== undefined) {
@@ -500,6 +565,48 @@ function checkRules(c: Collector, b: BoardSpec): void {
     const n = o.limit;
     if (n !== undefined && (!Number.isInteger(n) || n < BOARD_LIMIT.min || n > BOARD_LIMIT.max)) {
       c.add(`${pointer}/limit`, invalid('limit'));
+    }
+  };
+  // A geomap's own keys (`validate.go` `geomapOptions`, board spec v7), in OPTION_ORDER after the
+  // shared ones: each an error at its key (`location`, `size` and `view` as a whole).
+  const geomapOptions = (pointer: string, o: VisOptions, steps: boolean): void => {
+    const invalid = (k: string): string => `board.options.${k}.invalid`;
+    const has = (set: readonly string[], v: unknown): boolean =>
+      typeof v === 'string' && set.includes(v);
+    if (o.location !== undefined && !validLocation(o.location)) {
+      c.add(`${pointer}/location`, invalid('location'));
+    }
+    const s = o.size;
+    if (s !== undefined) {
+      const min = s.min ?? GEO_SIZE.defaultMin;
+      const max = s.max ?? GEO_SIZE.defaultMax;
+      const by = s.by === undefined || has(OPTION_VALUES.sizeBy, s.by);
+      if (!by || min < GEO_SIZE.min || min > max || max > GEO_SIZE.max) {
+        c.add(`${pointer}/size`, invalid('size'));
+      }
+    }
+    if (o.colour !== undefined) {
+      str(`${pointer}/colour`, o.colour, (x) =>
+        has(OPTION_VALUES.colour, x) && (x !== 'state' || steps) ? null : invalid('colour'),
+      );
+    }
+    if (o.groupBy !== undefined && o.groupBy !== null) {
+      str(`${pointer}/groupBy`, o.groupBy, (x) =>
+        FILTER_LABEL.test(x) ? null : invalid('groupBy'),
+      );
+    }
+    if (o.symbol !== undefined) {
+      str(`${pointer}/symbol`, o.symbol, oneOf(OPTION_VALUES.symbol, invalid('symbol')));
+    }
+    const v = o.view;
+    if (v !== undefined && v !== null) {
+      const ok =
+        Math.abs(v.lat) <= GEO_VIEW.maxLat &&
+        v.lon >= GEO_VIEW.minLon &&
+        v.lon < GEO_VIEW.lonEnd &&
+        v.zoom >= 0 &&
+        v.zoom <= GEO_VIEW.maxZoom;
+      if (!ok) c.add(`${pointer}/view`, invalid('view'));
     }
   };
   // A clock's zones (`validate.go` `zones`): 1 to 12 at the list, then each tz and label.

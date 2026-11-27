@@ -373,7 +373,7 @@ func TestNewerSchemaVersion(t *testing.T) {
 
 // The previous release (schema 5) meets a row this release wrote (plan #64 Part B §4.7, R1; #173
 // Part 1: board spec v3; #215: board spec v4, tags; #198 Part 1: board spec v5, widgets; #216
-// Part 1: board spec v6, the board list).
+// Part 1: board spec v6, the board list; #234 Part 1: board spec v7, the geomap).
 func TestPreviousServerRefusesNewerRow(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {
@@ -511,7 +511,8 @@ func TestBoardCRUDWidgets(t *testing.T) {
 }
 
 // itest:board-crud, the board-list case (#216 Part 1, T24-003, T11-016): a board with board lists
-// is created at schema 6, read back canonical, and saved with p-2's limit changed to 20.
+// is created at the current schema (6 when it landed), read back canonical, and saved with p-2's
+// limit changed to 20.
 func TestBoardCRUDBoardList(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {
@@ -522,8 +523,8 @@ func TestBoardCRUDBoardList(t *testing.T) {
 			if err != nil {
 				t.Fatalf("create: %v", err)
 			}
-			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT max(schema_version) FROM board_versions"); v != 6 {
-				t.Errorf("stored schema_version = %d, want 6", v)
+			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT max(schema_version) FROM board_versions"); v != spec.BoardSchemaVersion {
+				t.Errorf("stored schema_version = %d, want %d", v, spec.BoardSchemaVersion)
 			}
 			want, err := spec.Canonical(raw)
 			if err != nil {
@@ -533,8 +534,8 @@ func TestBoardCRUDBoardList(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(got.Spec) != string(want) || got.SchemaVersion != 6 {
-				t.Errorf("GET = schema %d %s, want 6 %s", got.SchemaVersion, got.Spec, want)
+			if string(got.Spec) != string(want) || got.SchemaVersion != spec.BoardSchemaVersion {
+				t.Errorf("GET = schema %d %s, want %d %s", got.SchemaVersion, got.Spec, spec.BoardSchemaVersion, want)
 			}
 			var m map[string]any
 			if err := json.Unmarshal(raw, &m); err != nil {
@@ -556,8 +557,8 @@ func TestBoardCRUDBoardList(t *testing.T) {
 			if !strings.Contains(strings.ReplaceAll(v2, " ", ""), `"limit":20`) {
 				t.Errorf("version 2 spec = %s, want \"limit\":20", v2)
 			}
-			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT schema_version FROM board_versions WHERE version = 2"); v != 6 {
-				t.Errorf("version 2 schema_version = %d, want 6", v)
+			if v := storetest.QueryInt(t, e.db.SuperURL, "SELECT schema_version FROM board_versions WHERE version = 2"); v != spec.BoardSchemaVersion {
+				t.Errorf("version 2 schema_version = %d, want %d", v, spec.BoardSchemaVersion)
 			}
 		})
 	}

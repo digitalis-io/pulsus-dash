@@ -53,16 +53,17 @@ func firstField(t *testing.T, b []byte) string {
 	return p + " " + k
 }
 
-// newFixture is this release's fixture of its newest spec version (v6, #216 Part 1), whose first
-// panel is of the newest kind; oldRefusal is the previous release's first field error for it (a v5
-// binary knows no boardList kind, T05 §7.1).
+// newFixture is this release's fixture of its newest spec version (v7, #234 Part 1), whose first
+// panel is of the newest kind; oldRefusal is the previous release's first field error for it (a v6
+// binary knows no geomap kind, T05 §7.1).
 const (
-	newFixture = "v6-board-list.json"
+	newFixture = "v7-geomap.json"
 	oldRefusal = "/panels/0/vis/kind board.vis.kind.invalid"
 )
 
-// withBoardList is spec with a board list panel added below its top-level panels.
-func withBoardList(t *testing.T, raw []byte) []byte {
+// withNewestKind is spec with a panel of the newest kind (a geomap) added below its top-level
+// panels.
+func withNewestKind(t *testing.T, raw []byte) []byte {
 	t.Helper()
 	var s map[string]any
 	if err := json.Unmarshal(raw, &s); err != nil {
@@ -76,8 +77,9 @@ func withBoardList(t *testing.T, raw []byte) []byte {
 		h, _ := g["h"].(float64)
 		bottom = max(bottom, y+h)
 	}
-	s["panels"] = append(panels, map[string]any{"id": "widget-list", "title": "Boards",
-		"grid": map[string]any{"x": 0, "y": bottom, "w": 4, "h": 4}, "vis": map[string]any{"kind": "boardList"}})
+	s["panels"] = append(panels, map[string]any{"id": "map-newest", "title": "Regions",
+		"grid": map[string]any{"x": 0, "y": bottom, "w": 4, "h": 4},
+		"query": map[string]any{"lang": "promql", "text": "up"}, "vis": map[string]any{"kind": "geomap"}})
 	b, err := json.Marshal(s)
 	if err != nil {
 		t.Fatal(err)
@@ -114,9 +116,14 @@ func TestBoardSpecOldBinary(t *testing.T) {
 			}
 			const tooNew = "board saved by a newer server version"
 
-			// 2 this release creates W from the newest fixture.
+			// 2 this release creates W from the newest fixture; it stores the parsed board, so a
+			// null option (v7: groupBy, view) is read back absent.
 			w := specFixture(t, newFixture)
-			canonW, err := spec.Canonical(w)
+			parsedW, err := spec.ParseBoard(w)
+			if err != nil {
+				t.Fatal(err)
+			}
+			canonW, err := spec.Canonical(parsedW)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -160,8 +167,8 @@ func TestBoardSpecOldBinary(t *testing.T) {
 			}
 
 			// 5 the previous release creates V from its own fixture and cannot save W's spec over
-			// it; this release reads V, saves it with a board list, and the previous release is
-			// then refused.
+			// it; this release reads V, saves it with a panel of the newest kind, and the previous
+			// release is then refused.
 			code, _, b = doAt(t, old, "POST", boardsURL, []byte(`{"spec":`+string(vSpec)+`}`))
 			if code != 201 {
 				t.Fatalf("old create V = %d %s", code, b)
@@ -182,8 +189,8 @@ func TestBoardSpecOldBinary(t *testing.T) {
 			if m := obj(t, b); code != 200 || m["schema_version"] != float64(spec.BoardSchemaVersion) || string(raw(m, "spec")) != string(canonV) {
 				t.Errorf("N get V = %d %s, want schema_version %d and V's canonical spec", code, b, spec.BoardSchemaVersion)
 			}
-			if code, _, b := do(t, n, "PUT", boardsURL+"/"+vUID, []byte(`{"spec":`+string(withBoardList(t, canonV))+`}`), "If-Match", `"1"`); code != 200 {
-				t.Errorf("N save V with a board list = %d %s, want 200", code, b)
+			if code, _, b := do(t, n, "PUT", boardsURL+"/"+vUID, []byte(`{"spec":`+string(withNewestKind(t, canonV))+`}`), "If-Match", `"1"`); code != 200 {
+				t.Errorf("N save V with a geomap = %d %s, want 200", code, b)
 			}
 			if code, _, b := doAt(t, old, "GET", boardsURL+"/"+vUID, nil); code != 503 || errMsg(t, b) != tooNew {
 				t.Errorf("old get V = %d %s, want 503 %s", code, b, tooNew)

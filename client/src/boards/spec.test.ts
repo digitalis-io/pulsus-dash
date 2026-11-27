@@ -166,7 +166,9 @@ describe('unit:board-spec-geomap (TS)', () => {
   it('the option rules, as the server', () => {
     const at = (key: string, value: unknown, th?: unknown) =>
       checkBoardSpec(geomap({ [key]: value }, th));
-    const bad = (key: string) => [{ pointer: `${O}/${key}`, messageKey: `board.options.${key}.invalid` }];
+    const bad = (key: string) => [
+      { pointer: `${O}/${key}`, messageKey: `board.options.${key}.invalid` },
+    ];
     const th = { direction: 'above', steps: [{ value: 1, state: 'watch', label: '' }] };
     expect(at('colour', 'state', th)).toEqual([]);
     expect(at('colour', 'state')).toEqual(bad('colour'));
@@ -215,15 +217,22 @@ describe('unit:board-spec-geomap (TS)', () => {
     expect(at('groupBy', '')).toEqual(bad('groupBy'));
     expect(at('symbol', 'star')).toEqual(bad('symbol'));
     expect(at('labels', 'none')).toEqual([]);
-    expect(at('cluster', 'yes')).toEqual([{ pointer: `${O}/cluster`, messageKey: 'board.json.type' }]);
+    expect(at('cluster', 'yes')).toEqual([
+      { pointer: `${O}/cluster`, messageKey: 'board.json.type' },
+    ]);
     for (const key of ['tilt', 'projection', 'perspective', 'shadow', '3d', 'depth'])
-      expect(at(key, 1), key).toEqual([{ pointer: `${O}/${key}`, messageKey: 'board.json.unknownKey' }]);
+      expect(at(key, 1), key).toEqual([
+        { pointer: `${O}/${key}`, messageKey: 'board.json.unknownKey' },
+      ]);
   });
 
   it('the save text: the old server’s unsupported kind on a geomap panel only (§4.5)', () => {
-    const spec = geomap({}) as BoardSpec;
+    const spec = geomap({}) as unknown as BoardSpec;
     expect(
-      saveFieldMessage(spec, { pointer: '/panels/0/vis/kind', messageKey: 'board.vis.kind.invalid' }),
+      saveFieldMessage(spec, {
+        pointer: '/panels/0/vis/kind',
+        messageKey: 'board.vis.kind.invalid',
+      }),
     ).toBe('This server does not support map panels yet');
     expect(
       saveFieldMessage(spec, {
@@ -232,9 +241,15 @@ describe('unit:board-spec-geomap (TS)', () => {
       }),
     ).toBe(fieldMessage('board.options.size.invalid'));
     expect(fieldMessage('board.options.size.invalid')).not.toBe(fieldMessage('board.json.invalid'));
-    const line = { ...spec, panels: spec.panels.map((p) => ({ ...p, vis: { kind: 'line' } })) } as BoardSpec;
+    const line = {
+      ...spec,
+      panels: spec.panels.map((p) => ({ ...p, vis: { kind: 'line' } })),
+    } as BoardSpec;
     expect(
-      saveFieldMessage(line, { pointer: '/panels/0/vis/kind', messageKey: 'board.vis.kind.invalid' }),
+      saveFieldMessage(line, {
+        pointer: '/panels/0/vis/kind',
+        messageKey: 'board.vis.kind.invalid',
+      }),
     ).toBe(fieldMessage('board.vis.kind.invalid'));
   });
 });
