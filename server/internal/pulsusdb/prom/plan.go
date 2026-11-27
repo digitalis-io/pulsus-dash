@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 )
 
 // Limits of a plan (plan #112 §3.1).
@@ -38,7 +40,7 @@ const (
 // Inputs are what a route hands the planner: the raw text and the request members.
 type Inputs struct {
 	Query string
-	Vars  map[string]string
+	Vars  map[string]vars.Value
 	Kind  Kind
 	Rate  bool
 	// StepMs is the base step: range, the PromGrid step; instant, step_ms or 0.
@@ -223,7 +225,7 @@ func checkInputs(in Inputs) *PlanError {
 		if !validName(n) {
 			return inputError("/vars/"+pointerToken(n), "field.pattern", "a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 		}
-		if v := in.Vars[n]; !utf8.ValidString(v) || len(v) > MaxValueBytes {
+		if v := in.Vars[n].Text; !utf8.ValidString(v) || len(v) > MaxValueBytes {
 			return inputError("/vars/"+pointerToken(n), "field.range", "a variable value must be UTF-8 and at most 4096 bytes")
 		}
 	}

@@ -10,7 +10,12 @@
 import type { PlannedQuery, PromMetadata } from '../../data/decode';
 import type { QueryShape, ValueType } from '../../editor/lang/types';
 import { kindOfType, metricKind, type MetricKind } from '../../explore/metricKind';
-import type { FieldError } from '../types';
+import type { FieldError, VarValue } from '../types';
+
+/** A legacy string's text; '' for a structured value. */
+export function legacyText(v: VarValue | undefined): string {
+  return typeof v === 'string' ? v : '';
+}
 
 export const MAX_RAW_BYTES = 131_072,
   MAX_SENT_BYTES = 65_536,
@@ -28,7 +33,7 @@ export const WARN_TYPES_UNAVAILABLE =
 
 export interface PlanInputs {
   readonly query: string;
-  readonly vars: Readonly<Record<string, string>>;
+  readonly vars: Readonly<Record<string, VarValue>>;
   readonly kind: 'range' | 'instant';
   readonly stepMs: number;
   readonly rate: boolean;
@@ -665,7 +670,7 @@ function checkInputs(i: PlanInputs, rawBytes: number): StubPlanError | null {
         'field.pattern',
         'a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$',
       );
-    if (utf8Length(i.vars[n] ?? '') > MAX_VALUE_BYTES)
+    if (utf8Length(legacyText(i.vars[n])) > MAX_VALUE_BYTES)
       return inputError(
         `/vars/${pointerToken(n)}`,
         'field.range',
@@ -704,7 +709,11 @@ export function prepare(i: PlanInputs): Prepared | StubPlanError {
   const raw = encoder.encode(i.query);
   const bad = checkInputs(i, raw.length);
   if (bad !== null) return bad;
-  const vars = new Map(Object.entries(i.vars).map(([k, v]) => [k, encoder.encode(v)] as const));
+  const vars = new Map(
+    Object.entries(i.vars).map(
+      ([k, v]) => [k, encoder.encode(typeof v === 'string' ? v : '')] as const,
+    ),
+  );
   const count = substitute(raw, vars, PLACEHOLDERS, false);
   if (count.missing.length > 0) {
     return {

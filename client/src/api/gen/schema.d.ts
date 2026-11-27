@@ -266,6 +266,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dash/v1/variables/values": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description The values of a board variable's query (#289, SRF-017), label_values(label) or label_values(selector, label), planned by the variable rules (T07-031) and answered by the label values call of its language. Hand-written handler; excluded from server generation. */
+        post: operations["postVariableValues"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dash/v1/prom/labels": {
         parameters: {
             query?: never;
@@ -507,9 +524,37 @@ export interface components {
             /** Format: int64 */
             step_ms?: number;
         };
-        /** @description Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021). */
+        /** @description Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$). A plain string is written as given (an undefined variable, today's behaviour); VarMulti carries literal picks and VarAll a regex, written only where T07-031 allows. The server substitutes them (ADR-0021). */
         QueryVars: {
-            [key: string]: string;
+            [key: string]: string | components["schemas"]["VarMulti"] | components["schemas"]["VarAll"];
+        };
+        /** @description The literal values picked for a defined variable (board spec v9, */
+        VarMulti: {
+            values: string[];
+        };
+        /** @description All of a defined variable's values, as its regex (allValue, or ".*"); written verbatim in a regex context only. */
+        VarAll: {
+            all: string;
+        };
+        VariableValuesRequest: {
+            /** @enum {string} */
+            lang: "promql" | "logql";
+            query: string;
+            /** Format: int64 */
+            from: number;
+            /** Format: int64 */
+            to: number;
+            vars?: components["schemas"]["QueryVars"];
+            /** @default 1000 */
+            limit: number;
+        };
+        VariableValuesResponse: {
+            planned: {
+                label: string;
+                match: string | null;
+            };
+            values: string[];
+            completeness: components["schemas"]["Completeness"];
         };
         /** @description What the server planned and sent (ADR-0021, T06-029). */
         PlannedQuery: {
@@ -731,8 +776,25 @@ export interface components {
             title: string;
             time?: components["schemas"]["TimeRange"];
             tags?: components["schemas"]["AnnotationTag"][];
+            variables?: components["schemas"]["BoardVariable"][];
             panels: components["schemas"]["Panel"][];
             sections: components["schemas"]["Section"][];
+        };
+        BoardVariable: {
+            name: string;
+            label: string;
+            /** @enum {string} */
+            kind: "query" | "custom" | "constant";
+            query?: components["schemas"]["Query"];
+            values?: string[];
+            multi?: boolean;
+            includeAll?: boolean;
+            allValue?: string;
+            default?: string[];
+            /** @enum {string} */
+            sort?: "none" | "alphaAsc" | "alphaDesc" | "numAsc" | "numDesc";
+            /** @enum {string} */
+            refresh?: "load" | "timeChange";
         };
         TimeRange: {
             from: string;
@@ -1960,6 +2022,42 @@ export interface operations {
                     "application/json": components["schemas"]["PromInstantResponse"];
                 };
             };
+            /** @description Error (400 */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postVariableValues: {
+        parameters: {
+            query: {
+                tenant: components["parameters"]["Tenant"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VariableValuesRequest"];
+            };
+        };
+        responses: {
+            /** @description The planned label and selector */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VariableValuesResponse"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
             /** @description Error (400 */
             default: {
                 headers: {

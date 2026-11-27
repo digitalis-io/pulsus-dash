@@ -3,6 +3,8 @@ package logs
 import (
 	"strconv"
 	"strings"
+
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 )
 
 // segmentKind is how a segment maps its bytes (plan #112 §4.2, unchanged).
@@ -187,7 +189,7 @@ func writeDQ(b *strings.Builder, v string) {
 // substitute scans raw once (plan #116 §4.2). With build false it only counts the output, so a
 // text over the cap is refused before it is built; with build true it builds the text and the
 // segment map of expanded → raw.
-func substitute(raw string, vars map[string]string, m macroText, build bool) substitution {
+func substitute(raw string, vars map[string]vars.Value, m macroText, build bool) substitution {
 	var out substitution
 	var b strings.Builder
 	if build {
@@ -227,7 +229,7 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 			case strings.HasPrefix(name, "__") || len(name) > maxNameLen:
 			default:
 				if v, has := vars[name]; has {
-					value, subst, isVar = v, true, true
+					value, subst, isVar = v.Text, true, true
 				} else if !contains(out.missing, name) {
 					out.missing = append(out.missing, name)
 				}

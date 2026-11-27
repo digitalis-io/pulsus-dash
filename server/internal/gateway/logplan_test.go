@@ -17,6 +17,7 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/keyhash"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 	logplan "github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/logs"
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 )
 
 // The route rows of plan #116 A.2 (window logWin: 1 h, 1 200 px, step 5 000).
@@ -437,7 +438,7 @@ func TestLogqlFinalGuard(t *testing.T) {
 	logs := &syncBuffer{}
 	q := &dataRoutes{d: Deps{Logger: slog.New(slog.NewJSONHandler(logs, nil))}}
 	// F1: no ladder step is two days, so the route's steps 3–6 are called directly.
-	_, e := q.logPlanFor(context.Background(), logplan.Inputs{Query: m1Query, Vars: map[string]string{}, Kind: logplan.KindRange, StepMs: 172_800_000})
+	_, e := q.logPlanFor(context.Background(), logplan.Inputs{Query: m1Query, Vars: map[string]vars.Value{}, Kind: logplan.KindRange, StepMs: 172_800_000})
 	if e == nil {
 		t.Fatal("F1: planned, want the step 6 refusal")
 	}

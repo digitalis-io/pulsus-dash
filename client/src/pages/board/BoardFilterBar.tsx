@@ -173,7 +173,7 @@ export function BoardFilterBar({
   return (
     <div role="group" aria-label={t('filters.group')} className={cx(styles['filterBar'])}>
       {variables.map((name) => {
-        const current = vars.get(name);
+        const current = vars.get(name)?.[0];
         const shown = current ?? t('filters.notSet');
         const title = t('filters.variableTitle', { name });
         return (

@@ -48,6 +48,8 @@ import {
   type SaveResult,
   type Session,
   type VolumeRequest,
+  type VariableValues,
+  type VariableValuesRequest,
 } from './types';
 import { errorFromRow, rangeFromDecoded } from '../data/dsfRange';
 import { messageOf, queryError } from './queryError';
@@ -727,6 +729,14 @@ export class HttpApi implements Api {
     );
     if (data === undefined) throw queryError(response.status, error);
     return decoded(decodeValues, data);
+  }
+
+  async variableValues(
+    _tenant: string,
+    _req: VariableValuesRequest,
+    _signal?: AbortSignal,
+  ): Promise<VariableValues> {
+    return Promise.reject(new Error('not implemented'));
   }
 
   async promMetadata(

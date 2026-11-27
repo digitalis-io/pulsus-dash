@@ -2,9 +2,18 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient } from '@tanstack/react-query';
 import { useContext, useState } from 'react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+/// <reference types="node" />
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../api/StubApi';
-import { ApiError, type DataPanelSpec, type RangeRequest } from '../api/types';
+import {
+  ApiError,
+  type BoardSpec,
+  type BoardVariable,
+  type DataPanelSpec,
+  type RangeRequest,
+} from '../api/types';
 import { Providers } from '../app/providers';
 import type { RangeResult } from '../data/decode';
 import { ChartEngineContext } from '../engine/index';
@@ -15,6 +24,13 @@ import { installResizeObserver, resizeAll } from '../test/fakeResizeObserver';
 import { BY_VERSION_Q, rangeByVersion } from '../test/rangeFixtures';
 import { T } from '../test/renderApp';
 import { renderRouted } from '../test/routedHarness';
+import { panelOf, stubBoard } from '../test/boardTestKit';
+import { ABS as ABS_Q, flush, openBoard, ready, show } from '../test/boardPanelKit';
+import {
+  installIntersectionObserver,
+  uninstallIntersectionObserver,
+} from '../test/fakeIntersectionObserver';
+import { seedWith } from '../test/seeds';
 import { BoardRunContext, BoardRunProvider } from './boardRun';
 import { panelView } from './panelRun';
 import type { WidthStore } from './panelWidths';
@@ -342,5 +358,124 @@ describe('unit:panel-run-cancel', () => {
       });
     });
     expect(screen.getByText('Baseline unavailable: the shifted query failed.')).toBeInTheDocument();
+  });
+});
+
+// The ClickHouse board of api/fixtures/board-spec/v9-variables.json (plan #289 §3.1).
+const CLICKHOUSE = JSON.parse(
+  readFileSync(
+    join(process.cwd(), '..', 'api', 'fixtures', 'board-spec', 'v9-variables.json'),
+    'utf8',
+  ),
+) as BoardSpec;
+const NODE_PANELS = ['Uptime', 'Queries', 'Memory'];
+const ALL_PANELS = [...NODE_PANELS, 'Scrape targets', 'Up'];
+
+/** The vars of every range and instant request so far, by panel text. */
+function sentVars(b: ReturnType<typeof openBoard>): { text: string; vars: unknown }[] {
+  return [
+    ...b.range.mock.calls.map(([, r]) => ({ text: r.query, vars: r.vars })),
+    ...b.instant.mock.calls.map(([, r]) => ({ text: r.query, vars: r.vars })),
+  ];
+}
+
+function openVariablesBoard(spec: BoardSpec, extra = '') {
+  const b = openBoard([], { seed: seedWith({ boards: [stubBoard('b-1', spec)] }), extra });
+  const values = vi.spyOn(b.api, 'variableValues');
+  values.mockImplementation((_t, req) =>
+    Promise.resolve({
+      planned: { label: '', match: null },
+      values: req.query.includes(', job)') ? ['j1', 'j2'] : ['n1', 'n2'],
+      truncated: false,
+    }),
+  );
+  return { ...b, values };
+}
+
+describe('board variables (plan #289 §4.4)', () => {
+  beforeEach(() => {
+    installIntersectionObserver();
+  });
+  afterEach(() => {
+    uninstallIntersectionObserver();
+  });
+
+  // unit:board-variables-run (acceptance, T07-013).
+  it('runs every panel, sends All, and re-runs only the $node panels on a pick', async () => {
+    const b = openVariablesBoard(CLICKHOUSE);
+    await ready(...ALL_PANELS);
+    show(...ALL_PANELS);
+    await waitFor(() => {
+      expect(new Set(sentVars(b).map((c) => c.text)).size).toBe(5);
+    });
+    const first = sentVars(b);
+    const node = first.filter((c) => c.text.includes('$node'));
+    expect(node).toHaveLength(3);
+    for (const c of node) expect(c.vars).toEqual({ node: { all: '.+' } });
+    for (const c of first.filter((x) => !x.text.includes('$node'))) expect(c.vars).toEqual({});
+    await act(async () => {
+      await b.router.navigate(`/t/demo/board/b-1?${ABS_Q}&var-node=n1`);
+    });
+    await waitFor(() => {
+      expect(sentVars(b).length).toBe(first.length + 3);
+    });
+    await flush();
+    const again = sentVars(b).slice(first.length);
+    expect(again).toHaveLength(3);
+    for (const c of again) {
+      expect(c.text).toContain('$node');
+      expect(c.vars).toEqual({ node: { values: ['n1'] } });
+    }
+  });
+
+  // unit:variable-too-many (SRF-017, plan #289 §4.2 step 3).
+  it('201 values block the $node panels and the dependent list; 200 run', async () => {
+    const node = CLICKHOUSE.variables?.[0] as BoardVariable;
+    const spec: BoardSpec = {
+      ...CLICKHOUSE,
+      variables: [
+        node,
+        {
+          name: 'job',
+          label: 'Job',
+          kind: 'query',
+          query: { lang: 'promql', text: 'label_values(up{instance=~"$node"}, job)' },
+          multi: false,
+          includeAll: false,
+          sort: 'none',
+          refresh: 'load',
+        },
+      ],
+    };
+    const many = Array.from({ length: 201 }, (_, i) => `&var-node=v${String(i)}`).join('');
+    const b = openVariablesBoard(spec, many);
+    await ready(...ALL_PANELS);
+    show(...ALL_PANELS);
+    await waitFor(() => {
+      expect(new Set(sentVars(b).map((c) => c.text)).size).toBe(2);
+    });
+    await flush();
+    for (const title of NODE_PANELS) {
+      expect(panelOf(title).textContent).toContain('Too many values selected for Node');
+    }
+    expect(sentVars(b).filter((c) => c.text.includes('$node'))).toHaveLength(0);
+    expect(screen.getByRole('button', { name: /^Variable Job: / }).textContent).toContain(
+      'Waiting for Node',
+    );
+    expect(b.values.mock.calls.filter(([, r]) => r.query.includes(', job)'))).toHaveLength(0);
+
+    const twoHundred = Array.from({ length: 200 }, (_, i) => `&var-node=v${String(i)}`).join('');
+    await act(async () => {
+      await b.router.navigate(`/t/demo/board/b-1?${ABS_Q}${twoHundred}`);
+    });
+    await waitFor(() => {
+      expect(sentVars(b).filter((c) => c.text.includes('$node'))).toHaveLength(3);
+    });
+    await waitFor(() => {
+      expect(b.values.mock.calls.filter(([, r]) => r.query.includes(', job)'))).toHaveLength(1);
+    });
+    for (const c of sentVars(b).filter((x) => x.text.includes('$node'))) {
+      expect((c.vars as Record<string, { values: string[] }>)['node']?.values).toHaveLength(200);
+    }
   });
 });

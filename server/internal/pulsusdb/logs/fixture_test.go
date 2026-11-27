@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 )
 
 // fixturePath is the shared LogQL planner fixture (plan #116 §3.5), run here and by the client's
@@ -117,10 +119,10 @@ type fxCase struct {
 	Name   string `json:"name"`
 	From   string `json:"from"`
 	Inputs struct {
-		Query  text              `json:"query"`
-		Vars   map[string]string `json:"vars"`
-		Kind   string            `json:"kind"`
-		StepMs int64             `json:"step_ms"`
+		Query  text                  `json:"query"`
+		Vars   map[string]vars.Value `json:"vars"`
+		Kind   string                `json:"kind"`
+		StepMs int64                 `json:"step_ms"`
 		// RangeMs is the request window (to − from); 0 or absent = none.
 		RangeMs int64 `json:"range_ms"`
 	} `json:"inputs"`
@@ -130,6 +132,9 @@ type fxCase struct {
 	Planned     *fxPlanned `json:"planned"`
 	Error       *fxError   `json:"error"`
 	ToSource    [][2]*int  `json:"to_source"`
+	// ServerOnly marks a case only the server's probe guard refuses (plan #289 §3.4): the client
+	// mirror skips it.
+	ServerOnly bool `json:"server_only"`
 }
 
 func (c fxCase) inputs() Inputs {
@@ -141,9 +146,9 @@ func (c fxCase) inputs() Inputs {
 }
 
 type fxClassify struct {
-	Name string            `json:"name"`
-	Text text              `json:"text"`
-	Vars map[string]string `json:"vars"`
+	Name string                `json:"name"`
+	Text text                  `json:"text"`
+	Vars map[string]vars.Value `json:"vars"`
 	// PreparePosition is the offset at which Prepare refuses the text with row 9b (plan #121
 	// §3.3): present on exactly the entries whose text holds a top-level '#'.
 	PreparePosition *int `json:"prepare_position"`

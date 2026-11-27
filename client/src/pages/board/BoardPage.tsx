@@ -590,6 +590,11 @@ function BoardEditor({
   // One events request for the whole board (plan #64 Part C §3.8): every grid and section counts,
   // collapsed ones too, and none is made before the board's time is ready.
   const events = useBoardEvents(tenant, timeReady && livePanels.length > 0);
+  const addressVars = boardParams.params.vars;
+  const legacyVars = useMemo(
+    () => new Map([...addressVars].map(([k, v]) => [k, v[0] ?? ''])),
+    [addressVars],
+  );
   const eventsNotice = events.failed
     ? t('board.events.failed')
     : events.truncated
@@ -833,7 +838,7 @@ function BoardEditor({
   return (
     <BoardRunProvider
       tenant={tenant}
-      vars={boardParams.params.vars}
+      vars={legacyVars}
       timeReady={timeReady}
       livePanels={livePanels}
     >

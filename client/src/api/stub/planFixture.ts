@@ -6,7 +6,7 @@ import raw from '../../../../wire/fixtures/plan/promql.json?raw';
 import type { PlannedQuery } from '../../data/decode';
 import type { ValueType } from '../../editor/lang/types';
 import type { MetricKind } from '../../explore/metricKind';
-import type { FieldError } from '../types';
+import type { FieldError, VarValue } from '../types';
 import type { ByteShape } from './plan';
 
 /** A JSON string or `{"concat": [string | {"repeat": Text, "count": n}, …]}`. */
@@ -35,9 +35,11 @@ interface WirePlanned {
 export interface FixtureCase {
   readonly name: string;
   readonly from: string;
+  /** Only the server's probe guard refuses it (plan #289 §3.4): the mirror skips it. */
+  readonly server_only?: boolean;
   readonly inputs: {
     readonly query: Text;
-    readonly vars: Readonly<Record<string, string>>;
+    readonly vars: Readonly<Record<string, VarValue>>;
     readonly kind: 'range' | 'instant';
     readonly step_ms: number;
     readonly rate: boolean;

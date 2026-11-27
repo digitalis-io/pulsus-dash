@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ALL_TOKEN,
   checkFilterKey,
+  decodeValue,
+  encodeValue,
+  withVarValues,
   checkParamValue,
   fitsUrlBudget,
   overrideReserve,
@@ -39,7 +43,7 @@ describe('board params', () => {
       ['var-9x', 'y'],
       ['var-region', ''],
     ]);
-    expect(Object.fromEntries(r.vars)).toEqual({ env: 'prod' });
+    expect(Object.fromEntries(r.vars)).toEqual({ env: ['prod', 'x'] });
     expect(r.filters).toEqual([
       { key: 'env', value: 'prod' },
       { key: 'region', value: 'eu=1' },
@@ -53,7 +57,7 @@ describe('board params', () => {
     );
     const v200 = '😀'.repeat(200);
     expect(v200.length).toBe(400);
-    expect(readBoardParams([['var-a', v200]]).vars.get('a')).toBe(v200);
+    expect(readBoardParams([['var-a', v200]]).vars.get('a')).toEqual([v200]);
     expect(readBoardParams([['var-a', '😀'.repeat(201)]]).vars.has('a')).toBe(false);
     expect(readBoardParams([['f', `a=${v200}`]]).filters).toEqual([{ key: 'a', value: v200 }]);
     expect(readBoardParams([['f', `a=${'😀'.repeat(201)}`]]).filters).toEqual([]);
@@ -197,5 +201,83 @@ describe('board params', () => {
     expect(checkParamValue('  ')).toBe('filter.valueRequired');
     expect(checkParamValue('a'.repeat(201))).toBe('filter.valueTooLong');
     expect(checkParamValue('x')).toBeNull();
+  });
+});
+
+// unit:board-params-multi (IA-022, plan #289 §4.1): repeated var- values and the $ escape.
+describe('board params: multi-value variables', () => {
+  const defined = new Set(['n']);
+  it('keeps distinct values in address order', () => {
+    const r = readBoardParams(
+      [
+        ['var-n', 'a'],
+        ['var-n', 'b'],
+        ['var-n', 'a'],
+      ],
+      defined,
+    );
+    expect(r.vars.get('n')).toEqual(['a', 'b']);
+  });
+
+  it('reads $__all as All and $$__all as the literal', () => {
+    expect(ALL_TOKEN).toBe('$__all');
+    const all = readBoardParams([['var-n', '$__all']], defined).vars.get('n') ?? [];
+    expect(all.map(decodeValue)).toEqual([{ all: true }]);
+    const lit = readBoardParams([['var-n', '$$__all']], defined).vars.get('n') ?? [];
+    expect(lit.map(decodeValue)).toEqual([{ value: '$__all' }]);
+    // One leading $ is stripped from any other value of a defined variable.
+    expect(decodeValue('$$x')).toEqual({ value: '$x' });
+    expect(decodeValue('$x')).toEqual({ value: 'x' });
+    expect(decodeValue('x')).toEqual({ value: 'x' });
+  });
+
+  it('writes a literal starting with $ with one more $', () => {
+    expect(encodeValue('$x')).toBe('$$x');
+    expect(encodeValue('$__all')).toBe('$$__all');
+    expect(encodeValue('x')).toBe('x');
+    expect(
+      withVarValues([['from', 'now-1h']], 'n', [encodeValue('a'), encodeValue('$b'), ALL_TOKEN]),
+    ).toEqual([
+      ['from', 'now-1h'],
+      ['var-n', 'a'],
+      ['var-n', '$$b'],
+      ['var-n', '$__all'],
+    ]);
+    expect(
+      withVarValues(
+        [
+          ['var-n', 'a'],
+          ['var-m', 'x'],
+        ],
+        'n',
+        null,
+      ),
+    ).toEqual([['var-m', 'x']]);
+  });
+
+  it('applies the 200 code-point limit to the decoded value', () => {
+    const literal = '$' + 'y'.repeat(199);
+    const param = encodeValue(literal);
+    expect([...param].length).toBe(201);
+    const got = readBoardParams([['var-n', param]], defined).vars.get('n') ?? [];
+    expect(got.map(decodeValue)).toEqual([{ value: literal }]);
+    // An undefined variable is read raw: 201 code points are over its limit.
+    expect(readBoardParams([['var-m', param]], defined).vars.has('m')).toBe(false);
+    // A decoded value over 200 is dropped.
+    expect(readBoardParams([['var-n', '$$' + 'y'.repeat(200)]], defined).vars.has('n')).toBe(false);
+  });
+
+  it('a write over the budget is refused', () => {
+    const path = '/t/demo/b/x';
+    const context = DEFAULT_CONTEXT;
+    const values = Array.from(
+      { length: 200 },
+      (_, i) => `clickhouse-node-${String(i).padStart(3, '0')}-replica`,
+    );
+    const next = withVarValues([], 'n', values);
+    expect(fitsUrlBudget(path, context, next, [])).toBe(false);
+    expect(fitsUrlBudget(path, context, withVarValues([], 'n', values.slice(0, 10)), [])).toBe(
+      true,
+    );
   });
 });

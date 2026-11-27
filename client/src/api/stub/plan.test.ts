@@ -62,7 +62,8 @@ function expectResult(c: FixtureCase, r: StubPlanned | StubPlanError): void {
 }
 
 describe('unit:plan-parity (TS)', () => {
-  for (const c of FIXTURE.plan) {
+  // A case only the server's probe guard refuses is the server's (plan #289 §3.4).
+  for (const c of FIXTURE.plan.filter((x) => x.server_only !== true)) {
     it(c.name, () => {
       const r = run(c);
       expectResult(c, r);

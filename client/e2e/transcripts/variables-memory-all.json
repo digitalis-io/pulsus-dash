@@ -1,0 +1,66 @@
+{
+  "name": "variables-memory-all",
+  "provenance": {
+    "synthetic": "board variables (#289): a $node panel"
+  },
+  "match": {
+    "method": "POST",
+    "paths": [
+      "/api/v1/query_range"
+    ],
+    "query": "sum by (instance) (vars_memory{instance=~\".+\"})"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Pulsus-Query-Id": "fake-variables-memory-all-1"
+    },
+    "body": {
+      "status": "success",
+      "data": {
+        "resultType": "matrix",
+        "result": [
+          {
+            "metric": {
+              "instance": "n1"
+            },
+            "values": [
+              [
+                1767225600,
+                "1"
+              ],
+              [
+                1767227400,
+                "2"
+              ],
+              [
+                1767229200,
+                "3"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "instance": "n2"
+            },
+            "values": [
+              [
+                1767225600,
+                "1"
+              ],
+              [
+                1767227400,
+                "2"
+              ],
+              [
+                1767229200,
+                "3"
+              ]
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

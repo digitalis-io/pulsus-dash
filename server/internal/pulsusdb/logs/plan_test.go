@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strconv"
 	"testing"
+
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 )
 
 func fields(fs []fxField) []FieldError {
@@ -186,7 +188,7 @@ func hashRefusal(t *testing.T, what string, err *PlanError, pos int) {
 // selector after the '#' (plan #121 §4.3, T07-020).
 func TestPrepareHashBeforeClassify(t *testing.T) {
 	for _, k := range []Kind{KindRange, KindVolume} {
-		p, err := Prepare(Inputs{Query: "# x\r{source = \"pulsus-dash\"}", Vars: map[string]string{}, Kind: k, StepMs: 5000})
+		p, err := Prepare(Inputs{Query: "# x\r{source = \"pulsus-dash\"}", Vars: map[string]vars.Value{}, Kind: k, StepMs: 5000})
 		if p != nil {
 			t.Errorf("Prepare(H1) kind %d: prepared, want the hash refusal", k)
 		}
@@ -240,7 +242,7 @@ func TestLogsPlanInvalidUTF8(t *testing.T) {
 	if e == nil || e.Status() != 400 || e.Message != "query must be UTF-8" || !slices.Equal(e.Fields, []FieldError{{"/query", "field.range"}}) {
 		t.Errorf("query: %+v", e)
 	}
-	_, e = Plan(Inputs{Query: `{a="$r"}`, Vars: map[string]string{"r": "\xff"}, Kind: KindRange, StepMs: 5000})
+	_, e = Plan(Inputs{Query: `{a="$r"}`, Vars: map[string]vars.Value{"r": vars.Literal("\xff")}, Kind: KindRange, StepMs: 5000})
 	if e == nil || e.Status() != 400 || e.Message != "a variable value must be UTF-8 and at most 4096 bytes" ||
 		!slices.Equal(e.Fields, []FieldError{{"/vars/r", "field.range"}}) {
 		t.Errorf("value: %+v", e)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 )
 
 func fields(fs []fxField) []FieldError {
@@ -175,7 +176,7 @@ func TestPlanCapRepeatedQuotedValue(t *testing.T) {
 		return err
 	}
 
-	in := Inputs{Query: `x{a="` + strings.Repeat("$a", 65_000) + `"}`, Vars: map[string]string{"a": strings.Repeat("\n", 4096)},
+	in := Inputs{Query: `x{a="` + strings.Repeat("$a", 65_000) + `"}`, Vars: map[string]vars.Value{"a": vars.Literal(strings.Repeat("\n", 4096))},
 		Kind: KindRange, StepMs: 5000, Rate: true}
 	t0 := time.Now()
 	err := prepare(in)
@@ -192,7 +193,7 @@ func TestPlanCapRepeatedQuotedValue(t *testing.T) {
 	// The refusal order is unchanged: a missing variable, then a value that cannot be written,
 	// then the cap. Two pairs: ($a, `…`) and ($a, "…").
 	in.Query = "x{a=`$a`}" + strings.Repeat(`{a="$a"}`, 1000) + " $m"
-	in.Vars = map[string]string{"a": strings.Repeat("`", 4096)}
+	in.Vars = map[string]vars.Value{"a": vars.Literal(strings.Repeat("`", 4096))}
 	if err := prepare(in); err == nil || err.Kind != ErrVariableMissing {
 		t.Errorf("missing first: %+v", err)
 	}
@@ -213,7 +214,7 @@ func TestPlanInvalidUTF8(t *testing.T) {
 		!slices.Equal(err.Fields, []FieldError{{"/query", "field.range"}}) {
 		t.Errorf("query: %+v", err)
 	}
-	_, err = Plan(Inputs{Query: "up", Vars: map[string]string{"r": "\xff"}, Kind: KindRange, StepMs: 5000, Rate: true}, nil)
+	_, err = Plan(Inputs{Query: "up", Vars: map[string]vars.Value{"r": vars.Literal("\xff")}, Kind: KindRange, StepMs: 5000, Rate: true}, nil)
 	if err == nil || err.Kind != ErrInput || err.Message != "a variable value must be UTF-8 and at most 4096 bytes" ||
 		!slices.Equal(err.Fields, []FieldError{{"/vars/r", "field.range"}}) {
 		t.Errorf("value: %+v", err)

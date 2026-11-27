@@ -63,7 +63,8 @@ function spans(c: LogsPlanCase, tag: 'prepared' | 'planned') {
 }
 
 describe('unit:plan-parity (TS, logs)', () => {
-  for (const c of LOGS_FIXTURE.plan) {
+  // A case only the server's probe guard refuses is the server's (plan #289 §3.4).
+  for (const c of LOGS_FIXTURE.plan.filter((x) => x.server_only !== true)) {
     it(c.name, () => {
       const p = prepareLogs(inputsOf(c));
       if (isLogsPlanError(p)) {

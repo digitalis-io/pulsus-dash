@@ -101,6 +101,8 @@ import {
   type SaveResult,
   type Session,
   type VolumeRequest,
+  type VariableValues,
+  type VariableValuesRequest,
 } from './types';
 
 /** A seeded board; the stub serves it as version 1, etag `"1"`. */
@@ -781,6 +783,17 @@ export class StubApi implements Api {
     return settle(() => {
       this.checkTenant(tenant);
       return { values: [...(STUB_LOG_LABEL_VALUES[name] ?? [])], completeness: EMPTY_COMPLETENESS };
+    }, signal);
+  }
+
+  variableValues(
+    tenant: string,
+    _req: VariableValuesRequest,
+    signal?: AbortSignal,
+  ): Promise<VariableValues> {
+    return settle(() => {
+      this.checkTenant(tenant);
+      return { planned: { label: '', match: null }, values: [], truncated: false };
     }, signal);
   }
 

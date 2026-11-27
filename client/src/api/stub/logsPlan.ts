@@ -11,9 +11,10 @@
  * byte for byte as Go does.
  */
 import type { LogqlPlannedQuery } from '../../data/decode';
-import type { FieldError } from '../types';
+import type { FieldError, VarValue } from '../types';
 import {
   formatDuration,
+  legacyText,
   MAX_RAW_BYTES,
   MAX_SENT_BYTES,
   MAX_VALUE_BYTES,
@@ -26,7 +27,7 @@ import {
 
 export interface LogsPlanInputs {
   readonly query: string;
-  readonly vars: Readonly<Record<string, string>>;
+  readonly vars: Readonly<Record<string, VarValue>>;
   readonly kind: 'range' | 'volume';
   readonly stepMs: number;
   /** The request window, to − from, of `$__range`, `$__range_s` and `$__range_ms`; absent or ≤ 0 = none. */
@@ -617,7 +618,7 @@ function checkInputs(i: LogsPlanInputs, rawBytes: number): LogsStubPlanError | n
         'field.pattern',
         'a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$',
       );
-    if (utf8Length(i.vars[n] ?? '') > MAX_VALUE_BYTES)
+    if (utf8Length(legacyText(i.vars[n])) > MAX_VALUE_BYTES)
       return inputError(
         `/vars/${pointerToken(n)}`,
         'field.range',
@@ -651,7 +652,11 @@ function prepareSubstitute(i: LogsPlanInputs): Substituted | LogsStubPlanError {
   const raw = encoder.encode(i.query);
   const bad = checkInputs(i, raw.length);
   if (bad !== null) return bad;
-  const vars = new Map(Object.entries(i.vars).map(([k, v]) => [k, encoder.encode(v)] as const));
+  const vars = new Map(
+    Object.entries(i.vars).map(
+      ([k, v]) => [k, encoder.encode(typeof v === 'string' ? v : '')] as const,
+    ),
+  );
   const count = substitute(raw, vars, PLACEHOLDERS, false);
   if (count.missing.length > 0)
     return namesError(

@@ -36,7 +36,11 @@ export interface SectionOverrides {
   readonly expand: ReadonlySet<string>;
 }
 export interface BoardParams {
-  readonly vars: ReadonlyMap<string, string>;
+  /**
+   * Each variable's valid address values, distinct, in address order: a defined variable's
+   * canonically encoded (§4.1), an undefined one's raw.
+   */
+  readonly vars: ReadonlyMap<string, readonly string[]>;
   readonly filters: readonly BoardFilter[];
   readonly sections: SectionOverrides;
 }
@@ -70,15 +74,18 @@ function splitFilter(v: string): BoardFilter | null {
   return i === -1 ? null : { key: v.slice(0, i), value: v.slice(i + 1) };
 }
 
-export function readBoardParams(rest: readonly SearchParamPair[]): BoardParams {
-  const vars = new Map<string, string>();
+export function readBoardParams(
+  rest: readonly SearchParamPair[],
+  _defined: ReadonlySet<string> = new Set(),
+): BoardParams {
+  const vars = new Map<string, readonly string[]>();
   const filters: BoardFilter[] = [];
   const collapse = new Set<string>();
   const expand = new Set<string>();
   for (const [k, v] of rest) {
     if (k.startsWith(VAR_PREFIX)) {
       const name = k.slice(VAR_PREFIX.length);
-      if (VARIABLE_NAME.test(name) && validValue(v) && !vars.has(name)) vars.set(name, v);
+      if (VARIABLE_NAME.test(name) && validValue(v) && !vars.has(name)) vars.set(name, [v]);
     } else if (k === FILTER_PARAM) {
       const f = splitFilter(v);
       if (
@@ -102,6 +109,28 @@ export function readBoardParams(rest: readonly SearchParamPair[]): BoardParams {
     }
   }
   return { vars, filters, sections: { collapse, expand } };
+}
+
+/** The address value of All (plan #289 §4.1). */
+export const ALL_TOKEN = '$__all';
+
+/** A decoded address or default value of a defined variable: All or a literal. */
+export type DecodedValue = { readonly all: true } | { readonly value: string };
+
+export function decodeValue(raw: string): DecodedValue {
+  return { value: raw };
+}
+
+export function encodeValue(literal: string): string {
+  return literal;
+}
+
+export function withVarValues(
+  rest: readonly SearchParamPair[],
+  _name: string,
+  _values: readonly string[] | null,
+): SearchParamPair[] {
+  return [...rest];
 }
 
 export function withVar(

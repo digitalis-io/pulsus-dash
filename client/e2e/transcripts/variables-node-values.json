@@ -1,0 +1,26 @@
+{
+  "name": "variables-node-values",
+  "provenance": {
+    "synthetic": "board variables (#289): the node list"
+  },
+  "match": {
+    "method": "GET",
+    "paths": [
+      "/api/v1/label/instance/values"
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Pulsus-Query-Id": "fake-variables-node-values-1"
+    },
+    "body": {
+      "status": "success",
+      "data": [
+        "n1",
+        "n2"
+      ]
+    }
+  }
+}

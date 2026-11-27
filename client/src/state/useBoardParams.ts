@@ -28,6 +28,8 @@ export interface BoardParamsState {
   params: BoardParams;
   /** Push; `'url.tooLong'` → no navigation. */
   setVar: (name: string, value: string | null) => ParamError | null;
+  /** Push the encoded values of a defined variable; null removes them. */
+  setVarValues: (name: string, values: readonly string[] | null) => ParamError | null;
   /** Push; `'url.tooLong'` → no navigation. */
   setFilter: (key: string, value: string | null) => ParamError | null;
   /** Replace; re-checked against the current URL. */
@@ -36,7 +38,10 @@ export interface BoardParamsState {
   clearSectionOverrides: () => void;
 }
 
-export function useBoardParams(sectionIds: readonly string[]): BoardParamsState {
+export function useBoardParams(
+  sectionIds: readonly string[],
+  _defined?: ReadonlySet<string>,
+): BoardParamsState {
   const { search, rest } = useTimeContext();
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -84,5 +89,7 @@ export function useBoardParams(sectionIds: readonly string[]): BoardParamsState 
     go(withoutSectionOverrides(rest), true);
   }, [go, rest]);
 
-  return { params, setVar, setFilter, setSectionOverride, clearSectionOverrides };
+  const setVarValues = useCallback(() => null, []);
+
+  return { params, setVar, setVarValues, setFilter, setSectionOverride, clearSectionOverrides };
 }

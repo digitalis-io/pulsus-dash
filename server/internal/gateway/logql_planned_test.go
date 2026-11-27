@@ -154,3 +154,19 @@ func TestLogqlVolumeMatchesSpec(t *testing.T) {
 		}
 	}
 }
+
+// itest:logql-planned (T06-029, T07-031, plan #289 §5): the L, R and H cases of logql.json
+// through the range route: the upstream query is planned.query; a refusal sends nothing.
+func TestLogqlStructuredValues(t *testing.T) {
+	up := newLogUpstream(t, func(w http.ResponseWriter, _ *http.Request) { writeJSONBody(w, emptyStreams) })
+	h, _ := queryGateway(t, up.URL, pulsusdb.Options{})
+	for _, c := range structuredCases(t, "../../../wire/fixtures/plan/logql.json", "L", "R", "H") {
+		up.reset()
+		rec := postJSON(h, logRangePath, logBody(c.Inputs.Query, `,"vars":`+string(c.Inputs.Vars)))
+		var sent []string
+		for _, r := range up.requests() {
+			sent = append(sent, r.Form.Get("query"))
+		}
+		checkStructured(t, c, rec, sent)
+	}
+}

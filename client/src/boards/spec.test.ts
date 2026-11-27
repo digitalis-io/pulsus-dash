@@ -805,3 +805,66 @@ describe('unit:board-spec-units (TS)', () => {
     ).toBe('Unknown unit');
   });
 });
+
+// unit:board-spec (#289 §3.1, §3.2; IA-006, T11-016): the variables version.
+describe('unit:board-spec-variables (TS)', () => {
+  it("the v9 fixture is valid, and its canonical form is the server's", () => {
+    const x = fixture('v9-variables.json') as BoardSpec;
+    expect(checkBoardSpec(x)).toEqual([]);
+    const c = canonicalJson(x);
+    expect(JSON.parse(c)).toEqual(x);
+    // The Go suite (board_test.go v9CanonicalSHA256) holds the same hash: byte-equal forms.
+    expect(createHash('sha256').update(c, 'utf8').digest('hex')).toBe(
+      '919f35ba2b06d948158101380f3ca19da64864b8d3dc99ee46b42ffa5ba01676',
+    );
+    expect(x.variables?.map((v) => v.kind)).toEqual(['query', 'custom', 'constant']);
+  });
+
+  it('variable rows match the server, and their keys have en-GB text', () => {
+    const rows = cases.filter((c) => c.name.startsWith('variable-'));
+    expect(rows.length).toBe(46);
+    for (const c of rows) {
+      expect(checkBoardSpec(c.spec), c.name).toEqual(
+        c.fields.map((f) => ({ pointer: f.pointer, messageKey: f.message_key })),
+      );
+      for (const f of c.fields) {
+        expect(messages, f.message_key).toHaveProperty(`field.${f.message_key}`);
+      }
+    }
+  });
+
+  it('a multi default of 65 536 bytes is valid, as on the server', () => {
+    const es = Array.from(
+      { length: 200 },
+      (_, i) => '\u{1F600}'.repeat(80) + String(i).padStart(3, '0'),
+    );
+    let n = 2 + 199 + es.reduce((a, e) => a + 2 + new TextEncoder().encode(e).length, 0);
+    for (let i = 0; n < 65_536; i++, n++) es[i % 200] += 'z';
+    const spec = {
+      title: 'B',
+      panels: [],
+      sections: [],
+      variables: [
+        {
+          name: 'n',
+          label: 'N',
+          kind: 'query',
+          query: { lang: 'promql', text: 'label_values(up, instance)' },
+          multi: true,
+          includeAll: true,
+          sort: 'none',
+          refresh: 'load',
+          default: es,
+        },
+      ],
+    };
+    expect(checkBoardSpec(spec)).toEqual([]);
+  });
+
+  it('the save text: an old server refuses variables', () => {
+    const spec = fixture('v9-variables.json') as BoardSpec;
+    expect(
+      saveFieldMessage(spec, { pointer: '/variables', messageKey: 'board.json.unknownKey' }),
+    ).toBe('This server does not support board variables yet');
+  });
+});
