@@ -151,10 +151,30 @@ test.describe('kit chrome (#282)', () => {
       const header = page.getByRole('banner');
       await openUserMenu(page);
       const pop = userPopover(page);
-      expect(await backdrop(header), `${theme} header filter`).toContain('blur(24px)');
-      expectColour(await css(header, 'background-color'), tok(theme, 'material-bar'), 'header');
-      expect(await backdrop(pop), `${theme} popover filter`).toContain('blur(24px)');
-      expectColour(await css(pop, 'background-color'), tok(theme, 'material-menu'), 'popover');
+      // The material applies only where the browser supports backdrop-filter and the
+      // reduced-transparency query (Firefox has no such query): elsewhere the opaque fallback.
+      const translucent = await page.evaluate(
+        () =>
+          (CSS.supports('backdrop-filter', 'blur(1px)') ||
+            CSS.supports('-webkit-backdrop-filter', 'blur(1px)')) &&
+          matchMedia('(prefers-reduced-transparency: no-preference)').matches,
+      );
+      if (browserName === 'chromium' || browserName === 'webkit') {
+        expect(translucent, `${browserName} supports the material`).toBe(true);
+      }
+      for (const [name, l, material] of [
+        ['header', header, 'material-bar'],
+        ['popover', pop, 'material-menu'],
+      ] as const) {
+        const f = await backdrop(l);
+        if (translucent) {
+          expect(f, `${theme} ${name} filter`).toContain('blur(24px)');
+          expectColour(await css(l, 'background-color'), tok(theme, material), name);
+        } else {
+          expect(f === 'none' || f === '', `${theme} ${name} filter: ${f}`).toBe(true);
+          expectColour(await css(l, 'background-color'), tok(theme, 'surface-1'), name);
+        }
+      }
       expect(await css(pop, 'border-top-left-radius')).toBe('10px');
       expect(await css(pop, 'box-shadow')).not.toBe('none');
       await page.keyboard.press('Escape');
