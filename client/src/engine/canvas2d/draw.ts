@@ -50,6 +50,7 @@ import {
   frameSummary,
   heatmapStats,
   lineStats,
+  NONE,
   stackedTotals,
   type Stats,
 } from './summary';
@@ -923,6 +924,7 @@ export function measureValueBand(i: LayerInput): number {
         .width;
     case 'stat':
     case 'barchart':
+    case 'geomap':
       return 0;
   }
 }
@@ -945,7 +947,24 @@ export function drawLayer(i: LayerInput): LayerModel {
       return data.kind === 'categories'
         ? drawBarchart(i, spec, data.categories, data.coverage)
         : drawBarchart(i, spec, [], EMPTY_COVERAGE);
+    case 'geomap':
+      return drawGeomap(i);
   }
+}
+
+/**
+ * A geomap draws only its background until its scene lands (#234 Part 2): no marks, no pick, and a
+ * summary of the whole canvas with nothing shown.
+ */
+function drawGeomap(i: LayerInput): LayerModel {
+  const plot = layoutPlot('geomap', i.cssW, i.cssH, 0);
+  return {
+    summary: frameSummary('geomap', i.window, plot, 0, 0, NONE, null),
+    pick: null,
+    labelW: 0,
+    valueDomain: null,
+    bandHeld: false,
+  };
 }
 
 /** The crosshair, the hovered line values inside the plot and the brush band, over the layer. */

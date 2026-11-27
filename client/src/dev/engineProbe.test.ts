@@ -27,6 +27,7 @@ const SUMMARY = {
   valueAxis: { min: 0, max: 2, manual: false },
   thresholdLabels: [],
   eventLabels: [],
+  geo: null,
 } as const;
 
 beforeEach(() => {

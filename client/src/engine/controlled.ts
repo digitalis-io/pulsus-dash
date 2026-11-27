@@ -228,6 +228,16 @@ export class ControlledFrame implements ChartFrame {
     this.inner.resize(cssWidth, cssHeight, dpr);
   }
 
+  /** ADR-0027: the engine draws lines only; a geomap stays on Canvas 2D (#234). */
+  setFocusMark(): void {
+    // The engine draws no geomap.
+  }
+
+  /** ADR-0027: a no-op on the engine's kinds. */
+  cameraKey(): void {
+    // The engine draws no geomap.
+  }
+
   on<E extends keyof FrameEvents>(e: E, cb: (ev: FrameEvents[E]) => void): () => void {
     if (this.disposed) return () => undefined;
     let set = this.listeners.get(e);

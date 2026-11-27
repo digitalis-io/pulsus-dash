@@ -77,7 +77,8 @@ export function canIsolate(vis: VisKind | null, r: ExploreResult): boolean {
 }
 
 export function framePlan(
-  vis: VisKind,
+  // A geomap is planned by `vis/geo/` (T24-088; #234 Part 3), never here.
+  vis: Exclude<VisKind, 'geomap'>,
   r: ExploreResult,
   o: { readonly isolatedKey: string | null; readonly title: string; readonly rateApplied: boolean },
 ): FramePlan {

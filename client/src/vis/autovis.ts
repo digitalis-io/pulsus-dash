@@ -5,7 +5,13 @@
  */
 import type { Completeness, InstantResult, RangeFrame } from '../data/decode';
 import type { ScalarFrame, SeriesFrame } from '../data/frames';
-import type { VisKind } from '../engine/api';
+import type { VisKind as SeamVisKind } from '../engine/api';
+
+/**
+ * The kinds the auto-vis table and Explore choose from: every seam kind but the geomap, which only
+ * a board panel names (T24-099 row 8 is part E step 2; #234 Part 1).
+ */
+export type VisKind = Exclude<SeamVisKind, 'geomap'>;
 import { isHistogram } from './histogram';
 
 /** A query result as the Explore page shows it. */

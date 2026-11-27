@@ -329,7 +329,9 @@ describe('RoutingEngine (D-ROUTE)', () => {
     expect(inner.last('setFocusMark')).toEqual(['a']);
     f.cameraKey('in');
     f.setFocusMark(null);
-    expect(inner.calls.filter((c) => c.method === 'cameraKey' || c.method === 'setFocusMark')).toEqual([
+    expect(
+      inner.calls.filter((c) => c.method === 'cameraKey' || c.method === 'setFocusMark'),
+    ).toEqual([
       { method: 'setFocusMark', args: ['a'] },
       { method: 'cameraKey', args: ['in'] },
       { method: 'setFocusMark', args: [null] },

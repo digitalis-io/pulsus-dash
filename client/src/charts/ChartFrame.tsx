@@ -441,6 +441,8 @@ export function ChartFrame({
           l.onEmptyClick?.();
           return;
         }
+        // A geomap's marks are its host's to inspect (ADR-0027; #234 Part 3).
+        if (e.item.kind === 'geo') return;
         l.onInspect?.(targetOf(l.spec, l.frameData, e.item), e.source, sliderRef.current);
       }),
       frame.on('drawn', (d) => {
@@ -589,9 +591,9 @@ export function ChartFrame({
     if ((e.key === 'Enter' || e.key === ' ') && onInspect !== undefined) {
       // T25-005: the keyboard crosshair's selected row is inspected.
       const row = hover?.source === 'keyboard' ? sortedRows(hover.rows)[selected] : undefined;
-      if (hover === null || row === undefined) return;
+      if (hover === null || hover.tMs === null || row === undefined) return;
       e.preventDefault();
-      const item = hoverItemOf(spec, frameData, hover, row, toMs);
+      const item = hoverItemOf(spec, frameData, { ...hover, tMs: hover.tMs }, row, toMs);
       onInspect(targetOf(spec, frameData, item), 'keyboard', e.currentTarget);
       return;
     }

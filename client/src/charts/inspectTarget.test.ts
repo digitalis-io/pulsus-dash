@@ -1,7 +1,7 @@
 // unit:inspect-target (T25-002, T25-005, T25 §4.2, plan #192 §5).
 import { describe, expect, it } from 'vitest';
 import { seriesName } from '../data/frames';
-import type { FrameData, HoverEvent, VisSpec } from '../engine/api';
+import type { FrameData, HoverEvent, TimeHoverEvent, VisSpec } from '../engine/api';
 import type { InspectorTarget } from '../inspector/types';
 import { hoverItemOf, selectionOf, statTarget, targetOf } from './inspectTarget';
 
@@ -64,7 +64,7 @@ describe('unit:inspect-target', () => {
         counts: new Float64Array([1, 2, 3, 4, 5, 6, 7, 8, 9]),
       },
     };
-    const hover = (tMs: number, key: string, value: number): HoverEvent => ({
+    const hover = (tMs: number, key: string, value: number): TimeHoverEvent => ({
       source: 'keyboard',
       tMs,
       xCss: 0,

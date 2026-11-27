@@ -1,5 +1,5 @@
 /**
- * The chart frame seam (ADR-0014 §3, amended by ADR-0019, ADR-0020, ADR-0022, ADR-0023, ADR-0025 and ADR-0028). Every chart is drawn by a `ChartEngine`
+ * The chart frame seam (ADR-0014 §3, amended by ADR-0019, ADR-0020, ADR-0022, ADR-0023, ADR-0025, ADR-0027 and ADR-0028). Every chart is drawn by a `ChartEngine`
  * through this interface only: the interim Canvas 2D engine now, the Rust/WASM engine later (#68), which changes
  * only `engine/index.ts`. Specs and data are validated values, never code. Events report what the
  * engine saw; the application owns the Context and the URL (ADR-0014 §2).
@@ -17,8 +17,8 @@ export type {
 export type { Unit } from '../i18n/format';
 
 export type ThemeName = 'dark' | 'light';
-/** I3 adds `pie` (T22). */
-export type VisKind = 'line' | 'bars' | 'heatmap' | 'stat' | 'barchart';
+/** I3 adds `pie` (T22); ADR-0027 the geomap. */
+export type VisKind = 'line' | 'bars' | 'heatmap' | 'stat' | 'barchart' | 'geomap';
 export interface TimeWindow {
   readonly fromMs: number;
   readonly toMs: number;
@@ -63,6 +63,40 @@ export interface BarchartSpec {
   readonly anomaly: boolean;
 }
 
+/** A geomap's view (ADR-0027): |lat| ≤ 85.0511, lon ∈ [−180, 180), zoom ∈ [0, 14]. */
+export interface GeoView {
+  readonly lat: number;
+  readonly lon: number;
+  readonly zoom: number;
+}
+
+/** The degrees a geomap view shows (ADR-0027): −180 ≤ west < east ≤ 180; never wraps. */
+export interface GeoBounds {
+  readonly west: number;
+  readonly south: number;
+  readonly east: number;
+  readonly north: number;
+}
+
+/**
+ * A geomap (ADR-0027, T24 §5.14): markers over the bundled basemap in one Web Mercator world. The
+ * engine owns the camera; `view` null fits the shown rows.
+ */
+export interface GeoMapSpec {
+  readonly kind: 'geomap';
+  readonly title: string;
+  readonly unit: Unit;
+  readonly view: GeoView | null;
+  readonly motion: 'ease' | 'cut';
+  readonly size: { readonly by: 'value' | 'fixed'; readonly min: number; readonly max: number };
+  readonly colour: 'group' | 'state';
+  readonly symbol: 'circle' | 'square' | 'triangle' | 'diamond';
+  readonly labels: 'auto' | 'none';
+  readonly cluster: boolean;
+  readonly wheelZoom: boolean;
+  readonly thresholds?: readonly ThresholdLine[];
+}
+
 /** Validated data, never code. One axis per side; the time axis is the Context window. */
 export type VisSpec =
   | {
@@ -97,7 +131,8 @@ export type VisSpec =
     }
   /** With series data, a sparkline of the first series is drawn under the value (ADR-0022). */
   | { readonly kind: 'stat'; readonly title: string; readonly unit: Unit }
-  | BarchartSpec;
+  | BarchartSpec
+  | GeoMapSpec;
 
 export interface FrameInit {
   /** IANA zone for the time axis. */
@@ -124,7 +159,8 @@ export interface HoverRow {
   readonly value: number;
 }
 
-export interface HoverEvent {
+/** The hover of a time chart: the crosshair's time and the rows under it. */
+export interface TimeHoverEvent {
   readonly source: 'pointer' | 'keyboard';
   /** The snapped sample or bucket start. */
   readonly tMs: number;
@@ -133,6 +169,19 @@ export interface HoverEvent {
   /** Every shown series, in draw order; NaN samples omitted. */
   readonly rows: readonly HoverRow[];
 }
+
+/** The hover of a geomap (ADR-0027): no time and no rows; `item` is the mark. */
+export interface GeoHoverEvent {
+  readonly source: 'pointer' | 'keyboard';
+  readonly tMs: null;
+  readonly xCss: number;
+  readonly yCss: number;
+  readonly rows: readonly [];
+  readonly item: Extract<HoverItem, { kind: 'geo' }>;
+}
+
+/** Consumers of `tMs` narrow on `tMs !== null`; only a geomap emits a `GeoHoverEvent`. */
+export type HoverEvent = TimeHoverEvent | GeoHoverEvent;
 
 export interface BrushEvent {
   readonly fromMs: number;
@@ -169,7 +218,9 @@ export type HoverItem =
       readonly tMs: number;
       readonly toMs: number;
       readonly count: number;
-    };
+    }
+  /** A geomap mark (ADR-0027): a row key or `cluster:` + seed, and its row keys, sorted. */
+  | { readonly kind: 'geo'; readonly id: string; readonly keys: readonly string[] };
 
 /** A click on the plot (ADR-0025): the mark under it, or null for an empty click. */
 export interface SelectEvent {
@@ -215,6 +266,14 @@ export interface EventLabelBox {
 
 export interface FrameSummary {
   readonly kind: VisKind;
+  /** The geomap's camera and marks (ADR-0027); null for the other kinds. */
+  readonly geo: {
+    readonly view: GeoView;
+    readonly bounds: GeoBounds;
+    readonly level: number;
+    readonly marks: number;
+    readonly clusters: number;
+  } | null;
   /** Heatmap: buckets; bars: categories; stat: 1; barchart: `coverage.total`. */
   readonly seriesTotal: number;
   readonly seriesShown: number;
@@ -288,6 +347,35 @@ export interface DrawnEvent {
   readonly dpr: number;
 }
 
+/** A geomap camera gesture that moved the view (ADR-0027): the new view and bounds. */
+export interface GeoCommitEvent {
+  readonly view: GeoView;
+  readonly bounds: GeoBounds;
+  readonly gesture: 'wheel' | 'pan' | 'box' | 'keys' | 'fit' | 'dblclick';
+}
+
+/** An Alt+drag over a geomap (ADR-0027): the covered row keys. */
+export interface GeoBrushEvent {
+  readonly keys: readonly string[];
+}
+
+/**
+ * A geomap's marks in keyboard order with their in-view flags (ADR-0027): on the first draw, after
+ * each commit, on new data and on a cluster level change.
+ */
+export interface GeoMarksEvent {
+  readonly level: number;
+  readonly marks: readonly {
+    readonly id: string;
+    readonly kind: 'marker' | 'cluster';
+    readonly keys: readonly string[];
+    readonly inView: boolean;
+  }[];
+}
+
+/** One camera key of a geomap (ADR-0027 §5). */
+export type CameraKey = 'in' | 'out' | 'fit' | 'panLeft' | 'panRight' | 'panUp' | 'panDown';
+
 export interface FrameEvents {
   hover: HoverEvent | null;
   brush: BrushEvent;
@@ -297,6 +385,9 @@ export interface FrameEvents {
   commit: CommitEvent;
   mark: MarkEvent | null;
   pick: PickEvent;
+  geoCommit: GeoCommitEvent;
+  geoBrush: GeoBrushEvent;
+  geoMarks: GeoMarksEvent;
 }
 
 export interface ChartEngine {
@@ -306,13 +397,18 @@ export interface ChartEngine {
 export interface ChartFrame {
   setSpec(spec: VisSpec): void;
   setData(data: FrameData): void;
+  /** A no-op on a geomap frame (ADR-0027). */
   setTimeWindow(w: TimeWindow): void;
   setTheme(t: ThemeName): void;
-  /** Replaces the event markers; [] = none (ADR-0023). */
+  /** Replaces the event markers; [] = none (ADR-0023); a no-op on a geomap frame (ADR-0027). */
   setEvents(events: readonly EventMarker[]): void;
   /** The page selection drawn in the next frame; null = none; an equal value is ignored (ADR-0025). */
   setSelection(sel: FrameSelection | null): void;
   resize(cssWidth: number, cssHeight: number, dpr: number): void;
+  /** A geomap's focus ring and zoom anchor; null = none; a no-op on other kinds (ADR-0027). */
+  setFocusMark(id: string | null): void;
+  /** One camera key of a geomap, about the focus mark if it is in view; a no-op elsewhere. */
+  cameraKey(k: CameraKey): void;
   on<E extends keyof FrameEvents>(e: E, cb: (ev: FrameEvents[E]) => void): () => void;
   dispose(): void;
 }

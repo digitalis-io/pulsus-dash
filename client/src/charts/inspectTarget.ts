@@ -3,7 +3,7 @@
  * of a keyboard row, the `InspectorTarget` an item names, and the selection an inspect writes.
  */
 import { bucketEnd, seriesName, statValue, type SeriesFrame } from '../data/frames';
-import type { FrameData, HoverEvent, HoverItem, HoverRow, VisSpec } from '../engine/api';
+import type { FrameData, HoverItem, HoverRow, TimeHoverEvent, VisSpec } from '../engine/api';
 import type { InspectorTarget, Selection } from '../inspector/types';
 
 const seriesOf = (d: FrameData): readonly SeriesFrame[] => (d.kind === 'series' ? d.series : []);
@@ -23,10 +23,10 @@ function columnAt(ts: Float64Array, tMs: number): number {
 export function hoverItemOf(
   spec: VisSpec,
   data: FrameData,
-  hover: HoverEvent,
+  hover: TimeHoverEvent,
   row: HoverRow,
   toMsEnd: number,
-): HoverItem {
+): Exclude<HoverItem, { kind: 'geo' }> {
   if (spec.kind === 'heatmap' && data.kind === 'heatmap') {
     const ts = data.heatmap.timestamps;
     const i = columnAt(ts, hover.tMs);
@@ -41,7 +41,12 @@ export function hoverItemOf(
   return { kind: 'point', key: row.key, tMs: hover.tMs, value: row.value };
 }
 
-export function targetOf(spec: VisSpec, data: FrameData, item: HoverItem): InspectorTarget {
+/** The target of a time chart's or a bar's item; the geomap's are `GeoMapFrame`'s (#234 Part 3). */
+export function targetOf(
+  spec: VisSpec,
+  data: FrameData,
+  item: Exclude<HoverItem, { kind: 'geo' }>,
+): InspectorTarget {
   if (item.kind === 'bucket') {
     const bounds = data.kind === 'heatmap' ? data.heatmap.bounds : new Float64Array(0);
     const lower = item.index === 0 ? null : (bounds[item.index - 1] ?? null);

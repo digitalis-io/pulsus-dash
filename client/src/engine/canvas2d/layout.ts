@@ -52,7 +52,7 @@ export function layoutPlot(
   valueLabelW: number,
   eventBand = 0,
 ): PlotRect {
-  if (kind === 'stat') return { x: 0, y: 0, width: cssW, height: cssH };
+  if (kind === 'stat' || kind === 'geomap') return { x: 0, y: 0, width: cssW, height: cssH };
   const x = valueLabelW + space['2'] + size['chart-tick'];
   const y = space['2'] + eventBand;
   return { x, y, width: cssW - x - space['2'], height: cssH - y - BOTTOM };

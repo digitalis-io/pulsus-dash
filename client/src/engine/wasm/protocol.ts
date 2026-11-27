@@ -98,7 +98,8 @@ export interface StageWire {
 }
 
 export type RenderEvent =
-  | { readonly t: 'a11y'; readonly id: number; readonly ev: FrameSummary }
+  /** The engine's summary has no `geo` member (it draws no geomap); the frame adds `geo: null`. */
+  | { readonly t: 'a11y'; readonly id: number; readonly ev: Omit<FrameSummary, 'geo'> }
   | {
       readonly t: 'drawn';
       readonly id: number;

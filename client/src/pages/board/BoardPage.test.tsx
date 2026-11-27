@@ -12,7 +12,8 @@ import {
   type SaveResult,
 } from '../../api/types';
 import type { RangeResult } from '../../data/decode';
-import type { FrameData, VisKind } from '../../engine/api';
+import type { FrameData } from '../../engine/api';
+import type { VisKind } from '../../vis/autovis';
 import header from '../../shell/Header.module.css';
 import { failingApi } from '../../test/failingApi';
 import {
