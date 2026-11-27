@@ -120,8 +120,8 @@ is built from the root target's snapshot (a refresh never changes an open view).
 |---|---|
 | `NavView` (`types.ts`) | `{ target, selection, title }`: one deeper view |
 | `InspectorState.nav` | the pushed views, in order; `[]` at rest. The **top** is `topOf(state)`: the last view, else `req.target` |
-| `push {seq, depth, view}` | applies only while a request is open, `seq` is its `seq` and `depth` is `nav.length`; the selection becomes the view's. Anything else is a no-op: an entry of an older request, a second press before the next render, a press after a close |
-| `pop {to}` | for `0 ≤ to < nav.length`: keeps `nav.slice(0, to)`; the selection becomes the new top's (`req.selection` at 0) |
+| `push {seq, depth, view}` | applies only while a request is open, `seq` is its `seq` and `depth` is `nav.length`; the selection becomes the view's, and a collapsed sheet expands. Anything else is a no-op: an entry of an older request, a second press before the next render, a press after a close |
+| `pop {to}` | for `0 ≤ to < nav.length`: keeps `nav.slice(0, to)`; the selection becomes the new top's (`req.selection` at 0); a collapsed sheet expands, so an Esc pop from the tab shows and focuses the parent's heading |
 | reset | `inspect`, `close`, a matching `originChanged` and `reset` empty the stack; `select` keeps it |
 | `MemberSection.next` | `(i) => NavView \| null`: geo targets only; null for every other kind, whose entries stay plain text |
 

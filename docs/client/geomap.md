@@ -767,7 +767,7 @@ and coverage meter in the three themes; `bench:geomap-markers` pans and zooms th
 | `unit:geo-inspect` (levels) | `src/inspector/model.test.ts` | the N aggregate at depth 0 and its e18 group at depth 1 |
 | `unit:panel-table` (amended) | `src/charts/PanelTable.test.tsx` | the toggle, Inspect and the note |
 | `unit:bundle-modules` (geo) | `scripts/check-bundle-modules.test.ts` | the geo fixtures: clean, geo in the initial and board closures, targets allowed, a static host |
-| `e2e:geomap-offline`, `e2e:geomap`, `e2e:geomap-a11y`, `e2e:geomap-chunk` | `e2e/geomap.spec.ts` | the offline basemap's pixels; a board map's Inspector, Esc, table and CSV G, and the drill-down leg (`other (11)` → its first group → its row → Back → Back → Esc, by keys); axe per state, Tab order, keys, reduced motion; the chunk failures |
+| `e2e:geomap-offline`, `e2e:geomap`, `e2e:geomap-a11y`, `e2e:geomap-chunk` | `e2e/geomap.spec.ts` | the offline basemap's pixels; a board map's Inspector, Esc, table and CSV G, and the drill-down leg (`other (11)` → its first group → its row → Back → Back, by keys, then Esc twice: the first clears the selection, the second closes the Inspector and focus returns to the legend entry); axe per state, Tab order, keys, reduced motion; the chunk failures |
 | `golden:gallery` (geomap pages) | `e2e/golden-gallery.spec.ts` | the three pages in three themes |
 | `bench:geomap-markers` (report-only) | `e2e/perf-geomap-markers.spec.ts` | the p95 of `chart-draw` (`kind: geomap`) against 16 ms |
 
