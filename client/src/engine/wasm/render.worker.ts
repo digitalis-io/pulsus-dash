@@ -1,8 +1,16 @@
 /**
  * The MT render worker (plan #68 C1 §4.1, §4.2; T03 §4.2): the shared-memory engine
- * (`virtual:dash-engine`) with the rayon pool, on the shared logic of `renderCore.ts`.
+ * (`virtual:dash-engine`) with the rayon pool, on the shared logic of `renderCore.ts`; plan #68 D2
+ * adds the decode service and the chunk table exports.
  */
 import init, {
+  engine_chunk_release,
+  engine_chunk_stats,
+  engine_decode_abort,
+  engine_decode_begin,
+  engine_decode_chunk,
+  engine_decode_end,
+  engine_decode_take,
   engine_on_wake,
   engine_start,
   engine_tick,
@@ -16,6 +24,7 @@ import init, {
   frame_set_events,
   frame_set_selection,
   frame_set_spec,
+  frame_set_chunk_ref,
   frame_set_theme,
   pool_start,
 } from 'virtual:dash-engine';
@@ -39,5 +48,13 @@ runRender({
   frame_set_spec,
   frame_set_theme,
   pool_start,
+  engine_decode_begin,
+  engine_decode_chunk,
+  engine_decode_end,
+  engine_decode_abort,
+  engine_decode_take,
+  frame_set_chunk_ref,
+  engine_chunk_release,
+  engine_chunk_stats,
   probe: async () => (await import('virtual:dash-engine')) as unknown as ProbeExports,
 });

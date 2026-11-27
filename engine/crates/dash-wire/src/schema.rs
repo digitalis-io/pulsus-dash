@@ -328,8 +328,12 @@ pub(crate) fn grid_info(s: &SchemaDesc) -> Result<(GridInfo, u32), PartError> {
     if step_ms <= 0 {
         return Err(schema_err("dash.grid.step_ms"));
     }
-    if len == 0 || len > MAX_GRID_LEN {
+    if len == 0 {
         return Err(schema_err("dash.grid.len"));
+    }
+    // B3's `max_grid_len` is a limit (plan #68 D2: a limit is retried as JSON, a bad schema is not).
+    if len > MAX_GRID_LEN {
+        return Err(PartError::Limit("grid len"));
     }
     // B1's ordered unsigned difference; start_ms + step_ms is never computed.
     if requested_start_ms < start_ms

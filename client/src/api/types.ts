@@ -248,7 +248,9 @@ export type ApiErrorKind =
   | 'unavailable'
   | 'busy'
   | 'badResponse'
-  | 'queryTooLong';
+  | 'queryTooLong'
+  /** Plan #68 D2: a malformed or invalid DSF body (T04-010), never retried. */
+  | 'internal';
 
 /** What the BFF said about a failed query (§4.5 of plan #62). */
 export interface ApiErrorDetail {

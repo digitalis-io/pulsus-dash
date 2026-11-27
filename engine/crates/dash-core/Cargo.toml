@@ -36,6 +36,8 @@ dash-scene.workspace = true
 dash-tokens.workspace = true
 dash-wire.workspace = true
 pulsus-synth = { workspace = true, optional = true }
+# Plan #68 D2: the DSF decode service runs on the pool (native in its tests, wasm32 in MT).
+rayon = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -43,7 +45,6 @@ thiserror.workspace = true
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 dash-marks = { workspace = true, features = ["gpu"] }
 js-sys.workspace = true
-rayon = { workspace = true, optional = true }
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
 # T03 §5.6: an allow-list.

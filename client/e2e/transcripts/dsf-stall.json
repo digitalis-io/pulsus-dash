@@ -1,0 +1,11 @@
+{
+  "name": "dsf-stall",
+  "provenance": {"synthetic": "plan #68 D2 E4 (review r1 #3): a matrix whose first series arrives and then the stream stalls until cancelled, so the BFF has flushed the DSF header and the first batch"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "dsf_stall"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-dsf-stall-1"},
+    "hang_after_body": true,
+    "body_text": "{\"status\":\"success\",\"data\":{\"resultType\":\"matrix\",\"result\":[{\"metric\":{\"__name__\":\"dsf_stall\",\"series\":\"k1\"},\"values\":[[1795089600,\"5\"],[1795089630,\"6\"]]},"
+  }
+}

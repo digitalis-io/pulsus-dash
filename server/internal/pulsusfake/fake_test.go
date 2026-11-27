@@ -125,6 +125,36 @@ func TestFakeHangRecordsCancel(t *testing.T) {
 	}
 }
 
+// HangAfterBody (plan #68 D2): the body arrives, the response stays open, a cancel is recorded.
+func TestFakeHangAfterBody(t *testing.T) {
+	text := `{"status":"success","data":{"resultType":"matrix","result":[`
+	ts := []Transcript{{Name: "stall", Provenance: Provenance{Synthetic: "x"},
+		Match:    Match{Method: "POST", Paths: []string{"/api/v1/query_range"}},
+		Response: Response{Status: 200, Headers: map[string]string{"Content-Type": "application/json"}, BodyText: &text, HangAfterBody: true}}}
+	f := New(ts, Options{})
+	srv := httptest.NewServer(f)
+	defer srv.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, srv.URL+"/api/v1/query_range", strings.NewReader(""))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	buf := make([]byte, len(text))
+	if _, err := io.ReadFull(resp.Body, buf); err != nil || string(buf) != text {
+		t.Fatalf("body %q, %v", buf, err)
+	}
+	cancel()
+	wctx, wcancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer wcancel()
+	rec, err := f.WaitCancelled(wctx, "stall")
+	if err != nil || !rec.Cancelled || rec.Completed {
+		t.Errorf("WaitCancelled = %+v, %v", rec, err)
+	}
+}
+
 func TestLoadRefuses(t *testing.T) {
 	good := `{"name":"a","provenance":{"synthetic":"x"},"match":{"method":"GET","paths":["/a"]},"response":{"status":200,"headers":{},"body":{}}}`
 	if ts, err := Load(fstest.MapFS{"a.json": {Data: []byte(good)}}); err != nil || len(ts) != 1 || ts[0].Name != "a" {

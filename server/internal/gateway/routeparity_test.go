@@ -290,6 +290,16 @@ func routeCases() []routeCase {
 			return []routeOutput{{"refused-open-parts.dsf", okBody(t, serve(h, rangeReq("rate(req_total[5m])", hourWindow), dsfAccept), arrowwire.ContentType)}}
 		}},
 	}
+	// Plan #68 D2 §5: the virtual refusal is raised by the guard before any request, so it is always
+	// a pre-header JSON envelope, never a stream row.
+	cases = append(cases, routeCase{"virtual", func(t *testing.T) []routeOutput {
+		h, _, _ := routeGateway(t, rangeTranscript(twoSeries(), nil))
+		rec := serve(h, rangeReq("ALERTS", hourWindow), dsfAccept)
+		if rec.Code != 400 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
+			t.Fatalf("err-virtual: %d %q", rec.Code, rec.Header().Get("Content-Type"))
+		}
+		return []routeOutput{{"err-virtual.json", envelopeFile(rec)}}
+	}})
 	for _, c := range failClasses {
 		cases = append(cases, routeCase{"mid-failure-" + c.name, func(t *testing.T) []routeOutput {
 			h, _, _ := routeGateway(t, rangeTranscript(twoSeries(), map[string]string{"X-Pulsus-Query-Id": "fake-route-1"}))

@@ -23,6 +23,8 @@
  * | `select(x, y)` (C2b) | a Select record; before `created` dropped (no stage can exist yet) |
  * | `hover` (C2b) | only for the latest Overlay: none while one is held or unpublished, and only when the event's `oseq` extends to the last published Overlay's seq |
  * | `select` (C2b) | forwarded as `{source: 'pointer', item}`: it answers what was on screen |
+ * | `setData(d)` (D2) | a series array registered against a chunk of this worker's epoch (`chunkRefs`) → `data-chunk`; else the values |
+ * | `chunk-missing` (D2) | the values of the last `setData`, when it went by reference to that chunk |
  */
 import type {
   EventMarker,
@@ -37,6 +39,7 @@ import type {
 } from '../api';
 import { REC_OVERLAY, REC_RESIZE } from './layout.gen';
 import type { FrameEvent, MainToRender, SeriesMessage, StageWire } from './protocol';
+import { refOf, refStats } from './chunkRefs';
 import { extendSeq } from './ring';
 
 /** The engine camera a Camera record carries: null value = auto, null band = measured. */
@@ -189,6 +192,8 @@ export class WasmFrame implements EngineFrame {
   private lastSeq = 0;
   private applied = 0;
   private drawnSeq = 0;
+  /** The last `setData`, when it went by reference: its values go on `chunk-missing`. */
+  private byRef: { readonly chunk: number; readonly data: FrameData } | null = null;
 
   constructor(
     private readonly port: Port,
@@ -196,8 +201,21 @@ export class WasmFrame implements EngineFrame {
     canvas: OffscreenCanvas,
     private readonly init: FrameInit,
     private readonly onFail: (reason: string) => void,
+    /** The worker's boot epoch (plan #68 D2 §3.2); 0: no chunk references (ST). */
+    private readonly epoch = 0,
   ) {
     port.postMessage({ t: 'create', id, canvas, frameId: init.id ?? null }, [canvas]);
+  }
+
+  /**
+   * The worker could not resolve a `data-chunk` (plan #68 D2 §4.2: evicted, or of another epoch):
+   * the values of the last `setData` go instead, if that was this chunk.
+   */
+  chunkMissing(chunk: number): void {
+    const d = this.byRef;
+    if (d === null || d.chunk !== chunk) return;
+    this.byRef = null;
+    this.post({ t: 'data', id: this.id, series: series(d.data) });
   }
 
   private post(msg: MainToRender): void {
@@ -220,7 +238,20 @@ export class WasmFrame implements EngineFrame {
     this.post({ t: 'spec', id: this.id, json: JSON.stringify(spec) });
   }
 
+  /**
+   * The data (plan #68 D2 §4.2): a series array registered against a chunk of this worker's epoch
+   * goes by reference (`data-chunk`); anything else by value, as before.
+   */
   setData(data: FrameData): void {
+    if (this.disposed) return;
+    const ref = data.kind === 'series' ? refOf(data.series) : undefined;
+    if (ref !== undefined && this.epoch !== 0 && ref.epoch === this.epoch) {
+      this.byRef = { chunk: ref.chunk, data };
+      refStats.byRef++;
+      this.post({ t: 'data-chunk', id: this.id, chunk: ref.chunk, epoch: ref.epoch });
+      return;
+    }
+    this.byRef = null;
     this.post({ t: 'data', id: this.id, series: series(data) });
   }
 

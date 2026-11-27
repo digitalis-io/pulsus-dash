@@ -43,7 +43,7 @@ export const SWIFTSHADER_ARGS = [
  * `golden:engine-line` pages and the 10⁴-op `e2e:shim-fuzz`.
  */
 export const ST_LEGS =
-  /e2e:engine-camera E[17] |e2e:engine-hover H[13] |e2e:engine-layer L[12] |e2e:engine-selection S[13] |golden:engine-line|e2e:shim-fuzz 10⁴ ops/;
+  /e2e:engine-camera E[17] |e2e:engine-hover H[13] |e2e:engine-layer L[12] |e2e:engine-selection S[13] |golden:engine-line|e2e:shim-fuzz 10⁴ ops|e2e:engine-dsf E6 /;
 
 /** `make engine-bench` (plan #68 C2d1 §2): only project `bench`, report-only. */
 const BENCH = process.env['ENGINE_BENCH'] === '1';
@@ -52,7 +52,7 @@ export default defineConfig({
   testDir: 'e2e',
   // config/engineSpecs.ts (plan #263): the engine-only specs and the shared ones.
   testMatch: [...ENGINE_ONLY_SPECS, ...ENGINE_SHARED_SPECS],
-  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera|e2e:engine-hover|e2e:engine-layer|e2e:engine-selection|selection-sources \(engine\)/,
+  grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera|e2e:engine-hover|e2e:engine-layer|e2e:engine-selection|selection-sources \(engine\)|e2e:engine-dsf/,
   retries: 0,
   workers: 2,
   reporter: [['list'], ['./e2e/engineLegsReporter.ts']],
@@ -100,6 +100,7 @@ export default defineConfig({
         'engine-selection.spec.ts',
         'golden-engine-line.spec.ts',
         'engine-shim-fuzz.spec.ts',
+        'engine-dsf.spec.ts',
       ],
       grep: ST_LEGS,
       use: {
