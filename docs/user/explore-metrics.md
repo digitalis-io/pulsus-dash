@@ -39,8 +39,9 @@ the **Run** button, then the query editor and a status line.
 Run is disabled, with the note "Run is available once the chart has a size.", until the editor and
 the chart's width are known. This takes a moment after the page opens.
 
-The server builds the query it sends: it applies the rate, fills in `$__interval` and
-`$__rate_interval`, and checks the size.
+The server builds the query it sends: it applies the rate, fills in `$__interval`,
+`$__rate_interval` and `$__range` (with `$__range_s` and `$__range_ms`, from the time range), and
+checks the size.
 
 ## Errors
 

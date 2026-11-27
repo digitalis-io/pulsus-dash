@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.12-rc · 2026-11-23 |
+| **Version** | 1.13-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -205,7 +205,13 @@ JSON form and is held to the same semantics by shared fixtures (§0).
   the parser design) is attached at Lower.
 - **Plan** (2) calls the prepared query's `Plan` (ADR-0021) with the final step from Resolve, which
   substitutes the step macros (`$__interval`, `$__rate_interval`) at that step and applies the rate
-  rewrites and the rate window. **Lower** builds the `LogicalQuery` from the planned text, and
+  rewrites and the rate window. It also substitutes the range macros (`$__range`, `$__range_s`,
+  `$__range_ms`, #291) from the request window `to − from`, which Bind has and the step does not
+  change: `$__range` is the window rounded to the nearest whole second (half up, at least 1 s) as a
+  duration, `$__range_s` those seconds and `$__range_ms` the window in milliseconds. Like the step
+  macros they are placeholders in `Prepare` and count towards the processing cap and the
+  planned-text limit at their values. A request without a window (the PromQL instant route) is
+  refused with `query.no_window` before any I/O. **Lower** builds the `LogicalQuery` from the planned text, and
   `LogicalKey` hashes those bytes.
 - **Follow-up gate `unit:bind-classify-template`** (required of the issue that implements scene Bind
   and templates; #112 has no templates and covers the order with variables, `unit:plan-classify`
@@ -1154,3 +1160,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.10-rc | 2026-11-22 | #64 Part A: T07-012 v1 note (one shared IntersectionObserver per board, `rootMargin` 0, no Prefetch pass; collapsed sections unmount; panel results reused only within their window epoch); T07-013 v1 note (the key carries only the referenced variables) |
 | 1.11-rc | 2026-11-22 | #116: §0 "Parser crates" row (LogQL read by the in-house selector reader for Classify only); §0 "Log volume (#65)" row (the template applied by `logs.Plan`, no position inside it, ADR-0021 §3); §4.1 Classify names the LogQL implementation (`logs.Prepare`), replacing the interim; T07-002 note (the template is composed by the planner) |
 | 1.12-rc | 2026-11-23 | #121: §0 Reserved names row: the LogQL `#` refusal (`query.invalid`) precedes the reserved-selector check, and the no-dispatch guarantee is unchanged; §4.1 Classify: LogQL has no comments, and the selector reader skips no text |
+| 1.13-rc | 2026-11-27 | #291: §4.1 Plan substitutes the range macros (`$__range`, `$__range_s`, `$__range_ms`) from the request window, with the rounding rule; a request without a window refuses them (`query.no_window`) |
