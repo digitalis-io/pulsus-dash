@@ -12,7 +12,8 @@
  * Threshold lines (ADR-0022, #64 Part B §4.2): on line and bars, dashed lines in their state colour
  * (from `StateEncoding`, T02-004) after the series, with labels that are stacked, truncated or
  * gathered into an overflow chip but never dropped; the auto value domain includes them. A stat
- * with series data draws a sparkline of its first series under the value (§4.3).
+ * with series data draws a sparkline of its first series under the value (§4.3), unless its graph
+ * mode is `none` (T22 §5.1).
  *
  * Value labels (T02-011 as amended by #93): the band is at least as wide as the widest compact
  * label of the unit (`minValueBand`). Under a held band (`LayerInput.band`), each tick label is
@@ -829,8 +830,13 @@ function drawStat(i: LayerInput): LayerModel {
   );
   const { ctx } = i;
   const first = i.data.kind === 'series' ? i.data.series[0] : undefined;
+  // T22 §5.1: graph mode `none` draws the value alone (absent = `sparkline`).
+  const graph = i.spec.kind === 'stat' ? i.spec.graphMode : undefined;
   const spark =
-    first !== undefined && i.cssH >= SPARK_MIN_H && finiteInWindow(first, i.window) >= 1
+    first !== undefined &&
+    graph !== 'none' &&
+    i.cssH >= SPARK_MIN_H &&
+    finiteInWindow(first, i.window) >= 1
       ? first
       : null;
   ctx.font = STAT_FONT;

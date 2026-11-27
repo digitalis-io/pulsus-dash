@@ -97,6 +97,20 @@ function outcome(r: RangeResult, facts: { rateApplied?: boolean } = {}) {
 }
 
 describe('panelView', () => {
+  it('a stat carries its graph mode none to the spec (#297); absent stays absent', () => {
+    const run = { ...BASE, outcome: outcome(R_A) };
+    const none = panelView(run, { kind: 'stat', options: { graphMode: 'none' } }, 'T');
+    expect(none).toMatchObject({ kind: 'frame', vis: 'stat', spec: { graphMode: 'none' } });
+    for (const vis of [
+      { kind: 'stat' },
+      { kind: 'stat', options: { graphMode: 'sparkline' } },
+    ] as const) {
+      const v = panelView(run, vis, 'T');
+      if (v.kind !== 'frame') throw new Error('not a frame');
+      expect(v.spec).not.toHaveProperty('graphMode');
+    }
+  });
+
   it('blocked states', () => {
     const msg = (run: Partial<PanelRun>) => panelView({ ...BASE, ...run }, { kind: 'auto' }, 'T');
     expect(msg({ blocked: 'logs' })).toEqual({
