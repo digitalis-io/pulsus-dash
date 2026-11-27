@@ -10,17 +10,37 @@
  * Plan #68 C2d2 (§3.3, §4.4): the engine runs in MT or, where the page cannot run the shared-memory
  * engine (or `?mode=st`), in ST. `engineMode()` is the page's engine mode once its first frame
  * booted (or failed to boot) an engine, null before; `onEngineMode` subscribes (the ST banner).
+ *
+ * Plan #68 D2 (§3.3): when an MT engine boots, this file fills the API layer's range decoder slot
+ * (`api/rangeDecoder.ts`) with the engine's DSF sessions and its chunk references; a failure for
+ * the session clears it. ST, Canvas 2D and the queries before the first boot stay on JSON.
  */
 import { createContext } from 'react';
+import { setRangeDecoder, streamDecoder, type DecodeSession } from '../api/rangeDecoder';
 import type { ChartEngine } from './api';
 import { Canvas2DEngine } from './canvas2d/Canvas2DEngine';
 import { markOnFailure, markSessionFailed, sessionFailed } from './failFlag';
 import { RoutingEngine } from './route';
-import type { EngineProbe } from './wasm/engine';
+import type { Backend, EngineProbe } from './wasm/engine';
+import { register } from './wasm/chunkRefs';
 import { setMode, type EngineMode } from './mode';
 import { chooseEngine, probe, stReason } from './select';
 
 let engine: ChartEngine | null = null;
+
+/** The MT engine's DSF decoder in the API layer's slot (plan #68 D2 §3.3). */
+function fillDecoder(b: Backend): void {
+  if (b.mode !== 'mt') return;
+  setRangeDecoder(
+    streamDecoder(
+      // The worker's messages are the API layer's `DecodedRange` (its own head and rows).
+      () => b.openDecode() as unknown as DecodeSession,
+      (series, m) => {
+        register(series, { chunk: m.chunk, epoch: m.epoch });
+      },
+    ),
+  );
+}
 
 export { engineMode, onEngineMode, type EngineMode } from './mode';
 
@@ -39,6 +59,7 @@ export function defaultChartEngine(): ChartEngine {
             forceT2: choice.forceT2,
             mode: choice.mode,
             markFailed: () => {
+              setRangeDecoder(null);
               markSessionFailed();
               setMode({ mode: 'canvas2d' });
             },
@@ -48,6 +69,7 @@ export function defaultChartEngine(): ChartEngine {
         .then(
           (b) => {
             setMode(booted);
+            fillDecoder(b);
             return b;
           },
           (e: unknown) => {

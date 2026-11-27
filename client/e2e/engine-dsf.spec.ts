@@ -124,8 +124,13 @@ function rangeTraffic(page: Page): { accept: string[]; type: string[] } {
   return t;
 }
 
-const legend = (page: Page, id: string): Promise<string[]> =>
-  panel(page, id).locator('[data-legend-item]').allInnerTexts();
+/** The panel's legend as it reads: its rows' names and last values. */
+const legend = (page: Page, id: string): Promise<string> =>
+  panel(page, id).locator('[data-panel-legend]').innerText();
+
+/** The legend's rows (each has a Select toggle). */
+const legendRows = (page: Page, id: string) =>
+  panel(page, id).getByRole('button', { name: /^Select / });
 
 /** A device-scale screenshot of the panel's live canvas, under the test's output. */
 async function shot(page: Page, id: string, info: TestInfo, name: string): Promise<string> {
@@ -148,12 +153,13 @@ test.describe('e2e:engine-dsf', () => {
   }, info) => {
     only(info, 'lavapipe');
     test.setTimeout(120_000);
-    let reference: string[] = [];
+    let reference = '';
     await withLineBoard(page, request, LINE, '&engine=canvas2d', async () => {
       await expect(panel(page, 'a').locator('[data-frame-ready="true"]')).toHaveCount(1);
+      await expect(legendRows(page, 'a')).toHaveCount(2);
       reference = await legend(page, 'a');
     });
-    expect(reference.length).toBe(2);
+    expect(reference).toContain('inspector_two');
     await spyBodyReads(page);
     await withLineBoard(page, request, LINE, ENGINE, async () => {
       await onEngine(page, 'a');
@@ -303,24 +309,29 @@ test.describe('e2e:engine-dsf', () => {
   test('e2e:engine-dsf E5 failure and limit', async ({ page, request }, info) => {
     only(info, 'lavapipe');
     test.setTimeout(150_000);
+    // The healthy line panel boots the engine; the cut panel then fails after the header.
     const CUT: PanelInput[] = [
-      { id: 'c', title: 'C', text: 'dsf_cut', grid: [0, 0, 12, 8], vis: { kind: 'line' } },
+      ...LINE,
+      { id: 'c', title: 'C', text: 'dsf_cut', grid: [0, 8, 12, 8], vis: { kind: 'line' } },
     ];
     const errorText = (id: string) => panel(page, id).locator('[role="alert"]').first();
+    const errorState = (id: string) =>
+      panel(page, id)
+        .locator('[data-panel-state="error"]')
+        .or(panel(page, id).and(page.locator('[data-panel-state="error"]')));
     // The JSON run's error state.
-    let jsonState = false;
     await withLineBoard(page, request, CUT, '&engine=canvas2d', async () => {
       await expect(errorText('c')).toBeVisible({ timeout: 30_000 });
-      jsonState = true;
+      await expect(errorState('c')).toHaveCount(1);
     });
-    expect(jsonState).toBe(true);
     await withLineBoard(page, request, CUT, ENGINE, async () => {
-      await page.waitForFunction(() => document.documentElement.dataset['dashStatus'] === '2');
+      await onEngine(page, 'a');
       const before = await decodes(page);
       await refetch(page);
       await expect.poll(async () => (await decodes(page)).failed - before.failed).toBe(1);
+      // The same error state as the JSON run (the in-band row's class, not a transport cut).
       await expect(errorText('c')).toBeVisible();
-      await expect(errorText('c')).toContainText('internal error');
+      await expect(errorState('c')).toHaveCount(1);
       expect((await decodes(page)).retried - before.retried).toBe(0);
     });
     // Over a B3 limit: the DSF body is refused and retried once as JSON, which draws all series.
@@ -343,7 +354,7 @@ test.describe('e2e:engine-dsf', () => {
       await refetch(page);
       await expect.poll(async () => (await decodes(page)).retried - before.retried).toBe(1);
       await settled(page);
-      expect(await legend(page, 'a')).toHaveLength(2);
+      await expect(legendRows(page, 'a')).toHaveCount(2);
       await expect(panel(page, 'a').locator('[data-frame-ready="true"]')).toHaveCount(1);
     });
   });
@@ -360,7 +371,7 @@ test.describe('e2e:engine-dsf', () => {
       expect(traffic.accept.some((a) => a.includes(DSF))).toBe(false);
       expect(traffic.type.every((t) => t.startsWith('application/json'))).toBe(true);
       await settled(page);
-      expect(await legend(page, 'a')).toHaveLength(2);
+      await expect(legendRows(page, 'a')).toHaveCount(2);
     });
   });
 });

@@ -18,6 +18,12 @@
  * worker, and each status gets a `BatchRing` (input by batches, `input-ack` routed to it) in place
  * of the shared-memory `InputRing`. Restart, fallback and the session flag are as in MT.
  *
+ * Plan #68 D2 (§3.1, §4.1–§4.3; MT only): `openDecode` starts a DSF decode on the worker
+ * (`decode-begin`) and returns its session: each read posted as `decode-chunk` (transferred),
+ * credits and the result routed back by request. At most two are open; a third is declined `busy`.
+ * Each status gets a boot epoch (1, then +1 per restart) that the worker's chunk references carry;
+ * a restart or a failure ends every open session as `gone` (the caller retries as JSON).
+ *
  * The session flag is injected (`markFailed`): this directory imports only `../api` (T03-001).
  */
 import type { FrameInit } from '../api';
@@ -39,7 +45,8 @@ import {
   OFF_INPUT_OVERFLOW,
   OFF_INPUT_TAIL,
 } from './layout.gen';
-import type { MainToRender, RenderEvent } from './protocol';
+import { setReleaser } from './chunkRefs';
+import type { DecodedHeadWire, MainToRender, RenderEvent, RenderToMain } from './protocol';
 import { BatchRing, InputRing, type FrameRing, type InputRec } from './ring';
 import { spawnPool, spawnRender, spawnRenderSt } from './workers';
 
@@ -94,6 +101,8 @@ export interface ProbeHost {
   chunk(id: number): Promise<ChunkInfo | null>;
   /** The probe build (plan #68 C2d1): the render worker traps. */
   trap(): void;
+  /** Plan #68 D2: the worker's chunk table, `{count, bytes}` (null in ST). */
+  chunks(): Promise<{ count: number; bytes: number } | null>;
 }
 
 /**
@@ -115,11 +124,57 @@ export interface ChunkInfo {
 
 export interface Backend {
   readonly tier: 't1' | 't2';
+  /** The engine mode: only MT decodes DSF (plan #68 D2 §0). */
+  readonly mode: 'mt' | 'st';
   createFrame(
     canvas: OffscreenCanvas,
     init: FrameInit,
     onFail: (reason: string) => void,
   ): WasmFrame;
+  /**
+   * MT (plan #68 D2 §3.1): a DSF decode on the worker. Throws an `EngineDeclined`-named error
+   * (`busy` with two open, `gone` without a running engine); the result rejects with one (`limit`,
+   * `ids`, `busy`, `gone`) or with a `DecodeFailed`-named error (`error`, `invalid`).
+   */
+  openDecode(): DecodeSessionLike;
+}
+
+/** A decoded range as the worker posts it (the API layer's `DecodedRange`). */
+export interface DecodedMessage {
+  readonly chunk: number;
+  readonly epoch: number;
+  readonly head: DecodedHeadWire;
+  readonly ts: Float64Array;
+  readonly vs: readonly Float64Array[];
+}
+
+/** One decode (the API layer's `DecodeSession`). */
+export interface DecodeSessionLike {
+  post(buf: ArrayBuffer): void;
+  end(): void;
+  abort(): void;
+  onCredit(cb: (bytes: number) => void): void;
+  readonly result: Promise<DecodedMessage>;
+}
+
+/** DSF decodes open at once (`DecodeService::MAX_IN_FLIGHT`). */
+const MAX_DECODES = 2;
+/** Request ids, page-unique. */
+let nextReq = 1;
+
+/** The engine declined a body: the caller retries it once as JSON. */
+function declined(reason: 'limit' | 'ids' | 'busy' | 'gone', message?: string): Error {
+  return Object.assign(new Error(message ?? `the engine declined the body (${reason})`), {
+    name: 'EngineDeclined',
+    reason,
+  });
+}
+
+/** An open decode as the host routes it. */
+interface Session {
+  credit: (bytes: number) => void;
+  readonly resolve: (m: DecodedMessage) => void;
+  readonly reject: (e: Error) => void;
 }
 
 /** Fetches (with integrity) and compiles the engine; never instantiates it here. */
@@ -155,6 +210,7 @@ interface Entry {
 
 class EngineHost implements Backend {
   tier: 't1' | 't2' = 't1';
+  readonly mode: 'mt' | 'st';
   private render: RenderHandle | null = null;
   private readonly frames = new Map<number, Entry>();
   private nextId = 1;
@@ -169,13 +225,18 @@ class EngineHost implements Backend {
   private batch: BatchRing | null = null;
   /** ST: the worker's last reported `INPUT_BAD`. */
   private bad = 0;
-  private readonly mode: 'mt' | 'st';
   /** The probe build: `inputLog()` calls waiting for the worker's reply. */
   private readonly probeWaits: ((json: string) => void)[] = [];
   /** The probe build: `synth()` calls waiting for their acknowledgement, in order. */
   private readonly synthWaits: { id: number; resolve: (a: SynthAck) => void }[] = [];
   /** The probe build: `chunk()` calls waiting for their answer, in order. */
   private readonly chunkWaits: { id: number; resolve: (c: ChunkInfo | null) => void }[] = [];
+  /** The current worker's boot epoch (plan #68 D2 §3.2): 1 at boot, +1 per restart. */
+  private epoch = 0;
+  /** Plan #68 D2: the open decodes, by request. */
+  private readonly sessions = new Map<number, Session>();
+  /** The probe: `chunks()` calls waiting for the worker's table stats. */
+  private readonly statWaits: ((json: string) => void)[] = [];
   private readonly port: Port = {
     postMessage: (msg, transfer = []) => {
       if (this.state === 'ready' && this.render !== null)
@@ -193,7 +254,12 @@ class EngineHost implements Backend {
 
   private start(fault: string | undefined): RenderHandle {
     const st = this.mode === 'st';
+    this.epoch += 1;
     return startRender({
+      epoch: this.epoch,
+      onDecode: (m) => {
+        this.decodeEvent(m);
+      },
       module: this.module,
       forceT2: this.o.forceT2,
       mode: this.mode,
@@ -228,6 +294,96 @@ class EngineHost implements Backend {
         w?.resolve(JSON.parse(m.json) as ChunkInfo | null);
       },
     });
+  }
+
+  /** A decode message of the worker: credits and results to their session, `chunk-missing` to its frame. */
+  private decodeEvent(
+    m: Extract<
+      RenderToMain,
+      { t: 'decode-credit' | 'decoded' | 'decode-failed' | 'chunk-missing' | 'chunk-stats' }
+    >,
+  ): void {
+    switch (m.t) {
+      case 'chunk-missing':
+        this.frames.get(m.id)?.frame.chunkMissing(m.chunk);
+        return;
+      case 'chunk-stats':
+        this.statWaits.shift()?.(m.json);
+        return;
+      case 'decode-credit':
+        this.sessions.get(m.req)?.credit(m.bytes);
+        return;
+      case 'decoded': {
+        const s = this.sessions.get(m.req);
+        this.sessions.delete(m.req);
+        s?.resolve({ chunk: m.chunk, epoch: m.epoch, head: m.head, ts: m.ts, vs: m.vs });
+        return;
+      }
+      case 'decode-failed': {
+        const s = this.sessions.get(m.req);
+        this.sessions.delete(m.req);
+        if (s === undefined) return;
+        if (m.kind === 'error' || m.kind === 'invalid') {
+          s.reject(
+            Object.assign(new Error(m.message), {
+              name: 'DecodeFailed',
+              kind: m.kind,
+              row: m.row ?? null,
+              coverage: m.coverage ?? null,
+              planned: m.planned ?? null,
+            }),
+          );
+        } else {
+          s.reject(declined(m.kind, m.message));
+        }
+        return;
+      }
+    }
+  }
+
+  /** Every open decode ends: the engine restarted or failed (`gone`). */
+  private endSessions(): void {
+    const open = [...this.sessions.values()];
+    this.sessions.clear();
+    for (const s of open) s.reject(declined('gone'));
+  }
+
+  openDecode(): DecodeSessionLike {
+    const worker = this.render?.worker;
+    if (this.mode !== 'mt' || this.state !== 'ready' || worker === undefined) {
+      throw declined('gone');
+    }
+    if (this.sessions.size >= MAX_DECODES) throw declined('busy');
+    const req = nextReq++;
+    let session: Session | null = null;
+    const result = new Promise<DecodedMessage>((resolve, reject) => {
+      session = { credit: () => undefined, resolve, reject };
+    });
+    // A rejection nobody reads (an aborted session) is not an error.
+    result.catch(() => undefined);
+    const s = session as Session | null;
+    if (s === null) throw declined('gone');
+    this.sessions.set(req, s);
+    worker.postMessage({ t: 'decode-begin', req } satisfies MainToRender);
+    const live = (): boolean => this.sessions.get(req) === s && this.render?.worker === worker;
+    return {
+      post: (buf) => {
+        if (live())
+          worker.postMessage({ t: 'decode-chunk', req, buf } satisfies MainToRender, [buf]);
+      },
+      end: () => {
+        if (live()) worker.postMessage({ t: 'decode-end', req } satisfies MainToRender);
+      },
+      abort: () => {
+        if (!live()) return;
+        this.sessions.delete(req);
+        worker.postMessage({ t: 'decode-abort', req } satisfies MainToRender);
+      },
+      onCredit: (cb) => {
+        s.credit = cb;
+      },
+      result,
+    };
   }
 
   async boot(): Promise<void> {
@@ -273,6 +429,18 @@ class EngineHost implements Backend {
       );
     }
     this.ring = ring;
+    if (this.mode === 'mt' && worker !== undefined) {
+      // A collected DSF array's chunk is released on this worker (it ignores another epoch).
+      setReleaser((r) => {
+        if (this.render?.worker === worker && this.state === 'ready') {
+          worker.postMessage({
+            t: 'chunk-release',
+            chunk: r.chunk,
+            epoch: r.epoch,
+          } satisfies MainToRender);
+        }
+      });
+    }
     if (probe !== undefined && worker !== undefined) probe.onHost(this.probeHost(ring, worker, s));
     for (const [msg, transfer] of this.queue.splice(0))
       this.render?.worker.postMessage(msg, transfer);
@@ -317,6 +485,13 @@ class EngineHost implements Backend {
       trap: () => {
         worker.postMessage({ t: 'probe-trap' } satisfies MainToRender);
       },
+      chunks: () =>
+        new Promise<{ count: number; bytes: number } | null>((resolve) => {
+          this.statWaits.push((json) => {
+            resolve(JSON.parse(json) as { count: number; bytes: number } | null);
+          });
+          worker.postMessage({ t: 'chunk-stats' } satisfies MainToRender);
+        }),
       inputLog: () =>
         new Promise<InputRec[]>((resolve) => {
           this.probeWaits.push((json) => {
@@ -333,7 +508,14 @@ class EngineHost implements Backend {
     onFail: (reason: string) => void,
   ): WasmFrame {
     const id = this.nextId++;
-    const frame = new WasmFrame(this.port, id, canvas, init, onFail);
+    const frame = new WasmFrame(
+      this.port,
+      id,
+      canvas,
+      init,
+      onFail,
+      this.mode === 'mt' ? this.epoch : 0,
+    );
     this.frames.set(id, { frame, onFail });
     const dispose = frame.dispose.bind(frame);
     frame.dispose = () => {
@@ -392,6 +574,8 @@ class EngineHost implements Backend {
     this.restarted = true;
     this.state = 'restarting';
     this.failSynths('restart');
+    this.endSessions();
+    for (const w of this.statWaits.splice(0)) w('null');
     this.render?.terminate();
     this.ring?.close();
     this.ring = null;
@@ -420,6 +604,9 @@ class EngineHost implements Backend {
     if (this.state === 'dead') return;
     this.state = 'dead';
     this.failSynths('fatal');
+    this.endSessions();
+    for (const w of this.statWaits.splice(0)) w('null');
+    setReleaser(null);
     this.queue.length = 0;
     this.render?.terminate();
     this.ring?.close();

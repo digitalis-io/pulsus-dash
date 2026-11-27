@@ -20,10 +20,23 @@
  * the ring's counters at `ringStart`; `probe-freeze` and `probe-unfreeze` hold a frame after one
  * presentation (plan #68 C2b §3.4); `probe-synth` builds F1c as a frame's data and acknowledges it
  * (plan #68 C2d1 §3.2).
+ *
+ * Plan #68 D2 (§3.1, MT): `decode-begin`, `decode-chunk` (each read's bytes), `decode-end` and
+ * `decode-abort` feed the engine's decode service; this worker never decodes, the pool does. At
+ * each tick start the service's results (`engine_decode_take`) are posted: `decode-credit`,
+ * `decoded` (the head parsed here, `ts` and `vs` transferred) and `decode-failed`. `data-chunk`
+ * makes a table chunk a frame's data, else `chunk-missing`; `chunk-release` drops an entry.
  */
 import { frameLoop } from './loop';
 import { CB_BYTES, OFF_INPUT_BAD } from './layout.gen';
-import type { BootMessage, MainToRender, RenderToMain, SeriesMessage } from './protocol';
+import type {
+  BootMessage,
+  DecodeFailKind,
+  DecodedHeadWire,
+  MainToRender,
+  RenderToMain,
+  SeriesMessage,
+} from './protocol';
 
 interface Scope {
   postMessage(msg: RenderToMain, transfer?: Transferable[]): void;
@@ -72,6 +85,15 @@ export interface RenderBindings {
   readonly pool_start?: (threads: number, spawn: (ptr: number) => void) => void;
   /** ST: one input batch's records queued; returns how many. */
   readonly engine_input_batch?: (bytes: Uint8Array) => number;
+  /** MT (plan #68 D2): the decode service and the chunk table. */
+  readonly engine_decode_begin?: (req: number) => void;
+  readonly engine_decode_chunk?: (req: number, bytes: Uint8Array) => void;
+  readonly engine_decode_end?: (req: number) => void;
+  readonly engine_decode_abort?: (req: number) => void;
+  readonly engine_decode_take?: () => unknown[];
+  readonly frame_set_chunk_ref?: (id: number, chunk: number, epoch: number) => boolean;
+  readonly engine_chunk_release?: (chunk: number, epoch: number) => void;
+  readonly engine_chunk_stats?: () => string;
   /** The probe build's exports (the same module, loaded again). */
   probe(): Promise<ProbeExports>;
 }
@@ -126,8 +148,60 @@ export function runRender(b: RenderBindings): void {
     return new DataView(memory.buffer).getUint32(cb + OFF_INPUT_BAD, true);
   }
 
-  /** One tick: the engine's events, posted; then (ST) each applied batch returned. */
+  /** Plan #68 D2: the decode service's results since the last tick, posted. */
+  function postDecodes(): void {
+    const done = b.engine_decode_take?.() ?? [];
+    for (const raw of done) {
+      const d = raw as {
+        t: string;
+        req: number;
+        bytes?: number;
+        chunk?: number;
+        epoch?: number;
+        head?: string;
+        ts?: Float64Array;
+        vs?: Float64Array[];
+        kind?: DecodeFailKind;
+        message?: string;
+        row?: string | null;
+        coverage?: string | null;
+        planned?: string | null;
+      };
+      if (d.t === 'decode-credit') {
+        scope.postMessage({ t: 'decode-credit', req: d.req, bytes: d.bytes ?? 0 });
+      } else if (d.t === 'decoded' && d.ts !== undefined && d.vs !== undefined) {
+        const head = JSON.parse(d.head ?? 'null') as DecodedHeadWire;
+        scope.postMessage(
+          {
+            t: 'decoded',
+            req: d.req,
+            chunk: d.chunk ?? 0,
+            epoch: d.epoch ?? 0,
+            head,
+            ts: d.ts,
+            vs: d.vs,
+          },
+          [d.ts.buffer, ...d.vs.map((v) => v.buffer)],
+        );
+      } else if (d.t === 'decode-failed') {
+        const parse = (j: string | null | undefined): unknown =>
+          j === null || j === undefined ? null : JSON.parse(j);
+        scope.postMessage({
+          t: 'decode-failed',
+          req: d.req,
+          kind: d.kind ?? 'invalid',
+          message: d.message ?? '',
+          row: parse(d.row),
+          coverage: parse(d.coverage),
+          planned: d.planned ?? null,
+        });
+      }
+    }
+  }
+
+  /** One tick: the decodes' results and the engine's events, posted; then (ST) each applied batch returned. */
   function tick(): boolean {
+    postDecodes();
     const applied = held.splice(0);
     const json = b.engine_tick(performance.now() + shift);
     if (json !== '') {
@@ -155,6 +229,30 @@ export function runRender(b: RenderBindings): void {
         return;
       case 'input':
         break;
+      case 'decode-begin':
+        b.engine_decode_begin?.(m.req);
+        break;
+      case 'decode-chunk':
+        b.engine_decode_chunk?.(m.req, new Uint8Array(m.buf));
+        break;
+      case 'decode-end':
+        b.engine_decode_end?.(m.req);
+        break;
+      case 'decode-abort':
+        b.engine_decode_abort?.(m.req);
+        break;
+      case 'data-chunk':
+        if (b.frame_set_chunk_ref?.(m.id, m.chunk, m.epoch) !== true) {
+          scope.postMessage({ t: 'chunk-missing', id: m.id, chunk: m.chunk });
+          return;
+        }
+        break;
+      case 'chunk-release':
+        b.engine_chunk_release?.(m.chunk, m.epoch);
+        return;
+      case 'chunk-stats':
+        scope.postMessage({ t: 'chunk-stats', json: b.engine_chunk_stats?.() ?? 'null' });
+        return;
       case 'input-batch':
         // ST: queued now, applied at the next tick start, acknowledged after that tick.
         b.engine_input_batch?.(new Uint8Array(m.buf, 0, m.len));
@@ -290,7 +388,7 @@ export function runRender(b: RenderBindings): void {
     const out = await b.init({ module_or_path: m.module });
     // The engine wakes the loop itself after a device loss or a restore while idle.
     b.engine_on_wake(schedule);
-    const st = await b.engine_start(m.forceT2, m.caps, 1);
+    const st = await b.engine_start(m.forceT2, m.caps, m.epoch ?? 1);
     if (import.meta.env.VITE_ENGINE_PROBE === '1' && m.ringStart !== undefined) {
       (await b.probe()).engine_probe_ring_start(m.ringStart);
     }

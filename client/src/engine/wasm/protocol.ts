@@ -39,6 +39,8 @@ export interface BootMessage {
   readonly mainTimeOrigin: number;
   /** Pool threads (MT only). */
   readonly pool?: number;
+  /** Plan #68 D2: the boot epoch (`BOOT_EPOCH`, 1 at boot, +1 per restart): chunk references carry it. */
+  readonly epoch?: number;
   /** Fault builds only: the fault's name (`engine/faults.ts`). */
   readonly fault?: string;
   /** The probe build only: the input ring's counters start here (`engine_probe_ring_start`). */

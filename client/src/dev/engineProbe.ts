@@ -30,6 +30,7 @@
  * | `chunk(n)` | the probe build: `{series, points, bytes}` of the frame's current chunk (points: series 0's samples), or null |
  * | `policyWorker(url)` | plan #68 C2d2: a module worker from `url` through the real `pulsus-engine` policy; `started` or the error's name (an unrelated URL: `TypeError`) |
  * | `failed(n)`, `trap()` | the frame's `onFail` reasons (`restart`, `trap`, `surface`, …); the probe build: the render worker traps for real (plan #68 C2d1) |
+ * | `decodes()`, `chunks()`, `decoder(on)` | plan #68 D2: the DSF decodes (begun, done, failed, aborted, retried as JSON, by-reference `setData`); the worker's chunk table (count, bytes); the range decoder slot off or back on |
  *
  * A frame's canvas is at (0, `o.top ?? 0`) CSS px.
  *
@@ -56,6 +57,8 @@ import type { Backend, ChunkInfo, EngineProbe, ProbeHost, SynthAck } from '../en
 import { WasmFrame } from '../engine/wasm/frame';
 import type { InputRec } from '../engine/wasm/ring';
 import { scriptUrl } from '../engine/wasm/workers';
+import { refStats } from '../engine/wasm/chunkRefs';
+import { decodeStats, rangeDecoder, setRangeDecoder, type RangeDecoder } from '../api/rangeDecoder';
 
 export interface ProbeSeries {
   readonly key: string;
@@ -168,6 +171,22 @@ export interface DashProbe {
    * `pulsus-engine` policy (`workers.ts` `scriptUrl`); `started`, or the error's name.
    */
   policyWorker(url: string): string;
+  /**
+   * Plan #68 D2: the DSF decodes of the page: begun, done, failed, aborted, retried as JSON, and
+   * the `setData` calls that went by reference.
+   */
+  decodes(): {
+    begun: number;
+    done: number;
+    failed: number;
+    aborted: number;
+    retried: number;
+    byRef: number;
+  };
+  /** Plan #68 D2: the worker's chunk table, `{count, bytes}`; null without an MT engine. */
+  chunks(): Promise<{ count: number; bytes: number } | null>;
+  /** Plan #68 D2: the range decoder slot off (`false`: every range query JSON) or back on. */
+  decoder(on: boolean): void;
 }
 
 export type SynthFault = 'alloc' | 'silent' | 'fatal';
@@ -260,6 +279,8 @@ export function createProbe(o: {
   let enqueued = 0;
   /** The next `synth`'s simulated outcome (plan #68 C2d1). */
   let synthFault: SynthFault | null = null;
+  /** `decoder(false)`'s saved slot (plan #68 D2). */
+  let saved: RangeDecoder | null = null;
   // The probe frames' controller timers, holdable (`holdTimers`).
   let held = false;
   let nextTimer = 1;
@@ -593,6 +614,22 @@ export function createProbe(o: {
       synthFault = f;
     },
     failed: (n) => [...entry(n).failed],
+    decodes() {
+      return { ...decodeStats, byRef: refStats.byRef };
+    },
+    chunks() {
+      const h = o.host();
+      return h === null ? Promise.resolve(null) : h.chunks();
+    },
+    decoder(on) {
+      if (!on) {
+        saved ??= rangeDecoder();
+        setRangeDecoder(null);
+        return;
+      }
+      if (saved !== null) setRangeDecoder(saved);
+      saved = null;
+    },
     trap() {
       o.host()?.trap();
     },

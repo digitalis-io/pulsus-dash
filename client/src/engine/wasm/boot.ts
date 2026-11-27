@@ -42,6 +42,15 @@ export interface RenderOptions {
   readonly onError: (e: unknown) => void;
   /** ST: the worker returned a batch (`input-ack`). */
   readonly onInputAck?: (m: Extract<RenderToMain, { t: 'input-ack' }>) => void;
+  /** Plan #68 D2: the boot epoch the worker's chunk references carry (default 1). */
+  readonly epoch?: number;
+  /** Plan #68 D2 (MT): `decode-credit`, `decoded`, `decode-failed`, `chunk-missing`, `chunk-stats`. */
+  readonly onDecode?: (
+    m: Extract<
+      RenderToMain,
+      { t: 'decode-credit' | 'decoded' | 'decode-failed' | 'chunk-missing' | 'chunk-stats' }
+    >,
+  ) => void;
   /** The probe build: the input ring's start (`BootMessage.ringStart`). */
   readonly ringStart?: number;
   /** The probe build: the worker's `probe-input` reply. */
@@ -122,6 +131,13 @@ export function startRender(o: RenderOptions): RenderHandle {
       case 'input-ack':
         o.onInputAck?.(m);
         return;
+      case 'decode-credit':
+      case 'decoded':
+      case 'decode-failed':
+      case 'chunk-missing':
+      case 'chunk-stats':
+        o.onDecode?.(m);
+        return;
       case 'spawn-pool': {
         if (memory === null || st) return;
         const p = o.spawnPool();
@@ -156,6 +172,7 @@ export function startRender(o: RenderOptions): RenderHandle {
     mode: st ? 'st' : 'mt',
     caps: capabilityBits(),
     mainTimeOrigin: typeof performance === 'undefined' ? 0 : performance.timeOrigin,
+    epoch: o.epoch ?? 1,
     ...(st
       ? {}
       : {
