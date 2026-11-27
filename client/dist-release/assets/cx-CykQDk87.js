@@ -1,1 +1,0 @@
-function e(...e){return e.filter(e=>typeof e==`string`&&e!==``).join(` `)}export{e as t};

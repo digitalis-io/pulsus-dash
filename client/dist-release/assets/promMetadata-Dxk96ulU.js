@@ -1,1 +1,0 @@
-import{N as e}from"./index-CFN7xQEI.js";var t=1e4,n=3e5,r=(r,i)=>e({queryKey:[`prom`,i,`metadata`],queryFn:({signal:e})=>r.promMetadata(i,{limit:t},e),staleTime:n,retry:!1});export{r as t};

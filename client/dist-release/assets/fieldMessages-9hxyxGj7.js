@@ -1,1 +1,0 @@
-import{n as e,t}from"./t-b1KZZgSW.js";function n(t){return Object.hasOwn(e,t)}function r(e){let r=`field.${e}`;return t(n(r)?r:`field.board.json.invalid`)}export{r as t};

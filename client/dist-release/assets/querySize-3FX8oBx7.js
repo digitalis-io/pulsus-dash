@@ -1,1 +1,0 @@
-var e=131072;function t(e){return new TextEncoder().encode(e).length}function n(n){return n.length*3<=131072?!1:n.length>131072||t(n)>e}export{n,e as t};
