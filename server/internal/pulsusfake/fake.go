@@ -122,6 +122,12 @@ func (f *Fake) replay(w http.ResponseWriter, r *http.Request, rec *Recorded, res
 	} else {
 		_, _ = w.Write(resp.Body)
 	}
+	if resp.HangAfterBody {
+		_ = http.NewResponseController(w).Flush()
+		<-r.Context().Done()
+		f.cancelled(rec)
+		return
+	}
 	f.update(rec, func(x *Recorded) { x.Completed = true })
 }
 

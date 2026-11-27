@@ -23,6 +23,14 @@ const ENGINE = '&engine=wasm&mode=t2&probe=1';
 /** `max_payload` (`wire/schemas/limits.json`). */
 const MAX_PAYLOAD = 64 << 20;
 
+/** The worker's chunk table and its decodes in flight (`__dashProbe.chunks()`). */
+interface ChunkStats {
+  count: number;
+  bytes: number;
+  unheld: number;
+  inflight: number;
+}
+
 interface Decodes {
   begun: number;
   done: number;
@@ -36,10 +44,14 @@ declare global {
   interface Window {
     __dashProbe?: {
       decodes(): Decodes;
-      chunks(): Promise<{ count: number; bytes: number }>;
+      chunks(): Promise<ChunkStats | null>;
       decoder(on: boolean): void;
     };
-    __dashProbeQueries?: { invalidateQueries(): Promise<void>; clear(): void };
+    __dashProbeQueries?: {
+      invalidateQueries(): Promise<void>;
+      cancelQueries(): Promise<void>;
+      clear(): void;
+    };
     __bodyReads: string[];
   }
 }
@@ -104,6 +116,9 @@ const decodes = (page: Page): Promise<Decodes> =>
     if (p === undefined) throw new Error('no probe');
     return p.decodes();
   });
+
+const chunkStats = (page: Page): Promise<ChunkStats | null> =>
+  page.evaluate(() => window.__dashProbe?.chunks() ?? Promise.resolve(null));
 
 /** Refetches every query (the engine is up now: range queries ask for DSF). */
 async function refetch(page: Page): Promise<void> {
@@ -310,11 +325,104 @@ test.describe('e2e:engine-dsf', () => {
           async () => {
             await cdp.send('HeapProfiler.collectGarbage');
             await page.evaluate(() => new Promise((r) => setTimeout(r, 100)));
-            return (await page.evaluate(() => window.__dashProbe?.chunks()))?.count ?? -1;
+            return (await chunkStats(page))?.count ?? -1;
           },
           { timeout: 30_000 },
         )
         .toBeLessThanOrEqual(1);
+    });
+  });
+
+  test('e2e:engine-dsf E4b a decode cancelled after it began releases its request', async ({
+    page,
+    request,
+  }, info) => {
+    only(info, 'lavapipe');
+    test.setTimeout(120_000);
+    // The healthy panel boots the engine; the stalling one's stream sends the DSF header and its
+    // first batch, then stalls until cancelled (review r1 #3).
+    const STALL: PanelInput[] = [
+      ...LINE,
+      { id: 't', title: 'T', text: 'dsf_stall', grid: [0, 8, 12, 8], vis: { kind: 'line' } },
+    ];
+    await withLineBoard(page, request, STALL, ENGINE, async () => {
+      await onEngine(page, 'a');
+      // The stalling panel's first fetch may have gone before the boot (JSON) and never ends:
+      // cancel it, so the next fetch is a DSF one.
+      const cancel = () =>
+        page.evaluate(async () => {
+          await window.__dashProbeQueries?.cancelQueries();
+        });
+      await cancel();
+      await expect.poll(async () => (await chunkStats(page))?.inflight).toBe(0);
+      const table = await chunkStats(page);
+      // Refetch (not awaited: the stalling answer never ends). Its decode begins and stays in
+      // flight in the worker.
+      await page.evaluate(() => {
+        void window.__dashProbeQueries?.invalidateQueries();
+      });
+      await expect
+        .poll(async () => (await chunkStats(page))?.inflight, { timeout: 30_000 })
+        .toBe(1);
+      const before = await decodes(page);
+      // Cancel it: its fetch aborts mid-decode, and the worker drops the request.
+      await cancel();
+      // The stalled decode is aborted (and any other still reading at the cancel).
+      await expect
+        .poll(async () => (await decodes(page)).aborted - before.aborted, { timeout: 30_000 })
+        .toBeGreaterThanOrEqual(1);
+      await expect
+        .poll(async () => {
+          const c = await chunkStats(page);
+          // No request left in flight, and the stalled one left no chunk (the healthy panel's
+          // refetch added at most one).
+          return c === null
+            ? 'none'
+            : `${String(c.inflight)} ${String(c.count <= (table?.count ?? 0) + 1)}`;
+        })
+        .toBe('0 true');
+      await expect
+        .poll(async () => (await fakeRequests(request, { state: 'cancelled' })).length)
+        .toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  test('e2e:engine-dsf E5b a refused planned object releases the decoded chunk', async ({
+    page,
+    request,
+  }, info) => {
+    only(info, 'lavapipe');
+    test.setTimeout(120_000);
+    // The DSF body's `dash.planned` gets a `value_type` decodePlanned refuses (same length).
+    await page.route(`**${RANGE}**`, async (route) => {
+      const accept = route.request().headers()['accept'] ?? '';
+      if (!accept.includes(DSF)) {
+        await route.continue();
+        return;
+      }
+      const res = await route.fetch();
+      const body = Buffer.from(await res.body());
+      const from = Buffer.from('"value_type":"vector"');
+      const at = body.indexOf(from);
+      if (at >= 0) Buffer.from('"value_type":"vectoX"').copy(body, at);
+      await route.fulfill({ response: res, body });
+    });
+    await withLineBoard(page, request, LINE, ENGINE, async () => {
+      await onEngine(page, 'a');
+      await expect.poll(async () => (await chunkStats(page))?.count).toBe(0);
+      const before = await decodes(page);
+      await refetch(page);
+      await expect.poll(async () => (await decodes(page)).done - before.done).toBe(1);
+      await expect(panel(page, 'a').locator('[role="alert"]').first()).toBeVisible();
+      // The chunk the worker decoded is released: nothing held, nothing left in the table.
+      await expect
+        .poll(async () => {
+          const c = await chunkStats(page);
+          return c === null
+            ? 'none'
+            : `${String(c.count)} ${String(c.unheld)} ${String(c.inflight)}`;
+        })
+        .toBe('0 0 0');
     });
   });
 

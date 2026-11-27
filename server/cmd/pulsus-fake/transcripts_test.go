@@ -30,8 +30,8 @@ func TestE2ETranscripts(t *testing.T) {
 		"board-logs-probe-checkout",
 		"counter-rate", "counter-raw",
 		// The engine's DSF cases (plan #68 D2): a matrix cut after its first series (E5), a slow
-		// answer (E4).
-		"dsf-cut", "dsf-slow",
+		// answer and a stream that stalls after its first series (E4).
+		"dsf-cut", "dsf-slow", "dsf-stall",
 		"empty", "gauge-range", "histogram",
 		// The Inspector set (#192).
 		"inspector-hist-sel", "inspector-hist", "inspector-logs-checkout", "inspector-logs-pivot-prod",
