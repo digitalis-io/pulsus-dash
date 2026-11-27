@@ -113,6 +113,7 @@ const KINDS: readonly { id: DataVisKind; label: MessageId }[] = [
 /** The labels of the kinds not drawn yet (`PENDING_KINDS`): shown, disabled, only when stored. */
 const PENDING_LABELS: Readonly<Partial<Record<DataVisKind, MessageId>>> = {
   pie: 'editor.vis.pie',
+  geomap: 'editor.vis.geomap',
 };
 
 /**
