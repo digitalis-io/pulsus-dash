@@ -1,9 +1,11 @@
 /**
  * The geomap's Inspector targets (T24-092, T24 §4.13, §5.16; plan #234 Part 1 §4.4): snapshots of
- * a row set.
+ * a row set, built here only, so a refetch never changes an open one. Type-only imports of the
+ * frame: the shared Inspector needs this module, not the row builder.
  */
 import type { Labels } from '../../data/frames';
-import type { GeoRow, GeoRowSet } from './frame';
+import { t } from '../../i18n/t';
+import type { GeoRow, GeoRowSet, GroupId } from './frame';
 
 export interface GeoMemberEntry {
   readonly text: string;
@@ -18,9 +20,9 @@ export interface GeoInspectorTarget {
   readonly title: string;
   /** A snapshot, in key order. */
   readonly rows: readonly GeoRow[];
-  /** Null for a marker. */
+  /** One entry per row (cluster, group) or member group (aggregate); null for a marker. */
   readonly members: readonly GeoMemberEntry[] | null;
-  /** The row set the target was built from. */
+  /** The row set the target was built from; `group` targets and later views read only it. */
   readonly set: GeoRowSet;
 }
 
@@ -29,12 +31,98 @@ export type GeoTargetRef =
   | { readonly kind: 'aggregate' }
   | { readonly kind: 'group'; readonly from: GeoInspectorTarget; readonly entry: number };
 
-export function geoTarget(s: GeoRowSet, frameSeq: number, ref: GeoTargetRef): GeoInspectorTarget {
-  void ref;
-  return { kind: 'marker', id: '', frameSeq, title: '', rows: [], members: null, set: s };
+/** The aggregate's id (T24-092). */
+export const AGGREGATE_ID = 'other:geo';
+
+const idKey = (id: GroupId): string => JSON.stringify(id);
+
+function byKey(a: GeoRow, b: GeoRow): number {
+  return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
 }
 
+/** One entry per row: its name, labels and key. */
+function rowEntries(rows: readonly GeoRow[]): GeoMemberEntry[] {
+  return rows.map((r) => ({ text: r.name, labels: r.labels, keys: [r.key] }));
+}
+
+/** A member group's labels: `{[L]: v}`, `{}` when the label is absent, or its series' labels. */
+function memberLabels(id: GroupId, rows: readonly GeoRow[], groupBy: string | null): Labels {
+  if ('present' in id) return id.present && groupBy !== null ? { [groupBy]: id.value } : {};
+  return rows[0]?.labels ?? {};
+}
+
+/**
+ * A target of `s` (§4.4): a marker (its row, no members), a cluster (`Cluster of n`, the keys'
+ * rows, one entry per row), the aggregate (`other:geo`, `other (n)`, its rows, one entry per
+ * member group with its final label) or a group of an earlier target (`group:` + its id as JSON,
+ * the entry's text, that target's rows of the group, one entry per row; built from `from` only).
+ */
+export function geoTarget(s: GeoRowSet, frameSeq: number, ref: GeoTargetRef): GeoInspectorTarget {
+  if (ref.kind === 'group') {
+    const from = ref.from;
+    const entry = from.members?.[ref.entry];
+    const keys = new Set(entry?.keys ?? []);
+    const rows = from.rows.filter((r) => keys.has(r.key));
+    const first = rows[0];
+    return {
+      kind: 'group',
+      id: `group:${first === undefined ? '' : idKey(first.groupId)}`,
+      frameSeq: from.frameSeq,
+      title: entry?.text ?? '',
+      rows,
+      members: rowEntries(rows),
+      set: from.set,
+    };
+  }
+  if (ref.kind === 'aggregate') {
+    const j = s.groups.findIndex((g) => g.members !== null);
+    const g = s.groups[j];
+    const rows = s.rows.filter((r) => r.group === j);
+    const members = (g?.members ?? []).map((id, i) => {
+      const own = rows.filter((r) => idKey(r.groupId) === idKey(id));
+      return {
+        text: g?.memberLabels?.[i] ?? '',
+        labels: memberLabels(id, own, s.groupBy),
+        keys: own.map((r) => r.key),
+      };
+    });
+    return {
+      kind: 'aggregate',
+      id: AGGREGATE_ID,
+      frameSeq,
+      title: g?.label ?? '',
+      rows,
+      members,
+      set: s,
+    };
+  }
+  const keys = new Set(ref.keys);
+  const rows = s.rows.filter((r) => keys.has(r.key)).sort(byKey);
+  if (ref.kind === 'marker') {
+    return {
+      kind: 'marker',
+      id: ref.id,
+      frameSeq,
+      title: rows[0]?.name ?? '',
+      rows,
+      members: null,
+      set: s,
+    };
+  }
+  return {
+    kind: 'cluster',
+    id: ref.id,
+    frameSeq,
+    title: t('geo.cluster.title', { n: rows.length }),
+    rows,
+    members: rowEntries(rows),
+    set: s,
+  };
+}
+
+/** Where a row is (§5.16): the gazetteer name, else `lat, lon` to 4 places; '' when not placed. */
 export function geoPlace(r: GeoRow): string {
-  void r;
-  return '';
+  if (r.location.status !== 'placed') return '';
+  const p = r.location.place;
+  return p.name ?? t('geo.place.coords', { lat: p.lat.toFixed(4), lon: p.lon.toFixed(4) });
 }

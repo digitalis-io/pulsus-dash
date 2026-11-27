@@ -33,7 +33,11 @@ export function inst(key: string, labels: Labels, value: number): SeriesFrame {
 }
 
 /** One range series: the samples `[seconds, value]`, from the epoch (R: `atMs` 60 000). */
-export function range(key: string, labels: Labels, samples: readonly [number, number][]): SeriesFrame {
+export function range(
+  key: string,
+  labels: Labels,
+  samples: readonly [number, number][],
+): SeriesFrame {
   return {
     key,
     labels,

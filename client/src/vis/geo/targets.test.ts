@@ -32,7 +32,11 @@ describe('unit:geo-targets (builder rows)', () => {
 
   it('a cluster: the keys’ rows in key order, one member per row', () => {
     const keys = ['k01', 'k02', 'k03', 'k04', 'k08'];
-    const t = geoTarget(g, 1, { kind: 'cluster', id: 'cluster:k03', keys: ['k08', ...keys.slice(0, 4)] });
+    const t = geoTarget(g, 1, {
+      kind: 'cluster',
+      id: 'cluster:k03',
+      keys: ['k08', ...keys.slice(0, 4)],
+    });
     expect(t.kind).toBe('cluster');
     expect(t.id).toBe('cluster:k03');
     expect(t.title).toBe('Cluster of 5');
@@ -72,10 +76,9 @@ describe('unit:geo-targets (builder rows)', () => {
       gaz,
       COMPLETE,
     );
-    expect(geoTarget(later, 3, { kind: 'group', from: agg, entry: 1 }).rows.map((r) => r.key)).toEqual([
-      'q08',
-      'q10',
-    ]);
+    expect(
+      geoTarget(later, 3, { kind: 'group', from: agg, entry: 1 }).rows.map((r) => r.key),
+    ).toEqual(['q08', 'q10']);
   });
 
   it('geoPlace: the gazetteer name, else the coordinates, else empty', () => {

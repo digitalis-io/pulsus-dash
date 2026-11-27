@@ -61,7 +61,7 @@ function parseCsv(csv: string): string[][] {
   let cell = '';
   let quoted = false;
   for (let i = 0; i < csv.length; i++) {
-    const c = csv[i];
+    const c = csv.charAt(i);
     if (quoted) {
       if (c === '"' && csv[i + 1] === '"') {
         cell += '"';

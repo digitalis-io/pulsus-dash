@@ -66,17 +66,9 @@ const range = (from: number, to: number): string[] => {
 
 describe('unit:geo-rows', () => {
   it('valueStatusOf (T21-012)', () => {
-    expect([NaN, Infinity, -Infinity, 5e-300, -1e291, 0, 1, -30, 1e290].map(valueStatusOf)).toEqual([
-      'noValue',
-      'infinite',
-      'infinite',
-      'outOfRange',
-      'outOfRange',
-      'ok',
-      'ok',
-      'ok',
-      'ok',
-    ]);
+    expect([NaN, Infinity, -Infinity, 5e-300, -1e291, 0, 1, -30, 1e290].map(valueStatusOf)).toEqual(
+      ['noValue', 'infinite', 'infinite', 'outOfRange', 'outOfRange', 'ok', 'ok', 'ok', 'ok'],
+    );
   });
 
   it('G: the statuses block, without thresholds', () => {
@@ -160,7 +152,12 @@ describe('unit:geo-rows', () => {
       groups: base.groups.map(f),
     });
     expect(
-      detail(validateGeoRows(groups((g, j) => (j === 0 ? { ...g, pattern: 'dots' } : g)), TH)),
+      detail(
+        validateGeoRows(
+          groups((g, j) => (j === 0 ? { ...g, pattern: 'dots' } : g)),
+          TH,
+        ),
+      ),
     ).toBe('group');
     const noK08 = groups((g) =>
       g.members === null
@@ -239,9 +236,7 @@ describe('unit:geo-identity', () => {
     expect(s.groups.slice(0, 7).map((g) => g.id)).toEqual(
       range(1, 7).map((series) => ({ series })),
     );
-    expect(s.groups.slice(0, 7).map((g) => g.label)).toEqual(
-      s.rows.slice(0, 7).map((r) => r.name),
-    );
+    expect(s.groups.slice(0, 7).map((g) => g.label)).toEqual(s.rows.slice(0, 7).map((r) => r.name));
     const other = s.groups[7];
     expect(other?.id).toEqual({ other: true });
     expect(other?.label).toBe('other (11)');
@@ -291,7 +286,7 @@ describe('unit:geo-identity', () => {
     expect(validateGeoRows(h9, null)).toBeNull();
   });
 
-  it("H′: excluded rows keep their groups; e3 has no shown row", () => {
+  it('H′: excluded rows keep their groups; e3 has no shown row', () => {
     const s = rows(Hprime(), null, { groupBy: 'env' });
     expect(keysWhere(s, (r) => r.draw === 'excluded')).toEqual(['h3', 'h8']);
     expect(keysWhere(s, (r) => r.draw === 'shown')).toEqual([
@@ -303,20 +298,22 @@ describe('unit:geo-identity', () => {
       'h6',
       'h7',
     ]);
-    expect(s.groups.map((g) => g.label)).toEqual(rows(H(), null, { groupBy: 'env' }).groups.map((g) => g.label));
+    expect(s.groups.map((g) => g.label)).toEqual(
+      rows(H(), null, { groupBy: 'env' }).groups.map((g) => g.label),
+    );
     expect(s.rows.some((r) => r.group === 3 && r.draw === 'shown')).toBe(false);
     expect(s.groups[7]?.memberLabels).toEqual(['e7', 'e8']);
   });
 
   it('A: absent and the reserved present value', () => {
     const s = rows(A(), null, { groupBy: 'env' });
-    expect(
-      s.groups.map((g, j) => [g.id, g.label, g.pattern, g.colourIndex, keysOf(s, j)]),
-    ).toEqual([
-      [{ present: false }, 'env absent', 'backDiagonal', 0, ['a1']],
-      [{ present: true, value: 'env absent' }, '"env absent"', 'horizontal', 1, ['a2']],
-      [{ present: true, value: 'prod' }, 'prod', 'vertical', 2, ['a3']],
-    ]);
+    expect(s.groups.map((g, j) => [g.id, g.label, g.pattern, g.colourIndex, keysOf(s, j)])).toEqual(
+      [
+        [{ present: false }, 'env absent', 'backDiagonal', 0, ['a1']],
+        [{ present: true, value: 'env absent' }, '"env absent"', 'horizontal', 1, ['a2']],
+        [{ present: true, value: 'prod' }, 'prod', 'vertical', 2, ['a3']],
+      ],
+    );
   });
 
   it('O: a present `other (2)` among the aggregate members', () => {
