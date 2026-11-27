@@ -3,11 +3,12 @@
  * menu order. "Add widget" lists the defs, `addWidget` takes a def's `newVis()` and `size`, a
  * widget's Edit panel opens `WidgetEditor` with the def's `Editor` body, and a kind without a def
  * keeps Duplicate and Remove only. The registry comes from `WidgetRegistryContext` (default
- * `WIDGETS`), so a test, or #216 Part 2 adding the board list, provides another.
+ * `WIDGETS`: Text, then Board list, plan #216 Part 2b §3.1), so a test provides another.
  */
 import { createContext, useContext, type ComponentType } from 'react';
 import type { FieldError, PanelVisKind, WidgetKind, WidgetPanelSpec } from '../api/types';
 import type { MessageId } from '../i18n/t';
+import { BoardListEditorBody } from './boardList/BoardListEditorBody';
 import { TextEditorBody } from './text/TextEditorBody';
 
 /** What a def's editor body gets from `WidgetEditor`. */
@@ -24,6 +25,12 @@ export interface WidgetEditorBodyProps {
   original: WidgetPanelSpec['vis'] | undefined;
   /** The next vis, of the same kind (`updateWidget` refuses another). */
   onVis: (vis: WidgetPanelSpec['vis']) => void;
+  /**
+   * A local field text that cannot be written (plan #216 Part 2b §3.1): its message, or null when
+   * none (and on unmount). The editor blocks Done, and the page Save, while one is reported. Text
+   * never calls it.
+   */
+  onLocalInvalid?: (message: string | null) => void;
 }
 
 export interface WidgetDef {
@@ -53,7 +60,16 @@ export const TEXT_DEF: WidgetDef = {
   Editor: TextEditorBody,
 };
 
-export const WIDGETS: WidgetRegistry = { defs: [TEXT_DEF] };
+export const BOARD_LIST_DEF: WidgetDef = {
+  kind: 'boardList',
+  label: 'widget.kind.boardList',
+  editTitle: 'widget.boardList.editTitle',
+  size: { w: 4, h: 8 },
+  newVis: () => ({ kind: 'boardList' }),
+  Editor: BoardListEditorBody,
+};
+
+export const WIDGETS: WidgetRegistry = { defs: [TEXT_DEF, BOARD_LIST_DEF] };
 
 export const WidgetRegistryContext = createContext<WidgetRegistry>(WIDGETS);
 

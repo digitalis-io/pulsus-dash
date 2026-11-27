@@ -283,8 +283,8 @@ labelled "`<badge>`: `<title>`") shows with any frame or message of an outcome a
 ### Board tags (#215)
 
 Board spec v4 ([the boards API](../server/boards-api.md#board-spec-v4)) adds the optional `tags`:
-0 to 16 unique tags of `^[a-z0-9][a-z0-9_.:/-]{0,63}$`. The client accepts and keeps them; it has
-no editor for them yet (the tags editor and the Board list widget come with #216).
+0 to 16 unique tags of `^[a-z0-9][a-z0-9_.:/-]{0,63}$`. The client accepts and keeps them, and
+since #216 Part 2b edits them from the Edit toolbar's **Tags** button ([below](#the-tags-field-216-part-2b)).
 
 - `checkBoardSpec` (`boards/spec.ts`) checks them as the server does, with the same pointers and
   keys: more than `MAX_BOARD_TAGS` (16) at `/tags` (`board.tags.invalid`), then each item against
@@ -298,9 +298,48 @@ no editor for them yet (the tags editor and the Board list widget come with #216
   digits and _ . : / -, each up to 64 characters") and `field.board.tags.duplicate` ("Use each tag
   once").
 
-`canonicalJson` is unchanged: the client never creates `tags`, and heads come canonical from the
-server, where `tags: []` is stored as no key. The list's `tags`, `applied` and `tagsStale` members
-are read by the API layer ([board list pages](#board-list-pages-and-filters-216-part-1)).
+`canonicalJson` is unchanged: heads come canonical from the server, where `tags: []` is stored as
+no key, and `setTags` deletes the key when the head has none (below). The list's `tags`, `applied`
+and `tagsStale` members are read by the API layer
+([board list pages](#board-list-pages-and-filters-216-part-1)).
+
+#### The tags field (#216 Part 2b)
+
+**State.** `setTags` (`boards/editorState.ts`, in `EDITS`, so refused while saving) writes the
+draft's tags:
+
+| Action | Draft |
+|---|---|
+| `setTags` with tags | `{...draft, tags: [...tags]}` |
+| `setTags []`, the head has `tags` | `{...draft, tags: []}` |
+| `setTags []`, the head has no `tags` | the `tags` key deleted, so typing the tags back out leaves the draft clean |
+
+A save sends the draft as before; the client's `checkBoardSpec` rules above still run first.
+
+**Adding** (`boards/tags.ts`, pure). `addTags(tags, input)` splits on commas and white space,
+lower-cases each piece (the rule is lower-case only, so a typed capital never means another tag)
+and adds the pieces in order. Empty pieces are skipped; it stops at the first piece that is not a
+`TAG_PATTERN` tag (`invalid`), is already present (`duplicate`), or would be the 17th (`full`), and
+returns that piece and the rest as `rest`, joined by `, `. `tagError(fields)` is a save's first
+error at `/tags` or `/tags/<i>`.
+
+**The field** (`pages/board/BoardTagsButton.tsx`, `BoardTagsField.tsx`). In Edit mode a **Tags**
+button follows Add section: its visible text is its whole name, "Tags" or "Tags (n)" (no
+`aria-label`), its tag icon is a mask in the board route's CSS (`Board.module.css`, not the kit
+`Icon`), and it is disabled while busy. It opens a popover dialog "Board tags": the tags as 20 px
+muted chips (`--size-list-chip`), each with a × (`Remove tag ‹tag›`), then "Add a tag" with its
+help. Return, or a newly typed or pasted comma or white space (the input holds more separators than
+before), adds through `addTags`; what cannot be added stays in the input, and editing it commits
+nothing until the next separator or Return. It shows `field.board.tags.invalid`, `field.board.tags.duplicate` or "A board has at
+most 16 tags", and the text clears on typing. Backspace in an empty input removes the last tag; a
+×'s removal moves focus to the next ×, else the input; at 16 tags the input is disabled and its help
+says why. Esc closes the popover onto the trigger.
+
+**Errors.** `tagsUnsupported(f)` (`boards/fieldMessages.ts`) is `/tags` with
+`board.json.unknownKey`: a server older than board spec v4 refusing the key. `saveFieldMessage`
+reads it as "This server does not accept board tags yet", on the status line (where every
+non-panel error already shows) and, through `tagError`, under the chips; any other tags error shows
+its `fieldMessage` in both places.
 
 ### Widgets and the query typing (#198 Part 1)
 
@@ -358,8 +397,12 @@ mode, a selected panel, `isWidgetPanel`, and a def for its kind in the registry.
 fields, the mirrored status line and `original`, the head's vis of the panel (undefined for a new
 panel). `onChange` dispatches `updateWidget`, Remove panel `removePanel`, and Done `select(null)`.
 Focus then follows the panel editor's rule (`focusAfterEditor`): the panel's menu, or Add panel when
-the panel is gone. A widget's panel menu has Edit panel only when its kind has a def (Clock and
-the board list keep Duplicate and Remove).
+the panel is gone. A widget's panel menu has Edit panel only when its kind has a def (Clock keeps
+Duplicate and Remove; the board list has a def since #216 Part 2b). While the widget editor reports
+a local field text it cannot write (`onLocalInvalid`), `BoardPage` holds it as `editorInvalid` and
+refuses `save()`, from the Save button and ⌘S / Ctrl+S, with "Fix the highlighted field in the
+panel editor first" and no request; it clears when the field is fixed or the editor closes
+([the board list editor](widgets.md#the-board-list-editor-part-2b)).
 
 **Text variables (T24-008).** `boardVariables` lists the data panels' references first, as before.
 After them come the references in each Markdown-mode Text's `content`, in panel order and without
@@ -795,6 +838,10 @@ failing 0.05 "SLO breach").
   Text row); [T08](../../designs/technical/T08-dom-component-kit.md) T08-011.
 - Board tags (#215): [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-029
   and §5.5; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v3 upcast).
+- The tags field and Save blocked by an invalid editor field (#216 Part 2b):
+  [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-029 (the field,
+  `setTags`, the older server's text), T24-021 (the editor's search text), §5.2a;
+  [T08](../../designs/technical/T08-dom-component-kit.md) T08-007, T08-008.
 - Board spec v3 and the pending kinds (#173 Parts 1 and 2):
   [T22](../../designs/technical/T22-value-categorical-and-table-panels.md) §6.1 (`vis.options`),
   T22-002 and §4.5 (row 11 is not in the boards' set);

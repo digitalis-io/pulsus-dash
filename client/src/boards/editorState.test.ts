@@ -277,6 +277,36 @@ describe('board tags (T24-029)', () => {
   });
 });
 
+describe('unit:board-tags-state (plan #216 Part 2b §4.3)', () => {
+  const edit = (spec: BoardSpec) => run(initialState(board('1', spec)), { type: 'enterEdit' });
+
+  it('setTags on a head without tags: dirty, then clean again with no tags key', () => {
+    let s = run(edit(MINIMAL), { type: 'setTags', tags: ['a'] });
+    expect(s.draft.tags).toEqual(['a']);
+    expect(isDirty(s)).toBe(true);
+    s = run(s, { type: 'setTags', tags: [] });
+    expect(s.draft).not.toHaveProperty('tags');
+    expect(isDirty(s)).toBe(false);
+  });
+
+  it('setTags [] on a head with tags keeps an empty list, dirty', () => {
+    const s = run(edit({ ...MINIMAL, tags: ['a'] }), { type: 'setTags', tags: [] });
+    expect(s.draft.tags).toEqual([]);
+    expect(isDirty(s)).toBe(true);
+  });
+
+  it('copies the list, leaves Saved behind and is refused while saving', () => {
+    const tags = ['a', 'b'];
+    const saved = run(edit(MINIMAL), { type: 'saveOk', board: board('2') });
+    const s = run(saved, { type: 'setTags', tags });
+    expect(s.draft.tags).toEqual(tags);
+    expect(s.draft.tags).not.toBe(tags);
+    expect(s.save.status).toBe('idle');
+    const saving = run(edit(MINIMAL), { type: 'saveStart' });
+    expect(run(saving, { type: 'setTags', tags: ['a'] }).draft).toBe(saving.draft);
+  });
+});
+
 describe('unit:widget-add (plan #198 Part 3a §3.3)', () => {
   const TEXT = { kind: 'text' as const, options: { mode: 'markdown' as const, content: '' } };
   const SIZE = { w: 6, h: 6 };
