@@ -287,8 +287,10 @@ test.describe('e2e:shim-fuzz', () => {
     expect(selects, 'Select records').toBeGreaterThan(0);
     expect(selects + r.stats.overflow).toBe(r.stats.selects);
     expect(r.stats.bad).toBe(0);
-    // More than one ring's (or batch's) worth went through it.
-    expect(r.stats.publishedBytes).toBeGreaterThan(0x10000);
+    // MT: more than one ring's worth went through it. ST coalesces everything pending until main's
+    // animation frame (plan #68 C2d2 §3.2), so far fewer bytes go, in many batches (below).
+    if (!st) expect(r.stats.publishedBytes).toBeGreaterThan(0x10000);
+    else expect(r.stats.publishedBytes).toBeGreaterThan(0);
     // Plan #68 C2d2: the ST engine took the records in batches, never more than one in flight.
     const mode = await page.locator('html').getAttribute('data-dash-mode');
     expect(mode).toBe(st ? 'st' : 'mt');
