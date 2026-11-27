@@ -85,6 +85,27 @@ describe('unit:board-tags-field', () => {
     expect(screen.getByText('A board has at most 16 tags')).toBeInTheDocument();
   });
 
+  it('correcting the text a failed paste left commits nothing until a new separator', async () => {
+    const { onChange, user, input } = setup();
+    await user.click(input());
+    await user.paste('a Bad! c');
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith(['a']);
+    expect(input()).toHaveValue('bad!, c');
+    // Delete the "!": the kept ", " is not a new separator.
+    await user.type(input(), '{Backspace}', {
+      skipClick: true,
+      initialSelectionStart: 4,
+      initialSelectionEnd: 4,
+    });
+    expect(input()).toHaveValue('bad, c');
+    expect(onChange).toHaveBeenCalledTimes(1);
+    await user.keyboard('{Enter}');
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith(['a', 'bad', 'c']);
+    expect(input()).toHaveValue('');
+  });
+
   it('a pasted list is split at once', async () => {
     const { onChange, user, input } = setup();
     await user.click(input());

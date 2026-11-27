@@ -1,8 +1,10 @@
 /**
  * The board's tag field (plan #216 Part 2b §4.2; T24-029, T08-007), in the Tags popover: the tags
  * as chips, each with its × (`Remove tag ‹tag›`), then the "Add a tag" input and its help. Return,
- * a comma or white space (typed or pasted) adds what was typed through `addTags`, lower-cased; a
- * piece that cannot be added stays in the input with its text, which clears on typing. Backspace in
+ * or a newly typed or pasted comma or white space, adds what was typed through `addTags`,
+ * lower-cased; a piece that cannot be added stays in the input (with any later pieces) and its
+ * text, which clears on typing; editing that kept text commits nothing until the next separator or
+ * Return. Backspace in
  * an empty input removes the last tag; a chip's × moves focus to the next ×, else the input. At 16
  * tags the input is disabled and its help says why. A save's error (`error`) shows under the chips.
  */
@@ -16,7 +18,12 @@ import { IconButton } from '../../kit/IconButton';
 import { TextField } from '../../kit/TextField';
 import styles from './Board.module.css';
 
-const SEPARATOR = /[\s,]/u;
+const SEPARATORS = /[\s,]/gu;
+
+/** The number of commas and white-space characters in `text`. */
+function separators(text: string): number {
+  return text.match(SEPARATORS)?.length ?? 0;
+}
 
 function problemText(p: TagProblem): string {
   if (p === 'full') return t('board.tags.full');
@@ -99,8 +106,9 @@ export function BoardTagsField({
         aria-describedby={helpId}
         error={problem === null ? null : problemText(problem)}
         onChange={(v) => {
-          // A comma or white space, typed or pasted, adds what precedes it.
-          if (SEPARATOR.test(v)) add(v);
+          // A newly typed or pasted comma or white space adds what precedes it; separators kept
+          // in the input after a failed run do not, so correcting it commits nothing early.
+          if (separators(v) > separators(input)) add(v);
           else {
             setInput(v);
             setProblem(null);

@@ -358,8 +358,9 @@ in its time range. There is no way to add or edit a note on the board yet.
 
 A board can hold **widgets**: Text panels (notes, runbooks, a code snippet), Board lists (links to
 other boards, [below](#board-lists)) and Clock panels (the time in several zones, with a countdown).
-A widget has no query, so it never loads data, has no
-chart, and offers no Open in Explore, Copy query or Full screen.
+A widget has no query: it never runs a metrics or logs query, has no chart, and offers no Open
+in Explore, Copy query or Full screen. Text and Clock panels load nothing; a Board list loads the
+board metadata it lists (titles, tags and update times).
 
 **Text panels** show their content under the title:
 

@@ -328,8 +328,9 @@ button follows Add section: its visible text is its whole name, "Tags" or "Tags 
 `aria-label`), its tag icon is a mask in the board route's CSS (`Board.module.css`, not the kit
 `Icon`), and it is disabled while busy. It opens a popover dialog "Board tags": the tags as 20 px
 muted chips (`--size-list-chip`), each with a × (`Remove tag ‹tag›`), then "Add a tag" with its
-help. Return, a comma or white space (typed or pasted) adds through `addTags`; what cannot be added
-stays in the input with `field.board.tags.invalid`, `field.board.tags.duplicate` or "A board has at
+help. Return, or a newly typed or pasted comma or white space (the input holds more separators than
+before), adds through `addTags`; what cannot be added stays in the input, and editing it commits
+nothing until the next separator or Return. It shows `field.board.tags.invalid`, `field.board.tags.duplicate` or "A board has at
 most 16 tags", and the text clears on typing. Backspace in an empty input removes the last tag; a
 ×'s removal moves focus to the next ×, else the input; at 16 tags the input is disabled and its help
 says why. Esc closes the popover onto the trigger.
