@@ -24,7 +24,7 @@ token-lint](README.md#tokens-and-token-lint)).
 | Token | Dark | Light | Use |
 |---|---|---|---|
 | `canvas` | `#0E1014` | `#F2F3F6` | the page |
-| `surface-1` | `#16181D` | `#FFFFFF` | cards, the header and every material's opaque fallback |
+| `surface-1` | `#15171C` | `#FFFFFF` | cards, the header and every material's opaque fallback |
 | `surface-2` | `#1D2026` | `#EEF0F3` | empty states, inner wells |
 | `surface-hover` | `#262A31` | `#E5E8ED` | row and ghost hover |
 | `sidebar` | `#121418` | `#EBEDF1` | the source list (opaque, never a material) |
@@ -40,9 +40,9 @@ token-lint](README.md#tokens-and-token-lint)).
 | `accent-fill`, `accent-pressed` | `#2B68D6`, `#255CC0` | `#185FCC`, `#1552B3` | primary buttons, the current sidebar row, the segmented thumb, the focused menu row, the avatar, the skip link |
 | `text-on-accent` | `#F5F8FF` | `#FFFFFF` | text and icons on `accent-fill` (never on `accent`) |
 | `backdrop` | `#05060899` | `#1B1E2540` | the modal overlay (no blur) |
-| `material-bar` | `#16181DE6` | `#FFFFFFD9` | the header's material |
+| `material-bar` | `#15171CE6` | `#FFFFFFD9` | the header's material |
 | `material-menu` | `#1E2127EB` | `#FAFBFCE6` | popovers, menus, listboxes, tooltips, the Inspector |
-| `surface-float` | `#16181DF0` | `#FFFFFFF0` | the geomap overlay only |
+| `surface-float` | `#15171CF0` | `#FFFFFFF0` | the geomap overlay only |
 
 Every key differs between the themes, and the light values are designed, not inverted. Series,
 level, state, ramp, syntax, map, `brush`, `selection` and `pattern-ink` are unchanged.
@@ -51,7 +51,9 @@ compositing translucent colours over what lies beneath: field boundaries ≥ 3:1
 surfaces, controls, fields and both materials (over `canvas`, `surface-1`, white and black),
 `accent` ≥ 4.5:1 and `focus` ≥ 3:1 on the surfaces, `text-on-accent` ≥ 4.5:1 on `accent-fill` and
 `accent-pressed`, and `accent-fill` ≥ 3:1 against the sidebar, the segmented track and the menu
-material.
+material. State colours as text on `surface-1` and `surface-2` keep 4.5:1 where they
+had it before #282 and never fall more than 0.15 below their earlier ratio; the strict 4.5:1 for
+every state pair needs new state colours and is tracked in #284.
 
 ### Scales
 
