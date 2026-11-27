@@ -32,6 +32,8 @@ export interface PlanInputs {
   readonly kind: 'range' | 'instant';
   readonly stepMs: number;
   readonly rate: boolean;
+  /** The request window, to − from, of `$__range`, `$__range_s` and `$__range_ms`; absent or ≤ 0 = none. */
+  readonly rangeMs?: number;
 }
 
 export type MetricTypes = Readonly<Record<string, MetricKind>>;

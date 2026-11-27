@@ -43,6 +43,9 @@ type Inputs struct {
 	Rate  bool
 	// StepMs is the base step: range, the PromGrid step; instant, step_ms or 0.
 	StepMs int64
+	// RangeMs is the request window, to − from, for $__range, $__range_s and $__range_ms: range,
+	// the request's; instant, 0 (the request carries no window).
+	RangeMs int64
 }
 
 // Planned is a plan: the text sent to PulsusDB and the facts the client reads.

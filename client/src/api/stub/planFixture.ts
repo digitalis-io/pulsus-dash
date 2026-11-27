@@ -41,6 +41,7 @@ export interface FixtureCase {
     readonly kind: 'range' | 'instant';
     readonly step_ms: number;
     readonly rate: boolean;
+    readonly range_ms?: number;
   };
   readonly types: Readonly<Record<string, MetricKind>>;
   readonly needs_types?: boolean;

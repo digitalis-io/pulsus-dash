@@ -27,6 +27,8 @@ export interface LogsPlanInputs {
   readonly vars: Readonly<Record<string, string>>;
   readonly kind: 'range' | 'volume';
   readonly stepMs: number;
+  /** The request window, to − from, of `$__range`, `$__range_s` and `$__range_ms`; absent or ≤ 0 = none. */
+  readonly rangeMs?: number;
 }
 
 /** A stream selector: UTF-8 offsets into the text classified. */

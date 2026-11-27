@@ -621,3 +621,35 @@ func TestPromqlValuesInStrings(t *testing.T) {
 		t.Errorf("Q23: %d /api/v1/query_range requests, want 0", n)
 	}
 }
+
+// itest:promql-planned, issue #291: the range route plans the range macros from its window
+// (to − from); the instant route has no window, so it refuses them before any upstream request.
+func TestPromqlRangeMacros(t *testing.T) {
+	// The generator answers any planned text with one series, so the 6 h stat returns data.
+	fake := pulsusfake.New(pulsusfake.Default(), pulsusfake.Options{Generate: true})
+	srv := httptest.NewServer(fake)
+	t.Cleanup(srv.Close)
+	h := plannedGateway(t, srv.URL, fixedNow)
+	s := &served{}
+
+	sixHours := `{"query":` + jsonString("sum(increase(x_total[$__range]))") + `,"from":1767207600000,"to":1767229200000,"width_px":1200}`
+	rec := postJSON(h, rangePath, sixHours)
+	if b := s.add(t, rec); rec.Code != 200 || b.Planned == nil || b.Planned.Query != "sum(increase(x_total[6h]))" || b.Planned.Expanded != b.Planned.Query ||
+		!strings.Contains(rec.Body.String(), `"frames":[{`) {
+		t.Errorf("R1: %d %.300s", rec.Code, rec.Body.String())
+	}
+	rec = postJSON(h, rangePath, rangeBody("vector($__range_s) + vector(${__range_ms})"))
+	if b := s.add(t, rec); rec.Code != 200 || b.Planned == nil || b.Planned.Query != "vector(3600) + vector(3600000)" {
+		t.Errorf("R2: %d %.300s", rec.Code, rec.Body.String())
+	}
+
+	before := len(fake.Requests())
+	e := wantError(t, "R3", postJSON(h, instantPath, instantBody("sum(increase(x_total[$__range]))", `"step_ms":15000`)), 400, "invalid", "/query", "query.no_window")
+	if e.Error.Message != "$__range, $__range_s and $__range_ms need a time window, and the request has none" {
+		t.Errorf("R3: message %q", e.Error.Message)
+	}
+	if n := len(fake.Requests()) - before; n != 0 {
+		t.Errorf("R3: %d upstream requests", n)
+	}
+	assertAuthority(t, fake, s)
+}

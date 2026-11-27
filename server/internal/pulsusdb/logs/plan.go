@@ -43,6 +43,8 @@ type Inputs struct {
 	Vars   map[string]string
 	Kind   Kind
 	StepMs int64 // the grid step
+	// RangeMs is the request window, to − from, for $__range, $__range_s and $__range_ms; 0 = none.
+	RangeMs int64
 }
 
 // Planned is a plan: the text sent to PulsusDB and what the client reads of it.
