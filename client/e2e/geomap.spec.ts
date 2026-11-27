@@ -266,7 +266,10 @@ test.describe('geomap board (http BFF)', () => {
     const sheet = inspector(page);
     const h2 = sheet.getByRole('heading', { level: 2 });
     const path = sheet.getByRole('navigation', { name: 'Inspector path' });
-    const firstEntry = sheet.locator('[data-section="members"] li button').first();
+    // The current layer's entries: the leaving layer (inert, for 150 ms) comes first in the DOM.
+    const firstEntry = sheet
+      .locator('[data-inspector-content]:not([data-leaving]) [data-section="members"] li button')
+      .first();
     const other = p.getByRole('button', { name: /^other \(11\)/ });
     const G8 = '{geohash="u4pruydqqvj"}';
     // By keys: the legend's aggregate opens the Inspector on its heading.
