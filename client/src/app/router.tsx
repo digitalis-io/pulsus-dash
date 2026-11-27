@@ -162,6 +162,15 @@ export function createRoutes(deps: RouterDeps): RouteObject[] {
                         Component: m.WidgetGalleryPage,
                       })),
                   },
+                  // The geomap gallery of golden:gallery and bench:geomap-markers (plan #234 Part 3).
+                  {
+                    id: 'geoGallery',
+                    path: 'dev/geo',
+                    lazy: () =>
+                      import('../dev/GeoGalleryPage').then((m) => ({
+                        Component: m.GeoGalleryPage,
+                      })),
+                  },
                   // The LogQL editor harness of the editor benches (plan #66 Part A §3.12).
                   {
                     id: 'logqlBench',

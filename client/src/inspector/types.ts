@@ -9,6 +9,7 @@ import type { FrameSelection, TimeWindow, Unit } from '../engine/api';
 import type { BoardFilter } from '../state/boardParams';
 import type { ContextSearch } from '../state/contextSearch';
 import type { State } from '../theme/stateEncoding';
+import type { GeoInspectorTarget } from '../vis/geo/targets';
 import type { MemberSection } from './members';
 
 export type Labels = Readonly<Record<string, string>>;
@@ -77,7 +78,9 @@ export type InspectorTarget =
       readonly metadata: Labels | null;
       readonly parsed: Labels | null;
     }
-  | { readonly type: 'mark'; readonly target: InspectTarget };
+  | { readonly type: 'mark'; readonly target: InspectTarget }
+  /** A geomap mark, cluster, aggregate or group (T25 §4.9, T24 §5.16; #234 Part 3). */
+  | { readonly type: 'geo'; readonly target: GeoInspectorTarget };
 
 /** The page selection: the engine seam's `FrameSelection` (ADR-0025). */
 export type Selection = FrameSelection;

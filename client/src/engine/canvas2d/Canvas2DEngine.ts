@@ -34,6 +34,7 @@ import type {
   FrameEvents,
   FrameInit,
   FrameSelection,
+  FrameSummary,
   HoverEvent,
   ThemeName,
   TimeWindow,
@@ -473,11 +474,31 @@ class Canvas2DFrame implements ChartFrame {
       },
       (e: unknown) => {
         if (gen !== this.geoGen) return;
-        // The frame stays blank with no `drawn`; the next geomap spec imports again (Part 3 shows it).
+        // The frame stays blank with no `drawn`; the next geomap spec imports again.
         this.geoPending = null;
         console.warn(
           `pulsus map renderer unavailable: ${e instanceof Error ? e.message : String(e)}`,
         );
+        // The producer contract (plan #234 Part 3 §4.4a): one summary with no geo part tells the
+        // host the renderer could not load, only for the live geomap of this generation.
+        if (this.disposed || this.spec?.kind !== 'geomap') return;
+        const failed: FrameSummary = {
+          kind: 'geomap',
+          geo: null,
+          seriesTotal: 0,
+          seriesShown: 0,
+          fromMs: 0,
+          toMs: 0,
+          min: null,
+          max: null,
+          last: null,
+          plot: { x: 0, y: 0, width: this.cssW, height: this.cssH },
+          valueAxis: null,
+          thresholdLabels: [],
+          eventLabels: [],
+        };
+        this.summaryKey = JSON.stringify(failed);
+        this.emit('a11y', failed);
       },
     );
   }

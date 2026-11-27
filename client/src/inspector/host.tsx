@@ -26,6 +26,7 @@ import { useTimeContext } from '../state/useTimeContext';
 import { activePanelId, ladderSkips } from './escape';
 import { Inspector } from './Inspector';
 import styles from './Inspector.module.css';
+import { resolveGeoMembers } from '../vis/geo/targets';
 import type { MemberList } from './members';
 import { inspectorModel } from './model';
 import { INITIAL_INSPECTOR, inspectorReducer } from './store';
@@ -46,7 +47,10 @@ export interface EscapeProvider {
 export interface InspectorHostApi {
   inspect(r: InspectRequest): void;
   select(s: Selection | null, src: SelectionSource): void;
-  /** Last wins; the disposer removes only its own entry. */
+  /**
+   * A per-panel stack (plan #234 Part 3 §4.9): the newest live registration answers; its disposer
+   * removes only its own entry, so the one before answers again (a full screen closing, StrictMode).
+   */
   registerMembers(panelId: string, r: (runId: string) => MemberList | null): () => void;
   resolveMembers(panelId: string, runId: string): MemberList | null;
   registerEscape(panelId: string, p: EscapeProvider): () => void;
@@ -160,7 +164,7 @@ export function InspectorHost({
   const { search, timeZone } = useTimeContext();
   const { pathname } = useLocation();
   const asideRef = useRef<HTMLElement | null>(null);
-  const members = useRef(new Map<string, { r: (runId: string) => MemberList | null }>());
+  const members = useRef(new Map<string, { r: (runId: string) => MemberList | null }[]>());
   const escapes = useRef(new Map<string, { p: EscapeProvider }>());
   const lastPressed = useRef<string | null>(null);
   /** The origin's key and the path when the Inspector opened (T25-012). */
@@ -182,13 +186,25 @@ export function InspectorHost({
       },
       registerMembers(panelId, r) {
         const entry = { r };
-        members.current.set(panelId, entry);
+        const stack = members.current.get(panelId) ?? [];
+        members.current.set(panelId, [...stack, entry]);
         return () => {
-          if (members.current.get(panelId) === entry) members.current.delete(panelId);
+          const now = members.current.get(panelId) ?? [];
+          const rest = now.filter((x) => x !== entry);
+          if (rest.length === now.length) return;
+          if (rest.length === 0) members.current.delete(panelId);
+          else members.current.set(panelId, rest);
         };
       },
       resolveMembers(panelId, runId) {
-        return members.current.get(panelId)?.r(runId) ?? null;
+        // A geo target's members come from the open request's own snapshot (T25 §4.9): no
+        // instance holds them, so every mount of the panel answers alike.
+        if (runId.startsWith('geo:')) {
+          const req = latest.current.state.req;
+          if (req?.target.type !== 'geo' || req.origin.panelId !== panelId) return null;
+          return resolveGeoMembers(req.target.target, runId);
+        }
+        return members.current.get(panelId)?.at(-1)?.r(runId) ?? null;
       },
       registerEscape(panelId, p) {
         const entry = { p };

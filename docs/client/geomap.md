@@ -8,9 +8,9 @@ validated and loaded, and what they cover. It implements
 VIZ-046, by the rules T24-080 to T24-087. The map frame that draws them comes in E2 (#234): its
 first part adds the rows, the table, the CSV, the facts and the Inspector targets
 ([below](#the-map-frames-rows-234-part-1)); its second part draws them in the Canvas 2D engine, with
-the camera, the input and the marks ([below](#the-map-in-the-canvas-2d-engine-234-part-2)). Boards
-show the map from Part 3 (the host); until then PulsusIX lists a stored map panel as not available
-yet.
+the camera, the input and the marks ([below](#the-map-in-the-canvas-2d-engine-234-part-2)); its
+third part is the panel itself on a board: the host, the states, the mark list, the legend, the
+table and the Inspector ([below](#the-map-panel-234-part-3)).
 
 The modules live in `client/src/vis/geo/`. The data layer (step 1a: `aliases.ts` to `assets.ts`)
 imports nothing outside the directory except types. The map frame's modules (#234 Part 1) do:
@@ -27,11 +27,12 @@ types).
 | `locate.ts` | `locate` and its types `GeoSource`, `GeoPlace`, `LocationResult`, `LocationOption` |
 | `types.ts` | `Basemap`, `BasemapCountry`, `Gazetteer` and its rows, `GeoData` |
 | `decode.ts` | `decodeBasemap`, `decodeGazetteer` (type-only imports, so `ci:geo-data` runs it in Node) |
-| `urls.ts` | `basemapUrl`, `gazetteerUrl`: the assets imported with `?url` (the `geo-assets` build input) |
-| `assets.ts` | `geoLoader`, `loadGeoData`; re-exports the decoders |
+| `urls.ts` | `basemapUrl`, `gazetteerUrl`: the assets imported with `?url` (the `geo-assets` build input, which nothing imports) |
+| `assets.ts` | `geoLoader`, `loadGeoData` (it imports the two `?url` assets itself, so the `geo-assets` entry stays standalone; #234 Part 3); re-exports the decoders |
 | `frame.ts` | the map frame's rows (#234 Part 1): `geoRowSet`, `validateGeoRows`, `geoFrame`, `finalLabels`, `valueStatusOf` and their types |
 | `rows.ts` | `geoTable`, `geoCsv`, `geoFacts` |
-| `targets.ts` | `geoTarget`, `geoPlace` (type-only imports of `frame.ts`, so the shared Inspector can take it alone) |
+| `targets.ts` | `geoTarget`, `geoPlace`, `locationDetail`, `resolveGeoMembers`, `seedOf`, `worstState`, `seedOrdered` (type-only imports of `frame.ts`, so the shared Inspector can take it alone) |
+| `plan.ts` | `planGeo`, `geoSpec`, `GeoMapFrameProps`, `GeoPlan` (#234 Part 3) |
 | `fixtures/series.ts` | the T24 §10.4 and §10.5 fixtures as series (G, H, O, X, Cap, …) and gazetteer T, for the tests |
 | `data/basemap.json`, `data/gazetteer.json` | the assets, built by `tools/geo/build.py` ([below](#how-the-assets-are-built)) |
 
@@ -491,6 +492,216 @@ ease stopped before its first frame) commits nothing, and a data-following camer
 **Limits.** At most 5 000 drawn rows (the cap above); no wrap across ±180° (a Pacific view ends at
 the world's edge); no spiderfying of a cluster at zoom 14.
 
+## The map panel (#234 Part 3)
+
+A board panel of kind `geomap` is drawn by the map host. Its modules:
+
+| Module | What it holds |
+|---|---|
+| `pages/board/GeoMapBody.tsx` | the panel body in the board route: the lazy host inside a panel-local error boundary, and the load-failure state |
+| `charts/GeoMapFrame.tsx` (+ `.module.css`) | the host, a dynamic entry (default export): the plan, the view hand-off, the events, the states, the list, legend, meter and table |
+| `charts/geo/GeoMarkList.tsx` | the hidden keyboard mark list and `geoMarkName` |
+| `charts/geo/GeoLegend.tsx` | the legend buttons (two groups or more) |
+| `charts/geo/geoText.ts` | the state texts; re-exports `drawStatusText` and `valueStatusText` |
+| `inspector/geoModel.ts` | the Inspector model of the four geo targets, `drawStatusText`, `valueStatusText` |
+| `kit/announce.ts` | `usePoliteAnnouncer()`: one polite live region, at most one write per 500 ms, the latest text wins (T08-018) |
+
+### Routing
+
+`panelView` ([boards](boards.md#panel-states-panelview)) gives a geomap panel `{kind: 'geomap'}`
+after the blocked rows (an empty query, a missing variable, a refusal), or `notMetric` for a LogQL
+log answer; the host renders loading and errors itself. `framePlan('geomap')` returns the notice
+`geomap` and no spec. `PanelFrame` renders `GeoMapBody` with `geomapOptions(panel.vis.options)`
+(every option at its default when absent), the panel's thresholds, its run and its unit (`/s` after
+the rate rewrite, else none); the panel's `data-panel-state` is `frame` and `data-panel-vis`
+`geomap`. The panel editor lists **Map** with the other kinds and saves `{kind: 'geomap'}`; it has
+no options fieldset yet, only Thresholds. The editor's preview passes `inspectorSource={false}`: it
+never inspects or selects.
+
+### The plan (`planGeo`, T24-088)
+
+`planGeo(props, size, view, {seq, motion, staleAtMs})` returns the first state that holds:
+
+| Order | Condition | State |
+|---|---|---|
+| 1 | the assets are loading, or the run has no answer and no error, or the run shows a placeholder while fetching | `loading` |
+| 2 | the run failed and has no answer of its own (none, or a placeholder) | `error` |
+| 3 | a string result (`{code: 'kind'}`), or `validateGeoRows` refuses the rows | `invalid` |
+| 4 | no basemap | `mapDataUnavailable` |
+| 5 | the plot is under 160 × 120 CSS px | `tooSmall` |
+| 6 | no rows; no shown row | `empty`; `noneShown` |
+| 7 | — | `ok` |
+
+Only `empty`, `noneShown` and `ok` build a frame. A scalar result is one `SCALAR_KEY` series. A
+refetch that fails on the same key keeps its rows, with `coverage.staleAtMs` set to when the
+failure was first seen, so the meter ends with `· stale (HH:mm:ss)`. `PanelRun` gains `placeholder`
+(TanStack's `isPlaceholderData`) and `retry()` (its `refetch()`). The host memoises the plan: the
+rows and the frame are rebuilt only when the result, the options other than `view`, the
+thresholds, the assets, the run's state, the size class, the motion or the stale time change, so a
+selection, a commit or the start of a refetch never hands the engine new data. `seq` grows by one
+per new row set.
+
+### The host (`GeoMapFrame`)
+
+- **Size and motion.** The body's content box, the caller's `sizeMemo` first so a re-mounted map
+  plans at once; `motion` is `cut` under reduced motion.
+- **View** (T24-088). The host keeps `lastView` (the latest `geoCommit`) and `applied` (the last
+  applied `options.view`). An `options.view` that differs from `applied` by value (null included)
+  becomes the spec's view once and clears `lastView`; otherwise the spec's view is
+  `lastView ?? options.view`. A new engine frame (an engine swap) starts at that view.
+- **Events.** `ChartFrame` creates the frame and keeps `select` and `hover`; through `onFrame` the
+  host subscribes to exactly `geoCommit`, `geoBrush` and `geoMarks` and disposes them with the frame
+  (`onFrame(null)` comes before `dispose`). A new frame gets the list's focus mark.
+- **The surface.** `ChartFrame surface="geo"`: the host div is the plot surface, `tabIndex 0`,
+  `role="application"`, `aria-roledescription="map"`, named by the title, and the engine's key
+  target; the canvas is `aria-hidden`; no crosshair, threshold or event targets. A hover shows the
+  tooltip beside the pointer: a marker's name, `value · state` and place; a cluster's
+  `Cluster of n`, `worst ‹state›` and its first five names in seed order (`, +k more`). States
+  show only with thresholds.
+- **Load failure** (§4.4a). When the scene chunk fails for the live geomap, Canvas 2D emits one
+  summary with `geo: null` (see [the engine](engine.md#the-geomap-on-canvas-2d-234-part-2)); the
+  host's `onSummary` calls `onLoadFailed`.
+
+### Selection and targets (T24-092)
+
+| Gesture | Effect |
+|---|---|
+| a marker click, or Enter/Space on a list marker | a `marker` target; the selection is its key |
+| a cluster click, or Enter/Space on a list cluster | a `cluster` target with its keys; no filter |
+| a legend entry (two groups or more) | selects the group's keys (`member`) only |
+| the legend's `other (n)` | an `aggregate` target; the selection is its rows' keys |
+| Alt+drag (`geoBrush`) | selects the covered keys (`brush`); an empty brush changes nothing |
+| a click on no mark | clears the selection |
+| a table row's toggle | selects that row (`tableRow`), or clears when it is selected |
+| a table row's Inspect | a `marker` target of any row, drawn or not |
+
+Targets are snapshots (`geoTarget`): a refetch never changes an open one. A selected row that is
+not drawn reads its draw status in the table ("Not placed"). The editor preview neither inspects
+nor selects.
+
+### The mark list (T24-093)
+
+A visually hidden `<ul aria-label="‹title›: map marks">` holds one button per mark in view, in the
+engine's keyboard order (centres by y, then x), with one roving tab stop. Each item has
+`aria-posinset` and `aria-setsize` (the count only when the meter reads `100 %` and every mark is
+in view, else −1). Names:
+
+- a marker: `‹name›, ‹value›[, ‹state›], ‹place›[, selected]`;
+- a cluster: `Cluster of ‹n›, near ‹seed place›[, worst ‹state›][, ‹k› selected]`.
+
+| Key on a list item | Action |
+|---|---|
+| ↑ ← / ↓ → | the previous / next mark |
+| Home / End | the first / last mark |
+| PageUp / PageDown | 10 back / on, clamped |
+| Enter, Space | inspect; a keyboard inspect focuses the Inspector's heading |
+| Shift+arrows | pan the map 25 % of the plot (`cameraKey`) |
+| `+` `=` / `-` / `0` | zoom in, out (about the focused mark when it is in view), fit |
+| anything else, Esc included | goes on to the page's Esc ladder |
+
+The focused mark is the engine's focus mark (`setFocusMark`), cleared when focus leaves both the
+list and the surface. With no mark in view the list holds one item, "No marks in view · Fit"
+(Enter fits); while it is focused it stays when marks return, and ↓ → Home go to the first mark,
+↑ ← End to the last. On new marks the active item is repaired: the same id, else the mark that
+holds the old seed or key, else the old index clamped, else the placeholder. Focus moves only when
+it was inside the list. A refetch that drops the focused mark announces "‹old name› is no longer
+shown".
+
+Tab order: the surface, the list, the legend's entries, the meter. Shift+T anywhere in the panel
+(not in a text field) shows the table, and again the map. While there are no rows (loading, an
+error, invalid data) the table is disabled: Shift+T does nothing and nothing is queued for later.
+
+### The table
+
+The table shows every row of the result in T24-094's order and columns (the same as the CSV,
+[above](#the-map-frames-rows-234-part-1)). Each row starts with a 24 px `aria-pressed` toggle, "Select
+‹name›" (T25-016), then the name, an Inspect button and, on a selected row that is not drawn, its
+draw status. Export CSV downloads the CSV. "Show table" focuses the first toggle, else the grid.
+
+### States (T24-095, T24 §4.12)
+
+| State | The map cell | Focus target | Announced |
+|---|---|---|---|
+| loading | a busy status; "Loading…" after 300 ms | the status | — |
+| error | "Couldn't load data" and Retry (`run.retry()`) | Retry | "Couldn't load data" |
+| invalid | "Invalid map data (‹detail›)" | the status | the text |
+| mapDataUnavailable | "Map data unavailable" and Show table | Show table | the text |
+| tooSmall | "Too small to show a map: ‹N› series" and Show table | Show table | the text |
+| empty | the basemap and "No series in this window" | that line | the text |
+| noneShown | the basemap, "No series could be placed: ‹parts›" and Show table | that line | the text |
+| ok | the marks, the list | the first item (or the placeholder), once the marks arrive | "‹n› marks" |
+| a refetch that failed | the map kept; the meter `… · stale (HH:mm:ss)` | unchanged | "Couldn't refresh" |
+
+Every state but `ok` has a `role="status"` region (`tabIndex=-1`) from its first render. Focus
+moves to the new state's target, and the announcement follows, only when focus was inside the
+panel at the moment of the move; focus in the board header or the Inspector stays there. That
+holds for the delayed move to the first list item too: if focus leaves the panel before the engine
+sends its marks, nothing moves and nothing is announced. The table follows the same rule: an
+explicit open (Shift+T, Show table) focuses its first toggle and an explicit close returns focus to
+Show table, else the map; a table that goes away or comes back with a state change (a new window)
+moves no focus. When loading ends within 300 ms the
+map comes back without an announcement. A state change never changes the selection or closes the
+Inspector. The meter reads `loading` while loading and `unavailable` for an error or invalid data.
+
+### The Inspector's geo targets
+
+`InspectorTarget` gains `{type: 'geo', target}`. `inspectorModel` renders it through
+`inspector/geoModel.ts` ([the Inspector](inspector.md#the-geo-target-234-part-3)): a marker's name,
+place, value and facts with the T25 `mark` pivots over the origin window; a cluster, the
+aggregate and a group with their spread and members and no pivots. A list of more than eight
+members resolves its `geo:` run id from the open request's own target; no map instance registers
+a resolver for it.
+
+### Load failure (`GeoMapBody`)
+
+`GeoMapBody` keeps an attempt count and one lazy host per attempt inside its own error boundary.
+The host chunk's rejection (the boundary) and the scene chunk's (`onLoadFailed`) show one state in
+the panel's error style, focused when focus was in the panel and read politely:
+
+- attempt 0: "Map couldn't load" with **Retry**. Retry remounts the boundary, the lazy host and its
+  chart frame, so both imports run again (Part 2's loader forgets a rejected scene import); no
+  cache-busting URL.
+- attempt 1 and later: "Map couldn't load. Reload the page to try again." with **Reload**
+  (`location.reload()`), for an engine that keeps a failed module.
+
+The other panels stay usable. `e2e:geomap-chunk` records which path each engine took; see
+[the results](#chunk-failure-paths-by-engine).
+
+### Chunk failure paths by engine
+
+`e2e:geomap-chunk` aborts the host chunk (`GeoMapFrame-*.js`) or the scene chunk (`scene-*.js`)
+once, then lets it load, and records which path ran (a test annotation and a `geomap-chunk` line in
+the report). On 2026-11-27, against this build:
+
+| Engine | Host chunk | Scene chunk |
+|---|---|---|
+| Chromium | Retry | Retry |
+| Firefox | Retry | Retry |
+| WebKit | Retry | Retry |
+
+No engine kept the failed module, so Reload was not needed; the Reload path stays covered by
+`unit:geo-render-failed` (d) and `unit:geo-chunk-failed` (b).
+
+### The bundle rule (`geoInRoute`)
+
+`npm run origins` runs `check-bundle-modules.ts`, which applies `geoInRoute` to both builds,
+fail-closed like the Markdown rule: no module of `src/vis/geo/`, `src/engine/(canvas2d|controller)/geo/`,
+`src/charts/geo/`, `GeoMapFrame` or `inspector/geoModel` may be in the static closure of
+`index.html` or `src/pages/boards/BoardsPage.tsx`; the board route (`BoardPage.tsx`) may hold only
+`vis/geo/targets.ts` and `inspector/geoModel.ts`. A missing root, an import the manifest lacks and
+a closure chunk without a module list are findings. `src/charts/GeoMapFrame.tsx` and
+`src/engine/canvas2d/geo/scene.ts` must be dynamic entries (`missing-geo-entry`), and both are in
+`bundle-budgets.json`'s `required.lazyModules`.
+
+### The gallery
+
+The development and stub builds serve `/t/‹tenant›/dev/geo?page=` with `geomap-markers` (G),
+`geomap-groups` (H), `geomap-states` (G against thresholds, coloured by group and by state),
+`geomap-offline` (no rows at Dublin, zoom 6) and `geomap-bench` (Cap: 5 000 drawn), each map
+1024 × 512 on the bundled basemap with gazetteer T. `golden:gallery` compares the first three in
+dark, light and greyscale (the map surface), and the whole `geomap-groups` host with its legend
+and coverage meter in the three themes; `bench:geomap-markers` pans and zooms the last for 10 s.
+
 ## Tests
 
 | Gate | Where | What |
@@ -514,6 +725,19 @@ the world's edge); no spiderfying of a cluster at zoom 14.
 | `unit:geo-state-glyph` | `src/engine/canvas2d/geo/paint.test.ts` | the state fill, pattern and glyph; the chip below r 8; the group fill with the state outline |
 | `unit:geo-scene`, `unit:geo-scene-lifecycle`, `unit:geo-marks-emit` | `src/engine/canvas2d/Canvas2DEngine.geo.test.ts` | the lazy scene, its summary and events; the generation guard and the retry after a rejected import; when `geoMarks` goes out |
 | `unit:selection-draw` (geomap rows) | `src/engine/canvas2d/Canvas2DEngine.selection.test.ts` | G with [k03], [k10] and [zz]: the ring and the dimming |
+| `unit:geo-plan` | `src/vis/geo/plan.test.ts` | `planGeo`'s order (a)–(j): loading, error, invalid, mapDataUnavailable, tooSmall, empty, noneShown, ok, a placeholder, a kept refetch failure |
+| `unit:geo-host`, `unit:geo-targets` (host rows), `unit:geo-single-group`, `unit:geo-states`, `unit:geo-render-failed` (c, d), `unit:geo-preview-members` (a, b) | `src/charts/GeoMapFrame.test.tsx` | the view hand-off and an engine swap; the selections and targets; one group; every state's focus and announcement; Retry and Reload over the real Canvas 2D engine; the preview and full screen |
+| `unit:geo-select-hover` | `src/charts/ChartFrame.inspect.test.tsx` | the geo surface, a cluster's target and selection, the marker and cluster tooltips |
+| `unit:geo-list`, `unit:geo-list-keys`, `unit:geo-list-repair` | `src/charts/geo/GeoMarkList.test.tsx` | the T24 §10.5 list and G3 blocks on the real scene's marks; the keys (Shift+← 256 px, Shift+→ held at the east edge); repair (a)–(d) |
+| `unit:geo-inspect` | `src/inspector/model.test.ts` | the four kinds' header, facts, members and pivots; k01 with and without `f=env=prod` |
+| `unit:geo-render-failed` (a, b) | `src/engine/canvas2d/Canvas2DEngine.geo.test.ts` | the one `geo: null` summary, and none after a line spec or dispose |
+| `unit:geo-chunk-failed` | `src/pages/board/GeoMapBody.test.tsx` | the host chunk failing once and twice on a board with a line panel |
+| `unit:geo-preview-members` (c) | `src/inspector/host.test.tsx` | the per-panel resolver stack |
+| `unit:panel-table` (amended) | `src/charts/PanelTable.test.tsx` | the toggle, Inspect and the note |
+| `unit:bundle-modules` (geo) | `scripts/check-bundle-modules.test.ts` | the geo fixtures: clean, geo in the initial and board closures, targets allowed, a static host |
+| `e2e:geomap-offline`, `e2e:geomap`, `e2e:geomap-a11y`, `e2e:geomap-chunk` | `e2e/geomap.spec.ts` | the offline basemap's pixels; a board map's Inspector, Esc, table and CSV G; axe per state, Tab order, keys, reduced motion; the chunk failures |
+| `golden:gallery` (geomap pages) | `e2e/golden-gallery.spec.ts` | the three pages in three themes |
+| `bench:geomap-markers` (report-only) | `e2e/perf-geomap-markers.spec.ts` | the p95 of `chart-draw` (`kind: geomap`) against 16 ms |
 
 The client build fixtures under `src/vis/geo/fixtures/build/` are written by `build.py --fixtures`
 from `tools/geo/fixtures/basemap-cases.json`; `unit:geo-build` checks they are current.
