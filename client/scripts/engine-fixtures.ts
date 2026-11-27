@@ -51,8 +51,10 @@ const SUMMARY_FIELDS = [
 
 export type Unit =
   | { kind: 'none' }
+  | { kind: 'plain' }
   | { kind: 'time'; base: 'ns' | 'us' | 'ms' | 's' }
-  | { kind: 'bytes' }
+  | { kind: 'bytes'; prefix?: 'iec' | 'si'; perSecond?: true }
+  | { kind: 'bits'; prefix: 'iec' | 'si'; perSecond?: true }
   | { kind: 'percent' }
   | { kind: 'percentunit' }
   | { kind: 'suffix'; suffix: string };
@@ -116,6 +118,7 @@ export interface Entry {
 /** The client modules the fixtures come from. */
 export interface Sources {
   formatValue: (v: number, u: Unit) => string;
+  tickBase: (u: Unit) => 1000 | 1024;
   valueTicks: (
     min: number,
     max: number,
@@ -274,6 +277,24 @@ const UNITS: readonly Unit[] = [
   { kind: 'time', base: 's' },
 ];
 
+/**
+ * The units of #290 (§4.5), each a `format.json` block over the same values after the nine above
+ * (whose block stays byte-identical) and one `layout.json` row (`case` `unit-<i>`; not a gallery
+ * `id`, so the parity allowlist holds).
+ */
+const NEW_UNITS: readonly Unit[] = [
+  { kind: 'plain' },
+  { kind: 'bytes', prefix: 'si' },
+  { kind: 'bytes', prefix: 'iec', perSecond: true },
+  { kind: 'bytes', prefix: 'si', perSecond: true },
+  { kind: 'bits', prefix: 'si' },
+  { kind: 'bits', prefix: 'iec' },
+  { kind: 'bits', prefix: 'si', perSecond: true },
+  { kind: 'bits', prefix: 'iec', perSecond: true },
+  { kind: 'suffix', suffix: 'req/s' },
+  { kind: 'suffix', suffix: '/s' },
+];
+
 function formatRows(s: Sources): unknown[] {
   const r = stream(s, 1);
   const special = [0, NaN, Infinity, -Infinity, 1.125, 0.0125, 99.95, 999.5, 1e21, 1e-7, 1];
@@ -285,7 +306,9 @@ function formatRows(s: Sources): unknown[] {
     const digits = 1 + Math.floor(r() * 4);
     values.push(r() < 0.3 ? Number((mag * sign).toPrecision(digits)) : mag * sign);
   }
-  return values.flatMap((v) => UNITS.map((unit) => ({ v, unit, out: s.formatValue(v, unit) })));
+  const block = (units: readonly Unit[]): unknown[] =>
+    values.flatMap((v) => units.map((unit) => ({ v, unit, out: s.formatValue(v, unit) })));
+  return [...block(UNITS), ...block(NEW_UNITS)];
 }
 
 /** `base ** p` as the JS engine computes it (`valueTicks` uses 10 ** k, 1000 ** p, 1024 ** p). */
@@ -528,8 +551,7 @@ function lineLayout(
   const stats = s.lineStats(series.slice(0, s.MAX_SERIES));
   const [min, max] = [stats.min ?? 0, stats.max ?? 0];
   const height = s.layoutPlot('line', w, h, 0).height;
-  const base = unit.kind === 'bytes' ? 1024 : 1000;
-  const vt = s.valueTicks(Math.min(0, min), max, height, s.LABEL_HEIGHT, base);
+  const vt = s.valueTicks(Math.min(0, min), max, height, s.LABEL_HEIGHT, s.tickBase(unit));
   return { plot: summary.plot, ticks: vt.ticks, labels, summary, min, max };
 }
 
@@ -547,8 +569,9 @@ function twoPoint(min: number, max: number): Series[] {
 
 function layoutRows(s: Sources, entries: readonly Entry[]): unknown[] {
   const rows: unknown[] = [];
-  const row = (l: Layout, w: number, h: number, unit: Unit, id?: string): unknown => ({
+  const row = (l: Layout, w: number, h: number, unit: Unit, id?: string, c?: string): unknown => ({
     ...(id === undefined ? {} : { id }),
+    ...(c === undefined ? {} : { case: c }),
     kind: 'line',
     w,
     h,
@@ -574,6 +597,11 @@ function layoutRows(s: Sources, entries: readonly Entry[]): unknown[] {
     const unit = UNITS[Math.floor(r() * UNITS.length)] ?? { kind: 'none' };
     rows.push(row(lineLayout(s, w, h, twoPoint(lo, hi), unit), w, h, unit));
   }
+  // #290 §4.5: one row per new unit at the D1 size over [0, 3 MiB].
+  NEW_UNITS.forEach((unit, i) => {
+    const l = lineLayout(s, 1118, 240, twoPoint(0, 3_145_728), unit);
+    rows.push(row(l, 1118, 240, unit, undefined, `unit-${String(i)}`));
+  });
   return rows;
 }
 

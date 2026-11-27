@@ -1,6 +1,9 @@
 package prom
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // segmentKind is how a segment maps its bytes (plan #112 §4.2).
 type segmentKind int
@@ -39,21 +42,28 @@ func at(segs []segment, total, s int) (int, bool) {
 	return 0, false
 }
 
-// The step macros (plan #112 §4.2).
+// The macros: the step macros (plan #112 §4.2) and the range macros of the request window (#291).
 const (
 	macroInterval     = "__interval"
 	macroRateInterval = "__rate_interval"
+	macroRange        = "__range"
+	macroRangeS       = "__range_s"
+	macroRangeMs      = "__range_ms"
 	maxNameLen        = 64
 )
 
-// macroText is the text of each macro: the placeholder "1s" in Prepare, the durations at the
-// resolved step in Plan.
-type macroText struct{ interval, rateInterval string }
+// macroText is the text of each macro: the placeholders in Prepare ("1s" for a duration, "1" for
+// a number), the step durations and the window in Plan.
+type macroText struct{ interval, rateInterval, rng, rngS, rngMs string }
 
-func placeholders() macroText { return macroText{interval: "1s", rateInterval: "1s"} }
+func placeholders() macroText {
+	return macroText{interval: "1s", rateInterval: "1s", rng: "1s", rngS: "1", rngMs: "1"}
+}
 
-func macrosAt(stepMs int64) macroText {
-	return macroText{interval: FormatDuration(stepMs), rateInterval: FormatDuration(RateWindowMs(stepMs))}
+func macrosAt(stepMs, rangeMs int64) macroText {
+	s := RangeSeconds(rangeMs)
+	return macroText{interval: FormatDuration(stepMs), rateInterval: FormatDuration(RateWindowMs(stepMs)),
+		rng: FormatDuration(s * 1000), rngS: strconv.FormatInt(s, 10), rngMs: strconv.FormatInt(rangeMs, 10)}
 }
 
 // lexState is the lexical state of the substitution scan (plan #118 §4.1).
@@ -73,6 +83,7 @@ type substitution struct {
 	missing         []string // row 7: distinct, first-reference order
 	unrepresentable []string // row 7b: distinct, first-reference order
 	macro           bool     // a step macro is referenced
+	rangeMacro      bool     // a range macro is referenced
 	text            string   // built only when asked
 	segs            []segment
 }
@@ -320,6 +331,12 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 				value, subst, out.macro = m.interval, true, true
 			case name == macroRateInterval:
 				value, subst, out.macro = m.rateInterval, true, true
+			case name == macroRange:
+				value, subst, out.rangeMacro = m.rng, true, true
+			case name == macroRangeS:
+				value, subst, out.rangeMacro = m.rngS, true, true
+			case name == macroRangeMs:
+				value, subst, out.rangeMacro = m.rngMs, true, true
 			case strings.HasPrefix(name, "__") || len(name) > maxNameLen:
 			default:
 				if v, has := vars[name]; has {
@@ -332,7 +349,7 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 				i = end
 				continue
 			}
-			// A macro's text is a duration: only a value is checked (row 7b).
+			// A macro's text is a duration or a number: only a value is checked (row 7b).
 			if isVar && !memo.representable(name, value, st) && !contains(out.unrepresentable, name) {
 				out.unrepresentable = append(out.unrepresentable, name)
 			}

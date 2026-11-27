@@ -285,6 +285,27 @@ band: the interim renderer's T02-011 minimum (the widest compact label of the un
 the engine when #69 adds labels, and the fixtures are regenerated with it then. Label widths are `ceil(chars × font.advance.mono × font.size.xs)`, which equals
 `measureText` for JetBrains Mono once the font is loaded (Part C checks that in Chromium).
 
+### The panel units (#290)
+
+`dash_units::Unit` is the TS `Unit` with the kinds of the panel units (T22-016): `Plain`, `Bytes {
+prefix, per_second }`, `Bits { prefix, per_second }` (`Prefix::Iec` or `Prefix::Si`) beside
+`None`, `Suffix`, `Percent`, `Percentunit` and `Time`. Its JSON is the TS one (`{"kind":"bits",
+"prefix":"si","perSecond":true}`): absent fields take their defaults and defaults are not written,
+so `{"kind":"bytes"}` is still IEC bytes (`Unit::bytes()`). `format_value` and `compact_samples`
+follow the TS rules ([Charts › Numbers](charts.md#numbers-vl-012-t08-027)), and `tick_base(unit)`
+(the TS `tickBase`: 1 024 for IEC bytes and bits, else 1 000) sets the base of `dash-axes`' ticks;
+it replaced `dash-axes`' bytes-only `base_of`.
+
+The fixtures grew with them. `format.json` keeps its nine-unit block of 2 000 values byte for byte
+and appends a block of the same values in the ten `NEW_UNITS` of `scripts/engine-fixtures.ts`
+(plain; bytes SI; bytes IEC, SI per second; bits SI, IEC, SI per second, IEC per second; the suffixes
+`req/s` and `/s`): 38 000 rows, about 2.8 MB, test-only. `layout.json` keeps its rows and appends
+ten two-point rows, one per new unit (`case` `unit-<i>`, so the gallery allowlist still holds), at
+1118 × 240 over [0, 3 145 728]; `unit:layout-parity` and `layout_new_units` check plot, ticks and
+labels. The generator takes the tick base from `tickBase` too. The engine draws no axis text until
+#69: it sizes the band with `format_value` and `tick_base` today, and #69's text calls
+`format_value` and ports `formatCompact` for every kind.
+
 ## Goldens
 
 `dash-golden` renders the gallery line pages headless on lavapipe in the pinned image and compares

@@ -67,6 +67,27 @@
   outline: none;
 }
 
+/* Option groups (#290): a muted header over each section, a hairline between sections. */
+.section {
+  display: flex;
+  flex-direction: column;
+}
+
+.section + .section::before {
+  content: '';
+  display: block;
+  height: var(--border-hairline);
+  margin: var(--space-1) var(--space-2);
+  background: var(--hairline);
+}
+
+.header {
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
 /* Options as menu rows (#282): the focused row in the accent fill. */
 .option {
   display: flex;

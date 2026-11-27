@@ -35,7 +35,7 @@ afterEach(() => {
 function model(r: ExploreResult = byVersion(), options = {}): BarchartModel {
   return barchartModel(r as Result, {
     title: 'Versions',
-    rateApplied: false,
+    unit: { kind: 'none' },
     options,
     thresholds: null,
   });
@@ -161,7 +161,7 @@ describe('bar list (review r1: the bars for assistive technology)', () => {
     ]);
     const t = barchartModel(byVersion() as Result, {
       title: 'Versions',
-      rateApplied: false,
+      unit: { kind: 'none' },
       options: undefined,
       thresholds: { direction: 'above', steps: [{ value: 100, state: 'failing', label: '' }] },
     });

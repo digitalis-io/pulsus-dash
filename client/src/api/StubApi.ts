@@ -595,6 +595,7 @@ export class StubApi implements Api {
         kind: 'range',
         stepMs: g.stepMs,
         rate: req.rate ?? true,
+        rangeMs: req.toMs - req.fromMs,
       },
       signal,
     );
@@ -864,6 +865,7 @@ export class StubApi implements Api {
         vars: req.vars ?? {},
         kind: 'range',
         stepMs: g.stepMs,
+        rangeMs: req.toMs - req.fromMs,
       });
       const direction = req.direction ?? 'backward';
       const fromNs = BigInt(req.fromMs) * 1000000n;
@@ -921,6 +923,7 @@ export class StubApi implements Api {
         vars: req.vars ?? {},
         kind: 'volume',
         stepMs: g.stepMs,
+        rangeMs: req.toMs - req.fromMs,
       });
       const n = (g.endMs - g.startMs) / g.stepMs + 1;
       const timestamps = Float64Array.from({ length: n }, (_, i) => g.startMs + i * g.stepMs);

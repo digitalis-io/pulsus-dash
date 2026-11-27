@@ -41,6 +41,7 @@ export interface LogsPlanCase {
     readonly vars: Readonly<Record<string, string>>;
     readonly kind: 'range' | 'volume';
     readonly step_ms: number;
+    readonly range_ms?: number;
   };
   readonly substituted?: Text;
   readonly want?: {

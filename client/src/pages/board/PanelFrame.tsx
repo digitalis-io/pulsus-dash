@@ -60,6 +60,7 @@ import type { PickEvent, ThresholdState, Unit } from '../../engine/api';
 import { nextSort, sortRows, toggleIsolation, type SortState } from '../../explore/seriesRows';
 import { useDelayedFlag } from '../../explore/useDelayedFlag';
 import { useElementWidth } from '../../explore/useElementWidth';
+import { unitLabel } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { useInspectedPanelId } from '../../inspector/host';
 import type { InspectOrigin } from '../../inspector/types';
@@ -92,6 +93,7 @@ import { PanelNotices } from './PanelNotices';
 import { WidgetFrame } from './WidgetFrame';
 import { GeoMapBody } from './GeoMapBody';
 import type { GeomapOptions } from '../../vis/geo/frame';
+import { panelUnits } from '../../vis/units';
 import { isWidgetPanel } from '../../widgets/spec';
 
 /** The shimmer's delay (VL-015). */
@@ -99,23 +101,6 @@ const SHIMMER_MS = 300;
 
 export function panelTitle(p: PanelSpec): string {
   return p.title === '' ? t('panel.untitled') : p.title;
-}
-
-/** `rps`, `lines`, `s`, `ms`: the unit's suffix or base; none for plain numbers. */
-function unitText(u: Unit): string | null {
-  switch (u.kind) {
-    case 'suffix':
-      return u.suffix;
-    case 'time':
-      return u.base;
-    case 'bytes':
-      return 'B';
-    case 'percent':
-    case 'percentunit':
-      return '%';
-    case 'none':
-      return null;
-  }
 }
 
 const KEY_OPS: Readonly<Record<string, readonly [LayoutOp, LayoutOp]>> = {
@@ -168,11 +153,8 @@ export function panelGeo(panel: DataPanelSpec, run: PanelRun, inspectorSource = 
     options: geomapOptions(panel.vis.options),
     thresholds: panel.vis.thresholds ?? null,
     run,
-    // A board panel's unit is its plan's (T22 §4.2): `/s` after the rate rewrite, else none.
-    unit:
-      run.outcome?.planned.rateApplied === true
-        ? { kind: 'suffix', suffix: '/s' }
-        : { kind: 'none' },
+    // The panel's unit (T22-015): its stored unit, rated after the rewrite; else `/s` or none.
+    unit: panelUnits(panel.vis, 'geomap', run.outcome?.planned.rateApplied === true).value,
     inspectorSource,
   };
 }
@@ -596,7 +578,7 @@ export function PanelPreview({
   const onNarrow = useCallback(() => {
     dispatch({ type: 'zoom', dir: 'in' });
   }, [dispatch]);
-  const unit = view.kind === 'frame' ? unitText(view.spec.unit) : null;
+  const unit = view.kind === 'frame' ? unitLabel(view.spec.unit) : null;
   const health = panelHealth(view);
   // A bar chart previews with its pick context and no pick (plan #173 Part 3b §4.3).
   const category = useMemo<PanelCategory>(
@@ -782,7 +764,7 @@ const DataPanelFrame = forwardRef<
   const notices = noticesOf(run, view);
   // The body's size, across message states and remounts of its chart (#90); full screen holds its own.
   const frameSize = useRef<FrameSize | null>(null);
-  const unit = view.kind === 'frame' ? unitText(view.spec.unit) : null;
+  const unit = view.kind === 'frame' ? unitLabel(view.spec.unit) : null;
   // A stat's state (#282 Part 2a): the header tag, the failing ring and glow, the board's count.
   const health = panelHealth(view);
   useReportHealth(panel.id, health === 'failing');

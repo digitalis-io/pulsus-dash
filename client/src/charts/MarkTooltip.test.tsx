@@ -17,7 +17,7 @@ function model(base: ExploreResult | null, o: { categoryBy?: string } = {}): Bar
   if (r.kind === 'string' || base?.kind === 'string') throw new Error('series only');
   return barchartModel(r, {
     title: 'Versions',
-    rateApplied: true,
+    unit: { kind: 'suffix', suffix: '/s' },
     options: o.categoryBy === undefined ? undefined : { categoryBy: o.categoryBy },
     thresholds: null,
     base,

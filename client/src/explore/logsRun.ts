@@ -11,6 +11,7 @@ import { t } from '../i18n/t';
 import type { LogPagerInput, LogPagerState } from '../logs/logPager';
 import type { StatusView } from '../pages/explore/QueryStatus';
 import { framePlan, type FramePlan } from '../vis/framePlan';
+import { panelUnits } from '../vis/units';
 import { overQueryLimit } from './querySize';
 import { errorView, refusalText } from './statusText';
 import type { StepWidth } from './stepWidth';
@@ -106,8 +107,11 @@ export function volumePlan(v: VolumeResult): { readonly spec: VisSpec; readonly 
   };
 }
 
+/** A log metric's units: no stored unit, no rate rewrite. */
+const NO_UNITS = panelUnits(undefined, 'line', false);
+
 /** `framePlan('line', {kind:'series', source:'range', series, stepMs, completeness}, {isolatedKey:
- *  null, title: t('explore.result.title'), rateApplied: false})`. */
+ *  null, title: t('explore.result.title'), units: none})`: a log metric ignores `vis.unit`. */
 export function metricPlan(s: SeriesResult): FramePlan {
   return framePlan(
     'line',
@@ -118,7 +122,7 @@ export function metricPlan(s: SeriesResult): FramePlan {
       stepMs: s.stepMs,
       completeness: s.completeness,
     },
-    { isolatedKey: null, title: t('explore.result.title'), rateApplied: false },
+    { isolatedKey: null, title: t('explore.result.title'), units: NO_UNITS },
   );
 }
 

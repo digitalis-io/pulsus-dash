@@ -21,6 +21,7 @@ import { autoVis, chooseVis, fromRange, type ExploreResult, type VisKind } from 
 import { barchartModel, type BarchartModel } from '../vis/barchart';
 import { framePlan, type FramePlan } from '../vis/framePlan';
 import { thresholdLines, type Thresholds } from '../vis/thresholds';
+import { panelUnits, type PanelUnits } from '../vis/units';
 import type { LogPager, LogPagerState } from '../logs/logPager';
 import type { PanelRun } from './usePanelRun';
 
@@ -79,7 +80,8 @@ export type PanelView =
       readonly vis: VisKind;
       /** For the legend rows and local isolation. */
       readonly result: ExploreResult;
-      readonly rateApplied: boolean;
+      /** The resolved units (`panelUnits` on `vis`, T22-015): isolation re-plans with them. */
+      readonly units: PanelUnits;
       /** `panel.vis.thresholds ?? null`. */
       readonly thresholds: Thresholds | null;
       /** `panel.vis.legend?.mode ?? 'table'`. */
@@ -168,16 +170,16 @@ export function positionText(text: string, diagnostics: readonly Diagnostic[]): 
 }
 
 /**
- * `framePlan` per result, vis, rate and isolated series (a heatmap's buckets are not cheap): a
- * panel's remounts (the Edit grid, full screen) and the preview reuse the plan of the same result.
- * The title is the spec's only per-call part.
+ * `framePlan` per result, vis, units and isolated series (a heatmap's buckets are not cheap): a
+ * panel's remounts (the Edit grid, full screen) and the preview reuse the plan of the same result,
+ * and a unit edit plans afresh (T22-015). The title is the spec's only per-call part.
  */
 const plans = new WeakMap<ExploreResult, Map<string, FramePlan>>();
 
 function cachedPlan(
   vis: VisKind,
   r: ExploreResult,
-  rateApplied: boolean,
+  units: PanelUnits,
   title: string,
   isolatedKey: string | null = null,
 ): FramePlan {
@@ -186,10 +188,10 @@ function cachedPlan(
     byVis = new Map();
     plans.set(r, byVis);
   }
-  const k = `${vis}|${String(rateApplied)}|${isolatedKey ?? ''}`;
+  const k = `${vis}|${JSON.stringify(units)}|${isolatedKey ?? ''}`;
   let plan = byVis.get(k);
   if (plan === undefined) {
-    plan = framePlan(vis, r, { isolatedKey, title: '', rateApplied });
+    plan = framePlan(vis, r, { isolatedKey, title: '', units });
     byVis.set(k, plan);
   }
   return plan.spec === null ? plan : { ...plan, spec: { ...plan.spec, title } };
@@ -201,14 +203,20 @@ function withThresholds(spec: VisSpec, t: Thresholds | null): VisSpec {
   return { ...spec, thresholds: thresholdLines(t, spec.unit) };
 }
 
+/** A stat's graph mode `none` on its spec (T22 §5.1); `sparkline` or absent leaves it absent. */
+function withGraphMode(spec: VisSpec, panelVis: DataPanelSpec['vis']): VisSpec {
+  if (spec.kind !== 'stat' || panelVis.options?.graphMode !== 'none') return spec;
+  return { ...spec, graphMode: 'none' };
+}
+
 type FrameView = Extract<PanelView, { kind: 'frame' }>;
 
 /** A volume frame's data with one level isolated, per data and key. */
 const isolatedVolume = new WeakMap<FrameData, Map<string, FrameData>>();
 
 /**
- * The frame with `key` isolated (framePlan's isolation, cached per result, vis, rate and key);
- * `view` itself when key is null. Thresholds are carried over. A volume frame keeps its spec (the
+ * The frame with `key` isolated (framePlan's isolation, cached per result, vis, units and key);
+ * `view` itself when key is null; its units are the view's, so bounds and counts survive it. Thresholds are carried over. A volume frame keeps its spec (the
  * level stack) and draws only the series of `key`.
  */
 export function panelFrame(
@@ -229,7 +237,7 @@ export function panelFrame(
     }
     return { spec: v.spec, data };
   }
-  const plan = cachedPlan(v.vis, v.result, v.rateApplied, v.spec.title, key);
+  const plan = cachedPlan(v.vis, v.result, v.units, v.spec.title, key);
   if (plan.spec === null || plan.data === null) return v;
   return { spec: withThresholds(plan.spec, v.thresholds), data: plan.data };
 }
@@ -252,7 +260,10 @@ const message = (state: PanelState, text: string): PanelView => ({
   text,
 });
 
-/** The frame of `r` drawn as `chosen`, or the notice it has (PromQL's rows, §4.2). */
+/**
+ * The frame of `r` drawn as `chosen`, or the notice it has (PromQL's rows, §4.2), in the panel's
+ * units resolved on `chosen` (T22-015).
+ */
 function frameView(
   chosen: VisKind,
   r: ExploreResult,
@@ -260,7 +271,8 @@ function frameView(
   panelVis: DataPanelSpec['vis'],
   title: string,
 ): PanelView {
-  const plan = cachedPlan(chosen, r, rateApplied, title);
+  const units = panelUnits(panelVis, chosen, rateApplied);
+  const plan = cachedPlan(chosen, r, units, title);
   if (plan.notice === 'noBuckets') return message('noBuckets', t('explore.vis.noBuckets'));
   if (plan.notice === 'tooManyTimestamps') {
     return message('tooManyTimestamps', t('explore.vis.tooManyTimestamps'));
@@ -271,11 +283,11 @@ function frameView(
   const thresholds = panelVis.thresholds ?? null;
   return {
     kind: 'frame',
-    spec: withThresholds(plan.spec, thresholds),
+    spec: withGraphMode(withThresholds(plan.spec, thresholds), panelVis),
     data: plan.data,
     vis: chosen,
     result: r,
-    rateApplied,
+    units,
     thresholds,
     legend: panelVis.legend?.mode ?? 'table',
   };
@@ -292,6 +304,9 @@ function streamResult(s: StreamSeries): ExploreResult {
   }
   return r;
 }
+
+/** A log volume frame's units: none (the levels are line counts; `vis.unit` is ignored). */
+const VOLUME_UNITS = panelUnits(undefined, 'bars', false);
 
 /** The volume frame of a Bars panel on a log query (plan #67 §3.4), per volume answer. */
 const volumePlans = new WeakMap<VolumeResult, ReturnType<typeof volumePlan>>();
@@ -333,9 +348,9 @@ const models = new WeakMap<ExploreResult, ModelsOf>();
 /**
  * A saved bar chart's view (plan #173 Part 3b §4.1): `barchartModel` of `r` with the panel's
  * options and thresholds and, when the baseline run answered, its rows' baselines. The model is
- * cached on every input: `r` and `baseline` by object identity, then the title, the rate, the
- * options and the thresholds by their JSON, so a remount (the Edit grid, full screen, the preview)
- * reuses it and any edit builds a new one.
+ * cached on every input: `r` and `baseline` by object identity, then the title, the resolved unit
+ * (the panel's, rated after the rewrite, T22-015), the options and the thresholds by their JSON, so
+ * a remount (the Edit grid, full screen, the preview) reuses it and any edit builds a new one.
  */
 export function categoryView(
   r: NonString,
@@ -364,12 +379,13 @@ export function categoryView(
     }
   }
   const thresholds = o.panelVis.thresholds ?? null;
-  const k = JSON.stringify([o.title, o.rateApplied, o.panelVis.options ?? null, thresholds]);
+  const unit = panelUnits(o.panelVis, 'barchart', o.rateApplied).value;
+  const k = JSON.stringify([o.title, unit, o.panelVis.options ?? null, thresholds]);
   let model = byInput.get(k);
   if (model === undefined) {
     model = barchartModel(r, {
       title: o.title,
-      rateApplied: o.rateApplied,
+      unit,
       options: o.panelVis.options,
       thresholds,
       base: b === undefined || b === 'failed' || b.kind === 'string' ? null : b,
@@ -440,7 +456,8 @@ export function panelView(run: PanelRun, panelVis: DataPanelSpec['vis'], title: 
       data: plan.data,
       vis: 'bars',
       result: r,
-      rateApplied: false,
+      // The log volume ignores `vis.unit` (§4.1): its levels are line counts.
+      units: VOLUME_UNITS,
       thresholds,
       legend: panelVis.legend?.mode ?? 'table',
       volume: true,

@@ -40,6 +40,7 @@ function inputsOf(c: LogsPlanCase) {
     vars: c.inputs.vars,
     kind: c.inputs.kind,
     stepMs: c.inputs.step_ms,
+    ...(c.inputs.range_ms === undefined ? {} : { rangeMs: c.inputs.range_ms }),
   };
 }
 

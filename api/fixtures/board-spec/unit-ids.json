@@ -1,0 +1,21 @@
+[
+  "count",
+  "none",
+  "custom",
+  "seconds",
+  "milliseconds",
+  "microseconds",
+  "nanoseconds",
+  "bytes",
+  "bytesSI",
+  "bits",
+  "bitsIEC",
+  "perSecond",
+  "reqPerSecond",
+  "bytesPerSecond",
+  "bytesSIPerSecond",
+  "bitsPerSecond",
+  "bitsIECPerSecond",
+  "percent",
+  "percentUnit"
+]

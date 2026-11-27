@@ -1,0 +1,10 @@
+{
+  "name": "units-uptime",
+  "provenance": {"synthetic": "panel units (#290): an uptime of 671000 s, 7.77 d"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "uptime_seconds"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-units-uptime-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"uptime_seconds","instance":"a:9100"},"values":[[1767225600,"667400"],[1767227400,"669200"],[1767229200,"671000"]]}]}}
+  }
+}

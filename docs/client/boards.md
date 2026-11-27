@@ -158,12 +158,14 @@ query error arrive as byte offsets into the raw text (the server maps them, ADR-
 diagnostics use the identity map (T09-009). The line is 1-based, split on `\n`; the column counts
 code points.
 
-`framePlan` is computed once per result, vis, rate and isolated series (`panelRun.ts` caches it in a
-`WeakMap` keyed by the result, `${vis}|${rateApplied}|${isolatedKey ?? ''}`), so a panel's
-remounts, full screen and the preview reuse the same frame data.
+`framePlan` is computed once per result, vis, units and isolated series (`panelRun.ts` caches it
+in a `WeakMap` keyed by the result, `${vis}|${JSON.stringify(units)}|${isolatedKey ?? ''}`), so a
+panel's remounts, full screen and the preview reuse the same frame data, and a unit edit plans
+afresh.
 
 `panelView(run, panel.vis, title)` takes the panel's whole `vis`. A frame view also carries the
-result (`result`, for the legend and isolation), `rateApplied`, the panel's `thresholds`
+result (`result`, for the legend and isolation), its resolved `units` ([below](#panel-units-290)),
+the panel's `thresholds`
 (`panel.vis.thresholds ?? null`) and `legend` (`panel.vis.legend?.mode ?? 'table'`). On line and
 bars its spec has `thresholds = thresholdLines(thresholds, spec.unit)` (the seam lines of
 [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)); heatmap and stat specs
@@ -475,6 +477,63 @@ error as "This server does not support map panels yet" under the status line
 Visualisation field (`kindFieldMessage`). Every other field error, one under a geomap's
 options included, keeps its own text: a v7 server never reports `geomap` as an invalid kind.
 
+### Panel units (#290)
+
+Board spec v8, the units version ([the boards API](../server/boards-api.md#panel-units-v8)), stores
+one unit per data panel in `vis.unit`: `{id}` with an id of the catalogue, or `{id: 'custom',
+suffix}`. `checkBoardSpec` checks it as the server does (the `unit-` rows of `invalid.json`,
+`v8-units.json`). The catalogue is `UNIT_CATALOGUE` in `src/vis/units.ts`, 19 ids in five groups:
+
+| Group | Ids (runtime `Unit`) |
+|---|---|
+| General | `count` (`none`, SI prefixes), `none` (`plain`), `custom` (its suffix) |
+| Time | `seconds`, `milliseconds`, `microseconds`, `nanoseconds` (`time` s, ms, us, ns) |
+| Data | `bytes` (IEC), `bytesSI`, `bits` (SI), `bitsIEC` |
+| Rate | `perSecond` (`/s`), `reqPerSecond` (`req/s`), `bytesPerSecond`, `bytesSIPerSecond`, `bitsPerSecond`, `bitsIECPerSecond` |
+| Percent | `percent` (0–100), `percentUnit` (0–1) |
+
+`unitOf(vis.unit)` is the runtime unit ([Charts › Numbers](charts.md#numbers-vl-012-t08-027)).
+Every panel plan resolves its units with one pure function, `panelUnits(vis, kind, rateApplied)`
+(T22-015), where `kind` is the drawn kind after Auto (`chooseVis`'s result, so an Auto histogram is
+a heatmap):
+
+| Stored `vis.unit` | Not a heatmap: `value` | Heatmap: `value` (bucket bounds) | `count` (heatmap counts) |
+|---|---|---|---|
+| absent | `/s` after the rate rewrite, else `none` | `none` | `/s` after the rewrite, else `none` |
+| set | `rated(unitOf(u))` after the rewrite, else `unitOf(u)` | `unitOf(u)`, never rated | `/s` after the rewrite, else `none` |
+
+`rated` (T22-017) makes `none` `/s`, a suffix `x/s`, and bytes and bits per second; time and
+percent stay. `framePlan` uses `value` on line, bars and stat and `{unit: value, countUnit: count}`
+on a heatmap; `barchartModel` (whose cache key now holds the resolved unit instead of the rate) and
+`panelGeo` use `value`. The frame view carries `units`, and `panelFrame` isolates a series with the
+same units, so a heatmap's bounds and counts survive isolation. A log volume frame (Bars on a log
+query) and the log stream ignore `vis.unit`; Explore stores no unit and resolves
+`panelUnits(undefined, vis, rateApplied)`, its output unchanged.
+
+Every surface already formats from `spec.unit`: the Canvas 2D axes (ticks by `tickBase`), the
+legend table and compact legend, the stat tile, tooltips, the frame's accessible text, the
+Inspector's value (`7.77` with the unit `d` small) and the header chip (`unitLabel`: `in B/s`).
+Thresholds stay in the raw base unit
+([ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)): a stat in seconds has a
+threshold of `604800`, labelled in the unit; the editor's placeholders use the preview's unit.
+
+**The picker.** `UnitField` (`pages/board/UnitField.tsx`) is the first field after Visualisation
+for every data kind but Logs. It is a Select of **Auto** and the catalogue under its five group
+headers (the kit `Select` takes `group` on its options and renders `ListBoxSection`s; the keyboard
+skips the headers and type-ahead works across groups). Each option reads "name · example" in its
+unit (`Bytes/s (IEC) · 1.5 KiB/s`); Custom has no example. Auto removes `vis.unit`; Custom writes
+`{id: 'custom', suffix: ''}` and shows a Suffix field, invalid until typed (1 to 16 code points, no
+spaces: "Suffix: 1 to 16 characters, no spaces", linked to the field; the draft's `checkBoardSpec`
+blocks the save). When the preview's query was rated and the rewrite changes the unit, the field
+says "Shown per second (B/s): the query is rated"; when the preview draws a heatmap (stored, or
+Auto resolving to one: the editor passes the drawn kind), it says "Bucket bounds in B, counts per
+second: the query is rated" instead, since a heatmap's bounds are never rated. A kind change keeps the unit (`withKind`).
+
+**An older server.** A server before the units version refuses `vis.unit` with
+`board.json.unknownKey` at the panel's `…/vis/unit`. The board page shows it as "This server does
+not support panel units yet" (`unitsUnsupported`, `saveFieldMessage`), and so does the panel
+editor's Unit field. A v7 binary cannot read a v8 head at all (`ErrSchemaTooNew`, 503).
+
 ## Thresholds, legends and stat tiles (#64 Part B)
 
 Board spec version 2 adds two optional members to a panel's `vis`
@@ -577,7 +636,7 @@ choosing one sets `from=now-<range>&to=now`. The trigger still opens the time ra
 
 ### The editor's Thresholds and Legend
 
-`ThresholdsField` and the Legend select follow Visualisation. Every vis edit is one `updatePanel`
+`ThresholdsField` and the Legend select follow Visualisation (and the Unit field, #290). Every vis edit is one `updatePanel`
 of a `vis` built from `panel.vis` by spread, so a kind change keeps the thresholds and the legend.
 A kind change goes through `withKind(vis, kind)`, which also keeps only the `vis.options` keys the
 new kind allows (`keepOptions`, the `OPTION_KEYS` table) and drops the `options` member when none
@@ -874,6 +933,11 @@ failing 0.05 "SLO breach").
   [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-008, T24-014, §5.2a;
   [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) VIZ-053 (the
   Text row); [T08](../../designs/technical/T08-dom-component-kit.md) T08-011.
+- Panel units (#290): [T22](../../designs/technical/T22-value-categorical-and-table-panels.md)
+  T22-015, T22-016, T22-017 and §6.2; [08 Visual language](../../designs/product/08-visual-language.md)
+  VL-012; [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) VIZ-057
+  (the units subset of Table 5-10); [T08](../../designs/technical/T08-dom-component-kit.md) T08-007,
+  T08-008, T08-027; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v7 upcast).
 - Board tags (#215): [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-029
   and §5.5; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v3 upcast).
 - The tags field and Save blocked by an invalid editor field (#216 Part 2b):

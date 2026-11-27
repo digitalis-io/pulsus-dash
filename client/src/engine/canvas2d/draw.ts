@@ -13,7 +13,7 @@
  * (from `StateEncoding`, T02-004) after the series, with labels that are stacked, truncated or
  * gathered into an overflow chip but never dropped; the auto value domain includes them. A stat
  * draws its value top left and, with series data, a full-bleed sparkline of its first series under
- * the head with a shaded area (§4.3; #282 Part 2a §4.4).
+ * the head with a shaded area (§4.3; #282 Part 2a §4.4), unless its graph mode is `none` (T22 §5.1).
  *
  * Value labels (T02-011 as amended by #93): the band is at least as wide as the widest compact
  * label of the unit (`minValueBand`). Under a held band (`LayerInput.band`), each tick label is
@@ -28,7 +28,7 @@ import {
   type HeatmapFrame,
   type SeriesFrame,
 } from '../../data/frames';
-import { compactSamples, formatCompact, formatValue, type Unit } from '../../i18n/format';
+import { compactSamples, formatCompact, formatValue, tickBase, type Unit } from '../../i18n/format';
 import type {
   EventMarker,
   FrameSelection,
@@ -460,7 +460,7 @@ interface ValueAxis {
 /** The value axis of line and bars: auto from the data, or the manual range (#93). */
 function valueAxis(i: LayerInput, dataMin: number, dataMax: number, unit: Unit): ValueAxis {
   const height = layoutPlot(i.spec.kind, i.cssW, i.cssH, 0, bandOf(i)).height;
-  const base = unit.kind === 'bytes' ? 1024 : 1000;
+  const base = tickBase(unit);
   const r = i.valueRange;
   let ticks: readonly number[];
   let domain: ValueRange;
@@ -834,8 +834,13 @@ function drawStat(i: LayerInput): LayerModel {
   );
   const { ctx } = i;
   const first = i.data.kind === 'series' ? i.data.series[0] : undefined;
+  // T22 §5.1: graph mode `none` draws the value alone (absent = `sparkline`).
+  const graph = i.spec.kind === 'stat' ? i.spec.graphMode : undefined;
   const spark =
-    first !== undefined && i.cssH >= SPARK_MIN_H && finiteInWindow(first, i.window) >= 1
+    first !== undefined &&
+    graph !== 'none' &&
+    i.cssH >= SPARK_MIN_H &&
+    finiteInWindow(first, i.window) >= 1
       ? first
       : null;
   // #282 Part 2a §4.4: the value top left, its line's middle 28 px down (8 + 40 / 2); the DOM

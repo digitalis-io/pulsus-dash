@@ -136,8 +136,8 @@ function installProbe(): void {
   }).observe({ type: 'mark' });
 }
 
-// The Visualisation options in order; Bar chart follows Stat (#173 Part 3b).
-const KINDS = ['Auto', 'Line', 'Bars', 'Heatmap', 'Stat', 'Bar chart', 'Logs'] as const;
+// The Visualisation options in order; Bar chart follows Stat (#173 Part 3b), Map precedes Logs (#234).
+const KINDS = ['Auto', 'Line', 'Bars', 'Heatmap', 'Stat', 'Bar chart', 'Map', 'Logs'] as const;
 type Kind = (typeof KINDS)[number];
 const LOGS = 'A metric query has no log lines. Choose Auto or a chart.';
 
@@ -262,7 +262,11 @@ async function pick(page: Page, k: Kind): Promise<Armed> {
   for (let i = 0; i < KINDS.indexOf(k); i++) await page.keyboard.press('ArrowDown');
   await arm(page, 'keydown', 'Enter');
   await page.keyboard.press('Enter');
-  return armed(page);
+  const a = await armed(page);
+  // The list box closes with an exit animation; an Escape before it has gone closes it, not the
+  // dialog (E15).
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+  return a;
 }
 
 const marksSince = (page: Page, t0: number) =>

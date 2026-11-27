@@ -108,3 +108,44 @@ fn layout_event_band() {
         assert_eq!(ax.plot, plot_of(&r["plot"]), "layout.json row {i}");
     }
 }
+
+/// #290 §4.5 (F5): `layout.json`'s appended rows, one per new unit at 1118 × 240 over
+/// [0, 3 145 728]: each unit parses, and plot, band and labels equal TS.
+#[test]
+fn layout_new_units() {
+    let rows = fixture::load("layout.json");
+    let new: Vec<&Value> = rows
+        .iter()
+        .filter(|r| r["case"].as_str().is_some_and(|c| c.starts_with("unit-")))
+        .collect();
+    assert_eq!(new.len(), 10, "layout.json rows of the new units");
+    for r in new {
+        let what = r["case"].as_str().unwrap_or_default();
+        let unit: Unit = match serde_json::from_value(r["unit"].clone()) {
+            Ok(u) => u,
+            Err(e) => panic!("{what}: unit {}: {e}", r["unit"]),
+        };
+        let (w, h) = (fixture::num(&r["w"]), fixture::num(&r["h"]));
+        let (min, max) = (fixture::num(&r["min"]), fixture::num(&r["max"]));
+        let ax = value_axis(
+            VisKind::Line,
+            w,
+            h,
+            min,
+            max,
+            None,
+            &unit,
+            Band::Measure,
+            0.0,
+        );
+        assert_eq!(ax.plot, plot_of(&r["plot"]), "{what}: plot");
+        let labels: Vec<String> = r["labels"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|s| s.as_str().unwrap_or_default().to_owned())
+            .collect();
+        let got: Vec<String> = ax.labels.iter().map(|l| l.text.clone()).collect();
+        assert_eq!(got, labels, "{what}: labels");
+    }
+}

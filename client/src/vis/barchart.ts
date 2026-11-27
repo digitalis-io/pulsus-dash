@@ -69,9 +69,10 @@ export type BarchartFit =
     };
 
 /**
- * The rows of `r` once per result and options (plan §3.4): `barchartOptions`, the unit (`/s` after a
- * rate rewrite), the spec (thresholds as seam lines when the panel has them; ghost and anomaly off:
- * `CategoryChart` sets them, Part 3a §3.6), and `categoryRows` with the reducer, label, sort and
+ * The rows of `r` once per result and options (plan §3.4): `barchartOptions`, the unit (the
+ * panel's, resolved by `panelUnits`: `/s` after a rate rewrite when none is stored), the spec
+ * (thresholds as seam lines when the panel has them; ghost and anomaly off: `CategoryChart` sets
+ * them, Part 3a §3.6), and `categoryRows` with the reducer, label, sort and
  * thresholds. `base`, the baseline run's result (Part 3a §3.8), sets each row's baseline by key and
  * the model's `baseline` completeness.
  */
@@ -79,14 +80,15 @@ export function barchartModel(
   r: Exclude<ExploreResult, { kind: 'string' }>,
   o: {
     readonly title: string;
-    readonly rateApplied: boolean;
+    /** The resolved value unit (`panelUnits(…, 'barchart', rateApplied).value`, T22-015). */
+    readonly unit: Unit;
     readonly options: VisOptions | undefined;
     readonly thresholds: Thresholds | null;
     readonly base?: Exclude<ExploreResult, { kind: 'string' }> | null;
   },
 ): BarchartModel {
   const b = barchartOptions(o.options);
-  const unit: Unit = o.rateApplied ? { kind: 'suffix', suffix: '/s' } : { kind: 'none' };
+  const { unit } = o;
   const spec: BarchartSpec = {
     kind: 'barchart',
     title: o.title,

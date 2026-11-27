@@ -144,6 +144,12 @@ func TestLogqlPlanned(t *testing.T) {
 			"sum by (level, detected_level) (count_over_time({app=\"x\"}\n| drop __error__ [5s]))",
 			`{"planned":{"query":"sum by (level, detected_level) (count_over_time({app=\"x\"}\n| drop __error__ [5s]))","expanded":"{app=\"x\"}","bytes":81,"step_ms":5000},"start":`},
 		{"G7", logRangePath, logBody(`{app="x"} |= "$__auto"`, ""), `{app="x"} |= "$__auto"`, `{"kind":"streams","planned":{"query":`},
+		// Issue #291: the range macros from the request window (1 h).
+		{"G9", logRangePath, logBody(`sum(count_over_time({app="x"}[$__range]))`, ""), `sum(count_over_time({app="x"}[1h]))`,
+			`{"kind":"series","planned":{"query":"sum(count_over_time({app=\"x\"}[1h]))"`},
+		{"G10", logVolumePath, logBody(`{app="x"} |= "$__range_s $__range_ms"`, ""),
+			"sum by (level, detected_level) (count_over_time({app=\"x\"} |= \"3600 3600000\"\n| drop __error__ [5s]))",
+			`{"planned":{"query":"sum by (level, detected_level) (count_over_time({app=\"x\"} |= \"3600 3600000\"\n| drop __error__ [5s]))","expanded":"{app=\"x\"} |= \"3600 3600000\""`},
 	} {
 		up.reset()
 		rec := postJSON(h, c.path, c.body)

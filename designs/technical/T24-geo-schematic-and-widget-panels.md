@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.22-rc · 2026-11-27 |
+| **Version** | 1.23-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -1365,6 +1365,7 @@ gate whatever its number).
 | change-feed version | `changeFeed` (§5.8) | part B2 | the next free (v8 or later) |
 | geomap version | `geomap` (§5.15) | part E step 1b (#234 Part 1), landed | v7 |
 | map-sync version | `sync`, `boundsFilter`, `legacyAuto` (§5.15) | part E step 2 | the next free (v8 or later) |
+| units version | `vis.unit` ([T22](T22-value-categorical-and-table-panels.md) §6.2) | #290 | the next free (v8 or later) |
 
 An older server refuses a head saved at a newer version (`ErrSchemaTooNew`).
 
@@ -3227,3 +3228,4 @@ None.
 | 1.20-rc | 2026-11-27 | #234 Part 3 (E2, the host): T24-088 records `panelView` → `{kind: 'geomap'}` (after the blocked rows; `notMetric` for a LogQL log answer), `framePlan` → `notice: 'geomap'`, `PanelRun.placeholder` and `retry()`, and `planGeo`'s `{seq, motion}` (and `staleAtMs` for a kept refetch failure). §5.14: `thresholds: Thresholds \| null`, the component's optional `geoData`, `inspectorSource` and `onLoadFailed`, `ChartFrameProps.onSummary`, the Canvas 2D producer contract of the failure summary and `GeoMapBody`'s host-chunk boundary with Retry, then Reload. §5.16: `GeoMarkListProps` += `seq`, `rowSet`, `onActive`, `announce`; `geoMarkName` takes `thresholds`; `PanelTable` += `toggle`, `onInspectRow`, `rowNote`; the host answers `geo:` member ids from the request (no frame registers). §7: the `geoInRoute` bundle rule. §10.5: `unit:geo-inspect`'s k01 Logs chip follows T25-010 (with `f=env=prod` it is `{env="prod"}`; off with no filter) |
 | 1.21-rc | 2026-11-27 | #216 Part 2b (I2): §5.2a: the registry holds `TEXT_DEF` and `BOARD_LIST_DEF` (4 × 8, `{kind: 'boardList'}`); `WidgetEditorBodyProps.onLocalInvalid`. §5.7: `boardListVis`, `BoardListEditorBody` (the inert, link-free preview over the debounced draft, Show, Search text or Tag, Rows, Order), `useDebounced`, `addTags`, `tagError`. T24-021: the editor's Search text refuses Cc and more than 100 code points locally and writes nothing; Done and Save wait for it. T24-029: the tags field, `setTags` deleting the key when the head had none, lower-casing on add, and the `/tags` text in the field too. §11: Part 2b landed, I2 complete |
 | 1.22-rc | 2026-11-27 | #234 Part 4 (E2, the navigation stack): §5.16 records that the host answers `geo:` member ids from the open request's top view (`resolveGeoMembers`, pure) at any depth, replacing a per-frame registration ([T25](T25-inspector-and-pivots.md) §4.8); §10.5 gains `unit:geo-members-fullscreen`, and its O2 and N rows give the rows' names as the series names (lat and lon included) |
+| 1.23-rc | 2026-11-27 | #290: §5.0 adds the units version (`vis.unit`, [T22](T22-value-categorical-and-table-panels.md) §6.2), the next free number (v8 or later) |

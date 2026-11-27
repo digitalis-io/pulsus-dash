@@ -194,7 +194,11 @@ and what the server makes of it:
 - **The query as you wrote it**, with the values of the board variables it uses (see
   [the filter bar](#the-filter-bar)). The server puts the values in, expands the macros and sends
   the result to the data source: `$__interval` is the panel's step (one point per pixel or two of
-  its width) and `$__rate_interval` the rate window for that step.
+  its width), `$__rate_interval` the rate window for that step, and `$__range` the board's time
+  range (`$__range_s` and `$__range_ms` the same in seconds and milliseconds), so
+  `sum(increase(x_total[$__range]))` is the total over the board's window. A query whose result
+  is a scalar or a string runs as an instant query, which has no window, so the range macros are
+  refused there.
 - **A counter is drawn as a rate.** A bare counter such as `http_requests_total` is sent as
   `rate(http_requests_total[<window>])` with the window for the panel's step, and the header reads
   "in /s".
@@ -327,7 +331,11 @@ A panel can have up to 8 **thresholds**: absolute values that mark a state, set 
 A stat panel shows one number: the scalar, or the last value of the first series. With a range
 query, a **sparkline** of that series runs under the number when the panel is tall enough (104 px
 of chart). The sparkline shows the trend: it joins the points across gaps in the data, and a
-single point shows as a dot. With thresholds, the tile also shows:
+single point shows as a dot. A panel whose graph mode is **none** (`options.graphMode: "none"`, for
+example from an imported dashboard) shows the number alone, centred, with no sparkline. If a tile
+is ever blank after it scrolls back into view, report it with the browser and GPU you use: the
+chart redraws when the browser restores a lost drawing surface, but the cause of the reported blank
+tiles is not yet confirmed (#296). With thresholds, the tile also shows:
 
 - a **state chip** above the number: the state of the value (OK when it crosses no threshold,
   Unknown when there is no value);
@@ -585,6 +593,7 @@ query and the current time range. Under it are the fields:
 | **Query language** | PromQL or LogQL |
 | **Query** | the query text, at most 16 384 bytes; the PromQL editor of Explore › Metrics, or the LogQL editor of Explore › Logs (below) |
 | **Visualisation** | **Auto (`<vis>`)**, naming what auto-vis picked for the current result (see [PromQL panels](#promql-panels); a LogQL panel's reads **Auto (Logs)** for log lines and **Auto (Line)** for a metric query), Line, Bars, Heatmap, Stat or Logs |
+| **Unit** | **Auto** or a unit of the catalogue, and **Suffix** for **Custom** (see [Choosing a unit](#choosing-a-unit)); not on a Logs panel |
 | **Thresholds** | **Add threshold** (up to 8; "Up to 8 thresholds" when full), then per threshold **Value**, **State** and **Label**, and **Remove threshold n**; **Worse when** sets the direction (see [Thresholds](#thresholds)) |
 | **Legend** | **Table** (the default) or **Hidden** (see [Legends](#legends)) |
 
@@ -625,6 +634,40 @@ Closing never undoes anything: your changes stay in the board draft until you sa
 **⌘S** / **Ctrl+S** saves from inside the editor, and the save status shows at its foot. After a
 save with problems, the editor opens on the first panel with one, and each error shows under its
 field.
+
+### Choosing a unit
+
+The **Unit** field sets how a panel's numbers read: on the value axis, in the legend, on a stat
+tile, in tooltips, in the Inspector and in the "in …" chip under the title. Each option shows an
+example in its unit:
+
+| Group | Units |
+|---|---|
+| General | **Count (SI)** · 1.2k, **None** · 2026 (no prefix), **Custom** (your own suffix) |
+| Time | **Seconds** · 7.77 d, **Milliseconds** · 2.84 s, **Microseconds** · 1.5 ms, **Nanoseconds** · 2.5 µs |
+| Data | **Bytes (IEC)** · 1.5 MiB, **Bytes (SI)** · 1.5 MB, **Bits (SI)** · 1.25 Gb, **Bits (IEC)** · 1 Mib |
+| Rate | **Per second** · 12.5 /s, **Requests/s** · 1.2k req/s, **Bytes/s (IEC)** · 1.5 KiB/s, **Bytes/s (SI)** · 1.5 kB/s, **Bits/s (SI)** · 1.25 Gb/s, **Bits/s (IEC)** · 1 Mib/s |
+| Percent | **Percent (0–100)** · 38 %, **Percent (0–1)** · 38 % |
+
+Pick the unit the query's values are in: a counter of bytes is **Bytes**, a duration in seconds is
+**Seconds**. The panel then scales the numbers for you (`671000` seconds reads `7.77 d`,
+`3145728` bytes per second `3 MiB/s`, with axis ticks on whole MiB).
+
+- **Auto** stores no unit: plain numbers with SI prefixes, or `/s` when the query was turned into
+  a rate.
+- **Rated queries.** When Pulsus Dash turns a counter into a rate (`rate(…[5m])`, see
+  [PromQL panels](#promql-panels)), a data or count unit is shown per second: **Bytes** reads as
+  bytes per second, **Count** as `/s`, a custom `req` as `req/s`. The field says so: "Shown per
+  second (B/s): the query is rated". Time and percent units are not changed. A heatmap's bucket
+  bounds keep the unit and its counts are per second; on a heatmap the field says "Bucket bounds in
+  B, counts per second: the query is rated".
+- **Custom** asks for a **Suffix** of 1 to 16 characters with no spaces (`rps`, `µs/op`); until it
+  has one the field says "Suffix: 1 to 16 characters, no spaces" and the board cannot be saved.
+- **Thresholds** are always in the query's own unit: a stat in **Seconds** with a threshold at one
+  week takes `604800`.
+
+Changing the visualisation keeps the unit. A server that does not know units yet refuses the save
+with "This server does not support panel units yet".
 
 ### Editing a text panel
 

@@ -13,7 +13,7 @@ fn the_minimum_band_is_the_widest_compact_label() {
     // `-88.8E` (6 characters) and `-88.8E B` / ` s` / ` %` (8) at 6.6 px each, rounded up.
     let cases = [
         (Unit::None, 40.0),
-        (Unit::Bytes, 53.0),
+        (Unit::bytes(), 53.0),
         (Unit::Time { base: TimeBase::S }, 53.0),
         (Unit::Percent, 53.0),
     ];
@@ -29,7 +29,7 @@ fn a_measured_band_is_at_least_the_minimum() {
     // Short labels (0 … 1): the minimum band sets the plot.
     for (unit, min) in [
         (Unit::None, 40.0),
-        (Unit::Bytes, 53.0),
+        (Unit::bytes(), 53.0),
         (Unit::Time { base: TimeBase::S }, 53.0),
         (Unit::Percent, 53.0),
     ] {
@@ -82,7 +82,7 @@ fn a_held_band_is_used_as_it_is() {
         0.0,
         1.0,
         None,
-        &Unit::Bytes,
+        &Unit::bytes(),
         Band::Fixed(30.0),
         0.0,
     );

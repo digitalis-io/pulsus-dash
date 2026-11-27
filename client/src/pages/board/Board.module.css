@@ -593,6 +593,19 @@
   grid-column: 1 / -1;
 }
 
+/* The panel editor's Unit field (#290 §4.4): the picker, the custom suffix and the rated hint. */
+.unitField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.unitHint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
 /* The widget editor's fields (plan #198 Part 3a §3.2): Title, then the def's body, scrolling. */
 .widgetEditorFields {
   display: flex;
