@@ -3,6 +3,16 @@
 // Class, so the two formats agree by construction. It sits below both packages.
 package apierr
 
+import (
+	"context"
+	"errors"
+	"math"
+	"net/http"
+	"strconv"
+
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
+)
+
 // Kind is the class of a failure.
 type Kind uint8
 
@@ -56,13 +66,67 @@ type Class struct {
 	Field, Reserved string
 }
 
-// Classify maps err to its class.
+// Classify maps err to its class (§3.4). A *pulsusdb.Error is classified by its kind, a
+// context.DeadlineExceeded is a timeout and a context.Canceled a cancel; anything else is
+// internal, with a fixed message.
 func Classify(err error) Class {
-	_ = err
-	return Class{}
+	var e *pulsusdb.Error
+	switch {
+	case errors.As(err, &e):
+	case errors.Is(err, context.DeadlineExceeded):
+		e = &pulsusdb.Error{Kind: pulsusdb.KindTimeout}
+	case errors.Is(err, context.Canceled):
+		return Class{Kind: Cancelled, Code: CodeInternal, Message: "cancelled"}
+	default:
+		return Class{Kind: Internal, Status: http.StatusInternalServerError, Code: CodeInternal, Message: "internal error"}
+	}
+	unavailable := func(k Kind, status int, msg, reason string) Class {
+		return Class{Kind: k, Status: status, Code: CodeUnavailable, Message: msg, Reason: reason, QueryID: e.QueryID}
+	}
+	switch e.Kind {
+	case pulsusdb.KindQueryInvalid:
+		c := Class{Kind: BadQuery, Status: http.StatusBadRequest, Code: CodeInvalid, Message: e.Message, QueryID: e.QueryID}
+		if e.Position != nil {
+			off := e.Position.Offset
+			c.Position = &off
+		}
+		return c
+	case pulsusdb.KindVirtual:
+		return Class{Kind: Virtual, Status: http.StatusBadRequest, Code: CodeVirtualUnsupported, Message: e.Message, Field: e.Field, Reserved: e.Reserved}
+	case pulsusdb.KindTooBroad:
+		return Class{Kind: TooBroad, Status: http.StatusUnprocessableEntity, Code: CodeTooBroad, Message: e.Message, Suggestion: SuggestNarrow, QueryID: e.QueryID}
+	case pulsusdb.KindScopeDenied:
+		return Class{Kind: ScopeDenied, Status: http.StatusForbidden, Code: CodeScopeDenied, Message: "data scopes are not supported yet"}
+	case pulsusdb.KindRateLimited:
+		return Class{Kind: RateLimited, Status: http.StatusTooManyRequests, Code: CodeBudgetExhausted, Message: "PulsusDB is rate limiting this tenant",
+			Reason: "upstream_rate_limited", RetryAfter: e.RetryAfter, QueryID: e.QueryID}
+	case pulsusdb.KindBusy:
+		return Class{Kind: Busy, Status: http.StatusTooManyRequests, Code: CodeBudgetExhausted, Message: "too many queries in flight for this tenant",
+			Reason: "tenant_concurrency", RetryAfter: "1"}
+	case pulsusdb.KindTimeout:
+		c := unavailable(Timeout, http.StatusGatewayTimeout, "the query timed out", "upstream_timeout")
+		c.Suggestion = SuggestNarrow
+		return c
+	case pulsusdb.KindUnreachable:
+		return unavailable(Unavailable, http.StatusBadGateway, "PulsusDB could not be reached", "upstream_unreachable")
+	case pulsusdb.KindUnavailable:
+		return unavailable(Unavailable, http.StatusBadGateway, "PulsusDB is unavailable", "upstream_unavailable")
+	case pulsusdb.KindUnauthorised:
+		return unavailable(Unavailable, http.StatusBadGateway, "PulsusDB refused the datasource credentials", "upstream_unauthorised")
+	case pulsusdb.KindConfig:
+		return unavailable(Config, http.StatusServiceUnavailable, "the datasource is misconfigured", "datasource_config")
+	}
+	return unavailable(Unavailable, http.StatusBadGateway, "PulsusDB returned an unexpected response", "upstream_error")
 }
 
-// RetryAfterMs is RetryAfter in milliseconds (false: none).
+// RetryAfterMs is RetryAfter in milliseconds (false: none or not a number of seconds that fits).
 func (c Class) RetryAfterMs() (uint32, bool) {
-	return 0, false
+	if c.RetryAfter == "" {
+		return 0, false
+	}
+	s, err := strconv.ParseUint(c.RetryAfter, 10, 32)
+	if err != nil || s > math.MaxUint32/1000 {
+		return 0, false
+	}
+	return uint32(s) * 1000, true // #nosec G115 -- s ≤ MaxUint32/1000, checked above
 }

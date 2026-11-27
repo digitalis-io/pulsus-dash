@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"regexp"
 
+	"github.com/digitalis-io/pulsus-dash/server/internal/apierr"
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/api"
-	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 )
 
 // tenantPattern is the slug of a tenant binding (T06-006).
@@ -80,57 +80,40 @@ func hint(kv ...any) *map[string]any {
 }
 
 // upstreamError maps a PulsusDB failure to its response (plan #62 §4.4): status, body and the
-// Retry-After value ("" for none).
+// Retry-After value ("" for none), all from apierr.Classify (plan #68 D1 §3.4), the mapping the
+// DSF error/1 row shares. A cancel is answered as an internal error here; failure writes nothing
+// for it.
 func upstreamError(err error) (int, api.ErrorBody, string) {
-	var e *pulsusdb.Error
-	if !errors.As(err, &e) {
-		if errors.Is(err, context.DeadlineExceeded) {
-			e = &pulsusdb.Error{Kind: pulsusdb.KindTimeout}
-		} else {
-			return http.StatusInternalServerError, api.ErrorBody{Code: api.Internal, Message: "internal error"}, ""
-		}
-	}
+	c := apierr.Classify(err)
 	var qid *string
-	if e.QueryID != "" {
-		id := e.QueryID
+	if c.QueryID != "" {
+		id := c.QueryID
 		qid = &id
 	}
-	unavailable := func(status int, msg, reason string, extra ...any) (int, api.ErrorBody, string) {
-		return status, api.ErrorBody{Code: api.Unavailable, Message: msg, Hint: hint(append([]any{"reason", reason}, extra...)...), QueryId: qid}, ""
-	}
-	switch e.Kind {
-	case pulsusdb.KindQueryInvalid:
-		b := api.ErrorBody{Code: api.Invalid, Message: e.Message, QueryId: qid,
-			Fields: &[]api.FieldError{{Pointer: "/query", MessageKey: "query.invalid"}}}
-		if e.Position != nil {
-			b.Hint = hint("position", map[string]any{"offset": e.Position.Offset})
+	body := api.ErrorBody{Code: api.ErrorCode(c.Code), Message: c.Message, QueryId: qid}
+	switch c.Kind {
+	case apierr.BadQuery:
+		body.Fields = &[]api.FieldError{{Pointer: "/query", MessageKey: "query.invalid"}}
+		if c.Position != nil {
+			body.Hint = hint("position", map[string]any{"offset": *c.Position})
 		}
-		return http.StatusBadRequest, b, ""
-	case pulsusdb.KindTooBroad:
-		return http.StatusUnprocessableEntity, api.ErrorBody{Code: api.TooBroad, Message: e.Message, Hint: hint("action", "narrow"), QueryId: qid}, ""
-	case pulsusdb.KindRateLimited:
-		return http.StatusTooManyRequests, api.ErrorBody{Code: api.BudgetExhausted, Message: "PulsusDB is rate limiting this tenant",
-			Hint: hint("reason", "upstream_rate_limited"), QueryId: qid}, e.RetryAfter
-	case pulsusdb.KindBusy:
-		return http.StatusTooManyRequests, api.ErrorBody{Code: api.BudgetExhausted, Message: "too many queries in flight for this tenant",
-			Hint: hint("reason", "tenant_concurrency")}, "1"
-	case pulsusdb.KindTimeout:
-		return unavailable(http.StatusGatewayTimeout, "the query timed out", "upstream_timeout", "action", "narrow")
-	case pulsusdb.KindUnreachable:
-		return unavailable(http.StatusBadGateway, "PulsusDB could not be reached", "upstream_unreachable")
-	case pulsusdb.KindUnavailable:
-		return unavailable(http.StatusBadGateway, "PulsusDB is unavailable", "upstream_unavailable")
-	case pulsusdb.KindUnauthorised:
-		return unavailable(http.StatusBadGateway, "PulsusDB refused the datasource credentials", "upstream_unauthorised")
-	case pulsusdb.KindConfig:
-		return unavailable(http.StatusServiceUnavailable, "the datasource is misconfigured", "datasource_config")
-	case pulsusdb.KindScopeDenied:
-		return http.StatusForbidden, api.ErrorBody{Code: api.ScopeDenied, Message: "data scopes are not supported yet"}, ""
-	case pulsusdb.KindVirtual:
-		return http.StatusBadRequest, api.ErrorBody{Code: api.VirtualUnsupported, Message: e.Message, Hint: hint("reserved", e.Reserved),
-			Fields: &[]api.FieldError{{Pointer: "/" + e.Field, MessageKey: "query.reserved"}}}, ""
+	case apierr.Virtual:
+		body.Hint = hint("reserved", c.Reserved)
+		body.Fields = &[]api.FieldError{{Pointer: "/" + c.Field, MessageKey: "query.reserved"}}
+	case apierr.TooBroad:
+		body.Hint = hint("action", string(c.Suggestion))
+	case apierr.RateLimited, apierr.Busy:
+		body.Hint = hint("reason", c.Reason)
+		return c.Status, body, c.RetryAfter
+	case apierr.Timeout:
+		body.Hint = hint("reason", c.Reason, "action", string(c.Suggestion))
+	case apierr.Unavailable, apierr.Config:
+		body.Hint = hint("reason", c.Reason)
+	case apierr.ScopeDenied:
+	default: // Internal, Cancelled
+		return http.StatusInternalServerError, api.ErrorBody{Code: api.Internal, Message: "internal error"}, ""
 	}
-	return unavailable(http.StatusBadGateway, "PulsusDB returned an unexpected response", "upstream_error")
+	return c.Status, body, ""
 }
 
 // WriteErrorBody writes the error envelope {"error":{…}} with every field of body (T06 §5.2).

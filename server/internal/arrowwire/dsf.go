@@ -348,5 +348,6 @@ func streamPayload(rec arrow.RecordBatch) func(*payloadBuf) error {
 	}
 }
 
-// Err is the sticky io.Writer error, nil if none.
-func (w *Writer) Err() error { return nil }
+// Err is the sticky io.Writer error, nil if none: once set, nothing more reaches the io.Writer
+// and the body's state on it is unknown.
+func (w *Writer) Err() error { return w.err }
