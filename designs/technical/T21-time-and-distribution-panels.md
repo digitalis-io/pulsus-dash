@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.4-rc · 2026-11-25 |
+| **Version** | 1.5-rc · 2026-11-27 |
 | **Milestone** | M-UI3 (state timeline; histogram CDF/ECDF overlay) · M-UI5 (standalone histogram) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) |
 | **Source draft** | plans (not tracked) |
@@ -732,7 +732,7 @@ shared with I-F2.
 // histogram.ts (runs in histogram.worker.ts)
 export interface HistogramOptions { binMode: 'auto' | 'count' | 'width'; binCount: number; binWidth: number | null;
   scale: 'linear' | 'log'; groupBy: string | null; groupMode: 'stack' | 'overlay'; cumulative: 'none' | 'cdf' | 'ecdf';
-  unit: Unit /* the panel unit, as every kind gets it from `framePlan` (client/src/vis/framePlan.ts: '/s' after a rate rewrite, else none; #158's unit option later); used by the T21-013 display guard */ }
+  unit: Unit /* the panel unit, as every kind gets it from `framePlan` (client/src/vis/framePlan.ts: the panel unit, T22-015); used by the T21-013 display guard */ }
 // Worker message (histogramClient.ts → histogram.worker.ts): { runId: number; source: 'instant' | 'range'; o: HistogramOptions /* incl. unit */;
 //   q: Completeness; batch: { key: string; labels: Labels; timestamps: Float64Array; values: Float64Array; cont: boolean /* continues the previous entry's series */ }[]; last: boolean }
 export type HistogramResult = { kind: 'frame'; frame: HistogramFrame }
@@ -1045,3 +1045,4 @@ None.
 | 1.2-rc | 2026-11-25 | #154 (Part 2a): the histogram over raw values ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay)): T21-012 to T21-016 (values and exclusions, bins with the display guard and the terminal log rule, groups and "other (n)", CDF and exact ECDF, non-time interactions with the value brush and the `bin` Inspector target, the per-panel worker, the coverage meter and the notices); §3, §4.2, §4.3, §4.5, §4.6 and §7 rows; §5 histogram seam and transforms; the board spec moves the stateTimeline keys into T22's `Vis.options` and adds the histogram keys (T21-011, F7, F10 and the state-spec row follow); §10 H1 to H26; §11 I-F, I-F2 and #206; mockup 42-histogram. Code review r1: `SummaryFacts.extent` is `{ min; max } | null`, as T22-014 and T21-015 fill it |
 | 1.3-rc | 2026-11-25 | #206 (Part 2a-ii): histograms of histogram buckets ([VIZ-090](../product/05-visualisation-catalogue.md#viz-090--histogram-and-cumulative-overlay) amended): T21-060 to T21-069 (bucket sources and families with a strict `parseLe`, the shared bound set by drawable valid mass, snapshots validated on the original bounds and never repaired, one bin per bound with display extents and true-bound text, log exclusions of the open first bucket and of buckets crossing 0, groups and the CDF from cumulative counts, labelled estimates and facts, family selection and the Inspector, the meter, notices and table rows, validation); T21-012 sends `le` results to the bucket path and the `buckets` notice is removed (T21-016 notices, §5 `HistogramResult`); §1, §2 (the non-goal removed), §3 rows, §4.2 row; §5 bucket seam additions and `buckets.ts`; §10 H8 rewritten for I-G and the former H8 kept as I-F H8a (the interim `buckets` notice until I-G), B1 to B22, H21b and the H22 scenario; §11 I-G (#212); mockup 43-bucket-histogram |
 | 1.4-rc | 2026-11-25 | #208 Part 1 (I-F-a): T21-013 powers of ten as the exact `Number('1e' + e)` (`10 ** x` only for log-axis edges and the terminal rule, compared at a relative 1e−12); §10 H1c, H24 and H26 recomputed with it; §5 `histogramCoverageText(c, unit)` (the unit formats the widened width) and `summaryFacts(title, f, unit)`; `Slicer` in `slice.ts` with an optional `yieldNow`; `binEdges` takes the sorted drawable values in value units; the `groupKey` hash input; the worker batch entry's `cont` field (a chunk continuing the previous entry's series); §11 I-F in two parts (I-F-a, I-F-b). While GitHub Actions is off (owner decision, 2026-11-25), changed goldens are regenerated in a local container pinned to the CI job's versions ([T05](T05-testing-and-performance.md) `golden-update` path suspended) |
+| 1.5-rc | 2026-11-27 | #290: the histogram's `unit` comment names the panel unit ([T22-015](T22-value-categorical-and-table-panels.md#t22-015--one-stored-unit-per-panel)) in place of "#158's unit option later" |

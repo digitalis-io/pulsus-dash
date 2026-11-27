@@ -15,7 +15,9 @@ export type GalleryId =
   | 'line-thresholds'
   | 'stat-sparkline'
   | 'line-extreme'
-  | 'line-events';
+  | 'line-events'
+  | 'line-bytes-rate'
+  | 'stat-uptime';
 export interface GalleryEntry {
   readonly id: GalleryId;
   readonly spec: VisSpec;
@@ -24,6 +26,7 @@ export interface GalleryEntry {
   readonly events?: readonly EventMarker[];
 }
 
+const MIB = 1_048_576;
 const HEATMAP_BOUNDS = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, Infinity];
 
 /** Each series' finite values mapped onto [−MAX, MAX]: q = (v − lo)/(hi − lo), MAX·(2q − 1); NaN stays; hi === lo → 0. */
@@ -59,10 +62,11 @@ function galleryEvents(w: TimeWindow): EventMarker[] {
 }
 
 /**
- * The eleven entries in table order; entry `i` uses seed `(seed ?? GALLERY_SEED) + i`. Entries 7
+ * The thirteen entries in table order; entry `i` uses seed `(seed ?? GALLERY_SEED) + i`. Entries 7
  * and 8 show threshold lines and a stat sparkline (#64 Part B, ADR-0022); entry 9 spans values near
- * the largest finite number (#97); the last has three event markers, two of them gathered into a
- * `+2` chip (#64 Part C, ADR-0023).
+ * the largest finite number (#97); entry 10 has three event markers, two of them gathered into a
+ * `+2` chip (#64 Part C, ADR-0023); the last two are in the panel units of #290 (bytes per second
+ * on IEC ticks, and an uptime in days). None after the first four is a parity entry.
  */
 export function galleryEntries(w: TimeWindow, seed?: number): GalleryEntry[] {
   const s0 = seed ?? GALLERY_SEED;
@@ -165,6 +169,20 @@ export function galleryEntries(w: TimeWindow, seed?: number): GalleryEntry[] {
       },
       data: lines(10, 1, 1_440, 'checkout_requests_per_second', 1200, 300),
       events: galleryEvents(win),
+    },
+    {
+      id: 'line-bytes-rate',
+      spec: {
+        kind: 'line',
+        title: t('gallery.lineBytesRate'),
+        unit: { kind: 'bytes', perSecond: true },
+      },
+      data: lines(11, 1, 1_440, 'node_network_receive_bytes_per_second', 2.5 * MIB, 0.8 * MIB),
+    },
+    {
+      id: 'stat-uptime',
+      spec: { kind: 'stat', title: t('gallery.statUptime'), unit: { kind: 'time', base: 's' } },
+      data: { kind: 'scalar', scalar: { value: 671000, timestampMs: w.toMs } },
     },
   ];
 }

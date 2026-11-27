@@ -12,6 +12,8 @@ import {
   formatRangeShort,
   formatValue,
   formatZone,
+  tickBase,
+  unitLabel,
   type Unit,
 } from './format';
 
@@ -268,5 +270,78 @@ describe('unit:log-time', () => {
     expect(formatLogTime(1767229100000, 'America/New_York')).toBe('2025-12-31 19:58:20.000');
     expect(formatLogTime(1767229100000, 'Asia/Kolkata')).toBe('2026-01-01 06:28:20.000');
     expect(formatLogTime(1767229100005, 'UTC')).toBe('2026-01-01 00:58:20.005');
+  });
+});
+
+// unit:format-humans, the panel units (#290 §3.2, §3.3; T22-016, T02-011).
+describe('unit:format-humans units', () => {
+  const BPS: Unit = { kind: 'bytes', perSecond: true };
+  const BITS_PS: Unit = { kind: 'bits', prefix: 'si', perSecond: true };
+  it.each<[number, Unit, string]>([
+    [1204, { kind: 'none' }, '1.2k'],
+    [2026, { kind: 'plain' }, '2026'],
+    [1234567, { kind: 'plain' }, '1234567'],
+    [0.0123, { kind: 'plain' }, '0.0123'],
+    [1204, { kind: 'suffix', suffix: 'rps' }, '1.2k rps'],
+    [671000, { kind: 'time', base: 's' }, '7.77 d'],
+    [2843, { kind: 'time', base: 'ms' }, '2.84 s'],
+    [1500, { kind: 'time', base: 'us' }, '1.5 ms'],
+    [2500, { kind: 'time', base: 'ns' }, '2.5 µs'],
+    [1572864, { kind: 'bytes' }, '1.5 MiB'],
+    [1500000, { kind: 'bytes', prefix: 'si' }, '1.5 MB'],
+    [1.25e9, { kind: 'bits', prefix: 'si' }, '1.25 Gb'],
+    [1048576, { kind: 'bits', prefix: 'iec' }, '1 Mib'],
+    [12.5, { kind: 'suffix', suffix: '/s' }, '12.5 /s'],
+    [1204, { kind: 'suffix', suffix: 'req/s' }, '1.2k req/s'],
+    [1536, BPS, '1.5 KiB/s'],
+    [1500, { kind: 'bytes', prefix: 'si', perSecond: true }, '1.5 kB/s'],
+    [1.25e9, BITS_PS, '1.25 Gb/s'],
+    [1048576, { kind: 'bits', prefix: 'iec', perSecond: true }, '1 Mib/s'],
+    [38, { kind: 'percent' }, '38 %'],
+    [0.38, { kind: 'percentunit' }, '38 %'],
+    [0, BPS, '0 B/s'],
+    [0.5, BPS, '0.5 B/s'],
+    [-1572864, BPS, '-1.5 MiB/s'],
+    [999.5, { kind: 'bytes', prefix: 'si' }, '1 kB'],
+    [2.5e15, { kind: 'bytes' }, '2.22 PiB'],
+    [1e22, { kind: 'bits', prefix: 'si' }, '1e+22 b'],
+    [1e22, BPS, '1e+22 B/s'],
+    [1e22, { kind: 'plain' }, '1e+22'],
+    [NaN, { kind: 'plain' }, '—'],
+  ])('formatValue(%s, %o) = %s', (v, unit, want) => {
+    expect(formatValue(v, unit)).toBe(want);
+  });
+
+  it('compact: SI prefix and the unit tail', () => {
+    expect(formatCompact(1536, BPS)).toBe('1.54k B/s');
+    expect(formatCompact(1536, { kind: 'plain' })).toBe('1.54k');
+    expect(formatCompact(1500, { kind: 'bits', prefix: 'iec' })).toBe('1.5k b');
+    expect(compactSamples(BITS_PS)[4]).toBe('-88.8 b/s');
+    expect(compactSamples({ kind: 'bytes', prefix: 'si' })[4]).toBe('-88.8 B');
+  });
+
+  it('tickBase and unitLabel', () => {
+    const units: [Unit, 1000 | 1024, string | null][] = [
+      [{ kind: 'none' }, 1000, null],
+      [{ kind: 'plain' }, 1000, null],
+      [{ kind: 'suffix', suffix: 'rps' }, 1000, 'rps'],
+      [{ kind: 'time', base: 's' }, 1000, 's'],
+      [{ kind: 'time', base: 'us' }, 1000, 'µs'],
+      [{ kind: 'bytes' }, 1024, 'B'],
+      [{ kind: 'bytes', prefix: 'iec' }, 1024, 'B'],
+      [{ kind: 'bytes', prefix: 'si' }, 1000, 'B'],
+      [BPS, 1024, 'B/s'],
+      [{ kind: 'bytes', prefix: 'si', perSecond: true }, 1000, 'B/s'],
+      [{ kind: 'bits', prefix: 'si' }, 1000, 'b'],
+      [{ kind: 'bits', prefix: 'iec' }, 1024, 'b'],
+      [BITS_PS, 1000, 'b/s'],
+      [{ kind: 'bits', prefix: 'iec', perSecond: true }, 1024, 'b/s'],
+      [{ kind: 'percent' }, 1000, '%'],
+      [{ kind: 'percentunit' }, 1000, '%'],
+    ];
+    for (const [u, base, label] of units) {
+      expect(tickBase(u), JSON.stringify(u)).toBe(base);
+      expect(unitLabel(u), JSON.stringify(u)).toBe(label);
+    }
   });
 });

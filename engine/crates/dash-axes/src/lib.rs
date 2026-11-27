@@ -127,10 +127,6 @@ pub fn layout_plot(
     }
 }
 
-fn base_of(unit: &Unit) -> u32 {
-    if *unit == Unit::Bytes { 1024 } else { 1000 }
-}
-
 /// Ticks and domain: auto = draw.ts `valueAxis` over [min(0, data_min), data_max]; manual =
 /// `value_ticks(r)` filtered to r with a 1e-9 relative tolerance, domain r (#93's plan §3.5).
 /// Both fall back to `extreme_ticks` when `value_ticks` returns None.
@@ -146,7 +142,7 @@ fn ticks_of(
     event_band: f64,
 ) -> (Range64, Vec<f64>) {
     let height = layout_plot(kind, css_w, css_h, 0.0, event_band).height;
-    let base = base_of(unit);
+    let base = dash_units::tick_base(unit);
     match manual {
         None => {
             let lo = data_min.min(0.0);

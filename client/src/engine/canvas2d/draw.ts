@@ -28,7 +28,7 @@ import {
   type HeatmapFrame,
   type SeriesFrame,
 } from '../../data/frames';
-import { compactSamples, formatCompact, formatValue, type Unit } from '../../i18n/format';
+import { compactSamples, formatCompact, formatValue, tickBase, type Unit } from '../../i18n/format';
 import type {
   EventMarker,
   FrameSelection,
@@ -456,7 +456,7 @@ interface ValueAxis {
 /** The value axis of line and bars: auto from the data, or the manual range (#93). */
 function valueAxis(i: LayerInput, dataMin: number, dataMax: number, unit: Unit): ValueAxis {
   const height = layoutPlot(i.spec.kind, i.cssW, i.cssH, 0, bandOf(i)).height;
-  const base = unit.kind === 'bytes' ? 1024 : 1000;
+  const base = tickBase(unit);
   const r = i.valueRange;
   let ticks: readonly number[];
   let domain: ValueRange;

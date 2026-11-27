@@ -41,6 +41,7 @@ import { locationOf, renderApp, type RenderAppOptions } from '../../test/renderA
 import { seedWith } from '../../test/seeds';
 import { fromRange } from '../../vis/autovis';
 import { framePlan } from '../../vis/framePlan';
+import { panelUnits } from '../../vis/units';
 
 // The panel editor's Query field loads the editor chunk: a textarea stands in (plan #64 A.5).
 vi.mock('../../editor/editor', () => import('../../test/fakeEditor'));
@@ -1053,7 +1054,7 @@ function frameDataOf(r: RangeResult, vis: VisKind): FrameData {
   const plan = framePlan(vis, fromRange(r), {
     isolatedKey: null,
     title: 'Request rate',
-    rateApplied: r.planned.rateApplied,
+    units: panelUnits(undefined, vis, r.planned.rateApplied),
   });
   if (plan.data === null) throw new Error(`no frame data: ${plan.notice}`);
   return plan.data;

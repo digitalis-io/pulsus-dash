@@ -109,14 +109,60 @@ export function formatZone(tz: string, atMs: number): string {
   return `${tz} (${offset})`;
 }
 
-/** The unit of a chart value (VL-012). */
+/**
+ * The unit of a chart value (VL-012; the panel units of T22-016, #290): `none` is an SI-prefixed
+ * number and `plain` a number with no prefix; `bytes` are IEC (`prefix` absent or `iec`) or SI;
+ * `bits` SI or IEC; `perSecond` appends `/s` to every scale of bytes and bits.
+ */
 export type Unit =
   | { readonly kind: 'none' }
+  | { readonly kind: 'plain' }
   | { readonly kind: 'time'; readonly base: 'ns' | 'us' | 'ms' | 's' }
-  | { readonly kind: 'bytes' }
+  | { readonly kind: 'bytes'; readonly prefix?: 'iec' | 'si'; readonly perSecond?: true }
+  | { readonly kind: 'bits'; readonly prefix: 'iec' | 'si'; readonly perSecond?: true }
   | { readonly kind: 'percent' }
   | { readonly kind: 'percentunit' }
   | { readonly kind: 'suffix'; readonly suffix: string };
+
+/** Whether `u`'s scales are powers of 1024: IEC bytes (the default) and IEC bits. */
+function iec(u: Extract<Unit, { kind: 'bytes' | 'bits' }>): boolean {
+  return u.kind === 'bytes' ? u.prefix !== 'si' : u.prefix === 'iec';
+}
+
+/** The base of `u`'s value ticks (`valueTicks`): 1024 for IEC bytes and bits, else 1000. */
+export function tickBase(u: Unit): 1000 | 1024 {
+  return (u.kind === 'bytes' || u.kind === 'bits') && iec(u) ? 1024 : 1000;
+}
+
+const TIME_LABEL: Readonly<Record<'ns' | 'us' | 'ms' | 's', string>> = {
+  ns: 'ns',
+  us: 'µs',
+  ms: 'ms',
+  s: 's',
+};
+
+/**
+ * The panel header's unit chip: the suffix; `s`, `ms`, `µs`, `ns`; `B`, `B/s`, `b`, `b/s`; `%`.
+ * None for a plain or SI-prefixed number.
+ */
+export function unitLabel(u: Unit): string | null {
+  switch (u.kind) {
+    case 'suffix':
+      return u.suffix;
+    case 'time':
+      return TIME_LABEL[u.base];
+    case 'bytes':
+      return u.perSecond === true ? 'B/s' : 'B';
+    case 'bits':
+      return u.perSecond === true ? 'b/s' : 'b';
+    case 'percent':
+    case 'percentunit':
+      return '%';
+    case 'none':
+    case 'plain':
+      return null;
+  }
+}
 
 /** `x.toPrecision(d)` with the mantissa's trailing zeros dropped. */
 function precision(x: number, d: number): string {
@@ -160,10 +206,37 @@ const SI: readonly Scale[] = ['', 'k', 'M', 'G', 'T', 'P'].map((text, i) => ({
   size: 1000 ** i,
   text,
 }));
-const IEC: readonly Scale[] = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'].map((text, i) => ({
-  size: 1024 ** i,
-  text,
-}));
+/** The scales of `texts` at powers of `base`, each text followed by `tail`. */
+const scalesOf = (texts: readonly string[], base: number, tail = ''): readonly Scale[] =>
+  texts.map((text, i) => ({ size: base ** i, text: `${text}${tail}` }));
+const IEC_BYTES = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+const SI_BYTES = ['B', 'kB', 'MB', 'GB', 'TB', 'PB'];
+const SI_BITS = ['b', 'kb', 'Mb', 'Gb', 'Tb', 'Pb'];
+const IEC_BITS = ['b', 'Kib', 'Mib', 'Gib', 'Tib', 'Pib'];
+const IEC: readonly Scale[] = scalesOf(IEC_BYTES, 1024);
+/** The data scales by kind, prefix and per second (built once: `formatValue` runs per label). */
+const DATA: Readonly<Record<string, readonly Scale[]>> = {
+  'bytes|iec|': IEC,
+  'bytes|iec|/s': scalesOf(IEC_BYTES, 1024, '/s'),
+  'bytes|si|': scalesOf(SI_BYTES, 1000),
+  'bytes|si|/s': scalesOf(SI_BYTES, 1000, '/s'),
+  'bits|si|': scalesOf(SI_BITS, 1000),
+  'bits|si|/s': scalesOf(SI_BITS, 1000, '/s'),
+  'bits|iec|': scalesOf(IEC_BITS, 1024),
+  'bits|iec|/s': scalesOf(IEC_BITS, 1024, '/s'),
+};
+
+/** `/s` for a per-second data unit, else ''. */
+const perSecond = (u: Extract<Unit, { kind: 'bytes' | 'bits' }>): string =>
+  u.perSecond === true ? '/s' : '';
+
+/** A data unit's base symbol and its per-second tail: `B`, `B/s`, `b`, `b/s`. */
+const dataBase = (u: Extract<Unit, { kind: 'bytes' | 'bits' }>): string =>
+  `${u.kind === 'bytes' ? 'B' : 'b'}${perSecond(u)}`;
+
+function dataScales(u: Extract<Unit, { kind: 'bytes' | 'bits' }>): readonly Scale[] {
+  return DATA[`${u.kind}|${iec(u) ? 'iec' : 'si'}|${perSecond(u)}`] ?? IEC;
+}
 const TIME: readonly Scale[] = [
   { size: 1e-9, text: 'ns' },
   { size: 1e-6, text: 'µs' },
@@ -184,11 +257,13 @@ const TIME_BASE: Readonly<Record<'ns' | 'us' | 'ms' | 's', number>> = {
 function baseTail(unit: Unit): string {
   switch (unit.kind) {
     case 'none':
+    case 'plain':
       return '';
     case 'suffix':
       return ` ${unit.suffix}`;
     case 'bytes':
-      return ' B';
+    case 'bits':
+      return ` ${dataBase(unit)}`;
     case 'percent':
     case 'percentunit':
       return ' %';
@@ -205,8 +280,9 @@ function baseValue(v: number, unit: Unit): number {
 }
 
 /**
- * A chart value in its unit (VL-012, T08-027, T21-013): `2.84 s`, `1.2k rps`, `38 %`, `1.5 GiB`.
- * SI prefixes for plain numbers, IEC for bytes, the largest time unit whose value is at least 1.
+ * A chart value in its unit (VL-012, T08-027, T21-013, T22-016): `2.84 s`, `1.2k rps`, `38 %`,
+ * `1.5 GiB`, `1.25 Gb/s`. SI prefixes for `none`, none for `plain`, IEC or SI scales for bytes and
+ * bits (with `/s` per second), the largest time unit whose value is at least 1.
  * `digits` 3 (the default): three significant digits, or the rounded integer from 100; 4 to 17:
  * `toPrecision(digits)` at every magnitude. Trailing zeros are dropped. A converted value c ≥ 1e21
  * or 0 < c < 1e−12 is `toPrecision(digits)` in exponent form plus the base tail (`1e+21`,
@@ -223,10 +299,13 @@ export function formatValue(v: number, unit: Unit, digits = 3): string {
   switch (unit.kind) {
     case 'none':
       return v < 1 ? sig(v, d) : scaled(v, SI, '', d);
+    case 'plain':
+      return sig(v, d);
     case 'suffix':
       return `${v < 1 ? sig(v, d) : scaled(v, SI, '', d)} ${unit.suffix}`;
     case 'bytes':
-      return v < 1 ? `${sig(v, d)} B` : scaled(v, IEC, ' ', d);
+    case 'bits':
+      return v < 1 ? `${sig(v, d)} ${dataBase(unit)}` : scaled(v, dataScales(unit), ' ', d);
     case 'percent':
       return `${sig(v, d)} %`;
     case 'percentunit':
@@ -260,6 +339,7 @@ const PREFIX_MAX = 6;
 function compactParts(v: number, unit: Unit): { n: number; tail: string } {
   switch (unit.kind) {
     case 'none':
+    case 'plain':
       return { n: v, tail: '' };
     case 'suffix':
       return { n: v, tail: ` ${unit.suffix}` };
@@ -268,7 +348,8 @@ function compactParts(v: number, unit: Unit): { n: number; tail: string } {
     case 'percentunit':
       return { n: v * 100, tail: ' %' };
     case 'bytes':
-      return { n: v, tail: ' B' };
+    case 'bits':
+      return { n: v, tail: ` ${dataBase(unit)}` };
     case 'time':
       return { n: v * TIME_BASE[unit.base], tail: ' s' };
   }
@@ -277,7 +358,8 @@ function compactParts(v: number, unit: Unit): { n: number; tail: string } {
 /**
  * A value in at most four significant characters, an SI prefix and the unit's tail (T02-011, the
  * labels of a held value band, #93). Never truncates: the sign is kept and the value is |v| to
- * three significant digits. Bytes use SI prefixes (exact in value); time is in seconds. Outside
+ * three significant digits. Bytes and bits use SI prefixes (exact in value) with their tail (`B`,
+ * `B/s`, `b`, `b/s`); a plain number its SI prefix and no tail; time is in seconds. Outside
  * 1e-12 ≤ |v| < 1e21 (in the converted unit) it falls back to the plain three-digit form.
  */
 export function formatCompact(v: number, unit: Unit): string {

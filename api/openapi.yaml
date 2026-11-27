@@ -718,7 +718,19 @@ components:
         kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs, barchart, pie, text, clock, boardList, geomap] }
         thresholds: { $ref: '#/components/schemas/Thresholds' }
         legend: { $ref: '#/components/schemas/Legend' }
+        unit: { $ref: '#/components/schemas/PanelUnit' }
         options: { $ref: '#/components/schemas/VisOptions' }
+    # Board spec v8, the units version (#290, T22 §6.2): the panel's unit. The ids equal
+    # api/fixtures/board-spec/unit-ids.json (board.unit.id.invalid); a suffix only with custom, of 1
+    # to 16 code points with no White_Space or Cc code point (board.unit.suffix.invalid); a widget
+    # has no unit (board.json.unknownKey). These are server rules, not schema.
+    PanelUnit:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id: { type: string }
+        suffix: { type: string }
     # Board spec v3 (#173 Part 1, T22 §6.1): the kind's options. Every key is optional; which keys a
     # kind allows, the bounds of min and max (|v| <= 1e15, min < max), the categoryBy label pattern
     # and the stat textMode/layout combination are server rules (board.json.unknownKey,

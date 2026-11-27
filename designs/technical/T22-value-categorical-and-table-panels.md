@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.10-rc · 2026-11-27 |
+| **Version** | 1.11-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (stat delta), M-UI2 (bar chart), M-UI5 (pie, stat grid) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0028](../adr/0028-chart-seam-bar-chart.md) (the I1 seam, #173 Part 2), [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md) (the bar chart's keys and brush, #173 Part 3a) |
 | **Source draft** | plans/151/plan.md (not tracked) |
@@ -53,6 +53,7 @@ None of the three kinds gets a 3D form (§4.2); 3D columns move to #157.
 | [VIZ-067](../product/05-visualisation-catalogue.md#viz-067--colour-is-never-the-only-channel), [VIZ-069](../product/05-visualisation-catalogue.md#viz-069--gallery-is-the-vis-test-corpus) | T22-004, §10 | `unit:category-colour`; `golden:interim-gallery` with greyscale variants |
 | [VIZ-068](../product/05-visualisation-catalogue.md#viz-068--screen-reader-summary-per-viewport) | T22-014 (facts; text in #160) | `unit:category-summary-facts` |
 | [VIZ-095](../product/05-visualisation-catalogue.md#viz-095--stat-baseline-delta) | T22-012 | `e2e:board-stat-delta` |
+| [VL-012](../product/08-visual-language.md#vl-012--numbers-for-humans), [VIZ-057](../product/05-visualisation-catalogue.md#viz-057--field-configuration-parity) (the units subset of Table 5-10) | T22-015, T22-016, T22-017, §6.2 (#290) | `unit:unit-catalogue`, `unit:panel-units`, `unit:unit-picker`, `unit:board-spec-units`, `unit:number-format`, `e2e:board-units` |
 
 New gates are defined in §10. Each issue adds its gates to [T05](T05-testing-and-performance.md) §7.1.
 
@@ -157,6 +158,15 @@ Amended by #216 Part 2a: `PanelTable` shows any `TableView` (§5; `PanelRows` is
 
 #### T22-014 — Summary facts
 **MUST** — `summaryFacts` MUST fill `SummaryFacts` (VIZ-068). `subject` = title. *Focus mark* = the single tile, else the worst state (ties: higher value, then lower key). `current` = the focus mark's reduced value (formatted) and name. `change` is **one event** in the focus series: the largest \|Δ\| between consecutive finite samples in the window (first on ties); `from` = the value before it, `to` = the value after it, `atMs` (onset) = the time of the after sample. It is null for instant results and for fewer than 2 finite samples. `extent` = min and max of the **reduced mark values** (every pre-cap mark), not raw samples; null if none is finite. `baselineRatio` = current / the focus mark's baseline, when both are finite, the baseline ≠ 0 and the baseline run is complete (not truncated and no warnings, T22-006); otherwise null. #160 writes the text
+
+#### T22-015 — One stored unit per panel
+**MUST** — A data panel stores at most one unit, `vis.unit` (§6.2), and every panel plan MUST resolve it with one pure function, `panelUnits(vis, kind, rateApplied)` (`client/src/vis/units.ts`, main thread), on the drawn kind after Auto resolution (an Auto histogram is a heatmap). It gives the value unit and a heatmap's count unit. With no stored unit: `/s` after the planner's rate rewrite, else none (a heatmap's bounds: none). With one: its unit, rated (T22-017) after the rewrite on every kind but the heatmap, whose bucket bounds are never rated; the count unit is `/s` after the rewrite, else none. Line, bars and stat use the value unit, the heatmap both; the bar chart's model and the geomap the value unit. A frame view carries its resolved units, so a series isolation re-plans with them, and every plan or model cache is keyed by the resolved unit, never by the rate alone. A log volume frame and the log stream ignore `vis.unit`; Explore stores none. Every surface (axes, legends, the stat tile, tooltips, accessible text, the Inspector, the header chip) formats from the spec's unit; thresholds stay raw base-unit values ([ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md)). Per-query units (#204) and field overrides (#158) keep `vis.unit` valid.
+
+#### T22-016 — The unit catalogue and its rules
+**MUST** — The catalogue is 19 ids in five groups (General `count`, `none`, `custom`; Time `seconds`, `milliseconds`, `microseconds`, `nanoseconds`; Data `bytes` (IEC), `bytesSI`, `bits` (SI), `bitsIEC`; Rate `perSecond`, `reqPerSecond`, `bytesPerSecond`, `bytesSIPerSecond`, `bitsPerSecond`, `bitsIECPerSecond`; Percent `percent`, `percentUnit`), equal to `api/fixtures/board-spec/unit-ids.json`. Each maps to a `Unit` of `client/src/i18n/format.ts`, which owns the rules: `none` SI-prefixed; `plain` no prefix; IEC bytes `B KiB MiB GiB TiB PiB` (1024ⁱ), SI bytes `B kB MB GB TB PB`, SI bits `b kb Mb Gb Tb Pb`, IEC bits `b Kib Mib Gib Tib Pib`; per second appends `/s` to every scale (`1.5 KiB/s`, `0.5 B/s`); time `ns µs ms s min h d`; three significant digits or the rounded integer from 100, trailing zeros dropped, carried while the digits reach the next size; the out-of-range form and the compact form with the unit's tail (bytes ` B`/` B/s`, bits ` b`/` b/s`, plain none). `tickBase` is 1 024 for IEC bytes and bits, else 1 000; `unitLabel` is the header chip. The Rust `dash-units` MUST mirror the union and the rules byte for byte on the shared fixtures (`format.json`, `layout.json`; `unit:number-format`, `unit:layout-parity`), so #69's engine text needs no other source.
+
+#### T22-017 — A rate makes units per second
+**MUST** — When the planner rates a query, the panel's value unit MUST become per second for data and count units, never for time or percent: none → `/s`; a suffix `x` not ending in `/s` → `x/s`; bytes and bits → per second; seconds, the percents and `plain` are kept. The panel editor's Unit field says so when the preview's query is rated and the unit changes (`Shown per second (B/s): the query is rated`).
 
 ### 4.5 Auto-vis (Table 5-13) and import (VIZ-060)
 | Row | Condition | Result |
@@ -308,6 +318,18 @@ A later key addition bumps `schema_version`, with an identity upcaster (T11-016)
 | textMode | `auto`\|`value`\|`valueAndName`\|`name` (`auto`: `value` for one tile, `valueAndName` in a grid; `value` with `layout: 'grid'` is invalid) | `auto` | stat |
 | graphMode | `sparkline`\|`none` | `sparkline` | stat |
 
+### 6.2 Board spec v8, the units version (OpenAPI `Vis.unit`, Go `internal/spec`, TS `boards/spec.ts`)
+`Vis` gains `unit`, a `PanelUnit` (`additionalProperties: false`): `id` required, `suffix` optional. The rules, in Go `vis()` and TS `checkBoardSpec`, after the legend and before the options:
+
+| Condition | Pointer | Key |
+|---|---|---|
+| a unit on a widget kind | `…/vis/unit` | `board.json.unknownKey` |
+| `id` not in the catalogue (T22-016) | `…/vis/unit/id` | `board.unit.id.invalid` |
+| `id` `custom` without a suffix; or another `id` with one | `…/vis/unit` (absent); `…/vis/unit/suffix` | `board.unit.suffix.invalid` |
+| a suffix of 0 or more than 16 code points, or with a Unicode `White_Space` or `Cc` code point | `…/vis/unit/suffix` | `board.unit.suffix.invalid` |
+
+Versions 1 to 7 decode unchanged into the units version (the identity upcast, [T11-016](T11-postgres-schema.md#t11-016--document-upcasters-are-golden-tested)); an older server reads none of it (`ErrSchemaTooNew`) and refuses a `vis.unit` with `board.json.unknownKey` at the panel's `…/vis/unit`, which the client shows as "This server does not support panel units yet". The number is the next free one ([T24](T24-geo-schematic-and-widget-panels.md) §5.0; v8 when it landed).
+
 ## 7. Performance budget
 
 Targets: 200 bars, 6 wedges, 64 tiles. `bench:frame-interim-categories` takes 50 timed draws per T22 gallery page and reports p50/p95 (report only until #68). Engine gates come with I4 (§11).
@@ -455,3 +477,4 @@ None.
 | 1.8-rc | 2026-11-26 | #173 Part 3a (I1, the bar chart's interactions at unit and component level): new [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md) (header); T22-010 gains the key table on the mirror listbox and the focus mark; §4.3 the bar tooltip lines (the crosshair n/a line of T22-011, the baseline run's gaps, the filter hint, the anomaly note); T22-013 the `PanelTable` ids, the pinned active row, the caption and the focusable `tooSmall` notice; §5.1 `PickEvent.source` and `InspectTarget` in `inspector/types.ts` (`panelId: string \| null`, `kind: 'barchart'`, `query` nullable); §6.1 a kind change keeps only valid values |
 | 1.9-rc | 2026-11-27 | #173 Part 3b (I1, the board and Explore surfaces): §3 VIZ-065 row 11 staging; T22-006 the meter's Narrow on a board; T22-007 the I1 interim (the filter is written, nothing re-runs until #193) and the full-screen click; T22-012 the I1 baseline run (PromQL barchart, one run controller linked to the query signal, a failed baseline never fails the panel; ghost and anomaly as session toggles; none on Explore); §4.5 by surface (board `auto` keeps the default set, the draft preview included; Explore passes `EXPLORE_VIS`); §10.3 the `e2e:categorical-coverage` bar rows (Narrow), `e2e:bars-filter` (interim), `e2e:selection-keys` (the legend's Select toggle), `e2e:categorical-table-view` (`bars_many` with one NaN series) |
 | 1.10-rc | 2026-11-27 | #216 Part 2a ([T24](T24-geo-schematic-and-widget-panels.md) I2, the Board list view): §5 `TableView` (`columns`, rows of `key`, `drawn`, `cells`), `PanelRows` rows gain `key` (the mark's key), `panelCsv` takes a `TableView`; T22-013 a caller's caption and close label, and null rows (the state text, Export disabled) |
+| 1.11-rc | 2026-11-27 | #290 (panel units): T22-015 one stored unit per panel, resolved by `panelUnits` on the drawn kind (isolation and the caches keyed by the resolved unit); T22-016 the catalogue and the format rules in `format.ts`, mirrored by `dash-units` on shared fixtures; T22-017 a rate rewrite makes data and count units per second, never time or percent; §6.2 the units version (`vis.unit`); §3 VL-012 and VIZ-057 (units subset) |

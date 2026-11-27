@@ -89,6 +89,8 @@ export const GALLERY_IDS = [
   'stat-sparkline',
   'line-extreme',
   'line-events',
+  'line-bytes-rate',
+  'stat-uptime',
   'barchart',
   'barchart-thresholds',
   'barchart-dupes',

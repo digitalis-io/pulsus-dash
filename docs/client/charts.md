@@ -123,10 +123,26 @@ dropped (`1234` at 4 → `1.234k`, `123.456` at 5 → `123.46`, `6.9999999999999
 | Unit | Examples |
 |---|---|
 | `none` | `0`, `0.0123`, `1.2k`, `-1.2k`, `1P` (SI prefixes k, M, G, T, P from 1 000; none below 1) |
-| `suffix` | `1.2k rps` |
-| `time` (`base` ns, us, ms or s) | `150 ns`, `120 ms`, `2.84 s`, `1 min`; the largest of ns, µs, ms, s, min, h, d whose value is at least 1; `0` → `0 s` |
-| `bytes` | `512 B`, `1023 B`, `1 KiB`, `1.5 GiB` (IEC, ×1 024) |
+| `plain` (#290) | `2026`, `1234567`, `0.0123`: three significant digits or the rounded integer, no prefix |
+| `suffix` | `1.2k rps`, `12.5 /s`, `1.2k req/s` |
+| `time` (`base` ns, us, ms or s) | `150 ns`, `120 ms`, `2.84 s`, `1 min`, `7.77 d`; the largest of ns, µs, ms, s, min, h, d whose value is at least 1; `0` → `0 s` |
+| `bytes` (`prefix` absent or `iec`) | `512 B`, `1023 B`, `1 KiB`, `1.5 GiB` (IEC: B, KiB, MiB, GiB, TiB, PiB, ×1 024) |
+| `bytes`, `prefix: 'si'` (#290) | `1.5 MB`, `999.5` → `1 kB` (SI: B, kB, MB, GB, TB, PB, ×1 000) |
+| `bits`, `prefix` `si` or `iec` (#290) | `1.25 Gb` (b, kb, Mb, Gb, Tb, Pb); `1 Mib` (b, Kib, Mib, Gib, Tib, Pib) |
+| `perSecond: true` on bytes or bits (#290) | `/s` on every scale: `1.5 KiB/s`, `1.5 kB/s`, `1.25 Gb/s`, `0.5 B/s`, `0 B/s`, `-1.5 MiB/s` |
 | `percent` / `percentunit` | `38 %` from 38 / from 0.38 |
+
+Below 1, bytes and bits are `${sig(v)} B` or `b` with the per-second tail (`0.5 B/s`).
+`tickBase(unit)` is the base of the value ticks: 1 024 for IEC bytes (the default) and IEC bits, so
+an axis of 0 to 3 MiB/s reads `0 B/s`, `1 MiB/s`, `2 MiB/s`, `3 MiB/s`; 1 000 for everything else.
+Canvas 2D's line, bars and bar-chart axes call it, and so does the Rust port (`dash_units::tick_base`,
+used by `dash-axes`). `unitLabel(unit)` is the panel header's unit chip: the suffix; `s`, `ms`,
+`µs`, `ns`; `B`, `B/s`, `b`, `b/s`; `%`; none for `none` and `plain`.
+
+**Rate promotion (T22-017, #290).** `rated(unit)` in `src/vis/units.ts` is the unit of a query the
+planner rated: `none` becomes `/s`; a suffix not ending in `/s` gains it (`req` → `req/s`); bytes and
+bits become per second; time, percent and plain are kept. Boards resolve a panel's stored unit with
+it ([Boards › Panel units](boards.md#panel-units-290)).
 
 A value that rounds up to the next unit is carried (`999.6 ms` → `1 s`, `59.99 s` → `1 min`,
 `1048575 B` → `1 MiB`). `NaN` is `—`, infinities `+Inf` and `-Inf`.
@@ -135,7 +151,8 @@ A value that rounds up to the next unit is carried (`999.6 ms` → `1 s`, `59.99
 `percentunit`, seconds for `time`) is c ≥ 1e21 or 0 < c < 1e−12, it is written as
 `toPrecision(digits)` in exponent form plus the base tail, as `formatCompact` does: `1e21` →
 `1e+21` (was `1000000P`), `2.5e22` → `2.5e+22`, `1e-4` ns → `1e-13 s` (was `0.0001 ns`), `1e22` B →
-`1e+22 B` (was `8881784 PiB`), `5e21` rps → `5e+21 rps`. Every other output is unchanged
+`1e+22 B` (was `8881784 PiB`), `5e21` rps → `5e+21 rps`, `1e22` bits → `1e+22 b`, `1e22` bytes per
+second → `1e+22 B/s`, `1e22` plain → `1e+22`. Every other output is unchanged
 (`1e19` percentunit stays `1e+21 %`, `1e-13` stays `1e-13`). Axis tick labels follow, so a value
 axis of such ticks can be narrower; the Rust port (`dash-units` `format_value`, three digits only)
 matches byte for byte on `engine/fixtures/format.json`, and `dash-axes` on `layout.json`. `formatHourMinute` and
@@ -150,7 +167,9 @@ and the unit's tail. It never truncates.
 | `none` | v | (none) | `0.000015` → `15µ`; `-1234` → `-1.23k`; `999600` → `1M` |
 | `suffix` | v | ` <suffix>` | `-0.00002` rps → `-20µ rps` |
 | `percent` / `percentunit` | v / v · 100 | ` %` | `1234567` → `1.23M %` |
-| `bytes` | v | ` B` | `1536` → `1.54k B` (SI, exact in value) |
+| `plain` | v | (none) | `1536` → `1.54k` |
+| `bytes` | v | ` B`, ` B/s` | `1536` → `1.54k B` (SI, exact in value); per second `1.54k B/s` |
+| `bits` | v | ` b`, ` b/s` | `1500` → `1.5k b` |
 | `time` | v in seconds | ` s` | ms `-3590000` → `-3.59k s` |
 
 Zero is `0` plus the tail; `NaN` and infinities are as `formatValue`. Outside
@@ -812,7 +831,7 @@ disabled, and a caller's `caption` and `closeLabel` (#216 Part 2a: the Board lis
 `/t/:tenant/dev/gallery` (development and stub builds only: the route is in the router only when
 `import.meta.env.DEV` or `VITE_API_MODE` is not `http`, so `http` builds contain neither the route
 nor its chunk; CI checks the `http` build's manifest). There is no navigation entry. The page draws
-sixteen charts: eleven frames from seeded synthetic data for the current window (`src/dev/synth.ts`,
+eighteen charts: thirteen frames from seeded synthetic data for the current window (`src/dev/synth.ts`,
 `src/dev/gallery.ts`, seed `GALLERY_SEED` = 20261120 plus the entry index; keys from a development
 FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 
@@ -829,6 +848,8 @@ FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 | `stat-sparkline` | p99 latency with a sparkline, 1 series × 120 points (ms) |
 | `line-extreme` | Values near the largest finite number, 1 series × 1 440 points mapped onto [−MAX, MAX] (#97) |
 | `line-events` | Request rate with deploy and change markers, 1 series × 1 440 points (`rps`): a deploy at 30 % of the window, and a config and a feature flag change 30 s apart at 70 %, gathered into a `+2` chip (#64 Part C) |
+| `line-bytes-rate` | Network receive rate, 1 series × 1 440 points in bytes per second (synthetic base 2.5 MiB/s, amplitude 0.8 MiB/s, both scaled by the series' seeded factor), on IEC ticks: `0 B/s`, `512 KiB/s`, `1 MiB/s` … (#290) |
+| `stat-uptime` | Uptime, 671 000 s → `7.77 d` (#290) |
 
 and five bar charts (#173 Part 2, `src/dev/galleryBars.ts`), each a `barchartModel` in
 `CategoryChart`, horizontal, its canvas `--size-chart` high with the meter line below:
@@ -849,7 +870,8 @@ The same window always gives the same pixels; the gallery is the corpus of
 `bench:frame-interim-line` ([Build, test and CI](../development/build-and-ci.md)).
 The minimum value band (#93) widened the band of the line, bars and heatmap charts, so their
 baselines were re-baselined once under the `golden-update` label; stat is unchanged. The two #64 Part B
-entries, `line-extreme` (#97) and `line-events` (#64 Part C) got their baselines from CI under the same label. They are not Rust parity fixtures:
+entries, `line-extreme` (#97) and `line-events` (#64 Part C) got their baselines from CI under the same label;
+`line-bytes-rate` and `stat-uptime` (#290) got theirs in the pinned e2e container. They are not Rust parity fixtures:
 `scripts/engine-fixtures.ts` selects `PARITY_LINE_IDS` (`line-1`, `line-50`, `line-gaps`,
 `line-600`) and projects each summary to its parity fields, so `engine/fixtures/` is unchanged. The
 script (and `scripts/threshold-draw-probe.ts`) load a CSS module as a class-name proxy, so
