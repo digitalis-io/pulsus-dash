@@ -18,7 +18,7 @@ export const NONE: Stats = { min: null, max: null, last: null };
 
 /** Line: min and max over every finite shown value; last = the highest last finite value. */
 /** The first index with `t ≥ x` (`t > x` when `after`), in an increasing array. */
-function lowerBound(t: Float64Array, x: number, after = false): number {
+export function lowerBound(t: Float64Array, x: number, after = false): number {
   let lo = 0;
   let hi = t.length;
   while (lo < hi) {

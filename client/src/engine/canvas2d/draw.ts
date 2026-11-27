@@ -52,6 +52,7 @@ import {
   frameSummary,
   heatmapStats,
   lineStats,
+  lowerBound,
   NONE,
   stackedTotals,
   type Stats,
@@ -522,10 +523,25 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
     stats,
     axisSummary(i, axis),
   );
+  // A held span (#304 §A.3): the crosshair and the hover read only the samples inside `fit`, so
+  // the keys never walk into the flanks off screen.
+  const fit = i.data.kind === 'series' ? i.data.fit : undefined;
+  const picked =
+    fit === undefined
+      ? shown
+      : shown.map((s) => {
+          const lo = lowerBound(s.timestamps, fit.fromMs);
+          const hi = lowerBound(s.timestamps, fit.toMs, true);
+          return {
+            ...s,
+            timestamps: s.timestamps.subarray(lo, hi),
+            values: s.values.subarray(lo, hi),
+          };
+        });
   const pick: PickModel = {
     kind: 'line',
-    ref: shown[0]?.timestamps ?? new Float64Array(0),
-    series: shown,
+    ref: picked[0]?.timestamps ?? new Float64Array(0),
+    series: picked,
     y,
   };
   const model = (summary: FrameSummary): LayerModel => ({
