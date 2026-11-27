@@ -195,7 +195,7 @@ describe('ci:probe-absent (T03-024)', () => {
       { expectFaults: true, expectProbe: true },
     );
     expect(noSt.map((f) => f.rule)).toEqual(['probe-missing', 'probe-missing', 'probe-missing']);
-    expect(noSt.every((f) => f.subject.endsWith('(st)'))).toBe(true);
+    expect(noSt.every((f) => (f.subject ?? '').endsWith('(st)'))).toBe(true);
     // No ST engine at all in a probe tree is missing too.
     const absent = checkProbeAbsent(dist({ ...CLEAN, ...sites, ...mt }), {
       expectFaults: true,

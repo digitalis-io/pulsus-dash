@@ -44,8 +44,10 @@ export interface EngineOptions {
   readonly forceT2: boolean;
   /** `markSessionFailed` (failFlag.ts). */
   readonly markFailed: () => void;
+  /** Plan #68 C2d2 (stub): the engine mode. */
+  readonly mode?: 'mt' | 'st';
   /** Tests: the module, worker factories and the boot timeout. */
-  readonly compile?: () => Promise<WebAssembly.Module>;
+  readonly compile?: (mode: 'mt' | 'st') => Promise<WebAssembly.Module>;
   readonly spawnRender?: () => WorkerLike;
   readonly spawnPool?: () => WorkerLike;
   readonly timeoutMs?: number;
@@ -113,7 +115,7 @@ export interface Backend {
 }
 
 /** Fetches (with integrity) and compiles the engine; never instantiates it here. */
-async function compileEngine(): Promise<WebAssembly.Module> {
+async function compileEngine(_mode: 'mt' | 'st'): Promise<WebAssembly.Module> {
   const { wasmUrl } = await import('virtual:dash-engine');
   if (wasmUrl === null) {
     // Not a boot failure: `markOnFailure` leaves the session unmarked (plan #256 §3.2).
@@ -389,7 +391,7 @@ class EngineHost implements Backend {
 }
 
 export async function loadBackend(o: EngineOptions): Promise<Backend> {
-  const module = await (o.compile ?? compileEngine)();
+  const module = await (o.compile ?? compileEngine)(o.mode ?? 'mt');
   const host = new EngineHost(o, module);
   await host.boot();
   return host;
