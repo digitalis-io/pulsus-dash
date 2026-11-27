@@ -1,0 +1,533 @@
+{
+  "title": "Panel units",
+  "panels": [
+    {
+      "id": "p-1",
+      "title": "Line count",
+      "grid": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "count"
+        }
+      }
+    },
+    {
+      "id": "p-2",
+      "title": "Line none",
+      "grid": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "none"
+        }
+      }
+    },
+    {
+      "id": "p-3",
+      "title": "Line custom",
+      "grid": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "custom",
+          "suffix": "rps"
+        }
+      }
+    },
+    {
+      "id": "p-4",
+      "title": "Line seconds",
+      "grid": {
+        "x": 0,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "seconds"
+        }
+      }
+    },
+    {
+      "id": "p-5",
+      "title": "Line milliseconds",
+      "grid": {
+        "x": 4,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "milliseconds"
+        }
+      }
+    },
+    {
+      "id": "p-6",
+      "title": "Line microseconds",
+      "grid": {
+        "x": 8,
+        "y": 4,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "microseconds"
+        }
+      }
+    },
+    {
+      "id": "p-7",
+      "title": "Line nanoseconds",
+      "grid": {
+        "x": 0,
+        "y": 8,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "nanoseconds"
+        }
+      }
+    },
+    {
+      "id": "p-8",
+      "title": "Line bytes",
+      "grid": {
+        "x": 4,
+        "y": 8,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "bytes"
+        }
+      }
+    },
+    {
+      "id": "p-9",
+      "title": "Line bytesSI",
+      "grid": {
+        "x": 8,
+        "y": 8,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "bytesSI"
+        }
+      }
+    },
+    {
+      "id": "p-10",
+      "title": "Line bits",
+      "grid": {
+        "x": 0,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "bits"
+        }
+      }
+    },
+    {
+      "id": "p-11",
+      "title": "Line bitsIEC",
+      "grid": {
+        "x": 4,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "bitsIEC"
+        }
+      }
+    },
+    {
+      "id": "p-12",
+      "title": "Line perSecond",
+      "grid": {
+        "x": 8,
+        "y": 12,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "perSecond"
+        }
+      }
+    },
+    {
+      "id": "p-13",
+      "title": "Line reqPerSecond",
+      "grid": {
+        "x": 0,
+        "y": 16,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "reqPerSecond"
+        }
+      }
+    },
+    {
+      "id": "p-14",
+      "title": "Line bytesPerSecond",
+      "grid": {
+        "x": 4,
+        "y": 16,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "bytesPerSecond"
+        }
+      }
+    },
+    {
+      "id": "p-15",
+      "title": "Line bytesSIPerSecond",
+      "grid": {
+        "x": 8,
+        "y": 16,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "bytesSIPerSecond"
+        }
+      }
+    },
+    {
+      "id": "p-16",
+      "title": "Line bitsPerSecond",
+      "grid": {
+        "x": 0,
+        "y": 20,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "bitsPerSecond"
+        }
+      }
+    },
+    {
+      "id": "p-17",
+      "title": "Line bitsIECPerSecond",
+      "grid": {
+        "x": 4,
+        "y": 20,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "bitsIECPerSecond"
+        }
+      }
+    },
+    {
+      "id": "p-18",
+      "title": "Line percent",
+      "grid": {
+        "x": 8,
+        "y": 20,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "percent"
+        }
+      }
+    },
+    {
+      "id": "p-19",
+      "title": "Line percentUnit",
+      "grid": {
+        "x": 0,
+        "y": 24,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum(rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "line",
+        "unit": {
+          "id": "percentUnit"
+        }
+      }
+    },
+    {
+      "id": "p-20",
+      "title": "stat seconds",
+      "grid": {
+        "x": 4,
+        "y": 24,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "up"
+      },
+      "vis": {
+        "kind": "stat",
+        "unit": {
+          "id": "seconds"
+        },
+        "thresholds": {
+          "direction": "above",
+          "steps": [
+            {
+              "value": 604800,
+              "state": "watch",
+              "label": "A week"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p-21",
+      "title": "barchart percentUnit",
+      "grid": {
+        "x": 8,
+        "y": 24,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum by (version) (app_version)"
+      },
+      "vis": {
+        "kind": "barchart",
+        "unit": {
+          "id": "percentUnit"
+        },
+        "options": {
+          "reducer": "last"
+        }
+      }
+    },
+    {
+      "id": "p-22",
+      "title": "heatmap seconds",
+      "grid": {
+        "x": 0,
+        "y": 28,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum by (le) (rate(http_request_duration_seconds_bucket[5m]))"
+      },
+      "vis": {
+        "kind": "heatmap",
+        "unit": {
+          "id": "seconds"
+        }
+      }
+    },
+    {
+      "id": "p-23",
+      "title": "geomap reqPerSecond",
+      "grid": {
+        "x": 4,
+        "y": 28,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum by (cloud_region) (rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "geomap",
+        "unit": {
+          "id": "reqPerSecond"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "p-24",
+      "title": "logs bytes",
+      "grid": {
+        "x": 8,
+        "y": 28,
+        "w": 4,
+        "h": 4
+      },
+      "query": {
+        "lang": "logql",
+        "text": "{app=\"checkout\"}"
+      },
+      "vis": {
+        "kind": "logs",
+        "unit": {
+          "id": "bytes"
+        }
+      }
+    }
+  ],
+  "sections": [
+    {
+      "id": "s-1",
+      "title": "More",
+      "collapsed": false,
+      "panels": [
+        {
+          "id": "p-90",
+          "title": "Section line",
+          "grid": {
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 4
+          },
+          "query": {
+            "lang": "promql",
+            "text": "up"
+          },
+          "vis": {
+            "kind": "line",
+            "unit": {
+              "id": "custom",
+              "suffix": "µs/op"
+            },
+            "legend": {
+              "mode": "hidden"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

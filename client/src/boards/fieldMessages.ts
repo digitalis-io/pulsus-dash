@@ -56,3 +56,8 @@ export function geomapUnsupported(spec: BoardSpec, f: FieldError): boolean {
 export function tagsUnsupported(f: FieldError): boolean {
   return f.pointer === '/tags' && f.messageKey === 'board.json.unknownKey';
 }
+
+/** Stub (tests first, #290). */
+export function unitsUnsupported(_f: FieldError): boolean {
+  return false;
+}

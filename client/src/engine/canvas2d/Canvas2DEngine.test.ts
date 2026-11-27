@@ -848,3 +848,19 @@ describe('unit:frame-coverage', () => {
     expect(line.a11y.at(-1)).not.toHaveProperty('coverage');
   });
 });
+
+// #290 §4.2 (issue acceptance 2): the value axis in bytes per second, ticks on powers of 1024.
+describe('axis labels in the panel unit', () => {
+  it('bytes per second: 0 B/s to 3 MiB/s', () => {
+    const h = harness(Canvas2DEngine);
+    const w = { fromMs: 0, toMs: 3_600_000 };
+    const spec: VisSpec = { kind: 'line', title: 'T', unit: { kind: 'bytes', perSecond: true } };
+    show(h, spec, seriesData(seriesFrame(K(1), [0, 3_600_000], [0, 3145728])), w, [1118, 240, 1]);
+    const axis = h
+      .layer()
+      .calls('fillText')
+      .filter((o) => o.textAlign === 'right')
+      .map((o) => o.args[0]);
+    expect(axis).toEqual(['0 B/s', '1 MiB/s', '2 MiB/s', '3 MiB/s']);
+  });
+});

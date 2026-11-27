@@ -1,0 +1,10 @@
+{
+  "name": "units-rx-bytes",
+  "provenance": {"synthetic": "panel units (#290): 0 to 3 MiB/s, mean 1.5 MiB/s"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "rx_bytes_rate"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-units-rx-bytes-1"},
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"rx_bytes_rate","instance":"a:9100"},"values":[[1767225600,"0"],[1767226800,"1048576"],[1767228000,"2097152"],[1767229200,"3145728"]]}]}}
+  }
+}

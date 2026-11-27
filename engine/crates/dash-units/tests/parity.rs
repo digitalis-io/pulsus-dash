@@ -8,7 +8,8 @@ use dash_units::{Unit, format_value, js_round, to_precision};
 #[test]
 fn format_value_matches_ts() {
     let rows = fixture::load("format.json");
-    assert!(rows.len() >= 2000, "format.json has {} rows", rows.len());
+    // The 9-unit block and the 10 units of #290 (`NEW_UNITS`), each over the same 2 000 values.
+    assert!(rows.len() >= 38_000, "format.json has {} rows", rows.len());
     let mut bad = Vec::new();
     for r in &rows {
         let v = fixture::num(&r["v"]);
@@ -61,5 +62,29 @@ fn out_of_range_form() {
         (-2.5e22, &Unit::None, "-2.5e+22"),
     ] {
         assert_eq!(format_value(v, unit), want, "{v:e} {unit:?}");
+    }
+}
+
+/// #290 §3.4: the new kinds round-trip as the TS `Unit` JSON; absent fields are their defaults and
+/// defaults are not written.
+#[test]
+fn unit_json_round_trip() {
+    for text in [
+        r#"{"kind":"bits","prefix":"si","perSecond":true}"#,
+        r#"{"kind":"bits","prefix":"iec"}"#,
+        r#"{"kind":"bytes"}"#,
+        r#"{"kind":"bytes","prefix":"si"}"#,
+        r#"{"kind":"bytes","perSecond":true}"#,
+        r#"{"kind":"bytes","prefix":"iec","perSecond":true}"#,
+        r#"{"kind":"plain"}"#,
+        r#"{"kind":"none"}"#,
+        r#"{"kind":"suffix","suffix":"req/s"}"#,
+    ] {
+        let unit: Result<Unit, _> = serde_json::from_str(text);
+        let back = unit
+            .as_ref()
+            .ok()
+            .and_then(|u| serde_json::to_string(u).ok());
+        assert_eq!(back.as_deref(), Some(text), "{text}: {unit:?}");
     }
 }

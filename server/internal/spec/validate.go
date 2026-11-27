@@ -54,6 +54,8 @@ var (
 	directions  = []string{"above", "below"}
 	stepStates  = []string{"watch", "degraded", "failing"}
 	legendModes = []string{"table", "hidden"}
+	// unitIDs: stub (tests first, #290).
+	unitIDs = []string{}
 
 	// The option values of board spec v3 (T22 §6.1; client boards/options.ts OPTION_VALUES).
 	// labelPattern is the client's FILTER_LABEL.

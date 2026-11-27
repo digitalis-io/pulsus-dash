@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { BOTTOM, categoryExtent, LABEL_HEIGHT } from '../engine/canvas2d/layout';
 import { barLayout, minPlotPx } from '../engine/canvas2d/barLayout';
 import { BY_VERSION, COMPLETE, byVersion, fkey, instant } from '../test/categoryFixtures';
+import { valueText } from '../engine/canvas2d/barLayout';
 import type { ExploreResult } from './autovis';
 import { barchartModel, fitBarchart, type BarchartFit, type BarchartModel } from './barchart';
 import { coverageText, panelRows, summaryFacts } from './reduce';
@@ -222,5 +223,22 @@ describe('unit:barchart-plan (base)', () => {
       { key: K, labels: { version: '2.31' }, value: 35 },
     ]);
     expect(withBase(r as Result, base as Result).all[0]?.baseline).toBe(35);
+  });
+});
+
+// unit:panel-units (#290 §4.1; T22-015): the model draws in the unit it is given.
+describe('the bar chart unit', () => {
+  it('a percentUnit value label', () => {
+    const r = instant([{ labels: { version: '2.29' }, value: 0.38 }]) as Result;
+    const m = barchartModel(r, {
+      title: 'V',
+      unit: { kind: 'percentunit' },
+      options: undefined,
+      thresholds: null,
+    } as Parameters<typeof barchartModel>[1]);
+    expect(m.spec.unit).toEqual({ kind: 'percentunit' });
+    const [row] = m.all;
+    if (row === undefined) throw new Error('no row');
+    expect(valueText(row, m.spec)).toBe('38 %');
   });
 });

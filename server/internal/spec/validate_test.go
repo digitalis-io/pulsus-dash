@@ -555,3 +555,52 @@ func TestGeomapRules(t *testing.T) {
 		})
 	}
 }
+
+// unit:board-spec-units (#290 §3.1, S3): unitIDs equal api/fixtures/board-spec/unit-ids.json, the
+// client's UNIT_IDS.
+func TestUnitIDs(t *testing.T) {
+	var want []string
+	if err := json.Unmarshal(fixture(t, "unit-ids.json"), &want); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(unitIDs, want) {
+		t.Errorf("unitIDs = %v, want %v", unitIDs, want)
+	}
+}
+
+// The suffix bounds (#290 §3.1): 1 to 16 code points, none of them White_Space or Cc; a code point
+// outside the BMP counts once (U10, U11).
+func TestUnitSuffix(t *testing.T) {
+	board := func(unit string) []byte {
+		return []byte(`{"title":"B","panels":[{"id":"p-1","title":"A","grid":{"x":0,"y":0,"w":6,"h":8},` +
+			`"query":{"lang":"promql","text":"up"},"vis":{"kind":"line","unit":` + unit + `}}],"sections":[]}`)
+	}
+	const sfx = "/panels/0/vis/unit/suffix board.unit.suffix.invalid"
+	for _, tc := range []struct{ name, unit, want string }{
+		{"16 astral", `{"id":"custom","suffix":"` + strings.Repeat("\\ud835\\udc65", 16) + `"}`, ""},
+		{"17 astral", `{"id":"custom","suffix":"` + strings.Repeat("\\ud835\\udc65", 17) + `"}`, sfx},
+		{"16 ascii", `{"id":"custom","suffix":"` + strings.Repeat("a", 16) + `"}`, ""},
+		{"empty", `{"id":"custom","suffix":""}`, sfx},
+		{"tab", `{"id":"custom","suffix":"a\tb"}`, sfx},
+		{"rps", `{"id":"custom","suffix":"rps"}`, ""},
+		{"micro", `{"id":"custom","suffix":"µs/op"}`, ""},
+		{"seconds", `{"id":"seconds"}`, ""},
+		{"no id", `{"suffix":"x"}`, "/panels/0/vis/unit/id board.json.required"},
+		{"id number", `{"id":1}`, "/panels/0/vis/unit/id board.json.type"},
+		{"extra", `{"id":"bytes","prefix":"si"}`, "/panels/0/vis/unit/prefix board.json.unknownKey"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseNewBoard(board(tc.unit))
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("ParseNewBoard = %v, want ok", err)
+				}
+				return
+			}
+			got := fieldsOf(t, err)
+			if len(got) != 1 || got[0].Pointer+" "+got[0].MessageKey != tc.want {
+				t.Errorf("fields = %v, want [%s]", got, tc.want)
+			}
+		})
+	}
+}

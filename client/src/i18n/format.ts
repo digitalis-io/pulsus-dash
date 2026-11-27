@@ -118,6 +118,16 @@ export type Unit =
   | { readonly kind: 'percentunit' }
   | { readonly kind: 'suffix'; readonly suffix: string };
 
+/** Stub (tests first, #290). */
+export function tickBase(_u: Unit): 1000 | 1024 {
+  return 1000;
+}
+
+/** Stub (tests first, #290). */
+export function unitLabel(_u: Unit): string | null {
+  return null;
+}
+
 /** `x.toPrecision(d)` with the mantissa's trailing zeros dropped. */
 function precision(x: number, d: number): string {
   const [mantissa = '', exponent] = x.toPrecision(d).split('e');

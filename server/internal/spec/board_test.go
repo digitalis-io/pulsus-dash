@@ -159,8 +159,8 @@ func TestDecodeBoardUpTo(t *testing.T) {
 	if got, want := canon(t, b), canon(t, raw); !bytes.Equal(got, want) {
 		t.Errorf("DecodeBoardUpTo(raw, 2, 2) = %s, want %s", got, want)
 	}
-	if BoardSchemaVersion != 7 {
-		t.Errorf("BoardSchemaVersion = %d, want 7", BoardSchemaVersion)
+	if BoardSchemaVersion != 8 {
+		t.Errorf("BoardSchemaVersion = %d, want 8", BoardSchemaVersion)
 	}
 }
 
@@ -452,9 +452,6 @@ func TestV6BoardListFixture(t *testing.T) {
 // values, with every member key in lower case and present once; a null groupBy or view is stored
 // absent; v6 upcasts unchanged.
 func TestV7GeomapFixture(t *testing.T) {
-	if BoardSchemaVersion != 7 {
-		t.Errorf("BoardSchemaVersion = %d, want 7", BoardSchemaVersion)
-	}
 	raw := fixture(t, "v7-geomap.json")
 	b, err := ParseNewBoard(raw)
 	if err != nil {
@@ -539,5 +536,80 @@ func TestV7GeomapFixture(t *testing.T) {
 	}
 	if _, err := DecodeBoardUpTo(raw, 7, 6); !errors.Is(err, ErrSchemaTooNew) {
 		t.Errorf("DecodeBoardUpTo(v7, 7, 6) = %v, want ErrSchemaTooNew", err)
+	}
+}
+
+// v8CanonicalSHA256 is the SHA-256 of v8-units.json's canonical form; boards/spec.test.ts holds the
+// same value, so the two canonical forms are byte-equal.
+const v8CanonicalSHA256 = "0dc7aaa6d4ab4a6d652ea4c75e083402ad220143b036f79b565f083920c77dd7"
+
+// unit:board-spec-units (#290 §3.1, T22 §6.2, T11-016): the units version. The fixture holds every
+// unit id on line panels (custom with a suffix) and a unit on stat, barchart, heatmap, geomap and
+// logs; it is valid and readable by this version only, round-trips canonically, and v7 upcasts
+// unchanged.
+func TestV8UnitsFixture(t *testing.T) {
+	if BoardSchemaVersion != 8 {
+		t.Errorf("BoardSchemaVersion = %d, want 8", BoardSchemaVersion)
+	}
+	raw := fixture(t, "v8-units.json")
+	b, err := ParseNewBoard(raw)
+	if err != nil {
+		t.Fatalf("ParseNewBoard: %v", err)
+	}
+	c := canon(t, b)
+	if want := canon(t, raw); !bytes.Equal(c, want) {
+		t.Errorf("Canonical(board) = %s\nwant Canonical(raw) = %s", c, want)
+	}
+	h := ContentHash(c)
+	if got := hex.EncodeToString(h[:]); got != v8CanonicalSHA256 {
+		t.Errorf("ContentHash = %s, want %s", got, v8CanonicalSHA256)
+	}
+	again, err := ParseBoard(c)
+	if err != nil {
+		t.Fatalf("ParseBoard(canonical): %v", err)
+	}
+	if !reflect.DeepEqual(again, b) {
+		t.Errorf("ParseBoard(Canonical(board)) = %+v, want %+v", again, b)
+	}
+	var m struct {
+		Panels []struct {
+			Vis struct {
+				Kind string          `json:"kind"`
+				Unit json.RawMessage `json:"unit"`
+			} `json:"vis"`
+		} `json:"panels"`
+	}
+	if err := json.Unmarshal(c, &m); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Panels) == 0 || len(m.Panels[0].Vis.Unit) == 0 {
+		t.Fatalf("panel 0 has no vis.unit (itest:board-spec-old-binary)")
+	}
+	var kinds []string
+	for _, p := range m.Panels {
+		if len(p.Vis.Unit) > 0 && !slices.Contains(kinds, p.Vis.Kind) {
+			kinds = append(kinds, p.Vis.Kind)
+		}
+	}
+	if want := []string{"line", "stat", "barchart", "heatmap", "geomap", "logs"}; !reflect.DeepEqual(kinds, want) {
+		t.Errorf("kinds with a unit = %v, want %v", kinds, want)
+	}
+	v7 := fixture(t, "v7-geomap.json")
+	up, err := DecodeBoardUpTo(v7, 7, 8)
+	if err != nil {
+		t.Fatalf("DecodeBoardUpTo(v7-geomap, 7, 8): %v", err)
+	}
+	parsed7, err := ParseBoard(v7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := canon(t, up), canon(t, parsed7); !bytes.Equal(got, want) {
+		t.Errorf("DecodeBoardUpTo(v7-geomap, 7, 8) = %s, want %s", got, want)
+	}
+	if _, err := DecodeBoard(v7, 7); err != nil {
+		t.Errorf("DecodeBoard(v7, 7) = %v", err)
+	}
+	if _, err := DecodeBoardUpTo(raw, 8, 7); !errors.Is(err, ErrSchemaTooNew) {
+		t.Errorf("DecodeBoardUpTo(v8, 8, 7) = %v, want ErrSchemaTooNew", err)
 	}
 }
