@@ -3,7 +3,7 @@
  * the chart engine runs single-threaded, with the text for its reason. Nothing in any other mode,
  * or before the page's first frame booted an engine. No close button: the condition is the page's.
  */
-import type { EngineMode } from '../engine';
+import type { EngineMode } from '../engine/mode';
 import { t } from '../i18n/t';
 import styles from './EngineModeBanner.module.css';
 import { cx } from '../kit/cx';

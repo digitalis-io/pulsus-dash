@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Outlet } from 'react-router';
 import { useShellFocusRequest } from '../app/providers';
-import { engineMode, onEngineMode } from '../engine';
+import { engineMode, onEngineMode } from '../engine/mode';
 import { useAutoRefresh } from '../state/useAutoRefresh';
 import { useTimeContext } from '../state/useTimeContext';
 import { useWindowKeys } from '../state/useWindowKeys';

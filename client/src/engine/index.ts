@@ -17,40 +17,12 @@ import { Canvas2DEngine } from './canvas2d/Canvas2DEngine';
 import { markOnFailure, markSessionFailed, sessionFailed } from './failFlag';
 import { RoutingEngine } from './route';
 import type { EngineProbe } from './wasm/engine';
-import { chooseEngine, probe, stReason, type StReason } from './select';
+import { setMode, type EngineMode } from './mode';
+import { chooseEngine, probe, stReason } from './select';
 
 let engine: ChartEngine | null = null;
 
-/** The page's engine mode (plan #68 C2d2 §3.3). */
-export type EngineMode =
-  | { readonly mode: 'mt' }
-  | { readonly mode: 'st'; readonly reason: StReason }
-  | { readonly mode: 'canvas2d' };
-
-let mode: EngineMode | null = null;
-const modeListeners = new Set<(m: EngineMode | null) => void>();
-
-function setMode(m: EngineMode): void {
-  if (mode !== null && mode.mode === m.mode) return;
-  mode = m;
-  // After the current task's work (a frame may be created inside a render): the listeners re-read.
-  queueMicrotask(() => {
-    for (const cb of [...modeListeners]) cb(m);
-  });
-}
-
-/** The page's engine mode; null before the first frame. */
-export function engineMode(): EngineMode | null {
-  return mode;
-}
-
-/** Calls `cb` on each change of `engineMode()`; returns the unsubscription. */
-export function onEngineMode(cb: (m: EngineMode | null) => void): () => void {
-  modeListeners.add(cb);
-  return () => {
-    modeListeners.delete(cb);
-  };
-}
+export { engineMode, onEngineMode, type EngineMode } from './mode';
 
 export function defaultChartEngine(): ChartEngine {
   if (engine !== null) return engine;

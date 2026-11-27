@@ -31,9 +31,9 @@ const ENGINE_MODULE = /\/src\/engine\/wasm\/|dash-engine/;
  * frames, ring) `dash-engine-*`, counted in both modes' rows.
  */
 const MT_MODULE =
-  /\/src\/engine\/wasm\/gen(?:-probe)?\/|\0virtual:dash-engine$|\/(?:render|pool)\.worker\.ts/;
+  /\/src\/engine\/wasm\/gen(?:-probe)?\/|\0virtual:dash-engine$|\/(?:render|pool)\.worker\.ts$/;
 const ST_MODULE =
-  /\/src\/engine\/wasm\/gen-st(?:-probe)?\/|\0virtual:dash-engine-st$|\/render-st\.worker\.ts/;
+  /\/src\/engine\/wasm\/gen-st(?:-probe)?\/|\0virtual:dash-engine-st$|\/render-st\.worker\.ts$/;
 
 /** `dash-engine-mt-`, `dash-engine-st-` or `dash-engine-` for an engine chunk's modules. */
 function enginePrefix(ids: readonly string[]): string {
