@@ -6,8 +6,8 @@
  * tree is one `probe-in-release` finding. With `--expect-faults` the tree is a fault build and
  * must contain all three site sentinels instead: each missing site is one `fault-site-missing`.
  *
- * The probe build's engine exports `engine_probe_input` (plan #68 C2a1 §3.5) and
- * `engine_probe_synth` (plan #68 C2d1 §3.2) in any `.wasm` are one `probe-in-release` finding
+ * The probe build's engine exports `engine_probe_input` (plan #68 C2a1 §3.5), `engine_probe_synth`
+ * and `engine_probe_chunk` (plan #68 C2d1 §3.2) in any `.wasm` are one `probe-in-release` finding
  * each in every tree, the fault build's included (it serves the release engine), unless
  * `--expect-probe`: then the tree is the probe build and a `.wasm` must carry each
  * (`probe-missing` for each one none carries).
@@ -24,7 +24,11 @@ const SENTINEL = ['__pulsus_engine', 'fault__'].join('_');
 const HOOKS = ['__dashProbe', SENTINEL].map((h) => Buffer.from(h));
 /** The probe engine's exports; joined so this file is not a hit. */
 export const PROBE_EXPORT = ['engine_probe', 'input'].join('_');
-export const PROBE_EXPORTS = [PROBE_EXPORT, ['engine_probe', 'synth'].join('_')] as const;
+export const PROBE_EXPORTS = [
+  PROBE_EXPORT,
+  ['engine_probe', 'synth'].join('_'),
+  ['engine_probe', 'chunk'].join('_'),
+] as const;
 export const FAULT_SITES = ['route', 'boot', 'worker'] as const;
 
 function files(dir: string, root = dir, out: string[] = []): string[] {

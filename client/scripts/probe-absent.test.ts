@@ -96,8 +96,13 @@ describe('ci:probe-absent (T03-024)', () => {
     expect(missing.map((f) => [f.rule, f.subject])).toEqual([
       ['probe-missing', 'engine_probe_input'],
       ['probe-missing', 'engine_probe_' + 'synth'],
+      ['probe-missing', 'engine_probe_' + 'chunk'],
     ]);
-    const both = Buffer.concat([PROBE, Buffer.from('engine_probe_' + 'synth')]);
+    const both = Buffer.concat([
+      PROBE,
+      Buffer.from('engine_probe_' + 'synth'),
+      Buffer.from('engine_probe_' + 'chunk'),
+    ]);
     expect(
       checkProbeAbsent(dist({ ...CLEAN, ...sites, 'assets/dash-engine-b.wasm': both }), {
         expectFaults: true,
@@ -108,6 +113,7 @@ describe('ci:probe-absent (T03-024)', () => {
   it('engine_probe_synth is a probe export too: a release tree fails, the probe build needs it (plan #68 C2d1)', () => {
     const SYNTH = 'engine_probe_' + 'synth';
     const INPUT = 'engine_probe_' + 'input';
+    const CHUNK = 'engine_probe_' + 'chunk';
     const release = checkProbeAbsent(
       dist({
         ...CLEAN,
@@ -131,16 +137,28 @@ describe('ci:probe-absent (T03-024)', () => {
       }),
       { expectFaults: true, expectProbe: true },
     );
-    expect(noSynth.map((f) => [f.rule, f.subject])).toEqual([['probe-missing', SYNTH]]);
+    expect(noSynth.map((f) => [f.rule, f.subject])).toEqual([
+      ['probe-missing', SYNTH],
+      ['probe-missing', CHUNK],
+    ]);
     expect(
       checkProbeAbsent(
         dist({
           ...CLEAN,
           ...sites,
-          'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(INPUT + SYNTH)]),
+          'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(INPUT + SYNTH + CHUNK)]),
         }),
         { expectFaults: true, expectProbe: true },
       ),
     ).toEqual([]);
+  });
+  it('engine_probe_chunk alone in a release tree is a finding (plan #68 C2d1)', () => {
+    const CHUNK = 'engine_probe_' + 'chunk';
+    const r = checkProbeAbsent(
+      dist({ ...CLEAN, 'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(CHUNK)]) }),
+    );
+    expect(r.map((f) => [f.rule, f.file, f.subject])).toEqual([
+      ['probe-in-release', 'assets/dash-engine-b.wasm', CHUNK],
+    ]);
   });
 });
