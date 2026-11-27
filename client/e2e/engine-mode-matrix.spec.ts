@@ -60,12 +60,51 @@ async function canvasLeg(page: Page, url: string): Promise<void> {
   await legOf(page, url);
   expect(await engines(page)).toEqual(all('canvas2d'));
   expect(req).toEqual([]);
+  // Plan #68 C2d2: the ST banner only in ST.
+  await expect(banner(page)).toHaveCount(0);
+}
+
+/** The ST banner per reason (plan #68 C2d2 §4.4). */
+const ST_BANNER = {
+  isolation: 'Reduced performance: cross-origin isolation is off (ask your admin).',
+  waitAsync: 'Reduced performance: this browser lacks a feature the fast chart engine needs.',
+  forced: 'Reduced performance: the single-thread chart engine was requested for this page.',
+} as const;
+
+/** The engine mode banner under the header (plan #68 C2d2 §4.4). */
+const banner = (page: Page) => page.locator('[data-engine-mode-banner]');
+
+/**
+ * A leg on the single-thread engine (plan #68 C2d2, leg `wasm-webgl2-st`): status 2 on lavapipe,
+ * `data-dash-mode="st"`, the line frames on the engine with ink, the ST wasm and the ST render
+ * worker only (no MT file, no pool worker), and the banner with its reason's text.
+ */
+async function stLeg(page: Page, url: string, reason: keyof typeof ST_BANNER): Promise<void> {
+  const req = engineRequests(page);
+  const workers: string[] = [];
+  page.on('worker', (w) => workers.push(w.url()));
+  await legOf(page, url);
+  const html = page.locator('html');
+  await expect(html).toHaveAttribute('data-dash-status', '2');
+  await expect(html).toHaveAttribute('data-dash-mode', 'st');
+  await expect(html).toHaveAttribute('data-dash-adapter', /llvmpipe/);
+  expect(await engines(page)).toEqual(lines('wasm-webgl2'));
+  expect(req.some((u) => /\/assets\/dash-engine-st-[^/]+\.wasm$/.test(u))).toBe(true);
+  expect(req.filter((u) => /\/assets\/dash-engine-mt-/.test(u))).toEqual([]);
+  expect(workers.some((u) => /render-st\.worker/.test(u))).toBe(true);
+  expect(workers.filter((u) => /pool\.worker|\/dash-engine-mt-/.test(u))).toEqual([]);
+  await expect(banner(page)).toHaveCount(1);
+  await expect(banner(page)).toHaveRole('status');
+  await expect(banner(page)).toHaveText(ST_BANNER[reason]);
 }
 
 /** The byte flip of the integrity legs: every engine wasm served with one byte changed. */
-async function flipWasm(page: Page): Promise<string[]> {
+async function flipWasm(
+  page: Page,
+  pattern: RegExp = /\/assets\/dash-engine-[^/]+\.wasm$/,
+): Promise<string[]> {
   const wasm: string[] = [];
-  await page.route(/\/assets\/dash-engine-[^/]+\.wasm$/, async (route) => {
+  await page.route(pattern, async (route) => {
     wasm.push(route.request().url());
     const res = await route.fetch();
     const body = Buffer.from(await res.body());
@@ -92,7 +131,9 @@ test.describe('e2e:mode-matrix default (release BFF)', () => {
     await leg(info, async () => {
       await legOf(page, GALLERY_URL);
       await expect(page.locator('html')).toHaveAttribute('data-dash-status', tier.status);
+      await expect(page.locator('html')).toHaveAttribute('data-dash-mode', 'mt');
       expect(await engines(page)).toEqual(lines(tier.engine));
+      await expect(banner(page)).toHaveCount(0);
     });
   });
 
@@ -127,7 +168,6 @@ test.describe('e2e:mode-matrix default (release BFF)', () => {
 
   for (const [n, mode] of [
     ['M6', 'static'],
-    ['M7', 'st'],
     ['M8', 'mtr'],
   ] as const) {
     test(`${n} mode=${mode}: Canvas 2D, no engine request`, async ({ page }, info) => {
@@ -136,7 +176,14 @@ test.describe('e2e:mode-matrix default (release BFF)', () => {
     });
   }
 
-  test('M9 not isolated: Canvas 2D, no engine request', async ({ page }, info) => {
+  test('M7 mode=st: the single-thread engine, forced', async ({ page }, info) => {
+    only(info, 'lavapipe');
+    await stLeg(page, `${GALLERY_URL}&mode=st`, 'forced');
+  });
+
+  test('M9 not isolated: the single-thread engine, with the isolation banner', async ({
+    page,
+  }, info) => {
     only(info, 'lavapipe');
     await page.route(
       (u) => u.pathname === new URL(GALLERY_URL, RELEASE_URL).pathname,
@@ -152,7 +199,7 @@ test.describe('e2e:mode-matrix default (release BFF)', () => {
         await route.fulfill({ response: res, headers });
       },
     );
-    await canvasLeg(page, GALLERY_URL);
+    await stLeg(page, GALLERY_URL, 'isolation');
     expect(await page.evaluate(() => crossOriginIsolated)).toBe(false);
   });
 
@@ -165,12 +212,14 @@ test.describe('e2e:mode-matrix default (release BFF)', () => {
     await canvasLeg(page, GALLERY_URL);
   });
 
-  test('M11 no Atomics.waitAsync: Canvas 2D, no engine request', async ({ page }, info) => {
+  test('M11 no Atomics.waitAsync: the single-thread engine, with its banner', async ({
+    page,
+  }, info) => {
     only(info, 'lavapipe');
     await page.addInitScript(() => {
       Reflect.deleteProperty(Atomics, 'waitAsync');
     });
-    await canvasLeg(page, GALLERY_URL);
+    await stLeg(page, GALLERY_URL, 'waitAsync');
   });
 
   test('M12 failed session: Canvas 2D, no engine request', async ({ page }, info) => {
@@ -294,6 +343,28 @@ test.describe('e2e:mode-matrix', () => {
     expect(warnings.some((w) => w.includes('engine_integrity_failed'))).toBe(true);
     // The failed boot marked the session (plan #256 §4.2): the reload makes no engine request.
     await page.unroute(/\/assets\/dash-engine-[^/]+\.wasm$/);
+    const req = engineRequests(page);
+    await page.reload();
+    await framesReady(page);
+    expect(await engines(page)).toEqual(all('canvas2d'));
+    expect(req).toEqual([]);
+  });
+});
+
+test.describe('e2e:mode-matrix ST integrity', () => {
+  test('integrity (ST): a flipped byte of the ST wasm is refused twice, then Canvas 2D for the session', async ({
+    page,
+  }, info) => {
+    only(info, 'lavapipe');
+    const ST_WASM = /\/assets\/dash-engine-st-[^/]+\.wasm$/;
+    const wasm = await flipWasm(page, ST_WASM);
+    const warnings = warningsOf(page);
+    await legOf(page, `${ENGINE_URL}&mode=st`);
+    expect(await engines(page)).toEqual(all('canvas2d'));
+    expect(wasm).toHaveLength(2);
+    expect(warnings.some((w) => w.includes('engine_integrity_failed'))).toBe(true);
+    await expect(banner(page)).toHaveCount(0);
+    await page.unroute(ST_WASM);
     const req = engineRequests(page);
     await page.reload();
     await framesReady(page);

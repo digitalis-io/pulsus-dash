@@ -16,9 +16,15 @@
 //! frame's build output (`hover`, `a11y`), the completions (`stage`, `drawn`) and `applied`. The
 //! probe build can hold a frame after one presentation (`engine_probe_freeze`), so `e2e:engine-hover`
 //! H1b screenshots exactly that presentation.
+//!
+//! Part C2d2 (§3.2): the single-thread engine (`st`, `dash-core-st`) has no pool and no shared
+//! memory; main cannot write its ring, so input comes as batches of the same records
+//! (`engine_input_batch`), queued here and applied at the start of the next tick, after the
+//! ring's (empty) drain.
 
 mod control;
 mod gpu;
+#[cfg(feature = "mt")]
 mod pool;
 
 use std::cell::{Cell, RefCell};
@@ -91,6 +97,10 @@ struct Engine {
     failed: BTreeSet<u32>,
     /// The records drained this tick (kept for its capacity).
     inbox: Vec<Decoded>,
+    /// ST input batches' records, queued until the next tick (plan #68 C2d2 §3.2).
+    batched: Vec<Decoded>,
+    /// Bad records found while queuing a batch, counted at the next tick.
+    batch_bad: u32,
     /// A rejected input record was logged (once per worker).
     bad_logged: bool,
     #[cfg(feature = "probe")]
@@ -166,6 +176,8 @@ pub async fn engine_start(force_t2: bool, caps_bits: u32, epoch: u32) -> BootSta
                     awaiting: BTreeMap::new(),
                     failed: BTreeSet::new(),
                     inbox: Vec::new(),
+                    batched: Vec::new(),
+                    batch_bad: 0,
                     bad_logged: false,
                     #[cfg(feature = "probe")]
                     probe: Vec::new(),
@@ -320,12 +332,33 @@ pub fn engine_wants_frame() -> bool {
             return false;
         }
         let busy = !e.dirty.is_empty()
+            || !e.batched.is_empty()
             || !e.awaiting.is_empty()
             || !e.queued.is_empty()
             || e.gpu.lost.load(Ordering::Acquire);
         busy || input::before_sleep(&e.cb)
     })
     .unwrap_or(false)
+}
+
+/// One input batch of the single-thread engine (plan #68 C2d2 §3.2): its records are decoded
+/// (`input::drain_batch`) and queued, and the next tick applies them first (T03-019). A bad record
+/// counts in `INPUT_BAD` and skips the rest of the batch. Returns the records queued.
+#[cfg(feature = "st")]
+#[wasm_bindgen]
+pub fn engine_input_batch(bytes: &[u8]) -> u32 {
+    with(|e| {
+        let before = e.batched.len();
+        if let Err(bad) = input::drain_batch(bytes, &mut e.batched) {
+            e.batch_bad += 1;
+            if !e.bad_logged {
+                e.bad_logged = true;
+                web_sys::console::error_1(&format!("pulsus engine: {bad} (batch)").into());
+            }
+        }
+        u32::try_from(e.batched.len() - before).unwrap_or(u32::MAX)
+    })
+    .unwrap_or(0)
 }
 
 /// The probe log's bound.
@@ -514,6 +547,9 @@ impl Engine {
     fn read_input(&mut self) {
         self.inbox.clear();
         let drained = input::drain(&self.cb, &mut self.inbox);
+        // ST: the batches queued since the last tick, after the ring's records (none in ST).
+        self.inbox.append(&mut self.batched);
+        let batch_bad = std::mem::take(&mut self.batch_bad);
         let bad_before = self.frames.bad();
         for d in &self.inbox {
             #[cfg(feature = "probe")]
@@ -524,7 +560,8 @@ impl Engine {
                 self.dirty.insert(id);
             }
         }
-        let bad = self.frames.bad().wrapping_sub(bad_before) + u32::from(drained.is_err());
+        let bad =
+            self.frames.bad().wrapping_sub(bad_before) + u32::from(drained.is_err()) + batch_bad;
         if bad > 0 {
             self.cb.add(off::INPUT_BAD, bad);
             if !self.bad_logged {

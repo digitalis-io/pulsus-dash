@@ -10,7 +10,10 @@
  * and `engine_probe_chunk` (plan #68 C2d1 §3.2) in any `.wasm` are one `probe-in-release` finding
  * each in every tree, the fault build's included (it serves the release engine), unless
  * `--expect-probe`: then the tree is the probe build and a `.wasm` must carry each
- * (`probe-missing` for each one none carries).
+ * (`probe-missing` for each one none carries). Plan #68 C2d2: the tree holds both engines; with
+ * `--expect-probe` the ST engine's wasm (`assets/dash-engine-st-*.wasm`) must carry each export as
+ * well (`probe-missing`, subject `<export> (st)`), and so must one of the other `.wasm` (the MT
+ * engine). Without it, a probe export in either engine's wasm is a finding.
  *
  * Usage: node scripts/probe-absent.ts [--expect-faults] [--expect-probe] <dist>
  * Exit: 0 none, 1 findings, 2 `dist` unreadable.
@@ -58,16 +61,25 @@ function probeExport(dist: string, list: readonly string[], expectProbe: boolean
     .filter((f) => f.endsWith('.wasm'))
     .map((f) => ({ f, bytes: readFileSync(join(dist, f)) }));
   const out: Finding[] = [];
+  const isSt = (f: string): boolean => /(^|\/)dash-engine-st-[^/]*\.wasm$/.test(f);
   for (const name of PROBE_EXPORTS) {
     const needle = Buffer.from(name);
     const hits = wasm.filter((w) => w.bytes.includes(needle)).map((w) => w.f);
     if (expectProbe) {
-      if (hits.length === 0) {
+      if (!hits.some((f) => !isSt(f))) {
         out.push({
           rule: 'probe-missing',
           file: dist,
           subject: name,
           message: `the probe build's engine has no ${name}`,
+        });
+      }
+      if (!hits.some(isSt)) {
+        out.push({
+          rule: 'probe-missing',
+          file: dist,
+          subject: `${name} (st)`,
+          message: `the probe build's single-thread engine has no ${name}`,
         });
       }
       continue;

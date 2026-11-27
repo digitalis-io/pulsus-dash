@@ -1,6 +1,6 @@
 //! unit:decimation-prop (plan #68 §5): every span is exactly one NaN-free run, every raw sample is
 //! inside its run's span, `total` counts the instances, and the result does not depend on the
-//! rayon pool size (T02-015, T03-021, VIZ-006).
+//! rayon pool size (T02-015, T03-021, VIZ-006) under feature `parallel`.
 mod common;
 
 use common::*;
@@ -100,7 +100,9 @@ proptest! {
                 }
             }
         }
-        // (4) bit-identical across rayon pool sizes.
+        // (4) bit-identical across rayon pool sizes (`parallel`; plan #68 C2d2: without it the
+        // decimation is sequential, and `decimate_sequential` compares the two builds).
+        #[cfg(feature = "parallel")]
         for threads in [1, 2, 7] {
             let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build();
             prop_assert!(pool.is_ok());

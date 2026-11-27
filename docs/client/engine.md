@@ -609,9 +609,10 @@ wins:
 |---|---|---|
 | 1 | The flag (the URL's `?engine=`, else the build's `VITE_ENGINE`) is `canvas2d` | Canvas 2D |
 | 2 | The session is marked failed (`failFlag.ts`: a trap, a second device loss, or a failed boot, below) | Canvas 2D |
-| 3 | `?mode=st`, `mtr` or `static` (Canvas 2D until `dash-core-st`) | Canvas 2D |
-| 4 | Not cross-origin isolated, no `OffscreenCanvas`, neither WebGPU nor WebGL2, or no `Atomics.waitAsync` (the glue's fallback is a blob worker, which the CSP blocks) | Canvas 2D |
-| 5 | Otherwise: no flag, `wasm`, empty or any other value | the routing engine (line frames on the engine, the other kinds on Canvas 2D); `?mode=t2` forces WebGL2 |
+| 3 | `?mode=mtr` or `?mode=static` (MT-R is #269, Static's PNGs #270) | Canvas 2D |
+| 4 | No `OffscreenCanvas`, or neither WebGPU nor WebGL2 | Canvas 2D |
+| 5 | `?mode=st`, not cross-origin isolated, or no `Atomics.waitAsync` | the routing engine on the **single-thread engine** (`mode: 'st'`, [below](#the-single-thread-engine-part-c2d2)) |
+| 6 | Otherwise: no flag, `wasm`, empty or any other value | the routing engine (line frames on the engine, the other kinds on Canvas 2D); `?mode=t2` forces WebGL2 |
 
 There are two overrides, and only `canvas2d` does anything: `?engine=canvas2d` on a page, and a
 `VITE_ENGINE=canvas2d` build (the engine is still built in; the main e2e suite pins its builds this
@@ -631,9 +632,78 @@ and no threshold or event labels. Their summaries' `thresholdLabels` and `eventL
 there is no `ThresholdHit` or `EventHit`, event labels are not keyboard-reachable, and the summary
 text carries no event count. `?engine=canvas2d` restores them.
 
-Every chart canvas carries `data-engine`: `canvas2d`, `wasm-webgpu` or `wasm-webgl2`. With the
-engine, `<html>` carries `data-dash-status` (0 booting, 1 WebGPU, 2 WebGL2, 4 failed),
-`data-dash-mode="mt"` and `data-dash-adapter`.
+Every chart canvas carries `data-engine`: `canvas2d`, `wasm-webgpu` or `wasm-webgl2` (in either
+engine mode). With the engine, `<html>` carries `data-dash-status` (0 booting, 1 WebGPU, 2 WebGL2,
+4 failed), `data-dash-mode` (`mt` or `st`) and `data-dash-adapter`.
+
+### The single-thread engine (Part C2d2)
+
+`dash-core-st` runs the engine where the shared-memory engine cannot: a page that is not
+cross-origin isolated (a proxy stripped COOP or COEP), a browser without `Atomics.waitAsync`, or a
+page opened with `?mode=st`. It needs OffscreenCanvas and a GPU API like the MT engine. Everything
+the MT engine draws runs unchanged: the same Rust, the same TS frames, controller, events and record
+format. Only the build, the worker topology and the input transport differ (T03 §9.2,
+[ADR-0033](../../designs/adr/0033-st-render-worker-script.md)).
+
+| | MT | ST |
+|---|---|---|
+| Build | `cargo xtask build-wasm` (`+atomics`, `build-std`, shared imported memory) → `gen/dash_core_mt*` | `cargo xtask build-wasm --st` (`--no-default-features --features st`, no `+atomics`, the module's own memory ≤ 2 GiB) → `gen-st/dash_core_st*` |
+| Glue | `virtual:dash-engine` | `virtual:dash-engine-st` |
+| Workers | `render.worker.ts` and the rayon pool | `render-st.worker.ts` only |
+| CPU decimation (T2, far items) | rayon over series | the same loops, in order (`dash-scales` without `parallel`): the same output |
+| Input | the shared input ring | `BatchRing`: the same records in transferred batches |
+| Files | `assets/dash-engine-mt-*` | `assets/dash-engine-st-*` |
+
+Both workers share their logic in `wasm/renderCore.ts`; `render.worker.ts` and
+`render-st.worker.ts` differ only in their bindings and in starting the pool. The ST wasm is
+integrity-checked against the signed manifest as the MT wasm is. Restart, fallback and the session
+flag are as in MT: a failed ST boot marks the session.
+
+**Features.** `dash-core` has `mt` (default: `dash-scales/parallel` and the pool) and `st`.
+`dash-scales` has one feature, `parallel` (rayon), and no default features; the workspace
+dependency turns default features off, so nothing pulls rayon into ST by unification
+(`unit:st-features` checks `cargo tree`). `dash-golden` names `parallel`.
+`unit:decimate-sequential` builds the `decimate-dump` example of `dash-scales` twice, sequential
+and parallel, and requires byte-equal dumps.
+
+**The batch handshake.** Main cannot write ST memory, so `wasm/ring.ts` splits the adapter's
+record queue (`RecordQueue`: pending, coalescing per kind and frame, per-frame seqs, the cap of 8
+waiting Selects per frame) from its sink:
+
+1. Every call goes to pending. On main's animation frame, if no batch is in flight, up to 64 KiB of
+   pending records are written, in order and in the input ring's format, into a batch buffer; each
+   gets its seq there and `onPublish` fires. Then main posts `{t: 'input-batch', buf, len}` with
+   `buf` transferred. Two buffers alternate.
+2. The worker keeps the buffer, calls `engine_input_batch(bytes)` (the records are decoded by
+   `input::drain_batch` and queued in the engine; a bad record counts in `INPUT_BAD` and skips the
+   rest of the batch) and wakes its loop.
+3. The next tick applies the queued records first (T03-019), then builds and presents. After that
+   tick the worker posts `{t: 'input-ack', buf, depth, bad}` with `buf` transferred back.
+4. `BatchRing.acked(buf, depth)` frees the buffer; the next animation frame may post again.
+
+So at most one batch exists end to end, in transit, queued or unapplied. The `applied`
+acknowledgements and `drawn` seqs are as in MT, so `settle` and every gate are unchanged. An ST
+`stats()` adds `overflow` (Selects dropped by the cap), `batches` and `batchesInFlightMax` (the most
+in flight: main's count, or the worker's `depth`).
+
+**The banner.** When the engine booted in ST, `AppShell` shows one `EngineModeBanner` under the
+header (`role="status"`, token colours, no close button), whichever frame booted the engine, with
+the text for its reason (`engineMode()` in `engine/index.ts`, first match):
+
+| Reason | When | Text |
+|---|---|---|
+| `forced` | `?mode=st` | "Reduced performance: the single-thread chart engine was requested for this page." |
+| `isolation` | not cross-origin isolated | "Reduced performance: cross-origin isolation is off (ask your admin)." |
+| `waitAsync` | isolated, no `Atomics.waitAsync` | "Reduced performance: this browser lacks a feature the fast chart engine needs." |
+
+`engineMode()` is null before the first frame, `{mode: 'mt'}`, `{mode: 'st', reason}` or
+`{mode: 'canvas2d'}` (a Canvas 2D page, a failed boot, or a fatal engine); `onEngineMode(cb)`
+subscribes. No banner shows in any mode but ST.
+
+**Limits.** No pool: CPU decimation runs on the one worker. T03 §9.2's ST ceiling of 10⁷ line
+points is measured by `bench:frame-line-1e8`'s `1e7-st` cases, not enforced; a coverage note when
+it binds comes with the coverage meter. MT-R (no OffscreenCanvas) and Static still draw with
+Canvas 2D until #269 and #270.
 
 ### The routing engine (`route.ts`)
 

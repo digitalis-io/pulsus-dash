@@ -4,6 +4,9 @@
  * pool thread with `spawn-pool{ptr}`; this module starts a pool worker on the same module and
  * shared memory for each. No status within the timeout counts as Failed. The main thread never
  * instantiates the module (T03-003).
+ *
+ * Plan #68 C2d2: in ST (`mode: 'st'`) the boot message has no pool size, no pool worker is ever
+ * started, and the worker's `input-ack` messages go to `onInputAck`.
  */
 import {
   BOOT_TIMEOUT_MS,
@@ -27,6 +30,8 @@ export type Status = Extract<RenderToMain, { t: 'status' }>;
 export interface RenderOptions {
   readonly module: WebAssembly.Module;
   readonly forceT2: boolean;
+  /** Plan #68 C2d2: the shared-memory engine or the single-thread one (default `mt`). */
+  readonly mode?: 'mt' | 'st';
   readonly fault: string | undefined;
   readonly spawnRender: () => WorkerLike;
   readonly spawnPool: () => WorkerLike;
@@ -35,6 +40,8 @@ export interface RenderOptions {
   readonly onEvents: (json: string) => void;
   /** An uncaught error in the render worker (a trap). */
   readonly onError: (e: unknown) => void;
+  /** ST: the worker returned a batch (`input-ack`). */
+  readonly onInputAck?: (m: Extract<RenderToMain, { t: 'input-ack' }>) => void;
   /** The probe build: the input ring's start (`BootMessage.ringStart`). */
   readonly ringStart?: number;
   /** The probe build: the worker's `probe-input` reply. */
@@ -93,6 +100,7 @@ export async function bootFaults(): Promise<(restart: boolean) => string | undef
 }
 
 export function startRender(o: RenderOptions): RenderHandle {
+  const st = o.mode === 'st';
   const worker = o.spawnRender();
   const pools: WorkerLike[] = [];
   let memory: WebAssembly.Memory | null = null;
@@ -108,11 +116,14 @@ export function startRender(o: RenderOptions): RenderHandle {
     switch (m.t) {
       case 'status':
         clearTimeout(timer);
-        memory = m.memory;
+        memory = m.memory ?? null;
         settle(m);
         return;
+      case 'input-ack':
+        o.onInputAck?.(m);
+        return;
       case 'spawn-pool': {
-        if (memory === null) return;
+        if (memory === null || st) return;
         const p = o.spawnPool();
         pools.push(p);
         const msg: PoolMessage = { t: 'pool', module: o.module, memory, ptr: m.ptr };
@@ -142,11 +153,16 @@ export function startRender(o: RenderOptions): RenderHandle {
     t: 'boot',
     module: o.module,
     forceT2: o.forceT2,
+    mode: st ? 'st' : 'mt',
     caps: capabilityBits(),
     mainTimeOrigin: typeof performance === 'undefined' ? 0 : performance.timeOrigin,
-    pool: poolSize(typeof navigator === 'undefined' ? 4 : navigator.hardwareConcurrency || 4),
+    ...(st
+      ? {}
+      : {
+          pool: poolSize(typeof navigator === 'undefined' ? 4 : navigator.hardwareConcurrency || 4),
+        }),
     ...(o.fault === undefined ? {} : { fault: o.fault }),
-    ...(o.ringStart === undefined ? {} : { ringStart: o.ringStart }),
+    ...(o.ringStart === undefined || st ? {} : { ringStart: o.ringStart }),
   };
   worker.postMessage(boot);
   return {

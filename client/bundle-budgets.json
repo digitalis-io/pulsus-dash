@@ -27,7 +27,9 @@
     "editorChunk": 175000,
     "fonts": 150000,
     "totalExceptEngine": 1000000,
-    "engine": 1900000,
+    "engineMt": 1900000,
+    "engineSt": 1900000,
+    "core": 2999999,
     "geoBasemap": 40000,
     "geoGazetteer": 104000
   },

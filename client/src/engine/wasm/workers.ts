@@ -1,11 +1,11 @@
 /**
  * The engine's workers and its Trusted Types policy (plan #68 C1 §3.5, ADR-0026). `new Worker` is
  * a Trusted Types sink under `require-trusted-types-for 'script'`, so the worker URLs go through
- * the `pulsus-engine` policy, which admits exactly the render and pool worker scripts of this
- * build and throws for anything else. This is the only module that creates a policy. Without
+ * the `pulsus-engine` policy, which admits exactly the render, pool and (plan #68 C2d2,
+ * ADR-0033) ST render worker scripts of this build and throws for anything else. This is the only module that creates a policy. Without
  * Trusted Types the URL is used as it is.
  */
-import { POOL_URL, RENDER_URL } from './workerUrls';
+import { POOL_URL, RENDER_ST_URL, RENDER_URL } from './workerUrls';
 
 interface Policy {
   createScriptURL(u: string): unknown;
@@ -21,10 +21,10 @@ function base(): string {
   return location.href;
 }
 
-/** `u` iff it is one of the two engine worker scripts. */
+/** `u` iff it is one of the three engine worker scripts. */
 function admit(u: string): string {
   const href = new URL(u, base()).href;
-  const allowed = [RENDER_URL, POOL_URL].map((w) => new URL(w, base()).href);
+  const allowed = [RENDER_URL, POOL_URL, RENDER_ST_URL].map((w) => new URL(w, base()).href);
   if (!allowed.includes(href)) throw new TypeError('pulsus-engine: not an engine worker script');
   return u;
 }
@@ -49,4 +49,9 @@ export function spawnRender(): Worker {
 
 export function spawnPool(): Worker {
   return new Worker(scriptUrl(POOL_URL), { type: 'module', name: 'dash-pool' });
+}
+
+/** The ST render worker (plan #68 C2d2): the only worker of the single-thread engine. */
+export function spawnRenderSt(): Worker {
+  return new Worker(scriptUrl(RENDER_ST_URL), { type: 'module', name: 'dash-render-st' });
 }
