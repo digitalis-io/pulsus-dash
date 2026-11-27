@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.17-rc · 2026-11-27 |
+| **Version** | 1.18-rc · 2026-11-27 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md) (CSP and the engine's worker policy), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md) (the engine is the default renderer), [ADR-0033](../adr/0033-st-render-worker-script.md) (the ST render worker script) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
@@ -499,6 +499,23 @@ after the tick that applied the batch; `depth` is the number of batches the work
 when this one arrived, `bad` its `INPUT_BAD` count). The batch holds the input ring's records
 (§5.4), byte for byte; seqs are assigned when a record is copied into a batch.
 
+*As built (#68 Part D2, MT only; [ADR-0034](../adr/0034-grid-part-joined-into-one-chunk.md)).* Until
+the data workers exist, the render worker owns the DSF decode service and the pool decodes. The
+`boot` message carries the boot `epoch` (1, then +1 per restart), written as `BOOT_EPOCH`; every
+chunk reference carries it, and the worker acts only on its own.
+
+| Direction | Message | Fields |
+|---|---|---|
+| main → render | `{t: 'decode-begin', req}` | `req` page-unique; a third decode in flight is answered `busy` |
+| main → render | `{t: 'decode-chunk', req, buf}` | each fetch read as its exact bytes, in order, `buf` transferred; never a read over `max_chunk` (128 MiB) |
+| render → main | `{t: 'decode-credit', req, bytes}` | bytes the pool has consumed; main pauses reading at ≥ 8 MiB posted and not credited (a pause threshold, not a cap) |
+| main → render | `{t: 'decode-end', req}` / `{t: 'decode-abort', req}` | the end of the body / the request's signal aborted |
+| render → main | `{t: 'decoded', req, chunk, epoch, head, ts, vs}` | `head` `{startMs, endMs, stepMs, planned, coverage, series: [{key, labels}]}`; `ts` one `Float64Array` of the grid, shared by every series; `vs[i]` series i over the full grid, absent points NaN; `ts` and `vs` transferred |
+| render → main | `{t: 'decode-failed', req, kind, message, row?, coverage?, planned?}` | `kind`: `error` (an `error/1` row, with the coverage so far and `dash.planned`), `limit` (a B3 limit), `invalid` (T04-010), `ids`, `busy` |
+| main → render | `{t: 'data-chunk', id, chunk, epoch}` | `setData` by reference: the frame takes the table's chunk |
+| render → main | `{t: 'chunk-missing', id, chunk}` | the chunk was evicted or is of another epoch: the frame posts its values |
+| main → render | `{t: 'chunk-release', chunk, epoch}` | the registered series array was collected; another epoch's is ignored |
+
 **Rust → shim imports** (`#[wasm_bindgen(module = "/web/shim/net.js")]`, data workers only):
 
 | Function | Behaviour |
@@ -726,6 +743,16 @@ from #68 Part C1, so the engine's workers are isolated). A deployment that strip
 | User keymap remaps, Prefs | Postgres user preferences ([T11](T11-postgres-schema.md)), cached in shell | shell |
 | Compiled WASM | browser HTTP and code cache | browser |
 
+*As built (#68 Part D2, MT only; [ADR-0034](../adr/0034-grid-part-joined-into-one-chunk.md)).* The
+render worker holds the DSF decode service and the **chunk table**: decoded chunks by `u32` id,
+from 1, increasing and never reused within the worker's life (a restart starts a new table under a
+new epoch; at `u32::MAX` a decode fails with `ids` and is retried as JSON). A chunk is held while a
+frame keeps it; the chunks held by no frame are capped at 256 MiB, evicted least recently used
+first. A decoded result's series array is registered on main by identity; its collection releases
+the entry. At most 2 decodes are in flight per worker; each is bounded by the B3 wire limits the
+decoder enforces. The render worker never decodes: it copies each read into slabs and posts the
+results at tick start; the pool feeds the decoder and joins the grid part's batch chunks.
+
 **Memory budget** on (a), heaviest scene ([PRF-023](../product/09-performance-contract.md#prf-023--memory-budget), < 1.5 GB tab): core shared memory ≤ 1.2 GB
 (arena ≤ 1.0 GB, enforced by T04 eviction), shell ≤ 64 MB, satellites ≤ 64 MB each, browser overhead
 the remainder.
@@ -866,7 +893,8 @@ assigned at that copy. At most one batch exists end to end: the worker queues a 
 (`engine_input_batch`), applies them at the start of its next tick (T03-019) and returns the buffer
 (`input-ack`) after that tick, and only then may main post the next. The 10⁷-point ceiling is
 measured by `bench:frame-line-1e8`'s ST cases, not enforced. One banner per page, under the
-header, with `role="status"`; none in any other mode. The engine is the default renderer ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md),
+header, with `role="status"`; none in any other mode. *Range data in ST (#68 Part D2):* JSON, as
+before; a resumable, bounded ST decode of DSF is #281. The engine is the default renderer ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md),
 #256), not opt-in: `?engine=canvas2d` or a `VITE_ENGINE=canvas2d` build forces Canvas 2D. Engine
 frames are bound per frame by a routing engine that keeps each frame's state on the main thread:
 
@@ -1008,6 +1036,7 @@ which forces a reload.
 | 1.13-rc | 2026-11-26 | #68 Part C2c1: §4.2 main → render message `events{id, atMs}` (the event markers' times; a layer input, not a ring record) |
 | 1.14-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md)): §9.2 the Part C1 note: the engine is the default renderer, not opt-in; `?engine=canvas2d` or a `VITE_ENGINE=canvas2d` build forces Canvas 2D; the recovery table adds the boot failure that marks the session (not for a build without the engine) |
 | 1.15-rc | 2026-11-26 | #68 Part C2c2: §4.2 main → render message `selection{id, keys, fromMs, toMs}` (the page selection; a layer input, not a ring record) |
+| 1.18-rc | 2026-11-27 | #68 Part D2 ([ADR-0034](../adr/0034-grid-part-joined-into-one-chunk.md)): §5.2 the decode, credit and chunk messages as built (MT), the boot epoch on every reference; §6 the render worker's chunk table (256 MiB of unheld chunks, LRU; `u32` ids per epoch, never reused; at most 2 decodes in flight); §9.2 ST: range data stays JSON (#281) |
 | 1.17-rc | 2026-11-27 | #68 Part C2d2 ([ADR-0033](../adr/0033-st-render-worker-script.md)): §9.2 the ST row adds "isolated but no `Atomics.waitAsync`" and the banner text per reason; the Part C1 note: MT-R and Static draw with Canvas 2D until #269 and #270, and ST as built (`BatchRing`, the record bytes unchanged, seqs at the batch copy, the `input-ack` after the applying tick, the measured ceiling); §5.2 the handshake `mode: 'st'` and the batch messages as built; §7.3 the engine budget per mode as its loaded closure with PRF-009's core total per mode; §11 M-UI0 ST shipped; §4.1 the `dash-core-st` row and §9.3 the `st` banner row match the ST selection and the banner per reason |
 | 1.16-rc | 2026-11-26 | #68 Part C2d1: §9.2 the MT-R row and the Part C1 note, and the §11 M-UI0 row, reconciled with what is accepted now: without OffscreenCanvas (MT-R) and on Static, frames draw with Canvas 2D (T03-025 holds); MT-R and Static's server-rendered PNGs are future work with their issues (filed by C2d2); ST unchanged until C2d2 |
 | 1.9-rc | 2026-11-25 | #68 Part C1, [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md): T03-022 and §5.7 assets carry COEP `require-corp`, the CSP names the `pulsus-engine` policy; §9.2 the recovery as built (frame fallback, one restart, session flag, kind swap) and Canvas 2D for not isolated, MT-R and Static until `dash-core-st`; §5.4 resize by message until Part C2 |
