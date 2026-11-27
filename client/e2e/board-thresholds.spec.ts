@@ -82,10 +82,11 @@ async function sparkInk(page: Page, title: string): Promise<number> {
     const w = c.clientWidth;
     const h = c.clientHeight;
     const bg = ctx.getImageData(2 * dpr, 2 * dpr, 1, 1).data;
-    const x0 = Math.round(12 * dpr);
-    const y0 = Math.round((h - 40) * dpr);
-    const bw = Math.round((w - 24) * dpr);
-    const bh = Math.round(32 * dpr);
+    // The full-bleed sparkline under the 72 px head (#282 Part 2a §4.4).
+    const x0 = 0;
+    const y0 = Math.round(72 * dpr);
+    const bw = Math.round(w * dpr);
+    const bh = Math.round((h - 72) * dpr);
     if (bw <= 0 || bh <= 0) return 0;
     const d = ctx.getImageData(x0, y0, bw, bh).data;
     let n = 0;

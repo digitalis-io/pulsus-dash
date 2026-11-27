@@ -262,9 +262,10 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
     has: page.getByRole('heading', { level: 3, name: 'Errors', exact: true }),
   });
   await errors.scrollIntoViewIfNeeded();
+  // The stub's 30 lines; 24 px rows (#282 Part 2a) mount fewer of them in the panel at once.
   await expect(
-    page.getByRole('list', { name: 'Log lines: Errors' }).locator('[data-log-row]'),
-  ).toHaveCount(30);
+    page.getByRole('list', { name: 'Log lines: Errors' }).locator('[data-log-row]').first(),
+  ).toHaveAttribute('aria-setsize', '30');
   await check('b-1 view, log panel');
 
   await open(page, '/t/demo/board/b-1');
