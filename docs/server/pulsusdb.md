@@ -22,7 +22,7 @@ proves the rule fires ([build and CI](../development/build-and-ci.md#make-target
 
 | Route | Body or parameters | 200 body | Deadline |
 |---|---|---|---|
-| `POST /api/dash/v1/query/promql/range?tenant=<slug>` | `{"query", "from", "to", "width_px", "timeout_ms"?, "vars"?, "rate"?}` (ms since the epoch; `query` is the raw text) | `PromRangeResponse`, streamed, `planned` first; a DSF body when `Accept` asks for it ([Formats](#formats)) | `timeout_ms`: 200 to 120 000, default 30 000 |
+| `POST /api/dash/v1/query/promql/range?tenant=<slug>` | `{"query", "from", "to", "width_px", "timeout_ms"?, "vars"?, "rate"?, "step_ms"?, "range_ms"?}` (ms since the epoch; `query` is the raw text; [Range store inputs](#range-store-inputs-304)) | `PromRangeResponse`, streamed, `planned` first; a DSF body when `Accept` asks for it ([Formats](#formats)) | `timeout_ms`: 200 to 120 000, default 30 000 |
 | `POST /api/dash/v1/query/promql/instant?tenant=<slug>` | `{"query", "at", "timeout_ms"?, "vars"?, "step_ms"?}` | `PromInstantResponse`, `planned` first | as above |
 | `GET /api/dash/v1/prom/labels` | `tenant`, `from`, `to`, `match` (repeatable), `limit` (1 to 10 000, default 1 000) | `PromValuesResponse` | 10 s |
 | `GET /api/dash/v1/prom/label/{name}/values` | `name` (1 to 256 bytes), as above | `PromValuesResponse` | 10 s |
@@ -48,6 +48,29 @@ An unknown slug is 404 `not_found` `unknown tenant`; a store failure is 503 `una
 `configuration store unavailable`. Resolution runs under the route's deadline: if the deadline
 passes first the answer is 504 `upstream_timeout`, and if the browser went away nothing is
 written (the access log records 499).
+
+### Range store inputs (#304)
+
+The client's range store ([ADR-0038](../../designs/adr/0038-page-range-store-and-scope-lease.md),
+[client page](../client/range-store.md)) asks for grid-aligned runs at a step it chose:
+
+| Member | Rule | Error |
+|---|---|---|
+| `step_ms` | absent: the step comes from `width_px` as before (`PromGrid`); present: a `pulsusdb.PromLadder` entry (15 s … 1 d), and the grid is `PromGridStep(from, to, step_ms)`: `from` floored and `to` raised to it, at most 11 000 steps | 400 `/step_ms` `field.range` (below 15 000, above 86 400 000, or off the ladder: "step_ms must be a step of the ladder"); 400 `/from` `range.too_long` past 11 000 steps |
+| `range_ms` | the window the range macros see (`$__range`, `$__range_s`, `$__range_ms`, #291); absent: `to − from` | 400 `/range_ms` `field.range` outside 1 … 2⁵³ − 1 |
+
+`width_px` stays required and validated. The server plans the text at the grid's step either way
+(the rate window and `$__interval` follow it, ADR-0021).
+
+**Scope headers.** Every range response after the tenant is resolved (200 JSON, 200 DSF, and the
+errors after resolution, `scope_denied` included) carries `X-Pulsus-Scope-Epoch` (16 lower-case
+hex) and `X-Pulsus-Scope-Seq`: the scope the request ran under. The epoch is `core.ScopeEpoch`:
+xxh3-64 over the principal, the binding ID, xxh3 of the datasource URL, the database, the scope org
+ID, xxh3 of the credentials reference, the kind and the data scope's canonical text, so it
+discloses neither the endpoint nor the reference. The sequence is the binding's `scope_seq`
+([database](database.md#schema-migration-6)). A credential rotated under the same reference changes
+neither. Errors before resolution (body and field errors) carry no scope headers. The bootstrap's
+tenants carry the same `scope_epoch` and `scope_seq`.
 
 ## Query planning ([ADR-0021](../../designs/adr/0021-query-planning-is-server-side.md))
 

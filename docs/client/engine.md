@@ -1518,6 +1518,35 @@ only, for the bench's outcome test. `failed(n)` lists the frame's `onFail` reaso
 goes on after a reload. The wasm memory's ceiling is 2 GiB, and 10⁸ f64 values are 800 MB. On
 the lavapipe gate host a 10⁸ synthesis takes about 4 s and each presentation about 3 s.
 
+## The line fit, the crossfade and absent masks (#304)
+
+**Fit** ([ADR-0038](../../designs/adr/0038-page-range-store-and-scope-lease.md), T02 §4.3 v1 note).
+A store-backed line frame receives its held span (the window and the flanks) with
+`FrameData.fit` = the visible grid; `validateFrameData` refuses a non-finite fit or one with
+`fromMs > toMs`. Canvas 2D's `lineStats(shown, fit)` and the Rust `line_stats(chunk, shown, fit)`
+(binary search on each series' times) take min, max and last over the samples inside `fit` only,
+so the auto value domain and the summary ignore held data off screen. The wasm frame posts
+`{t: 'fit', id, fromMs, toMs}` (nulls for none) before its `data` / `data-chunk`, only when the fit
+changed; the worker calls `frame_set_fit`, a layer input (`Viewport.fit`).
+
+**Crossfade** ([ADR-0039](../../designs/adr/0039-data-crossfade-on-the-seam.md), T02-007). A series
+`FrameData` with `transition: 'crossfade'` fades the line from the data drawn before over 150 ms;
+`ChartFrame` strips it under `prefers-reduced-motion: reduce`.
+
+| Engine | Fade |
+|---|---|
+| Canvas 2D | `setData` keeps the drawn layer as a bitmap (`createCanvas`) and each frame composites it at `1 − t` over the new layer, clipped to the plot, until `t = 1`; a new `setData`, a window change, a resize or `dispose` ends it |
+| GPU/WASM | `data` and `data-chunk` carry `crossfade: true` when set; the worker calls `frame_crossfade(id, on)` before applying them; the frame's previous chunk becomes `Viewport.fade` (`Fade { prev, prev_fit, started_ms, now_ms }`); `build` draws the previous line under the new one, each with every series unmatched through the dim layer at `1 − t` and `t`; the frame stays dirty until `t = 1`; a camera change or data without the flag drops it |
+
+Axes, thresholds, events, the summary and the hover are the new data's from the first frame of a
+fade (`crossfade_alpha` in `dash-scene/tests/build.rs`).
+
+**Absent masks** (#304 §A.3). The `decoded` message carries `absent`: per series a `Uint8Array`
+with 1 on each slot the validity bitmap marks null, or null when none is (the range-decoded
+fixtures list the indices); `rangeFromDecoded` copies it to `RangeResult.absent`, as the JSON path
+does for `null` points. A present `NaN` is not absent. The range store keeps absent and present-NaN
+apart when it decides which series a visible slice holds ([range store](range-store.md#assembly-and-presence)).
+
 ## Limits
 
 - 500 series per line while the interim cap holds; at most 65 535 lanes, so every matched series
