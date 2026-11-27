@@ -16,13 +16,12 @@
   padding-bottom: var(--space-2);
 }
 
+/* No border or fill of its own (#282 Part 2a §4.7): the card or the panel is the surface. */
 .scroller {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--radius);
-  background: var(--surface-1);
+  background: transparent;
   color: var(--text);
   font: var(--font-size-sm) / var(--size-log-row) var(--font-mono);
 }
@@ -47,7 +46,9 @@
 .row {
   display: flex;
   align-items: flex-start;
+  box-sizing: border-box;
   height: var(--size-log-row);
+  padding-inline: var(--space-1);
 }
 
 .root[data-wrap='true'] .row {
@@ -57,39 +58,64 @@
 .gutter {
   display: flex;
   flex: none;
-  align-items: stretch;
-  gap: var(--space-1);
+  align-items: flex-start;
   height: var(--size-log-row);
   padding-right: var(--space-2);
 }
 
-.bar {
-  width: var(--size-log-level-bar);
-  background: var(--level-unknown);
+/* The level tag (#282 Part 2a §4.7): three monospace letters in `text` on a tint of the level's
+   colour at `opacity.tag` (a pseudo-element: no colour is mixed in CSS), 16 px in the 24 px row. */
+.tag {
+  --tint: var(--level-unknown);
+
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: calc(var(--font-size-xs) * var(--font-advance-mono) * 3 + 2 * var(--space-1));
+  height: var(--size-log-tag);
+  margin-block: calc((var(--size-log-row) - var(--size-log-tag)) / 2);
+  border-radius: var(--radius-tag);
+  color: var(--text);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
 }
 
-.row[data-level='critical'] .bar {
-  background: var(--level-critical);
+.tag::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--tint);
+  content: '';
+  opacity: var(--opacity-tag);
 }
 
-.row[data-level='error'] .bar {
-  background: var(--level-error);
+.row[data-level='critical'] .tag {
+  --tint: var(--level-critical);
 }
 
-.row[data-level='warn'] .bar {
-  background: var(--level-warn);
+.row[data-level='error'] .tag {
+  --tint: var(--level-error);
 }
 
-.row[data-level='info'] .bar {
-  background: var(--level-info);
+.row[data-level='warn'] .tag {
+  --tint: var(--level-warn);
 }
 
-.row[data-level='debug'] .bar {
-  background: var(--level-debug);
+.row[data-level='info'] .tag {
+  --tint: var(--level-info);
 }
 
-.row[data-level='trace'] .bar {
-  background: var(--level-trace);
+.row[data-level='debug'] .tag {
+  --tint: var(--level-debug);
+}
+
+.row[data-level='trace'] .tag {
+  --tint: var(--level-trace);
 }
 
 /* T25-005: a row inspects on click and on Enter. */
@@ -98,6 +124,7 @@
 }
 
 .inspectable:hover {
+  border-radius: var(--radius-xs);
   background: var(--surface-hover);
 }
 
@@ -114,12 +141,6 @@
 }
 
 .muted {
-  color: var(--text-muted);
-}
-
-/* Three monospace columns. */
-.glyph {
-  width: calc(var(--font-size-sm) * var(--font-advance-mono) * 3);
   color: var(--text-muted);
 }
 
@@ -165,11 +186,13 @@
   white-space: nowrap;
 }
 
-/* T08-019: the bar keeps one system colour; the glyph still names the level. */
+/* T08-019: the tag is outlined in a system colour; its glyph still names the level. */
 @media (forced-colors: active) {
-  .bar,
-  .row[data-level] .bar {
-    forced-color-adjust: none;
-    background: CanvasText;
+  .tag {
+    border: var(--border-hairline) solid CanvasText;
+  }
+
+  .tag::before {
+    display: none;
   }
 }

@@ -5,7 +5,8 @@
  * touch down), and every move restores the viewport by an explicit anchor, so eviction, re-fetch,
  * re-slicing and wrap never move what the reader sees. Rows are a fixed `size.log-row` without
  * wrap and measured with wrap (at most 100 lines; a longer line scrolls inside its row). The gutter
- * shows a level-coloured bar, a three-letter glyph and the level name for screen readers.
+ * shows the level as a tag (#282 Part 2a §4.7): the three-letter glyph on a tint of the level's
+ * colour, and the level name for screen readers.
  */
 import { elementScroll, useVirtualizer, type VirtualItem } from '@tanstack/react-virtual';
 import {
@@ -770,8 +771,7 @@ export function LogStream(props: LogStreamProps): JSX.Element | null {
       >
         {match && <span className={cx(styles['srOnly'])}>{t('inspector.selected')}</span>}
         <span className={cx(styles['gutter'])}>
-          <span className={cx(styles['bar'])} aria-hidden="true" />
-          <span className={cx(styles['glyph'])} aria-hidden="true" data-log-glyph="">
+          <span className={cx(styles['tag'])} aria-hidden="true" data-log-glyph="">
             {t(LEVEL_GLYPH[level])}
           </span>
           <span className={cx(styles['srOnly'])}>{t(LEVEL_NAME[level])}</span>
