@@ -701,3 +701,29 @@ func TestV9VariablesFixture(t *testing.T) {
 		t.Errorf("a 65 536-byte default: %v", err)
 	}
 }
+
+// unit:board-spec (#289 §3.2, review r1): a variable query may reference earlier definitions and
+// names the board does not define (legacy strings, from the URL); its own name or a later
+// definition is board.variable.query.order.
+func TestVariableQueryReferences(t *testing.T) {
+	spec := func(text string) []byte {
+		b, _ := json.Marshal(map[string]any{"title": "B", "panels": []any{}, "sections": []any{}, "variables": []any{
+			map[string]any{"name": "a", "label": "", "kind": "custom", "values": []string{"x"}, "multi": false, "includeAll": false, "sort": "none"},
+			map[string]any{"name": "n", "label": "", "kind": "query", "query": map[string]any{"lang": "promql", "text": text},
+				"multi": false, "includeAll": false, "sort": "none", "refresh": "load"},
+			map[string]any{"name": "z", "label": "", "kind": "custom", "values": []string{"x"}, "multi": false, "includeAll": false, "sort": "none"}}})
+		return b
+	}
+	for _, text := range []string{`label_values(up{a="$a"}, b)`, `label_values(up{job="$job"}, b)`, `label_values(up{a="$a",j="${job}"}, b)`, `label_values(x[$__interval], b)`} {
+		if _, err := ParseNewBoard(spec(text)); err != nil {
+			t.Errorf("%s: %v", text, err)
+		}
+	}
+	for _, text := range []string{`label_values(up{a="$n"}, b)`, `label_values(up{a="$z"}, b)`} {
+		_, err := ParseNewBoard(spec(text))
+		var ve *ValidationError
+		if !errors.As(err, &ve) || len(ve.Fields) != 1 || ve.Fields[0] != (FieldError{Pointer: "/variables/1/query", MessageKey: "board.variable.query.order"}) {
+			t.Errorf("%s: %v, want query.order", text, err)
+		}
+	}
+}

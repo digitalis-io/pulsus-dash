@@ -868,3 +868,57 @@ describe('unit:board-spec-variables (TS)', () => {
     ).toBe('This server does not support board variables yet');
   });
 });
+
+// #289 §3.2 (review r1), as the Go TestVariableQueryReferences: earlier definitions and names the
+// board does not define (legacy) may be referenced; its own name or a later one is query.order.
+describe('unit:board-spec variable query references (TS)', () => {
+  const spec = (text: string) => ({
+    title: 'B',
+    panels: [],
+    sections: [],
+    variables: [
+      {
+        name: 'a',
+        label: '',
+        kind: 'custom',
+        values: ['x'],
+        multi: false,
+        includeAll: false,
+        sort: 'none',
+      },
+      {
+        name: 'n',
+        label: '',
+        kind: 'query',
+        query: { lang: 'promql', text },
+        multi: false,
+        includeAll: false,
+        sort: 'none',
+        refresh: 'load',
+      },
+      {
+        name: 'z',
+        label: '',
+        kind: 'custom',
+        values: ['x'],
+        multi: false,
+        includeAll: false,
+        sort: 'none',
+      },
+    ],
+  });
+  it('accepts earlier and legacy names, refuses its own and later ones', () => {
+    for (const text of [
+      'label_values(up{a="$a"}, b)',
+      'label_values(up{job="$job"}, b)',
+      'label_values(x[$__interval], b)',
+    ]) {
+      expect(checkBoardSpec(spec(text)), text).toEqual([]);
+    }
+    for (const text of ['label_values(up{a="$n"}, b)', 'label_values(up{a="$z"}, b)']) {
+      expect(checkBoardSpec(spec(text)), text).toEqual([
+        { pointer: '/variables/1/query', messageKey: 'board.variable.query.order' },
+      ]);
+    }
+  });
+});
