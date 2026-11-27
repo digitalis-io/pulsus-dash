@@ -9,7 +9,13 @@ VIZ-046, by the rules T24-080 to T24-087. The map frame that draws them comes in
 first part adds the rows, the table, the CSV, the facts and the Inspector targets
 ([below](#the-map-frames-rows-234-part-1)); PulsusIX does not draw a map yet.
 
-The modules live in `client/src/vis/geo/` and import nothing outside it except types:
+The modules live in `client/src/vis/geo/`. The data layer (step 1a: `aliases.ts` to `assets.ts`)
+imports nothing outside the directory except types. The map frame's modules (#234 Part 1) do:
+`frame.ts` imports `data/frames` (`seriesName`), `vis/reduce` (the merge, the reducer, the cap and
+the T22-004 disambiguator), `vis/thresholds`, `engine/canvas2d/seriesColour`, `engine/patterns` and
+`i18n/t`; `rows.ts` imports `vis/reduce` (`panelCsv`, `focusOf`, `largestChange`) and
+`i18n/format`; `targets.ts` imports only `i18n/t` at run time (its imports of `frame.ts` are
+types).
 
 | Module | What it holds |
 |---|---|

@@ -6,7 +6,8 @@
  */
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DataPanelSpec } from '../../api/types';
+import { ApiError, type DataPanelSpec } from '../../api/types';
+import { fieldMessage } from '../../boards/fieldMessages';
 import { resetQueryLanguages } from '../../boards/useQueryLanguage';
 import {
   editorOn,
@@ -56,7 +57,9 @@ async function editor(vis: Vis, answer = R_A): Promise<Editor> {
   const spy = vi.spyOn(t.api, 'saveBoard');
   await ready('Requests');
   show('Requests');
-  if (vis.kind !== 'barchart' && vis.kind !== 'pie') await settled(t, 'Requests');
+  if (vis.kind !== 'barchart' && vis.kind !== 'pie' && vis.kind !== 'geomap') {
+    await settled(t, 'Requests');
+  }
   const d = await editorOn(t, 'Requests');
   const save = (): Vis[] =>
     spy.mock.calls.map((c) => c[3].panels[0]?.vis).filter((v): v is Vis => v !== undefined);
@@ -128,5 +131,56 @@ describe('draft preview (T22 §4.5, owner)', () => {
       expect(p).toHaveAttribute('data-panel-vis', 'line');
     });
     expect(visTrigger(e.d)).toHaveTextContent('Auto (Line)');
+  });
+
+  it('a stored map shows as a disabled option', async () => {
+    const e = await editor({ kind: 'geomap' });
+    await e.t.user.click(visTrigger(e.d));
+    const map = (await screen.findAllByRole('option')).find((o) => o.textContent === 'Map');
+    expect(map).toBeDefined();
+    expect(map).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('a v6 server’s refusal of a map reads as unsupported in the editor; other errors keep their text (#234 Part 1 §4.5)', async () => {
+    const e = await editor({ kind: 'geomap' });
+    const save = vi.spyOn(e.t.api, 'saveBoard').mockRejectedValue(
+      new ApiError('invalid', 'invalid board', {
+        fields: [
+          { pointer: '/panels/0/title', messageKey: 'board.panel.title.tooLong' },
+          { pointer: '/panels/0/vis/kind', messageKey: 'board.vis.kind.invalid' },
+        ],
+      }),
+    );
+    await e.t.user.type(within(e.d).getByRole('textbox', { name: 'Title' }), ' map');
+    await e.t.user.keyboard('{Control>}s{/Control}');
+    await waitFor(() => {
+      expect(save).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(visTrigger(e.d)).toHaveAccessibleDescription(
+        'This server does not support map panels yet',
+      );
+    });
+    expect(within(e.d).getByRole('textbox', { name: 'Title' })).toHaveAccessibleDescription(
+      fieldMessage('board.panel.title.tooLong'),
+    );
+    expect(e.d.textContent).not.toContain(fieldMessage('board.vis.kind.invalid'));
+  });
+
+  it('on any other kind the refused kind keeps its own text', async () => {
+    const e = await editor({ kind: 'line' });
+    const save = vi.spyOn(e.t.api, 'saveBoard').mockRejectedValue(
+      new ApiError('invalid', 'invalid board', {
+        fields: [{ pointer: '/panels/0/vis/kind', messageKey: 'board.vis.kind.invalid' }],
+      }),
+    );
+    await e.t.user.type(within(e.d).getByRole('textbox', { name: 'Title' }), ' x');
+    await e.t.user.keyboard('{Control>}s{/Control}');
+    await waitFor(() => {
+      expect(save).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(visTrigger(e.d)).toHaveAccessibleDescription(fieldMessage('board.vis.kind.invalid'));
+    });
   });
 });

@@ -418,7 +418,8 @@ panel sends no query and shows "This chart type isn't available in this version 
 editor lists Map as a disabled option of such a panel. A save to a server older than v7 is refused
 with `board.vis.kind.invalid` at the geomap panel's `…/vis/kind`; the board page shows that one
 error as "This server does not support map panels yet" under the status line
-(`saveFieldMessage`, `boards/fieldMessages.ts`). Every other field error, one under a geomap's
+(`saveFieldMessage`, `boards/fieldMessages.ts`), and the panel editor shows the same text at its
+Visualisation field (`kindFieldMessage`). Every other field error, one under a geomap's
 options included, keeps its own text: a v7 server never reports `geomap` as an invalid kind.
 
 ## Thresholds, legends and stat tiles (#64 Part B)

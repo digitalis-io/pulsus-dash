@@ -30,6 +30,16 @@ export function saveFieldMessage(spec: BoardSpec, f: FieldError): string {
     : fieldMessage(f.messageKey);
 }
 
+/**
+ * The text of the panel editor's `…/vis/kind` error for a panel of `kind` (§4.5): an older
+ * server's `board.vis.kind.invalid` on a geomap reads as the unsupported-kind text, as on the board.
+ */
+export function kindFieldMessage(kind: string, messageKey: string): string {
+  return kind === 'geomap' && messageKey === 'board.vis.kind.invalid'
+    ? t('board.save.geomapUnsupported')
+    : fieldMessage(messageKey);
+}
+
 /** Whether `f` is an older server's refusal of a geomap panel of `spec` (§4.5). */
 export function geomapUnsupported(spec: BoardSpec, f: FieldError): boolean {
   const m = f.messageKey === 'board.vis.kind.invalid' ? KIND_POINTER.exec(f.pointer) : null;
