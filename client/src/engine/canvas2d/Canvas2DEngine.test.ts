@@ -422,6 +422,34 @@ describe('engine', () => {
     expect(h.layer().calls('stroke')).toHaveLength(1);
     expect(h.visible().calls('drawImage')).toHaveLength(1);
     expect(h.drawn.length).toBe(drawn + 1);
+    // The layer canvas's own restore repaints too.
+    h.layer().clearOps();
+    h.visible().clearOps();
+    h.layerCanvas().dispatchEvent(new Event('contextrestored'));
+    expect(h.queued()).toBe(1);
+    h.flush();
+    expect(h.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 60]);
+    expect(h.layer().calls('stroke')).toHaveLength(1);
+    expect(h.visible().calls('drawImage')).toHaveLength(1);
+    expect(h.drawn.length).toBe(drawn + 2);
+  });
+
+  it('dispose removes the contextrestored listeners of both canvases (#296)', () => {
+    const h = harness(Canvas2DEngine);
+    const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
+    show(h, spec, { kind: 'scalar', scalar: { value: 7, timestampMs: 0 } }, { fromMs: 0, toMs: 1 });
+    const offVisible = vi.spyOn(h.canvas, 'removeEventListener');
+    const offLayer = vi.spyOn(h.layerCanvas(), 'removeEventListener');
+    h.frame.dispose();
+    const restored = (spy: typeof offVisible) =>
+      spy.mock.calls.filter((c) => c[0] === 'contextrestored');
+    expect(restored(offVisible)).toHaveLength(1);
+    expect(restored(offLayer)).toHaveLength(1);
+    // The same handler that was added: a later restore draws nothing.
+    expect(restored(offLayer)[0]?.[1]).toBe(restored(offVisible)[0]?.[1]);
+    h.canvas.dispatchEvent(new Event('contextrestored'));
+    h.layerCanvas().dispatchEvent(new Event('contextrestored'));
+    expect(h.queued()).toBe(0);
   });
 
   it('hover: snaps to the nearest sample and reports every series', () => {
