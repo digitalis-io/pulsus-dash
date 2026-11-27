@@ -27,8 +27,8 @@ types).
 | `locate.ts` | `locate` and its types `GeoSource`, `GeoPlace`, `LocationResult`, `LocationOption` |
 | `types.ts` | `Basemap`, `BasemapCountry`, `Gazetteer` and its rows, `GeoData` |
 | `decode.ts` | `decodeBasemap`, `decodeGazetteer` (type-only imports, so `ci:geo-data` runs it in Node) |
-| `urls.ts` | `basemapUrl`, `gazetteerUrl`: the assets imported with `?url` (the `geo-assets` build input) |
-| `assets.ts` | `geoLoader`, `loadGeoData`; re-exports the decoders |
+| `urls.ts` | `basemapUrl`, `gazetteerUrl`: the assets imported with `?url` (the `geo-assets` build input, which nothing imports) |
+| `assets.ts` | `geoLoader`, `loadGeoData` (it imports the two `?url` assets itself, so the `geo-assets` entry stays standalone; #234 Part 3); re-exports the decoders |
 | `frame.ts` | the map frame's rows (#234 Part 1): `geoRowSet`, `validateGeoRows`, `geoFrame`, `finalLabels`, `valueStatusOf` and their types |
 | `rows.ts` | `geoTable`, `geoCsv`, `geoFacts` |
 | `targets.ts` | `geoTarget`, `geoPlace`, `locationDetail`, `resolveGeoMembers`, `seedOf`, `worstState`, `seedOrdered` (type-only imports of `frame.ts`, so the shared Inspector can take it alone) |
@@ -663,7 +663,18 @@ The other panels stay usable. `e2e:geomap-chunk` records which path each engine 
 
 ### Chunk failure paths by engine
 
-ENGINE_PATHS_PLACEHOLDER
+`e2e:geomap-chunk` aborts the host chunk (`GeoMapFrame-*.js`) or the scene chunk (`scene-*.js`)
+once, then lets it load, and records which path ran (a test annotation and a `geomap-chunk` line in
+the report). On 2026-11-27, against this build:
+
+| Engine | Host chunk | Scene chunk |
+|---|---|---|
+| Chromium | Retry | Retry |
+| Firefox | Retry | Retry |
+| WebKit | Retry | Retry |
+
+No engine kept the failed module, so Reload was not needed; the Reload path stays covered by
+`unit:geo-render-failed` (d) and `unit:geo-chunk-failed` (b).
 
 ### The bundle rule (`geoInRoute`)
 

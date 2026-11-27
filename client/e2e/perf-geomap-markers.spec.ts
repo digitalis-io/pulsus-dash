@@ -4,12 +4,14 @@
  * the p95 of the `chart-draw` measures of kind `geomap` against 16 ms. It never fails on the number.
  */
 import { expect, test } from '@playwright/test';
-import { open } from './helpers.ts';
+import { waitReady } from './helpers.ts';
 
 test('bench:geomap-markers (report-only)', async ({ page }, info) => {
   test.skip(info.project.name !== 'chromium', 'Chromium at 1× only');
   test.setTimeout(60_000);
-  await open(page, '/t/demo/dev/geo?page=geomap-bench');
+  // No fixed clock here: Playwright's fake clock drops the User Timing entries the bench reads.
+  await page.goto('/t/demo/dev/geo?page=geomap-bench');
+  await waitReady(page, '/t/demo/dev/geo');
   const f = page.locator('[data-geo-gallery="geomap-bench"] [data-chart-frame]');
   await expect(f).toHaveAttribute('data-frame-ready', 'true');
   await page.evaluate(() => {

@@ -168,6 +168,8 @@ async function pointOf(p: Locator, lat: number, lon: number): Promise<{ x: numbe
 }
 
 test.describe('e2e:geomap-offline', () => {
+  // The pixels are read at DPR 1 (Desktop Safari defaults to 2).
+  test.use({ deviceScaleFactor: 1 });
   test('the basemap draws offline: land and water at DPR 1, no other origin', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('pulsus-dash.theme', 'dark');
@@ -239,7 +241,12 @@ test.describe('geomap board (http BFF)', () => {
       /\b0{14}(\d\d)\b/g,
       (_, d: string) => `k${d}`,
     );
-    const want = await readFile(new URL('./fixtures/csv-g.csv', import.meta.url), 'utf8');
+    // A board panel runs the range route, where a series with no finite sample reduces to no
+    // value (T22-003): k16's +Inf is `infinite` only in an instant result (CSV G).
+    const want = (await readFile(new URL('./fixtures/csv-g.csv', import.meta.url), 'utf8')).replace(
+      ',k16,Infinity,infinite,',
+      ',k16,,noValue,',
+    );
     expect(csv).toBe(want);
     expect(nameOf(keyOf(7))).toBe('k07');
   });
@@ -368,6 +375,7 @@ test.describe('geomap board (http BFF)', () => {
         type: 'geomap-chunk',
         description: `${which}: ${path} on ${info.project.name}`,
       });
+      console.log(`geomap-chunk ${which}: ${path} on ${info.project.name}`);
       if (path === 'reload') {
         await reload.click();
         await expect(

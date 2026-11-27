@@ -10,6 +10,7 @@ import { useLocation } from 'react-router';
 import { t } from '../i18n/t';
 import { cx } from '../kit/cx';
 import { usePageTitle } from '../shell/PageTitle';
+import { size as tokenSize } from '../styles/tokens';
 import { loadGeoData } from '../vis/geo/assets';
 import { gazT } from '../vis/geo/fixtures/series';
 import type { GeoData } from '../vis/geo/types';
@@ -37,7 +38,8 @@ function GalleryMap({ e, geoData }: { e: GeoGalleryEntry; geoData: GeoData }) {
     const el = ref.current;
     if (el === null) return;
     el.style.width = px(GEO_GALLERY_W);
-    el.style.height = px(GEO_GALLERY_H);
+    // The plot is 1024 × 512; the legend and meter line sits under it.
+    el.style.height = px(GEO_GALLERY_H + tokenSize['control']);
   }, []);
   return (
     <section className={cx(styles['entry'])} data-geo-gallery={e.id} aria-label={e.title}>

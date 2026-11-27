@@ -72,7 +72,7 @@
   flex: none;
   gap: var(--space-3);
   align-items: center;
-  min-height: var(--size-control);
+  height: var(--size-control);
   min-width: 0;
   overflow: hidden;
 }
@@ -80,7 +80,8 @@
 .legend {
   display: flex;
   flex: 0 1 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: hidden;
   gap: var(--space-1);
   min-width: 0;
   margin: 0;
@@ -90,6 +91,7 @@
 
 .entry {
   display: inline-flex;
+  min-height: var(--size-target-min);
   gap: var(--space-1);
   align-items: center;
   max-width: 100%;
