@@ -529,7 +529,7 @@ many values selected for ‹label›"; a waiting, failed or unset one "Set a val
 
 **The bar**, in order: a chip per defined variable but constants (spec order), the text chip of
 each referenced variable the board does not define, the filters, `+ Filter`. A chip is a 28 px
-capsule: the muted label, the value (ellipsised), a chevron; Loading shimmers and is `aria-busy`;
+field (its corner on the radius scale, VL-019): the muted label, the value (ellipsised), a chevron; Loading shimmers and is `aria-busy`;
 waiting reads "Waiting for ‹label›"; failed "Values unavailable" and too large "Selection too
 large; use All or narrow the search", each with the degraded state glyph. Its name is "Variable
 ‹label›: ‹display›" (`aria-haspopup="dialog"`, `aria-expanded`).
