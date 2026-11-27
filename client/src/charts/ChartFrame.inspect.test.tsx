@@ -14,7 +14,11 @@ import { createClock } from '../state/clock';
 import { fakeEngine, type FakeEngine, type FakeFrame } from '../test/fakeEngine';
 import { installResizeObserver } from '../test/fakeResizeObserver';
 import { T } from '../test/renderApp';
+import type { InspectorTarget } from '../inspector/types';
+import { frameOf as geoFrameOf, geoSpec } from '../test/geoKit';
+import { G, TH } from '../vis/geo/fixtures/series';
 import { ChartFrame, type ChartFrameProps } from './ChartFrame';
+import { selectionOf } from './inspectTarget';
 
 const FROM = Date.UTC(2026, 10, 19, 12);
 const URL0 = `/t/demo/x?from=2026-11-19T12:00:00.000Z&to=2026-11-19T13:00:00.000Z&refresh=off`;
@@ -193,5 +197,86 @@ describe('unit:chart-inspect', () => {
     const sliders = screen.getAllByRole('slider');
     expect(fireEvent.keyDown(sliders.at(-1) ?? document.body, { key: 'Enter' })).toBe(true);
     unmount();
+  });
+});
+
+describe('unit:geo-select-hover (INT-034, T24-088; plan #234 Part 3 §3.2)', () => {
+  const geoData = (): FrameData => ({ kind: 'geo', geo: geoFrameOf(G(), { th: TH }) });
+
+  it('select at cluster:k03 → the cluster target and its keys; hover on k05 → the geo tooltip', async () => {
+    const engine = fakeEngine();
+    const onInspect = vi.fn();
+    const onFrame = vi.fn();
+    renderInspect(engine, geoSpec({ title: 'Latency map' }), {
+      data: geoData(),
+      surface: 'geo',
+      onInspect,
+      onFrame,
+    });
+    const f = await frameOf(engine);
+    expect(onFrame).toHaveBeenLastCalledWith(f);
+    const host = document.querySelector<HTMLElement>('[data-chart-frame]');
+    expect(host).toHaveAttribute('role', 'application');
+    expect(host).toHaveAttribute('aria-roledescription', 'map');
+    expect(host).toHaveAttribute('aria-label', 'Latency map');
+    expect(host?.tabIndex).toBe(0);
+    expect(f.init.keyTarget).toBe(host);
+    expect(f.canvas).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.queryByRole('slider')).toBeNull();
+    act(() => {
+      f.emit('select', {
+        source: 'pointer',
+        item: { kind: 'geo', id: 'cluster:k03', keys: ['k01', 'k02', 'k03', 'k04', 'k08'] },
+      });
+    });
+    expect(onInspect).toHaveBeenCalledTimes(1);
+    const [target, source, rf] = onInspect.mock.calls[0] as [InspectorTarget, string, unknown];
+    expect(target.type).toBe('geo');
+    if (target.type !== 'geo') return;
+    expect(target.target).toMatchObject({ kind: 'cluster', id: 'cluster:k03' });
+    expect(target.target.rows.map((r) => r.key)).toEqual(['k01', 'k02', 'k03', 'k04', 'k08']);
+    expect(selectionOf(target)).toEqual({
+      keys: ['k01', 'k02', 'k03', 'k04', 'k08'],
+      fromMs: null,
+      toMs: null,
+    });
+    expect(source).toBe('pointer');
+    expect(rf).toBe(host);
+    act(() => {
+      f.emit('hover', {
+        source: 'pointer',
+        tMs: null,
+        xCss: 976,
+        yCss: 242,
+        rows: [],
+        item: { kind: 'geo', id: 'k05', keys: ['k05'] },
+      });
+    });
+    const tip = document.querySelector<HTMLElement>('[data-chart-tooltip]');
+    expect(tip?.hidden).toBe(false);
+    expect(
+      [...(tip?.querySelectorAll('[data-tooltip-line]') ?? [])].map((x) => x.textContent),
+    ).toEqual(['{geo_country_iso_code="jp"}', '60 ms · ok', 'Japan']);
+    act(() => {
+      f.emit('hover', {
+        source: 'pointer',
+        tMs: null,
+        xCss: 389,
+        yCss: 154,
+        rows: [],
+        item: { kind: 'geo', id: 'cluster:k03', keys: ['k01', 'k02', 'k03', 'k04', 'k08'] },
+      });
+    });
+    expect(
+      [...(tip?.querySelectorAll('[data-tooltip-line]') ?? [])].map((x) => x.textContent),
+    ).toEqual([
+      'Cluster of 5',
+      'worst degraded',
+      '{cloud_provider="gcp", cloud_region="europe-west1"}, {cloud_region="westeurope"}, {cloud_region="eu-west-1"}, {cloud_region="eu-west-2"}, {geohash="u4pruydqqvj"}',
+    ]);
+    act(() => {
+      f.emit('hover', null);
+    });
+    expect(tip?.hidden).toBe(true);
   });
 });

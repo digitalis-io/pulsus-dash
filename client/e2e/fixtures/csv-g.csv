@@ -1,0 +1,19 @@
+name,key,value,value_status,state,location_status,location_detail,source,code,provider,place,lat,lon,group,group_member,draw_status
+"{cloud_provider=""gcp"", cloud_region=""europe-west1""}",k03,210,ok,degraded,placed,,cloud,europe-west1,gcp,Mons,50.45,3.94,"{cloud_provider=""gcp"", cloud_region=""europe-west1""}",,shown
+"{cloud_region=""eu-west-1""}",k01,120,ok,ok,placed,,cloud,eu-west-1,aws,Dublin,53.34,-6.25,"{cloud_region=""eu-west-1""}",,shown
+"{cloud_region=""eu-west-2""}",k02,97,ok,ok,placed,,cloud,eu-west-2,aws,London,51.5,-0.12,"{cloud_region=""eu-west-2""}",,shown
+"{cloud_region=""mars-north-1""}",k09,50,ok,ok,unknownCode,cloud cloud_region=mars-north-1,,,,,,,other (11),"{cloud_region=""mars-north-1""}",notPlaced
+"{cloud_region=""westeurope""}",k04,180,ok,watch,placed,,cloud,westeurope,azure,Amsterdam,52.35,4.91,"{cloud_region=""westeurope""}",,shown
+"{cloud_region=""xx-dup-1""}",k11,20,ok,ok,ambiguous,providers: ta xx-dup-1; tb xx-dup-1,,,,,,,other (11),"{cloud_region=""xx-dup-1""}",notPlaced
+"{geo_country_iso_code=""jp""}",k05,60,ok,ok,placed,,country,JP,,Japan,36,138,"{geo_country_iso_code=""jp""}",,shown
+"{geohash=""u4pruydqqvj""}",k08,75,ok,ok,placed,,geohash,u4pruydqqvj,,"57.6491, 10.4074",57.64911063015461,10.407439693808556,other (11),"{geohash=""u4pruydqqvj""}",shown
+"{iata=""sin""}",k06,40,ok,ok,placed,,iata,SIN,,Singapore,1.35,103.99,"{iata=""sin""}",,shown
+"{lat=""-89.9"", lon=""0""}",k13,5,ok,ok,placed,,coords,,,"'-89.9000, 0.0000",-89.9,0,other (11),"{lat=""-89.9"", lon=""0""}",outsideMap
+"{lat=""0"", lon=""0""}",k14,-30,ok,ok,placed,,coords,,,"0.0000, 0.0000",0,0,other (11),"{lat=""0"", lon=""0""}",shown
+"{lat=""10"", lon=""10""}",k12,,noValue,unknown,placed,,coords,,,"10.0000, 10.0000",10,10,other (11),"{lat=""10"", lon=""10""}",excluded
+"{lat=""20"", lon=""20""}",k16,Infinity,infinite,unknown,placed,,coords,,,"20.0000, 20.0000",20,20,other (11),"{lat=""20"", lon=""20""}",excluded
+"{lat=""25"", lon=""25""}",k17,5e-300,outOfRange,unknown,placed,,coords,,,"25.0000, 25.0000",25,25,other (11),"{lat=""25"", lon=""25""}",excluded
+"{lat=""40.7128"", lon=""-74.0060"", site=""b""}",k18,150,ok,watch,placed,,coords,,,"40.7128, -74.0060",40.7128,-74.006,other (11),"{lat=""40.7128"", lon=""-74.0060"", site=""b""}",shown
+"{lat=""40.7128"", lon=""-74.0060""}",k07,300,ok,failing,placed,,coords,,,"40.7128, -74.0060",40.7128,-74.006,"{lat=""40.7128"", lon=""-74.0060""}",,shown
+"{lat=""91"", lon=""0""}",k10,,noValue,unknown,invalid,coords lat,,,,,,,other (11),"{lat=""91"", lon=""0""}",notPlaced
+"{service=""web""}",k15,1,ok,ok,noLocation,,,,,,,,other (11),"{service=""web""}",notPlaced

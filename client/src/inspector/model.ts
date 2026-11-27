@@ -160,6 +160,17 @@ function body(req: InspectRequest, tz: string): Body {
         copyValue: String(mark.value),
       };
     }
+    case 'geo':
+      // Stub (tests first).
+      return {
+        ...base,
+        subheading: '',
+        primary: '',
+        facts: [],
+        labels: [],
+        announce: '',
+        copyValue: '',
+      };
     case 'logLine': {
       const ms = Number(target.tsNs / 1_000_000n);
       const level = t(LEVEL_NAME[target.level]);
@@ -207,6 +218,8 @@ function visOf(target: InspectorTarget): VisKind | 'auto' {
       return 'auto';
     case 'mark':
       return 'barchart';
+    case 'geo':
+      return 'auto';
   }
 }
 

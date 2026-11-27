@@ -135,5 +135,8 @@ export function selectionOf(t: InspectorTarget): Selection {
         toMs: null,
       };
     }
+    case 'geo':
+      // Stub (tests first).
+      return { keys: [], fromMs: null, toMs: null };
   }
 }

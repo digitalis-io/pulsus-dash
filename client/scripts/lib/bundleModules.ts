@@ -224,3 +224,14 @@ export function markdownInRoute(
   }
   return out;
 }
+
+/** Stub (tests first): the geo rule of plan #234 Part 3 §4.8. */
+export function geoInRoute(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  manifest: Manifest,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  chunks: Readonly<Record<string, readonly string[]>>,
+  file = 'manifest.json',
+): MarkdownFinding[] {
+  return [{ rule: 'unmapped-chunk', file, subject: 'stub', message: 'stub (tests first)' }];
+}

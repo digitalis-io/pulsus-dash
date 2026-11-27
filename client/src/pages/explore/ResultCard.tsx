@@ -91,6 +91,8 @@ function noticeText(p: FramePlan, run: ExploreRun): string {
       return t('explore.vis.noBuckets');
     case 'tooManyTimestamps':
       return t('explore.vis.tooManyTimestamps');
+    // Explore never chooses a geomap (T24-099 is step 2).
+    case 'geomap':
     case null:
       return '';
   }

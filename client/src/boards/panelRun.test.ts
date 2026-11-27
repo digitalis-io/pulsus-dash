@@ -79,6 +79,8 @@ const BASE: PanelRun = {
   stepMs: 5000,
   expanded: null,
   stream: null,
+  placeholder: false,
+  retry: () => undefined,
 };
 
 function outcome(r: RangeResult, facts: { rateApplied?: boolean } = {}) {
@@ -472,6 +474,31 @@ describe('unit:panel-view-category', () => {
     expect(panelView(frame, { kind: 'barchart' }, 'S')).toMatchObject({
       kind: 'category',
       lang: 'logql',
+    });
+  });
+
+  it('a geomap panel (#234 Part 3 §4.7): the host view; blocked rows first; LogQL streams are not a metric', () => {
+    const geo = { kind: 'geomap' } as const;
+    const ready = { ...BASE, outcome: outcome(R_A) };
+    expect(panelView(ready, geo, 'M')).toEqual({ kind: 'geomap' });
+    // The host renders loading and the error itself.
+    expect(panelView(BASE, geo, 'M')).toEqual({ kind: 'geomap' });
+    expect(panelView({ ...BASE, error: new ApiError('network', 'x') }, geo, 'M')).toEqual({
+      kind: 'geomap',
+    });
+    expect(panelView({ ...BASE, blocked: 'empty' }, geo, 'M')).toEqual({
+      kind: 'message',
+      state: 'empty',
+      text: 'Add a query',
+    });
+    expect(
+      panelView(frameRun({ logKind: 'streams', result: fromRange(SER) }), geo, 'M'),
+    ).toMatchObject({
+      kind: 'message',
+      state: 'notMetric',
+    });
+    expect(panelView(frameRun({ logKind: 'series', result: fromRange(SER) }), geo, 'M')).toEqual({
+      kind: 'geomap',
     });
   });
 

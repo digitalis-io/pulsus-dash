@@ -126,3 +126,13 @@ export function geoPlace(r: GeoRow): string {
   const p = r.location.place;
   return p.name ?? t('geo.place.coords', { lat: p.lat.toFixed(4), lon: p.lon.toFixed(4) });
 }
+
+/** The full member list of a geo target's `geo:` run id (plan #234 Part 3 §4.5). Stub (tests first). */
+export function resolveGeoMembers(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  top: GeoInspectorTarget,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  runId: string,
+): { texts: string[]; members: []; labels: Labels[] } | null {
+  return null;
+}

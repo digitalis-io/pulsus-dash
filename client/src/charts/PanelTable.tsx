@@ -40,6 +40,12 @@ export interface PanelTableProps {
   /** A row was chosen (its name button, or Enter on the grid); absent: names are plain text. */
   onRow?: (key: string, source: 'pointer' | 'keyboard', el: HTMLElement) => void;
   onClose: () => void;
+  /** A leading 24 px `aria-pressed` select toggle per row (T25-016; plan #234 Part 3 §3.3). */
+  toggle?: { readonly label: (key: string) => string; readonly onToggle: (key: string) => void };
+  /** An "Inspect" button per row. */
+  onInspectRow?: (key: string, el: HTMLElement) => void;
+  /** A visible note on a highlighted row ("Not placed"); null for none. */
+  rowNote?: (key: string) => string | null;
 }
 
 /** Downloads `rows` as `csvFileName(title)`; the object URL is revoked on the next task. */

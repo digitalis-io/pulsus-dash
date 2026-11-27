@@ -126,6 +126,15 @@ export interface ChartFrameProps {
   readonly onPick?: (e: PickEvent, returnFocus: HTMLElement | null) => void;
   /** Barchart: the tooltip's lines for a row (plan #173 Part 3a §3.5); absent = none. */
   readonly markLines?: (row: CategoryRow) => readonly string[];
+  /**
+   * The engine frame after it is created, and null before it is disposed (ADR-0027; plan #234
+   * Part 3 §3.2): the geomap host subscribes to its geo events.
+   */
+  readonly onFrame?: (f: EngineFrame | null) => void;
+  /** Each a11y summary, after this frame's own state (plan #234 Part 3 §4.4a). */
+  readonly onSummary?: (s: FrameSummary) => void;
+  /** `geo`: the host div is the map's plot surface and key target (T24 §5.14); default `chart`. */
+  readonly surface?: 'chart' | 'geo';
 }
 
 interface HoverState {

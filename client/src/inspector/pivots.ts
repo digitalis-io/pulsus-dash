@@ -31,7 +31,7 @@ function identity(t: InspectorTarget): BoardFilter[] {
   if (t.type === 'logLine') {
     return Object.entries(t.labels).map(([key, value]) => ({ key, value }));
   }
-  if (t.type === 'bucket') return [];
+  if (t.type === 'bucket' || t.type === 'geo') return [];
   const labels = t.type === 'mark' ? t.target.mark.labels : t.labels;
   const service = labels['service_name'];
   if (service !== undefined) return [{ key: 'service_name', value: service }];
@@ -88,7 +88,8 @@ export function pivotInstant(t: InspectorTarget): number | null {
     case 'bucket':
       return t.tMs;
     case 'mark':
-      // A bar is reduced over the window: the pivot keeps the origin window.
+    case 'geo':
+      // A bar is reduced over the window, a map shows one: the pivot keeps the origin window.
       return null;
   }
 }

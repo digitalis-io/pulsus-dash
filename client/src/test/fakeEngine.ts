@@ -17,6 +17,10 @@ export interface FakeFrame extends ChartFrame, Omit<EngineFrame, 'on'> {
   readonly init: FrameInit;
   readonly calls: FakeCall[];
   disposed: number;
+  /** The live listeners of `e` (plan #234 Part 3: the geo host's subscriptions). */
+  listening(e: keyof FrameEvents): number;
+  /** The events whose listener was removed through its disposer, in order. */
+  readonly offs: string[];
   emit<E extends keyof FrameEvents>(e: E, ev: FrameEvents[E]): void;
   last(method: string): readonly unknown[] | undefined;
   /**
@@ -42,6 +46,7 @@ export function fakeEngine(o: { unsupported?: boolean } = {}): FakeEngine {
       if (o.unsupported === true) throw new ChartUnsupportedError('no 2D context');
       const listeners = new Map<string, Set<(ev: never) => void>>();
       const calls: FakeCall[] = [];
+      const offs: string[] = [];
       const record =
         (method: string) =>
         (...args: unknown[]): void => {
@@ -51,7 +56,9 @@ export function fakeEngine(o: { unsupported?: boolean } = {}): FakeEngine {
         canvas,
         init,
         calls,
+        offs,
         disposed: 0,
+        listening: (e) => listeners.get(e)?.size ?? 0,
         setSpec: record('setSpec'),
         setData: record('setData'),
         setTimeWindow: record('setTimeWindow'),
@@ -75,7 +82,7 @@ export function fakeEngine(o: { unsupported?: boolean } = {}): FakeEngine {
           const fn = cb as (ev: never) => void;
           set.add(fn);
           return () => {
-            set.delete(fn);
+            if (set.delete(fn)) offs.push(e);
           };
         },
         dispose() {

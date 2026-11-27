@@ -264,6 +264,8 @@ function frameView(
     return message('tooManyTimestamps', t('explore.vis.tooManyTimestamps'));
   }
   if (plan.notice === 'string') return message('string', t('explore.result.string', { value: '' }));
+  // `chosen` is never a geomap here: a geomap panel is routed to its host above.
+  if (plan.notice === 'geomap') return message('kindUnavailable', t('panel.kindUnavailable'));
   const thresholds = panelVis.thresholds ?? null;
   return {
     kind: 'frame',

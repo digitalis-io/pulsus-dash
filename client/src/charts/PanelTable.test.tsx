@@ -8,6 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installResizeObserver } from '../test/fakeResizeObserver';
 import { many } from '../test/categoryFixtures';
 import { capMarks, panelCsv, panelRows, type PanelRows } from '../vis/reduce';
+import { frameOf } from '../test/geoKit';
+import { G, TH } from '../vis/geo/fixtures/series';
+import { geoTable } from '../vis/geo/rows';
 import { PanelTable } from './PanelTable';
 
 const VIEW_H = 280;
@@ -207,5 +210,44 @@ describe('unit:panel-table-button', () => {
     expect(t.onRow).toHaveBeenCalledTimes(2);
     expect(t.onRow).toHaveBeenLastCalledWith(key7, 'keyboard', button);
     expect(t.active()).toMatch(/-r3$/);
+  });
+});
+
+describe('unit:panel-table (amended, #234 Part 3 §3.3; T25-016)', () => {
+  const geoRows = (): PanelRows => geoTable(frameOf(G(), { th: TH }), { kind: 'none' });
+
+  it('a leading aria-pressed toggle "Select ‹name›", an Inspect button, a note on a selected row', async () => {
+    const onToggle = vi.fn<(key: string) => void>();
+    const onInspectRow = vi.fn<(key: string, el: HTMLElement) => void>();
+    const r = geoRows();
+    const nameOf = (key: string): string => r.rows.find((x) => x.mark.key === key)?.mark.name ?? '';
+    render(
+      <PanelTable
+        rows={r}
+        title="Map"
+        selected={new Set(['k10'])}
+        toggle={{ label: (key) => `Select ${nameOf(key)}`, onToggle }}
+        onInspectRow={onInspectRow}
+        rowNote={(key) => (key === 'k10' ? 'Not placed' : null)}
+        onClose={() => undefined}
+      />,
+    );
+    const k10 = document.querySelector<HTMLElement>('[data-row-key="k10"]');
+    if (k10 === null) throw new Error('no k10 row');
+    const toggle = within(k10).getByRole('button', { name: 'Select {lat="91", lon="0"}' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle.closest('[role=gridcell]')).toBe(k10.querySelector('[role=gridcell]'));
+    const k03 = document.querySelector<HTMLElement>('[data-row-key="k03"]');
+    if (k03 === null) throw new Error('no k03 row');
+    const other = within(k03).getByRole('button', { name: /^Select / });
+    expect(other).toHaveAttribute('aria-pressed', 'false');
+    const user = userEvent.setup();
+    await user.click(other);
+    expect(onToggle).toHaveBeenCalledWith('k03');
+    await user.click(within(k10).getByRole('button', { name: 'Inspect' }));
+    expect(onInspectRow).toHaveBeenCalledTimes(1);
+    expect(onInspectRow.mock.calls[0]?.[0]).toBe('k10');
+    expect(k10).toHaveTextContent('Not placed');
+    expect(k03).not.toHaveTextContent('Not placed');
   });
 });
