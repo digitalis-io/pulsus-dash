@@ -756,6 +756,26 @@ impl Frames {
     }
 }
 
+/// Series `s`'s labels, `[("s", s)]` as `pulsus_synth::reference` makes them, with the strings and
+/// the pair list reserved fallibly (None on a failure). The shared slice itself (`Arc<[_]>`, one
+/// small allocation per series) has no fallible constructor on stable Rust: it is the one
+/// infallible allocation left, made only after the values, offsets and metas were reserved.
+#[cfg(feature = "probe")]
+fn f1c_labels(s: usize) -> Option<std::sync::Arc<[(String, String)]>> {
+    use std::fmt::Write;
+    let mut name = String::new();
+    name.try_reserve_exact(1).ok()?;
+    name.push('s');
+    let mut value = String::new();
+    // usize::MAX has 20 decimal digits.
+    value.try_reserve_exact(20).ok()?;
+    write!(value, "{s}").ok()?;
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    pairs.try_reserve_exact(1).ok()?;
+    pairs.push((name, value));
+    Some(pairs.into())
+}
+
 /// F1c's chunk as `pulsus_synth::reference`'s grid builds it (the same time axis, metas, offsets,
 /// values and finite range), each buffer reserved with `try_reserve_exact`; None on a failure.
 #[cfg(feature = "probe")]
@@ -795,7 +815,7 @@ fn f1c_chunk(series: u32, points: u32) -> Option<Chunk> {
         offsets.push(u32::try_from(values.len()).ok()?);
         metas.push(SeriesMeta {
             key_hash: s as u64,
-            labels: vec![("s".into(), s.to_string())].into(),
+            labels: f1c_labels(s)?,
         });
     }
     Some(Chunk {
