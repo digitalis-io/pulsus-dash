@@ -11,7 +11,7 @@ INSERT INTO orgs (id, slug, name) VALUES ($1, $2, $3);
 INSERT INTO tenant_bindings (org_id, id, slug, datasource_url, database, scope_org_id, credentials_ref) VALUES ($1, $2, $3, $4, sqlc.narg(database), sqlc.narg(scope_org_id), sqlc.narg(credentials_ref));
 
 -- name: ListTenantBindings :many
-SELECT org_id, id, slug, datasource_url, database, scope_org_id, credentials_ref, kind FROM tenant_bindings WHERE org_id = $1 ORDER BY slug;
+SELECT org_id, id, slug, datasource_url, database, scope_org_id, credentials_ref, kind, scope_seq FROM tenant_bindings WHERE org_id = $1 ORDER BY slug;
 
 -- name: GetOrg :one
 SELECT id, slug, name FROM orgs WHERE id = $1;

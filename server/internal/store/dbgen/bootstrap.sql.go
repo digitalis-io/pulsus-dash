@@ -96,7 +96,7 @@ func (q *Queries) InsertTenantBinding(ctx context.Context, arg InsertTenantBindi
 }
 
 const listTenantBindings = `-- name: ListTenantBindings :many
-SELECT org_id, id, slug, datasource_url, database, scope_org_id, credentials_ref, kind FROM tenant_bindings WHERE org_id = $1 ORDER BY slug
+SELECT org_id, id, slug, datasource_url, database, scope_org_id, credentials_ref, kind, scope_seq FROM tenant_bindings WHERE org_id = $1 ORDER BY slug
 `
 
 func (q *Queries) ListTenantBindings(ctx context.Context, orgID pgtype.UUID) ([]TenantBinding, error) {
@@ -117,6 +117,7 @@ func (q *Queries) ListTenantBindings(ctx context.Context, orgID pgtype.UUID) ([]
 			&i.ScopeOrgID,
 			&i.CredentialsRef,
 			&i.Kind,
+			&i.ScopeSeq,
 		); err != nil {
 			return nil, err
 		}

@@ -98,7 +98,7 @@ func (t *OrgTx) TenantBindings(ctx context.Context) ([]core.TenantBinding, error
 		out = append(out, core.TenantBinding{
 			OrgID: core.OrgID(r.OrgID.Bytes), ID: uuid.UUID(r.ID.Bytes), Slug: r.Slug,
 			DatasourceURL: r.DatasourceUrl, Database: text(r.Database), ScopeOrgID: text(r.ScopeOrgID),
-			CredentialsRef: text(r.CredentialsRef), Kind: r.Kind,
+			CredentialsRef: text(r.CredentialsRef), Kind: r.Kind, ScopeSeq: r.ScopeSeq,
 		})
 	}
 	return out, nil

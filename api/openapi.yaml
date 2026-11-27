@@ -214,10 +214,18 @@ paths:
       responses:
         '200':
           description: Frames and completeness (JSON), or the same as a DSF body (labels/1 and metric_matrix.grid/1 parts with coverage/1, failures in band as error/1)
+          headers:
+            X-Pulsus-Scope-Epoch: { $ref: '#/components/headers/ScopeEpoch' }
+            X-Pulsus-Scope-Seq: { $ref: '#/components/headers/ScopeSeq' }
           content:
             application/json: { schema: { $ref: '#/components/schemas/PromRangeResponse' } }
             application/vnd.pulsus.dash-stream;v=1: { schema: { type: string, format: binary } }
-        default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+        default:
+          description: Error (400, 403, 404, 413, 422, 429, 502, 503, 504); the scope headers on every error after tenant resolution
+          headers:
+            X-Pulsus-Scope-Epoch: { $ref: '#/components/headers/ScopeEpoch' }
+            X-Pulsus-Scope-Seq: { $ref: '#/components/headers/ScopeSeq' }
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } }
   /api/dash/v1/query/promql/instant:
     post:
       operationId: postPromqlInstant
@@ -378,6 +386,9 @@ components:
     Limit: { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 10000, default: 1000 } }
     LogFrom: { name: from, in: query, required: true, description: ms since the epoch, schema: { type: integer, format: int64, minimum: 0, maximum: 9223372036854 } }
     LogTo: { name: to, in: query, required: true, description: ms since the epoch; at most 9223372036854 (2262-04-11), schema: { type: integer, format: int64, minimum: 0, maximum: 9223372036854 } }
+  headers:
+    ScopeEpoch: { description: The scope epoch the BFF used for the request (ADR-0038), schema: { type: string, pattern: '^[0-9a-f]{16}$' } }
+    ScopeSeq: { description: Its sequence; higher is newer (ADR-0038), schema: { type: integer, format: int64 } }
   responses:
     RateLimited:
       description: Too many queries in flight, or PulsusDB is rate limiting the tenant
@@ -425,6 +436,8 @@ components:
         timeout_ms: { type: integer, minimum: 200, maximum: 120000, default: 30000 }
         vars: { $ref: '#/components/schemas/QueryVars' }
         rate: { type: boolean, default: true }   # the rate rewrite of a bare counter or histogram selector
+        step_ms: { type: integer, format: int64, minimum: 15000, maximum: 86400000 }   # a PromQL ladder step (#304); absent = from width_px
+        range_ms: { type: integer, format: int64, minimum: 1, maximum: 9007199254740991 }   # the window of the range macros (#304); absent = to − from
     PromInstantRequest:
       type: object
       additionalProperties: false
@@ -651,11 +664,13 @@ components:
     TenantInfo:
       type: object
       additionalProperties: false
-      required: [slug, name, datasource]
+      required: [slug, name, datasource, scope_epoch, scope_seq]
       properties:
         slug: { type: string }
         name: { type: string }
         datasource: { $ref: '#/components/schemas/DatasourceStatus' }
+        scope_epoch: { type: string, pattern: '^[0-9a-f]{16}$' }   # the effective data-scope version for the session principal (ADR-0038)
+        scope_seq: { type: integer, format: int64, minimum: 0 }    # its order: higher is newer
     Bootstrap:
       type: object
       additionalProperties: false

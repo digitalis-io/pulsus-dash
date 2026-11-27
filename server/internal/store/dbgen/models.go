@@ -17,4 +17,5 @@ type TenantBinding struct {
 	ScopeOrgID     pgtype.Text
 	CredentialsRef pgtype.Text
 	Kind           string
+	ScopeSeq       int64
 }

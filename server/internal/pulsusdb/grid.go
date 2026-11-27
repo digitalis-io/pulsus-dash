@@ -1,6 +1,9 @@
 package pulsusdb
 
-import "errors"
+import (
+	"errors"
+	"slices"
+)
 
 // Grid is the aligned request grid, in ms: Start, Start+Step, …, End.
 type Grid struct{ Start, End, Step int64 }
@@ -46,8 +49,20 @@ func PromGrid(fromMs, toMs int64, widthPx int) (Grid, error) {
 // ErrStepNotOnLadder is returned for a requested step that is not a PromLadder entry (#304 §A.1).
 var ErrStepNotOnLadder = errors.New("step_ms must be a step of the ladder")
 
-// PromGridStep is a stub (tests first, #304).
-func PromGridStep(fromMs, toMs, stepMs int64) (Grid, error) { return Grid{}, nil }
+// PromGridStep is the PromQL grid at a step the client chose (#304 §A.1): stepMs must be a
+// PromLadder entry (else ErrStepNotOnLadder); start is fromMs floored to it and end toMs raised to
+// it, as PromGrid aligns; more than 11 000 steps is ErrRangeTooLong. The range store asks for
+// bucket-aligned runs, so its grids are exactly the points it asked for.
+func PromGridStep(fromMs, toMs, stepMs int64) (Grid, error) {
+	if !slices.Contains(PromLadder, stepMs) {
+		return Grid{}, ErrStepNotOnLadder
+	}
+	g := align(fromMs, toMs, stepMs)
+	if (g.End-g.Start)/g.Step > maxSteps {
+		return Grid{}, ErrRangeTooLong
+	}
+	return g, nil
+}
 
 // LogGrid returns the grid of the log routes (#62's rule, unchanged by #303): the step is the
 // first Ladder entry with entry × widthPx ≥ toMs − fromMs (else 1 d), start is fromMs floored to

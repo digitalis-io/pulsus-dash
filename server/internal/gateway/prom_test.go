@@ -157,7 +157,10 @@ func TestBodyValidation(t *testing.T) {
 		{"vars not an object", rangePath, `{` + ok + `,"vars":[]}`, "/vars", "field.type"},
 		{"vars value not a string", rangePath, `{` + ok + `,"vars":{"a":1}}`, "/vars/a", "field.type"},
 		{"rate not a boolean", rangePath, `{` + ok + `,"rate":"yes"}`, "/rate", "field.type"},
-		{"range step_ms", rangePath, `{` + ok + `,"step_ms":1000}`, "/step_ms", "field.unknown"},
+		// #304 §A.1: the range route takes a ladder step and the macros' window.
+		{"range step_ms 1000", rangePath, `{` + ok + `,"step_ms":1000}`, "/step_ms", "field.range"},
+		{"range step_ms off the ladder", rangePath, `{` + ok + `,"step_ms":20000}`, "/step_ms", "field.range"},
+		{"range range_ms 0", rangePath, `{` + ok + `,"range_ms":0}`, "/range_ms", "field.range"},
 		{"instant rate", instantPath, `{"query":"up","at":1,"rate":true}`, "/rate", "field.unknown"},
 		{"instant step_ms 999", instantPath, `{"query":"up","at":1,"step_ms":999}`, "/step_ms", "field.range"},
 		{"instant step_ms 86400001", instantPath, `{"query":"up","at":1,"step_ms":86400001}`, "/step_ms", "field.range"},

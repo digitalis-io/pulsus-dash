@@ -23,9 +23,9 @@ func unavailable(msg string) api.GetBootstrap503JSONResponse {
 	return api.GetBootstrap503JSONResponse{Error: api.ErrorBody{Code: api.Unavailable, Message: msg}}
 }
 
-// GetBootstrap returns the principal, the organisation, its tenants (slug and check state only,
-// never a datasource URL, database, scope or credentials reference: T06-024) and the server
-// version.
+// GetBootstrap returns the principal, the organisation, its tenants (slug, check state and the
+// scope epoch and sequence, never a datasource URL, database, scope or credentials reference:
+// T06-024; the epoch is a hash, #304 §A.2) and the server version.
 func (m *meta) GetBootstrap(ctx context.Context, _ api.GetBootstrapRequestObject) (api.GetBootstrapResponseObject, error) {
 	if m.deps.Bootstrap == nil {
 		return unavailable("configuration store unavailable"), nil
@@ -41,7 +41,8 @@ func (m *meta) GetBootstrap(ctx context.Context, _ api.GetBootstrapRequestObject
 	}
 	tenants := make([]api.TenantInfo, 0, len(view.Bindings))
 	for _, b := range view.Bindings {
-		tenants = append(tenants, api.TenantInfo{Slug: b.Slug, Name: b.Slug, Datasource: api.DatasourceStatus{State: api.DatasourceStatusStateNotChecked}})
+		tenants = append(tenants, api.TenantInfo{Slug: b.Slug, Name: b.Slug, Datasource: api.DatasourceStatus{State: api.DatasourceStatusStateNotChecked},
+			ScopeEpoch: core.ScopeEpoch(core.LocalPrincipal.ID, b, dataScope()), ScopeSeq: b.ScopeSeq})
 	}
 	return api.GetBootstrap200JSONResponse{
 		Principal:     localPrincipal,
