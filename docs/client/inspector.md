@@ -17,8 +17,12 @@ covers the code in `client/src/inspector/` and its wiring; the design is
 - the page **selection** (`Selection`: series or stream keys and an optional `[fromMs, toMs)`);
 - the **Inspector** state: the request it shows, its sequence number, and whether it is collapsed
   (a pure reducer, `inspector/store.ts`);
-- the **registries** of member resolvers and Esc providers (`Map`s in refs; the last
-  registration wins, and a disposer removes only its own entry);
+- the **registries** of member resolvers and Esc providers (`Map`s in refs). Member resolvers are
+  a stack per panel (#234 Part 3 §4.9): the newest live registration answers, its disposer removes
+  only its own entry and the one before answers again (a full screen closing, StrictMode's
+  re-mount). Esc providers: the last registration wins, and a disposer removes only its own entry.
+  A `geo:` run id is answered from the open request's own geo target (`resolveGeoMembers`), never
+  from a registration;
 - the page's one `document` `keydown` listener (the Esc ladder) and the live region.
 
 | Prop | Board | Explore |
@@ -55,7 +59,7 @@ A kind sends one `InspectRequest` (`inspector/types.ts`):
 | Field | Meaning |
 |---|---|
 | `origin` | `surface`, `panelId` (null on Explore), `title`, `query` (board: the panel's expanded text; Explore: `q`; null before a run), the Context `window` at the gesture, `unit` |
-| `target` | one member of `InspectorTarget`: `point` (line, bars), `bucket` (heatmap), `value` (stat), `logLine`, `mark` (the bar chart, #173 Part 3a) |
+| `target` | one member of `InspectorTarget`: `point` (line, bars), `bucket` (heatmap), `value` (stat), `logLine`, `mark` (the bar chart, #173 Part 3a), `geo` (the map, #234 Part 3) |
 | `selection` | what the inspect selects: `selectionOf(target)` |
 | `source`, `returnFocus` | pointer or keyboard; the element focus returns to on close |
 
@@ -80,6 +84,28 @@ no instant: the announcement has no time, the pivots keep the origin window, and
 `vis=barchart`. Its labels are the mark's; members are not listed yet (I3). `barAction`
 ([Categorical panels](panels.md#the-pick-decision-visbaractionts)) builds it from a bar's `pick`.
 
+### The geo target (#234 Part 3)
+
+`{ type: 'geo', target: GeoInspectorTarget }` (`vis/geo/targets.ts`) is a snapshot of the map's
+rows built by `geoTarget`; `inspectorModel` renders it with `inspector/geoModel.ts`
+([T24 §4.13](../../designs/technical/T24-geo-schematic-and-widget-panels.md),
+[T25 §4.9](../../designs/technical/T25-inspector-and-pivots.md)). The heading is the target's
+title; the selection is its rows' keys.
+
+| Kind | Subheading | Primary | Details | Members | Pivots |
+|---|---|---|---|---|---|
+| `marker` | the place, else the location status | the value; a crossed state | Value status (OK, No value, Infinite, Out of range), Location (4 dp) or its status, Source `‹key› ‹code› (‹provider›)` (coordinates: `‹key› lat, lon`), Location detail `‹status›: ‹detail›` (when not placed), Group (`… (in other (n))` for an aggregated row), Draw (On the map, Not placed, Outside the map, Not drawn: no usable value, Not drawn: cap) | — | the `mark` pivots over the origin window, from the row's labels |
+| `cluster` | `near ‹seed place›` | `min – max` | Worst state, Values | its rows (names, with their labels) | none |
+| `aggregate` | `‹n› groups, ‹m› series` | `min – max` | — | its member groups (final labels, with `{groupBy: value}`) | none |
+| `group` | `‹m› series` | `min – max` | Worst state, Values | its rows | none |
+
+Members show entries 0–7 with their label maps; with more than eight, `resolve` is
+`{panelId, runId: 'geo:' + id}`, and the host answers it from the open request's target. `next` is
+not set yet (the navigation stack is #234 Part 4). The announcement is `Inspector: ` followed by a
+marker's `‹name›, ‹value›[, ‹state›]`, a cluster's `Cluster of ‹n›, near ‹place›[, worst ‹state›]`,
+the aggregate's `other (n), ‹n› groups, ‹m› series` or a group's `‹label›, ‹m› series[, worst
+‹state›]`.
+
 ### Adding a kind
 
 1. Add a member to `InspectorTarget` and a case to `body()` in `model.ts` (and to `visOf`,
@@ -88,7 +114,8 @@ no instant: the announcement has no time, the pivots keep the origin window, and
    `useChartInspect(origin)`; fields repeated from the origin must be equal (T25-002).
 3. If the kind has its own Esc steps (a search field, a brush), register them with
    `registerEscape(panelId, { pre, post })`. `pre()` and `post()` return the next step or null.
-4. If its members resolve lazily, register `registerMembers(panelId, resolver)`.
+4. If its members resolve lazily, register `registerMembers(panelId, resolver)` and dispose it
+   on unmount.
 
 ## Gestures (T25-005)
 
