@@ -320,6 +320,109 @@ function powRows(): unknown[] {
   return rows;
 }
 
+/** One `area-pieces.json` piece (#282 Part 2b §3.4): class, x span and the top edge's y at its ends. */
+interface RefPiece {
+  cls: 'A' | 'I' | 'B';
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
+
+/**
+ * The f64 reference of the area's piecewise edge rule over the plot rows 100 (top) to 300 (bottom):
+ * ends classed in value space against [min, max], the crossings of max and min on the original
+ * line (the cut parameter halved when the difference overflows), y projected fraction first.
+ */
+function refPieces(x0: number, x1: number, va: number, vb: number, min: number, max: number) {
+  const top = 100;
+  const bottom = 300;
+  if (!(x1 > x0)) return [];
+  const frac = (v: number): number => {
+    const span = max - min;
+    return Number.isFinite(span) ? (v - min) / span : (v / 2 - min / 2) / (max / 2 - min / 2);
+  };
+  const yOf = (v: number): number => top + (1 - frac(v)) * (bottom - top);
+  const cls = (v: number): RefPiece['cls'] => (v > max ? 'A' : v < min ? 'B' : 'I');
+  const tOf = (c: number): number => {
+    const d = vb - va;
+    return Number.isFinite(d) ? (c - va) / d : (c / 2 - va / 2) / (vb / 2 - va / 2);
+  };
+  const edge = (k: RefPiece['cls']): number => (k === 'A' ? top : bottom);
+  const ca = cls(va);
+  const cb = cls(vb);
+  const cuts: { x: number; y: number; next: RefPiece['cls'] }[] = [];
+  const at = (c: number, y: number, next: RefPiece['cls']): void => {
+    cuts.push({ x: x0 + tOf(c) * (x1 - x0), y, next });
+  };
+  if (vb > va) {
+    if (ca === 'B' && cb !== 'B') at(min, bottom, 'I');
+    if (cb === 'A' && ca !== 'A') at(max, top, 'A');
+  } else {
+    if (ca === 'A' && cb !== 'A') at(max, top, 'I');
+    if (cb === 'B' && ca !== 'B') at(min, bottom, 'B');
+  }
+  const pieces: RefPiece[] = [];
+  let k = ca;
+  let x = x0;
+  let y = ca === 'I' ? yOf(va) : edge(ca);
+  for (const c of cuts) {
+    pieces.push({ cls: k, x0: x, x1: c.x, y0: k === 'I' ? y : edge(k), y1: k === 'I' ? c.y : edge(k) });
+    k = c.next;
+    x = c.x;
+    y = c.y;
+  }
+  pieces.push({ cls: k, x0: x, x1, y0: k === 'I' ? y : edge(k), y1: k === 'I' ? yOf(vb) : edge(k) });
+  return pieces;
+}
+
+/**
+ * `area-pieces.json` (#282 Part 2b §5): the joins of the plan's cases (a)–(f) over x 0–100 and
+ * the plot rows 300 (bottom) → 100 (top). Pixel cases are values on [0, 200] (v = 300 − y); (e6)
+ * is two joins through 5e-309 at x 50.
+ */
+export function areaPiecesRows(): unknown[] {
+  const px = (id: string, x0: number, y0: number, x1: number, y1: number) => ({
+    id,
+    x0,
+    x1,
+    va: 300 - y0,
+    vb: 300 - y1,
+    min: 0,
+    max: 200,
+  });
+  const val = (id: string, va: number, vb: number, min = 0, max = 100, x0 = 0, x1 = 100) => ({
+    id,
+    x0,
+    x1,
+    va,
+    vb,
+    min,
+    max,
+  });
+  const cases = [
+    px('a', 0, 50, 100, 200),
+    px('b', 0, 150, 100, 250),
+    px('c', 0, 20, 100, 60),
+    px('d', 0, 320, 100, 400),
+    val('e1', -5e9, 2e10),
+    val('e2', -8e9, 3e9),
+    val('e3', 50, 9e12),
+    val('e4', -5e19, 2e20),
+    val('e5', -1e308, 1.05e308, 1e308, 1.1e308),
+    val('e6a', 0, 5e-309, 0, 1e-308, 0, 50),
+    val('e6b', 5e-309, 1e-308, 0, 1e-308, 50, 100),
+    px('f', 50, 120, 50, 200),
+  ];
+  return cases.map(({ id, ...c }) => ({
+    case: id,
+    ...c,
+    top: 100,
+    bottom: 300,
+    pieces: refPieces(c.x0, c.x1, c.va, c.vb, c.min, c.max),
+  }));
+}
+
 function ticksRows(s: Sources): unknown[] {
   const r = stream(s, 2);
   const rows: unknown[] = [];
@@ -943,6 +1046,7 @@ export async function fixtures(): Promise<Record<string, string>> {
     'hover.json': json(hoverRows(s, entries)),
     'layer.json': json(layerRows(s, entries, GALLERY_WINDOW, seriesOf)),
     'selection.json': json(selectionRows(s, GALLERY_WINDOW, seriesOf)),
+    'area-pieces.json': json(areaPiecesRows()),
   };
 }
 

@@ -11,6 +11,8 @@
   --brush: #5B9BFF29;
   --canvas: #0E1014;
   --category-other: #8A919C;
+  --chart-axis: #FFFFFF24;
+  --chart-grid: #FFFFFF0F;
   --control: #23272E;
   --control-hover: #2A2F37;
   --control-pressed: #31363F;
@@ -83,6 +85,8 @@
   --brush: #2563C929;
   --canvas: #F2F3F6;
   --category-other: #6B7280;
+  --chart-axis: #1C223329;
+  --chart-grid: #1C22330F;
   --control: #FFFFFF;
   --control-hover: #F6F7F9;
   --control-pressed: #ECEEF1;
@@ -177,6 +181,7 @@
   --motion-quick: 100ms;
   --motion-standard: 250ms;
   --opacity-area: 0.28;
+  --opacity-chart-area: 0.18;
   --opacity-chip: 0.12;
   --opacity-dimmed: 0.35;
   --opacity-tag: 0.18;
@@ -193,8 +198,8 @@
   --size-board-row: 40px;
   --size-chart: 240px;
   --size-chart-brush-min: 4px;
-  --size-chart-dash: 5px;
-  --size-chart-dash-gap: 4px;
+  --size-chart-dash: 4px;
+  --size-chart-dash-gap: 5px;
   --size-chart-line: 1.5px;
   --size-chart-sparkline: 32px;
   --size-chart-stat: 120px;

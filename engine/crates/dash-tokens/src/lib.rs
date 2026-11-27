@@ -29,6 +29,10 @@ impl Rgba8 {
 pub enum ColourRole {
     Surface1,
     Hairline,
+    /// The line chart's value guides.
+    ChartGrid,
+    /// The plot's bottom baseline.
+    ChartAxis,
     TextMuted,
     Brush,
     Text,
@@ -48,6 +52,8 @@ pub fn colour(theme: Theme, role: ColourRole) -> Rgba8 {
     match (theme, role) {
         (Theme::Dark, ColourRole::Surface1) => dark::SURFACE_1,
         (Theme::Dark, ColourRole::Hairline) => dark::HAIRLINE,
+        (Theme::Dark, ColourRole::ChartGrid) => dark::CHART_GRID,
+        (Theme::Dark, ColourRole::ChartAxis) => dark::CHART_AXIS,
         (Theme::Dark, ColourRole::TextMuted) => dark::TEXT_MUTED,
         (Theme::Dark, ColourRole::Brush) => dark::BRUSH,
         (Theme::Dark, ColourRole::Text) => dark::TEXT,
@@ -58,6 +64,8 @@ pub fn colour(theme: Theme, role: ColourRole) -> Rgba8 {
         (Theme::Dark, ColourRole::Focus) => dark::FOCUS,
         (Theme::Light, ColourRole::Surface1) => light::SURFACE_1,
         (Theme::Light, ColourRole::Hairline) => light::HAIRLINE,
+        (Theme::Light, ColourRole::ChartGrid) => light::CHART_GRID,
+        (Theme::Light, ColourRole::ChartAxis) => light::CHART_AXIS,
         (Theme::Light, ColourRole::TextMuted) => light::TEXT_MUTED,
         (Theme::Light, ColourRole::Brush) => light::BRUSH,
         (Theme::Light, ColourRole::Text) => light::TEXT,

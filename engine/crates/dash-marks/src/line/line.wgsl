@@ -19,11 +19,11 @@ struct View {
   ou: f32,
   lane_z0: f32,
   lane_dz: f32,
-  colours: array<vec4<f32>, 9>,
+  colours: array<vec4<f32>, 10>,
   lane_only: u32,
   guides: u32,
   use_colour: u32,
-  pad: u32,
+  area_alpha: f32,
   colour: vec4<f32>,
 };
 

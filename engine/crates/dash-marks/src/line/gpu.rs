@@ -127,11 +127,11 @@ struct ViewU {
     ou: f32,
     lane_z0: f32,
     lane_dz: f32,
-    colours: [[f32; 4]; 9],
+    colours: [[f32; 4]; 10],
     lane_only: u32,
     guides: u32,
     use_colour: u32,
-    pad: u32,
+    area_alpha: f32,
     colour: [f32; 4],
 }
 
@@ -312,6 +312,7 @@ impl<'a> LineRef<'a> {
                 width_css,
                 far,
                 emphasis,
+                ..
             } => Some(Self {
                 chunk,
                 series,
@@ -506,7 +507,7 @@ impl Renderer {
         let mut guides: Vec<LineInstance> = Vec::new();
         let mut guides_plot = [0.0f32; 4];
         for item in &f.list.items {
-            if let MarkItem::Guides { lines, plot } = item {
+            if let MarkItem::Guides { lines, plot, .. } = item {
                 guides.extend(guide_instances(lines));
                 guides_plot = *plot;
                 continue;
@@ -570,7 +571,7 @@ impl Renderer {
             lane_only: p.lane_only,
             guides: u32::from(p.guides),
             use_colour: u32::from(p.colour.is_some()),
-            pad: 0,
+            area_alpha: 0.0,
             colour: p.colour.unwrap_or([0.0; 4]),
         };
         ctx.queue

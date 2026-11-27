@@ -86,7 +86,7 @@ const heat = (bounds: number[], counts: number[], ts = [0, 5000]) => ({
   heatmap: { timestamps: ts, bounds, counts },
 });
 
-const LINE = (unit: VisSpec['unit']): VisSpec => ({ kind: 'line', title: 'T', unit });
+const LINE = (unit: VisSpec['unit']): VisSpec => ({ kind: 'line', title: 'T', unit, area: true });
 const BARS = (unit: VisSpec['unit']): VisSpec => ({
   kind: 'bars',
   title: 'T',
@@ -289,6 +289,20 @@ describe('unit:frame-plan', () => {
     expect(plain(plan('heatmap', B(), { isolatedKey: k2 }))).toEqual(plain(plan('heatmap', B())));
     expect(plain(plan('heatmap', B(), { isolatedKey: k2 })).data).toEqual(H1_FULL);
     expect(toggleIsolation(k, fkey(0))).toBe(fkey(0));
+  });
+});
+
+describe('unit:frame-plan-area (#282 Part 2b, ADR-0036)', () => {
+  it('only a line spec asks for the area', () => {
+    const r = ranged(two());
+    const area = (v: Parameters<typeof plan>[0]): unknown => {
+      const s = plan(v, r).spec as { area?: boolean } | null;
+      return s?.area;
+    };
+    expect(area('line')).toBe(true);
+    expect(area('bars')).toBeUndefined();
+    expect(area('heatmap')).toBeUndefined();
+    expect(area('stat')).toBeUndefined();
   });
 });
 

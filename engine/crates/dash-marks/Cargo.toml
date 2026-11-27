@@ -68,3 +68,7 @@ required-features = ["gpu"]
 [[test]]
 name = "selection_passes"
 required-features = ["gpu"]
+
+[[test]]
+name = "area"
+required-features = ["gpu"]

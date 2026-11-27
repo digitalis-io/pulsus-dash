@@ -218,4 +218,32 @@ describe('unit:ui-token-contrast', () => {
       pair(theme, ['canvas', 'failing'], ['canvas'], 3);
     });
   }
+
+  // #282 Part 2b (VL-009): the line area stacks 1–4 series tints at chart-area ÷ n over surface-1;
+  // every series stroke and every threshold state colour stays at least 3:1 on any such stack.
+  for (const theme of THEMES) {
+    it(`${theme}: strokes and thresholds keep 3:1 over 1–4 stacked area tints`, () => {
+      const series = Array.from({ length: 8 }, (_, k) => `series-${String(k + 1)}`);
+      const a = alphaOf('chart-area');
+      const subsets = (n: number, from = 0): string[][] =>
+        n === 0
+          ? [[]]
+          : series
+              .slice(from)
+              .flatMap((c, k) => subsets(n - 1, from + k + 1).map((rest) => [c, ...rest]));
+      for (let n = 1; n <= 4; n++) {
+        for (const set of subsets(n)) {
+          let under = stack(theme, 'surface-1');
+          for (const c of set) {
+            const [r, g, b] = rgba(hexOf(theme, c));
+            const t = a / n;
+            under = [r * t + under[0] * (1 - t), g * t + under[1] * (1 - t), b * t + under[2] * (1 - t)];
+          }
+          for (const fg of [...series, 'watch', 'degraded', 'failing']) {
+            expect(onTint(theme, fg, under), `${theme}: ${fg} over ${set.join('+')}`).toBeGreaterThanOrEqual(3);
+          }
+        }
+      }
+    });
+  }
 });

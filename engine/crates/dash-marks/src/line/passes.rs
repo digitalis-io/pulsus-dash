@@ -39,6 +39,8 @@ pub(super) const NO_LANE: u32 = u32::MAX - 1;
 /// One pass of a Line item, as the test hook logs it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PassKind {
+    /// The area under the joins (ADR-0036), with the guides, before any line pass.
+    Area,
     /// No emphasis: every lane and the guides, at the series' colours.
     All,
     /// The guides only, onto the frame.

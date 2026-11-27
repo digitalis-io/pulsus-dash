@@ -63,6 +63,9 @@ pub struct LineSpec {
     /// The first [`MAX_THRESHOLDS`] lines, in spec order (TS `thresholdsOf`).
     #[serde(default, deserialize_with = "first_eight")]
     pub thresholds: Vec<ThresholdLine>,
+    /// The gradient area under 1–4 series (ADR-0036); absent = false (no area).
+    #[serde(default)]
+    pub area: bool,
     /// 500 while the interim cap holds (ADR-0014 §4).
     #[serde(skip, default = "max_series_default")]
     pub max_series: u32,
@@ -74,6 +77,7 @@ impl LineSpec {
             unit,
             value_range: None,
             thresholds: Vec::new(),
+            area: false,
             max_series: max_series_default(),
         }
     }

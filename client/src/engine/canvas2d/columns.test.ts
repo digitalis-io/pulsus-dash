@@ -212,3 +212,18 @@ describe('unit:columns', () => {
     });
   });
 });
+
+describe('lineColumns join flags (#282 Part 2b §4.2, unit:canvas-joins)', () => {
+  const w = { fromMs: 0, toMs: 400 };
+  const plot = { x: 0, y: 0, width: 400, height: 100 };
+  it('records first, gapLead and gapInner per drawn column', () => {
+    const ts = new Float64Array([100.5, 200.1, 200.5, 200.9, 300.5]);
+    const vs = new Float64Array([30, 60, NaN, 40, 50]);
+    const cols = lineColumns(ts, vs, w, plot);
+    const c = cols[200];
+    expect([c?.first, c?.last, c?.gapLead, c?.gapInner]).toEqual([60, 40, false, true]);
+    expect([cols[300]?.first, cols[300]?.gapLead, cols[300]?.gapInner]).toEqual([50, false, false]);
+    const lead = lineColumns(new Float64Array([10.5, 20.2, 20.6]), new Float64Array([1, NaN, 2]), w, plot);
+    expect([lead[20]?.gapLead, lead[20]?.gapInner]).toEqual([true, false]);
+  });
+});

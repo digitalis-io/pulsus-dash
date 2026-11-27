@@ -82,7 +82,7 @@ pub fn build(v: &Viewport) -> (DrawList, Option<FrameSummary>) {
 /// the measured one) and pick count) and its pick snapshot; both None exactly when there is no
 /// summary (no data, no window, an unsupported kind or an empty plot).
 pub fn build_frame(v: &Viewport) -> Built {
-    let mut palette = [colour(v.theme, ColourRole::Hairline); 9];
+    let mut palette = [colour(v.theme, ColourRole::Hairline); 10];
     palette[..8].copy_from_slice(&series_palette(v.theme));
     let Camera::Plot2D(cam) = v.camera;
     let view_proj = v.camera.view_proj(Size64 {
@@ -162,6 +162,7 @@ pub fn build_frame(v: &Viewport) -> Built {
     list.items.push(MarkItem::Guides {
         lines,
         plot: rect(&plot),
+        baseline: 0.0,
     });
     let dpr = f64::from(v.dpr);
     if let Some(enc) = choose_encoding(
@@ -187,6 +188,7 @@ pub fn build_frame(v: &Viewport) -> Built {
             emphasis: matched(chunk, shown, &v.selection).map(|m| emphasis(m, v.theme)),
             width_css: dash_tokens::size::CHART_LINE,
             far: is_far(&enc, chunk.finite),
+            area: None,
         });
     }
     // The layer marks (plan #68 C2c1 §4.2, C2c2 §4.2): the selection band, thresholds, then events

@@ -391,6 +391,7 @@ pub fn line_list(
         let s = chunk.series.len() as u32;
         items.push(MarkItem::Line {
             far: is_far(&enc, chunk.finite),
+            area: None,
             series: 0..s,
             window,
             n: plot[2].floor() as u32,
@@ -414,7 +415,7 @@ pub fn line_list(
         css,
         dpr,
         view_proj: m.to_cols_array_2d().map(|c| c.map(|x| x as f32)),
-        palette: [WHITE; 9],
+        palette: [WHITE; 10],
         clip: clip.then(|| plot.map(|x| x as f32)),
         items,
     }

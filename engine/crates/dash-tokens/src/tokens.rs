@@ -14,6 +14,8 @@ pub mod colour {
         pub const BRUSH: Rgba8 = Rgba8([0x5B, 0x9B, 0xFF, 0x29]);
         pub const CANVAS: Rgba8 = Rgba8([0x0E, 0x10, 0x14, 0xFF]);
         pub const CATEGORY_OTHER: Rgba8 = Rgba8([0x8A, 0x91, 0x9C, 0xFF]);
+        pub const CHART_AXIS: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x24]);
+        pub const CHART_GRID: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x0F]);
         pub const CONTROL: Rgba8 = Rgba8([0x23, 0x27, 0x2E, 0xFF]);
         pub const CONTROL_HOVER: Rgba8 = Rgba8([0x2A, 0x2F, 0x37, 0xFF]);
         pub const CONTROL_PRESSED: Rgba8 = Rgba8([0x31, 0x36, 0x3F, 0xFF]);
@@ -86,6 +88,8 @@ pub mod colour {
         pub const BRUSH: Rgba8 = Rgba8([0x25, 0x63, 0xC9, 0x29]);
         pub const CANVAS: Rgba8 = Rgba8([0xF2, 0xF3, 0xF6, 0xFF]);
         pub const CATEGORY_OTHER: Rgba8 = Rgba8([0x6B, 0x72, 0x80, 0xFF]);
+        pub const CHART_AXIS: Rgba8 = Rgba8([0x1C, 0x22, 0x33, 0x29]);
+        pub const CHART_GRID: Rgba8 = Rgba8([0x1C, 0x22, 0x33, 0x0F]);
         pub const CONTROL: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xFF]);
         pub const CONTROL_HOVER: Rgba8 = Rgba8([0xF6, 0xF7, 0xF9, 0xFF]);
         pub const CONTROL_PRESSED: Rgba8 = Rgba8([0xEC, 0xEE, 0xF1, 0xFF]);
@@ -182,8 +186,8 @@ pub mod size {
     pub const BOARD_ROW: f32 = 40.0;
     pub const CHART: f32 = 240.0;
     pub const CHART_BRUSH_MIN: f32 = 4.0;
-    pub const CHART_DASH: f32 = 5.0;
-    pub const CHART_DASH_GAP: f32 = 4.0;
+    pub const CHART_DASH: f32 = 4.0;
+    pub const CHART_DASH_GAP: f32 = 5.0;
     pub const CHART_LINE: f32 = 1.5;
     pub const CHART_SPARKLINE: f32 = 32.0;
     pub const CHART_STAT: f32 = 120.0;
@@ -225,6 +229,7 @@ pub mod radius {
 
 pub mod opacity {
     pub const AREA: f32 = 0.28;
+    pub const CHART_AREA: f32 = 0.18;
     pub const CHIP: f32 = 0.12;
     pub const DIMMED: f32 = 0.35;
     pub const TAG: f32 = 0.18;
