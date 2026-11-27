@@ -32,6 +32,18 @@ const ENV: BoardVariable = {
   sort: 'none',
 };
 const BASE = '/t/demo/board/b-1?from=now-1h&to=now&refresh=off';
+// A custom variable whose second value cannot be held by the address (201 code points).
+const ENV_LONG: BoardVariable = {
+  ...{
+    name: 'env',
+    label: 'Environment',
+    kind: 'custom',
+    multi: false,
+    includeAll: false,
+    sort: 'none',
+  },
+  values: ['a', 'x'.repeat(201)],
+};
 const ready = (values: readonly string[]): VariableList => ({
   status: 'ready',
   values,
@@ -283,6 +295,46 @@ describe('unit:variable-picker', () => {
     expect(JSON.parse(screen.getByTestId('value').textContent)).toEqual({ values: [lit] });
     await m.open();
     expect(m.checked(lit)).toBe(true);
+  });
+
+  it('Use ‹text› is held to the cap and to 200 code points (review r1)', async () => {
+    const all = values(250);
+    const search = all
+      .slice(0, 200)
+      .map((v) => `&var-node=${v}`)
+      .join('');
+    const m = mount(NODE, ready(all), search);
+    await m.open();
+    await m.user.type(screen.getByRole('searchbox'), 'zz');
+    const use = m.option('Use zz');
+    expect(use).toHaveAttribute('aria-disabled', 'true');
+    await m.user.click(use);
+    expect(screen.queryByRole('option', { name: 'zz, custom' })).toBeNull();
+    await m.user.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => {
+      expect(m.address()).toHaveLength(200);
+    });
+  });
+
+  it('a value over 200 code points cannot be chosen, typed or listed (review r1)', async () => {
+    const long = 'x'.repeat(201);
+    const m = mount(ENV_LONG, ready([]));
+    await m.open();
+    expect(m.option(long)).toHaveAttribute('aria-disabled', 'true');
+    expect(
+      within(screen.getByRole('dialog')).getByText(
+        'Selection too large; use All or narrow the search',
+      ),
+    ).toBeInTheDocument();
+    await m.user.click(m.option(long));
+    expect(m.address()).toEqual([]);
+  });
+
+  it('a typed value over 200 code points cannot be used (review r1)', async () => {
+    const n = mount(NODE, ready(['a']));
+    await n.open();
+    await n.user.type(screen.getByRole('searchbox'), 'y'.repeat(201));
+    expect(n.option(`Use ${'y'.repeat(201)}`)).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('at 200 values the other rows are disabled, All stays enabled and clears the rows', async () => {

@@ -33,7 +33,7 @@ import { Dialog } from '../../kit/Dialog';
 import { Icon } from '../../kit/Icon';
 import { ListBox, ListBoxItem } from '../../kit/ListBox';
 import { Popover } from '../../kit/Popover';
-import { ALL_TOKEN, encodeValue, type ParamError } from '../../state/boardParams';
+import { ALL_TOKEN, encodeValue, MAX_PARAM_VALUE, type ParamError } from '../../state/boardParams';
 import { StateEncoding } from '../../theme/stateEncoding';
 import styles from './VariablePicker.module.css';
 
@@ -149,18 +149,24 @@ function PickerBody({
     announcer.announce(t('variables.selected', { n: '1' }));
   };
 
-  // A row is disabled when adding it would take the draft over 200 values or 65 536 bytes; the
+  // A row is disabled when choosing it would break a limit: a value over 200 code points (the
+  // address could not hold it), or, adding to a multi draft, over 200 values or 65 536 bytes. The
   // draft's bytes are counted once, each row's own bytes added to them.
   const draftBytes = useMemo(() => selectionBytes(draft), [draft]);
   const blocked = (v: string): boolean =>
-    multi &&
-    !draftAll &&
     !draft.includes(v) &&
-    (draft.length + 1 > MAX_SELECTION_VALUES ||
-      draftBytes + selectionBytes([v]) - 2 + (draft.length > 0 ? 1 : 0) > MAX_SELECTION_BYTES);
+    (Array.from(v).length > MAX_PARAM_VALUE ||
+      (multi &&
+        !draftAll &&
+        (draft.length + 1 > MAX_SELECTION_VALUES ||
+          draftBytes + selectionBytes([v]) - 2 + (draft.length > 0 ? 1 : 0) >
+            MAX_SELECTION_BYTES)));
   const shown = [...customs, ...rows.filter((v) => !customs.includes(v))];
-  const anyBlocked = multi && !draftAll && [...customs, ...listed].some(blocked);
-  const disabledKeys = shown.filter(blocked).map(valueId);
+  const useBlocked = useRow && blocked(exact);
+  const anyBlocked =
+    [...customs, ...rows, ...(useRow ? [exact] : [])].some(blocked) ||
+    (multi && !draftAll && listed.some(blocked));
+  const disabledKeys = [...shown.filter(blocked).map(valueId), ...(useBlocked ? [USE_ID] : [])];
 
   const selectedKeys = draftAll ? [ALL_ID] : draft.map(valueId);
   const onSelectionChange = (keys: AriaSelection): void => {
@@ -173,6 +179,7 @@ function PickerBody({
       return;
     }
     if (added.includes(USE_ID)) {
+      if (useBlocked) return;
       if (!customs.includes(exact)) setCustoms([...customs, exact]);
       setDraftValues([...draft, exact]);
       return;
@@ -180,7 +187,7 @@ function PickerBody({
     const kept = draft.filter((v) => next.has(valueId(v)));
     const plus = added.flatMap((k) => {
       const v = idValue(k);
-      return v === null ? [] : [v];
+      return v === null || blocked(v) ? [] : [v];
     });
     setDraftValues([...kept, ...plus]);
   };
@@ -190,10 +197,11 @@ function PickerBody({
     const key = [...keys][0];
     if (key === undefined) return;
     if (key === ALL_ID) commit([ALL_TOKEN]);
-    else if (key === USE_ID) commit([encodeValue(exact)]);
-    else {
+    else if (key === USE_ID) {
+      if (!useBlocked) commit([encodeValue(exact)]);
+    } else {
       const v = idValue(key);
-      if (v !== null) commit([encodeValue(v)]);
+      if (v !== null && !blocked(v)) commit([encodeValue(v)]);
     }
   };
   const canApply = draftAll || draft.length > 0;
