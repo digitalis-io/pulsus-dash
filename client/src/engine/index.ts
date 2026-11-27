@@ -32,7 +32,10 @@ export function onEngineMode(_cb: (m: EngineMode | null) => void): () => void {
 export function defaultChartEngine(): ChartEngine {
   if (engine !== null) return engine;
   const canvas2d = new Canvas2DEngine();
-  const choice = chooseEngine(probe(sessionFailed()));
+  const chosen = chooseEngine(probe(sessionFailed()));
+  // Interim (plan #68 C2d2 test-first tree): the ST engine still maps to Canvas 2D.
+  const choice =
+    chosen.kind === 'wasm' && chosen.mode === 'st' ? { kind: 'canvas2d' as const } : chosen;
   if (choice.kind === 'wasm') {
     const load = (probe?: EngineProbe) =>
       import('./wasm/engine').then((m) =>
