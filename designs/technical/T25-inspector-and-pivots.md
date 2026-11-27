@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.9-rc · 2026-11-27 |
+| **Version** | 1.10-rc · 2026-11-27 |
 | **Milestone** | M-UI2 (host, selection, Esc ladder, pivots on boards and Explore) → M-UI4 (Pin, Create alert, Ask AI) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0017](../adr/0017-react-router.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md), [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md), [ADR-0032](../adr/0032-selection-dims-as-one-layer.md) |
 | **Source draft** | plans/164, plans/184 (not tracked) |
@@ -320,6 +320,12 @@ state, never new requests, so there is nothing to race.
   (each push and pop, from any open source, T25-008); and the live region (one write per change, ≤ 1
   per 500 ms, the latest wins; the same text is cleared and rewritten on the next frame).
 - **Esc** pops before it clears the selection (T25-007).
+- **Member ids.** The host answers a `geo:` run id from its own state: when the top is a `geo`
+  target, the request's origin is the asking `panelId` and the id is `'geo:' + top.id`, it returns
+  `resolveGeoMembers(top, runId)` (pure: every entry's text and labels, from the top's snapshot);
+  else null (stale). No panel instance holds geo state, so a board panel, its full screen and the
+  editor preview answer alike in any mount order; this replaces a per-frame registration
+  ([T24](T24-geo-schematic-and-widget-panels.md) §5.16).
 
 ### 4.9 The `geo` target (#184, T25-002)
 
@@ -374,7 +380,8 @@ export interface EscapeProvider { pre(): (() => void) | null; post(): (() => voi
 export interface InspectorHostApi { inspect(r: InspectRequest): void; select(s: Selection | null, src: SelectionSource): void;
   registerMembers(panelId: string, r: (runId: string) => MemberList | null): () => void;  // a per-panelId stack (#234 Part 3):
   // the top live entry answers; a disposer removes only its own entry, so the previous one answers again (full screen, StrictMode)
-  // resolveMembers: a 'geo:' runId is answered from the open request's geo target (resolveGeoMembers), never a registration
+  // resolveMembers: a 'geo:' runId is answered from the open request's top view (topOf: the last NavView, else req.target)
+  // when it is a geo target (resolveGeoMembers), never a registration (§4.8)
   resolveMembers(panelId: string, runId: string): MemberList | null; registerEscape(panelId: string, p: EscapeProvider): () => void }
 export function useSelection(): Selection | null;
 // store.ts
@@ -390,7 +397,9 @@ export interface Pivot { id: 'explore' | 'logs' | 'traces' | 'profiles' | 'entit
   context: string[] /* the Context lines under an enabled chip (T25-010); [] when disabled */ }
 export interface PivotContext { search: ContextSearch; filters: BoardFilter[] }
 export function inspectorModel(req: InspectRequest, env: { tenant: string; ctx: PivotContext; timeZone: string;
-  capabilities: { investigations: boolean; alerting: boolean; ai: boolean } }): InspectorModel;
+  capabilities: { investigations: boolean; alerting: boolean; ai: boolean } },
+  depth?: number /* the view's place in the stack, default 0 (§4.8); only the geo level prefix reads it (§4.9) */): InspectorModel;
+// the sheet renders inspectorModel({ ...req, target: topOf(state) }, env, nav.length)
 export interface InspectorModel { heading: string; subheading: string /* HH:mm:ss.SSS or '' */;
   primary: string; primaryKind: 'value' | 'line'; primaryState: State | null /* a crossed threshold */;
   facts: { label: string; value: string }[]; labels: [string, string][] /* by key */;
@@ -514,3 +523,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 | 1.7-rc | 2026-11-26 | #173 Part 3a (T22 I1), per T25-002: §5 `InspectorTarget` gains `{type:'mark'; target: InspectTarget}` with its `selectionOf`, `pivotInstant`, `visOf` and `inspectorModel` cases; T25-007: an owner marked `data-escape-ladder` (the bar chart's mirror listbox, [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md)) is not skipped; §4.2 gains the barchart row (click, Enter/Space, brush → `select` source `brush`) |
 | 1.8-rc | 2026-11-26 | #68 Part C2c2, per T25-002: T25-006's line rule: the unmatched series are dimmed together, one layer composited once at `dimmed` ([ADR-0032](../adr/0032-selection-dims-as-one-layer.md)); §10 `unit:selection-draw`'s line row likewise (bars unchanged) |
 | 1.9-rc | 2026-11-27 | #234 Part 3 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1b, the geomap host): §5 `registerMembers` is a per-`panelId` stack with own-entry disposers (the top live entry answers); `resolveMembers` answers `geo:` run ids from the open request's geo target |
+| 1.10-rc | 2026-11-27 | #234 Part 4 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1b, the navigation stack): §5 `inspectorModel` takes the view's `depth` (the §4.9 level prefix needs it) and the sheet renders the top view at `nav.length`; §4.8 records that the host answers `geo:` member ids from the request's top view with `resolveGeoMembers` (pure), replacing a per-frame registration; §5's `resolveMembers` comment likewise |

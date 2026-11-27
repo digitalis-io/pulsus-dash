@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.20-rc · 2026-11-27 |
+| **Version** | 1.21-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -1987,8 +1987,10 @@ export function geoTarget(s: GeoRowSet, frameSeq: number, ref: { kind: 'marker' 
 //   resolve: n > 8 ? { panelId, runId: 'geo:' + target.id } : null,
 //   next: i → { target: cluster or group → the marker of rows[i]; aggregate → geoTarget({kind: 'group', from, entry: i}),
 //     selection: its keys, title } }
-// The host answers 'geo:' + id from the open request's own geo target (resolveGeoMembers(target, runId) →
-//   { texts: all n, members: [], labels: all n }, else null); no GeoMapFrame registers a resolver (#234 Parts 3 and 4)
+// The host answers 'geo:' + id from the open request's top view (T25 §4.8: the last pushed view, else the root target),
+//   when it is a geo target of the asking panel: resolveGeoMembers(top, runId) → { texts: all n, members: [], labels: all n },
+//   else null (stale); pure, from the snapshot. No GeoMapFrame registers a resolver, so a board panel, its full screen
+//   and the editor preview answer alike in any mount order (#234 Parts 3 and 4)
 export function geoPlace(r: GeoRow): string; // the gazetteer name, else lat, lon toFixed(4); '' if not placed
 // charts/geo/GeoMarkList.tsx
 export interface GeoMarkListProps { title: string; marks: GeoMarksEvent['marks']; rows: ReadonlyMap<string, GeoRow>; unit: Unit;
@@ -2856,8 +2858,8 @@ repair    (a) cluster:k03, view (50.45, 3.94, 5) → list k01, k04, k02, k03 →
 keys      on button k05: Shift+← → centre −256 px (Shift+→ is contained at +135.84 px); `+` → zoom 3.6218728064801105, k05 fixed; `0` → fit; a parent sees none
 brush     (300,80)–(500,200) at fit → select [k01, k02, k03, k04, k08]; `[]` → no change
 targets   O2 legend `other (3)` → select [q7, q8, q9, q10], aggregate members `"other (2)"` {env: "other (2)"} [q7] · `e8` {env: "e8"} [q8, q10]
-          · `e9` {env: "e9"} [q9]; entry `e8` → select [q8, q10], group `group:{"present":true,"value":"e8"}` rows `{env="e8"}` (q8),
-          `{env="e8", pod="b"}` (q10); its entry q10 → marker q10. A refetch dropping q10: group still lists q8, q10
+          · `e9` {env: "e9"} [q9]; entry `e8` → select [q8, q10], group `group:{"present":true,"value":"e8"}` rows `{env="e8", lat="9", lon="9"}` (q8),
+          `{env="e8", lat="11", lon="11", pod="b"}` (q10); its entry q10 → marker q10. A refetch dropping q10: group still lists q8, q10
 select    G {[k10]} (not placed): relevant → all 5 marks `dimmed`, table row k10 highlighted "Not placed"; {[k03]} → cluster:k03 ring
           "1 selected", the rest dimmed; {[zz, k10]} as {[k10]}; {[zz]} → nothing dims
 members   M12 → cluster:m12, shown m01–m08 + "+4 more", resolve `geo:cluster:m12` → 12; entry 10 → marker m11; N `other (12)` → e7–e14
@@ -2871,7 +2873,7 @@ facts     G {current: {text: "300 ms", series: '{lat="40.7128", lon="-74.0060"}'
 
 In the list block the cluster of 5 is k01–k04 and k08, seeded by k03 (Mons); the M12 entries read
 `{lat="10", lon="10", pod="p01"}` … `{lat="10", lon="10", pod="p08"}`; the N aggregate's members are
-e7…e18 (12 groups, 23 series) and e18's rows n18…n29 (n27 = `{env="e18", pod="p27"}`).
+e7…e18 (12 groups, 23 series) and e18's rows n18…n29 (n27 = `{env="e18", lat="10", lon="10", pod="p27"}`: a row's name is its series name, every label included).
 
 **CSV G** (the §4.14 header and all 18 rows, in the table order: by name, then key; RFC 4180, through
 `csvCell`):
@@ -2921,9 +2923,10 @@ name,key,value,value_status,state,location_status,location_detail,source,code,pr
 | `unit:geo-list-repair` | same | repair (a)–(c); focus outside the list | the repair block; outside: focus unmoved; (c) announced once | T24-093 |
 | `unit:geo-targets` | charts/GeoMapFrame.test.tsx | G, O2; k05, cluster:k03; the legend `other (3)`; e8, q10 | the select, targets and brush blocks; a marker's `members` null; an empty click → `select(null)`; the T25-016 toggle twice → [k10], null | T24-092, T25-006 |
 | `unit:geo-members` | inspector/members.test.ts, charts/GeoMapFrame.test.tsx | M12, N; a refresh; a `bin`; a `stateRun` (8 of 10, 8 of 12) | the members block; entries are buttons (`next`), labels parallel; `bin`, `stateRun`: `next` null, plain, as `unit:inspector-members` | T25-011 |
+| `unit:geo-members-fullscreen` | inspector/host.test.tsx, charts/GeoMapFrame.nav.test.tsx, the real host | N on a board panel: `other (12)`, push e18; mount a full screen of that panel; "+4 more" on e18, Back, "+4 more" on the root; close the full screen; both presses again | every press resolves 12 with parallel labels (e18 and its rows n19–n29; the root e7–e18 with `{env: "e7"}` …), the same before, during and after the full screen; never stale | T25-011 |
 | `unit:inspector-nav` | inspector/store.test.ts, inspector/host.test.tsx | a fake `next`; push A, then B | `nav` [A, B], selection B's; an old `seq`, a wrong `depth`, or closed → no-op; reopened → the new seq works; `pop {to: 0}` → [] and `req.selection`; close, a matching `originChanged`, `reset` → `nav` []; Esc with no `pre`: pop, pop, clear selection, close (focus `returnFocus`), `post`; a `pre` runs first; Back and the crumb names | T25-007, T25 §4.8 |
 | `unit:inspector-viewkey` | inspector/Inspector.test.tsx | a fake `next`; pointer and keyboard opens; push, pop; 3 quick pushes; reduced motion; `point` P, then Q | one inert leaving layer for 150 ms; reduced: none; 3 pushes: ≤ 1 leaving layer, the 3rd on top; the `h2` focused per step. `point` (key `1:0:root`) as today: a pointer open keeps focus, a keyboard open focuses the `h2`; P → Q one leaving layer (reduced: none); each announced, P again later too | T25-008, T25 §4.4 |
-| `unit:geo-announce` | charts/GeoMapFrame.test.tsx, the real host, a fake clock | N, 600 ms apart: `other (12)`, e18, n27, Back, Back, e18; then n27, Back, n27 within 100 ms | `Inspector: other (12), 12 groups, 23 series` · `Inspector: Level 2: e18, 12 series` · `Inspector: Level 3: {env="e18", pod="p27"}, 27 ms` · the 2nd · the 1st · the 2nd (the same text, rewritten); the quick run: only the last, at 500 ms | T25-008 |
+| `unit:geo-announce` | charts/GeoMapFrame.test.tsx, the real host, a fake clock | N, 600 ms apart: `other (12)`, e18, n27, Back, Back, e18; then n27, Back, n27 within 100 ms | `Inspector: other (12), 12 groups, 23 series` · `Inspector: Level 2: e18, 12 series` · `Inspector: Level 3: {env="e18", lat="10", lon="10", pod="p27"}, 27 ms` · the 2nd · the 1st · the 2nd (the same text, rewritten); the quick run: only the last, at 500 ms | T25-008 |
 | `unit:geo-nav` | charts/GeoMapFrame.test.tsx, the real host | N, by keys: the legend `other (12)` → entry 11 (e18) → entry 9 (n27) → Back → Back → close | one request; the selection 23 keys → 12 (n18–n29) → [n27] → 12 → 23; the breadcrumb `other (12)` › `e18` › n27's name; the `h2` focused per step; close → the legend button | T24-092 |
 | `unit:geo-nav-life` | same | at n27: (a) a refresh removing n27; (b) V: cluster:v1 at W1, entry v1, the window → W2; (c) close, a query edit, the panel removed, a route change, a tenant reset; (d) e18 and e17 in one tick; (e) unmount; (f) the aggregate expanded, e18, Back | (a) n27 kept; Back → n18–n29; the resolver `geo:group:{"present":true,"value":"e18"}` → 12; (b) Logs `{service_name="checkout"}` over W1; (c) closed, `nav` [], nothing dispatched; (d) e18 accepted, e17 rejected; (e) disposed; (f) e18: n18–n25 + "+4 more", buttons → their rows; Back: e7–e14 + "+4 more", buttons → the groups | T25-011, T25-012 |
 | `unit:geo-inspect` | inspector/model.test.ts | the targets above; k01; the context `f=env=prod` | the inspect block; §4.13; k01 chips: Explore on (naming env); with `f=env=prod` Logs `{env="prod"}` (T25-010: the identity AND the filters); with no filter Logs off "No log stream label on this series (needs service_name or job)" | T25-002, T25-009 to T25-011 |
@@ -3193,3 +3196,4 @@ None.
 | 1.18-rc | 2026-11-27 | #234 Part 2 (E2): T24-091 records the inertia's release velocity as the spring's initial velocity (D = 2v/ω), which T02-022's rest form does not fix. §5.14 names the mark tokens `pattern-ink` and `category-other` with their values. §10.4: the File column of `unit:geo-radius-project`, `unit:geo-camera`, `unit:geo-ownership`, `unit:geo-keys-engine`, `unit:geo-inertia` and `unit:geo-marks` moves from `engine/canvas2d/geo/` to `engine/controller/geo/` (the renderer-free half any engine reuses, [ADR-0031](../adr/0031-gpu-engine-default-renderer.md); gate IDs unchanged). §10.4 and §10.5 keys: at G's fit the world's east edge is 135.84 px from the centre, so containment caps Shift+→; the 256 px pan is Shift+← |
 | 1.19-rc | 2026-11-27 | #216 Part 2a (I2): the Board list view. T24-021: Esc's clear commits `''` at once. T24-023: the clamp of the shown count is kept per answer (an empty answer starts again at `limit`). T24-025: the count is announced only for a search the user committed; a row's chips and time are its link's description. T24-026: the facts are the list's description; the table caption `‹n› boards · ‹d› shown` and "Show list (Shift+T)". §4.5: the failed-refresh notice shows the rows' fetch time. §5.7: the Part 2a modules. §11: Part 2a landed, Part 2b next |
 | 1.20-rc | 2026-11-27 | #234 Part 3 (E2, the host): T24-088 records `panelView` → `{kind: 'geomap'}` (after the blocked rows; `notMetric` for a LogQL log answer), `framePlan` → `notice: 'geomap'`, `PanelRun.placeholder` and `retry()`, and `planGeo`'s `{seq, motion}` (and `staleAtMs` for a kept refetch failure). §5.14: `thresholds: Thresholds \| null`, the component's optional `geoData`, `inspectorSource` and `onLoadFailed`, `ChartFrameProps.onSummary`, the Canvas 2D producer contract of the failure summary and `GeoMapBody`'s host-chunk boundary with Retry, then Reload. §5.16: `GeoMarkListProps` += `seq`, `rowSet`, `onActive`, `announce`; `geoMarkName` takes `thresholds`; `PanelTable` += `toggle`, `onInspectRow`, `rowNote`; the host answers `geo:` member ids from the request (no frame registers). §7: the `geoInRoute` bundle rule. §10.5: `unit:geo-inspect`'s k01 Logs chip follows T25-010 (with `f=env=prod` it is `{env="prod"}`; off with no filter) |
+| 1.21-rc | 2026-11-27 | #234 Part 4 (E2, the navigation stack): §5.16 records that the host answers `geo:` member ids from the open request's top view (`resolveGeoMembers`, pure) at any depth, replacing a per-frame registration ([T25](T25-inspector-and-pivots.md) §4.8); §10.5 gains `unit:geo-members-fullscreen`, and its O2 and N rows give the rows' names as the series names (lat and lon included) |
