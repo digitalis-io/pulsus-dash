@@ -189,14 +189,22 @@ const skipped = (leg: BenchLeg, p: (typeof PAGES)[number], hover: boolean): Benc
     emptyDrive(),
   );
 
-/** Plan #68 C2d1 §4.3: relative checks, never per step; a timed-out case is not a failure. */
+/**
+ * Plan #68 C2d1 §4.3: relative checks, never per step. A timed-out case is not a failure of its
+ * frame count, but its script must have been dispatched and must have moved the window or the
+ * crosshair (a drive that dispatches nothing fails).
+ */
 function sanity(r: Run): void {
   const what = `${r.result.case} ${r.result.leg}`;
+  const hover = r.result.case.endsWith('-hover');
   expect.soft(r.engine, `${what}: still on its leg`).toBe(r.result.leg);
   expect.soft(r.status, `${what}: the engine did not fail`).not.toBe('4');
-  if (r.result.timedOut === true) return;
-  expect.soft(r.result.frames, `${what}: frames`).toBeGreaterThanOrEqual(MIN_PRESENTS);
-  if (r.result.case.endsWith('-hover')) {
+  expect
+    .soft(r.result.steps, `${what}: every step dispatched`)
+    .toBe((hover ? HOVER : SCRIPT).length);
+  if (r.result.timedOut !== true)
+    expect.soft(r.result.frames, `${what}: frames`).toBeGreaterThanOrEqual(MIN_PRESENTS);
+  if (hover) {
     expect.soft(r.hovers.events, `${what}: a hover event`).toBeGreaterThan(0);
     expect.soft(r.hovers.moved, `${what}: the crosshair moved`).toBe(true);
   } else {

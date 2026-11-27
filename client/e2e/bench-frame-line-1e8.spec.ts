@@ -229,6 +229,8 @@ interface Checked {
   hovers: number;
   /** A hover case moved the crosshair. */
   crosshairMoved: boolean;
+  /** The steps the case's script has; 0 when its box ran out before the drive. */
+  planned: number;
   status: string | null;
   failures: string[];
 }
@@ -356,6 +358,7 @@ async function runGate(
         moved: before.w[0] !== a.w[0] || before.w[1] !== a.w[1],
         hovers: a.hovers,
         crosshairMoved: a.moved,
+        planned: before.timedOut ? 0 : c.steps.length,
         status: a.status,
         failures: [...failures],
       });
@@ -368,13 +371,20 @@ async function runGate(
   return { results, checked };
 }
 
-/** Plan #68 C2d1 §4.3: relative checks; a timed-out case is not a failure. */
+/**
+ * Plan #68 C2d1 §4.3: relative checks. A case whose box ran out before its drive (synthesis, the
+ * selection's settle: m = 500 at 10⁸) is not checked; a timed-out drive is not a failure of its
+ * frame count, but its script must have been dispatched and must have moved the window or the
+ * crosshair (a drive that dispatches nothing fails).
+ */
 function sanity(c: Checked): void {
   const what = c.result.case;
   expect.soft(c.failures, `${what}: no failed frame`).toEqual([]);
   expect.soft(c.status, `${what}: no fatal`).not.toBe('4');
-  if (c.result.timedOut === true) return;
-  expect.soft(c.result.frames, `${what}: frames`).toBeGreaterThanOrEqual(MIN_PRESENTS);
+  if (c.planned === 0) return;
+  expect.soft(c.result.steps, `${what}: every step dispatched`).toBe(c.planned);
+  if (c.result.timedOut !== true)
+    expect.soft(c.result.frames, `${what}: frames`).toBeGreaterThanOrEqual(MIN_PRESENTS);
   if (what.endsWith('-hover')) {
     expect.soft(c.hovers, `${what}: a hover event`).toBeGreaterThan(0);
     expect.soft(c.crosshairMoved, `${what}: the crosshair moved`).toBe(true);
