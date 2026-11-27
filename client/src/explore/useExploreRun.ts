@@ -17,7 +17,8 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { useApi, useRangeStore } from '../app/providers';
+import { useApi } from '../app/providers';
+import { useRangeStore } from '../data/useRangeStore';
 import { chunkable, planRangeView } from '../boards/rangeView';
 import { StoreBypass, type Assembled } from '../data/rangeStore';
 import type { PlannedQuery } from '../data/decode';

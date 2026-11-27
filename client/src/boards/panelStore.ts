@@ -5,7 +5,7 @@
  */
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useMemo, useSyncExternalStore } from 'react';
-import { useRangeStore } from '../app/providers';
+import { useRangeStore } from '../data/useRangeStore';
 import type { Assembled, RangeStore, RangeView } from '../data/rangeStore';
 import type { TimeWindow } from '../engine/api';
 import { fromRange } from '../vis/autovis';

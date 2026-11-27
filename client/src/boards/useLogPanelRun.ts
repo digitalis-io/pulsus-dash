@@ -16,7 +16,8 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useApi, useRangeStore } from '../app/providers';
+import { useApi } from '../app/providers';
+import { useRangeStore } from '../data/useRangeStore';
 import { isApiError } from '../api/types';
 import { logGrid } from '../data/step';
 import type { Diagnostic } from '../editor/lang/types';
