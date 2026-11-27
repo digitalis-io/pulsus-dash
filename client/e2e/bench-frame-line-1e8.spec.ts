@@ -67,6 +67,8 @@ interface Probe {
   synth(n: number, o: { series: number; points: number }, timeoutMs?: number): Promise<Ack>;
   synthFault(f: SynthFault | null): void;
   chunk(n: number): Promise<{ series: number; points: number; bytes: number } | null>;
+  failed(n: number): string[];
+  trap(): void;
 }
 
 const key = (s: number): string => s.toString(16).padStart(16, '0');
@@ -88,16 +90,19 @@ interface Scale {
   points: number;
 }
 
-type Outcome = 'ok' | 'alloc' | 'fatal' | 'timedOut';
+/** `failed`: a frame failed (`onFail`) after the acknowledgement; `restart`: the ack's reason. */
+type Outcome = 'ok' | 'alloc' | 'fatal' | 'restart' | 'failed' | 'timedOut';
 
 /**
  * The bench frame (probe frame 0, canvas `data-bench="bench"`), then `synth(0, …)` and, after an
- * `ok`, the wait for its summary within `boxMs`: the outcome (plan #68 C2d1 §3.2).
+ * `ok`, the wait for its summary within `boxMs`: the outcome (plan #68 C2d1 §3.2). A frame failure
+ * or the engine's status 4 during that wait is `failed` or `fatal`, never a timeout. `trapAfterAck`
+ * makes the render worker trap right after an `ok` (the failure test).
  */
 async function setup(
   page: Page,
   sc: Scale,
-  o: { boxMs: number; synthTimeoutMs: number; fault: SynthFault | null },
+  o: { boxMs: number; synthTimeoutMs: number; fault: SynthFault | null; trapAfterAck: boolean },
 ): Promise<Outcome> {
   return page.evaluate(
     async ({ spec, extent, size, seed, sc, o }) => {
@@ -108,10 +113,22 @@ async function setup(
       canvas?.setAttribute('data-bench', 'bench');
       if (o.fault !== null) p.synthFault(o.fault);
       const ack = await p.synth(n, sc, o.synthTimeoutMs);
-      if (!ack.ok)
-        return ack.reason === 'alloc' ? 'alloc' : ack.reason === 'fatal' ? 'fatal' : 'timedOut';
+      if (!ack.ok) {
+        if (ack.reason === 'alloc' || ack.reason === 'fatal' || ack.reason === 'restart')
+          return ack.reason;
+        return 'timedOut';
+      }
+      if (o.trapAfterAck) p.trap();
+      const broken = (): 'fatal' | 'failed' | null =>
+        document.documentElement.getAttribute('data-dash-status') === '4'
+          ? 'fatal'
+          : p.failed(n).length > 0
+            ? 'failed'
+            : null;
       // The chunk is not a ring record (`settle` does not see it): its summary is.
       while (p.last(n)?.seriesTotal !== sc.series) {
+        const b = broken();
+        if (b !== null) return b;
         if (performance.now() - t0 > o.boxMs) return 'timedOut';
         await new Promise((r) => setTimeout(r, 50));
       }
@@ -129,6 +146,8 @@ async function setup(
           ),
         ),
       ]);
+      const b = broken();
+      if (b !== null) return b;
       if (!settled) return 'timedOut';
       const plot = p.last(n)?.plot;
       if (plot !== undefined)
@@ -246,32 +265,48 @@ async function runGate(
     cases: readonly Case[];
     boxMs: number;
     synthTimeoutMs: number;
-    fault?: SynthFault;
+    /** The simulated outcome of each synthesis in turn (`synthFault`), null for none. */
+    faults?: readonly (SynthFault | null)[];
+    /** The render worker traps right after the first synthesis' acknowledgement. */
+    trapAfterAck?: boolean;
+    /** Reload after every case (so each case synthesises again). */
+    reloadEachCase?: boolean;
   },
 ): Promise<{ results: BenchResult[]; checked: Checked[] }> {
   const results: BenchResult[] = [];
   const checked: Checked[] = [];
   let page = await ctx.newPage();
   let failures = await probePage(page);
-  let fault: SynthFault | null = o.fault ?? null;
+  let synths = 0;
   let sc = o.scales[0];
   let ready = false;
   /**
-   * `setup`, retried on a page whose engine does not boot (a busy GPU process after a slow 10⁸
-   * frame on the page before): up to `BOOT_TRIES` reloads, `BOOT_PAUSE_MS` apart, then
-   * `timedOut`.
+   * Fails the run on a failed frame or a fatal engine on the page; `allowRestart` lets the worker
+   * restart that a synthesis' `restart` outcome reported (§3.2: a timeout, not a failure).
+   */
+  const healthy = async (allowRestart: boolean): Promise<void> => {
+    const status = await page
+      .evaluate(() => document.documentElement.getAttribute('data-dash-status'))
+      .catch(() => null);
+    if (status === '4') throw new Error(`${GATE}: the engine failed (status 4)`);
+    const bad = failures.filter((f) => !(allowRestart && /failed: restart$/.test(f)));
+    if (bad.length > 0) throw new Error(`${GATE}: a frame failed: ${bad.join('; ')}`);
+  };
+  /**
+   * `setup`, retried only when the engine's boot timed out (`engine status timeout`: a busy GPU
+   * process after a slow 10⁸ frame on the page before): up to `BOOT_TRIES` reloads,
+   * `BOOT_PAUSE_MS` apart; past that, and on any other error, the run fails.
    */
   const bootAndSetup = async (
     s: Scale,
-    so: { boxMs: number; synthTimeoutMs: number; fault: SynthFault | null },
+    so: { boxMs: number; synthTimeoutMs: number; fault: SynthFault | null; trapAfterAck: boolean },
   ): Promise<Outcome> => {
     for (let k = 0; ; k++) {
       try {
         return await setup(page, s, so);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (!/engine status/.test(msg)) throw e;
-        if (k + 1 >= BOOT_TRIES) return 'timedOut';
+        if (!/engine status timeout/.test(msg) || k + 1 >= BOOT_TRIES) throw e;
         console.log(`${GATE}: the engine did not boot (${msg.split('\n')[0] ?? ''}); reloading`);
         await page.close();
         await new Promise((r) => setTimeout(r, BOOT_PAUSE_MS));
@@ -302,26 +337,30 @@ async function runGate(
         const out = await bootAndSetup(sc, {
           boxMs: o.boxMs,
           synthTimeoutMs: o.synthTimeoutMs,
-          fault,
+          fault: o.faults?.[synths] ?? null,
+          trapAfterAck: synths === 0 && o.trapAfterAck === true,
         });
-        fault = null;
+        synths += 1;
         console.log(
           `${GATE}: ${sc.tag} synthesis for ${sc.tag}${c.name}: ${out} (${String(Date.now() - t0)} ms)`,
         );
         if (out === 'fatal')
           throw new Error(`${sc.tag}: the engine failed (fatal) during synthesis`);
+        if (out === 'failed') throw new Error(`${sc.tag}: a frame failed during synthesis`);
         if (out === 'alloc') {
           // The host has not the memory: every case left is recorded, then rerun at the fallback.
           for (const r of o.cases.slice(i))
             results.push(summarise({ ...base(r, sc), skipped: 'memory' }, emptyDrive()));
           if (sc === o.scales[1]) break;
           sc = o.scales[1];
+          await healthy(false);
           await reload();
           i -= 1;
           continue;
         }
-        if (out === 'timedOut') {
+        if (out === 'timedOut' || out === 'restart') {
           results.push(summarise(base(c, sc), emptyDrive(true)));
+          await healthy(out === 'restart');
           await reload();
           continue;
         }
@@ -363,12 +402,34 @@ async function runGate(
         failures: [...failures],
       });
       // A timed-out case leaves the engine busy: the next one starts on a fresh worker.
-      if (d.timedOut) await reload();
+      if (d.timedOut || o.reloadEachCase === true) {
+        await healthy(false);
+        await reload();
+      }
     }
+    await healthy(false);
   } finally {
     await page.close();
   }
   return { results, checked };
+}
+
+/**
+ * The cases the report must hold: every case at the first scale, and at the fallback scale exactly
+ * those recorded `skipped: 'memory'` at the first (the ones that reran).
+ */
+function expectedCases(
+  results: readonly BenchResult[],
+  scales: readonly [{ tag: string }, { tag: string }],
+  cases: readonly Case[],
+): { case: string; leg: string }[] {
+  const [first, fallback] = scales;
+  const want = cases.map((c) => ({ case: `${first.tag}${c.name}`, leg: 'wasm-webgl2' }));
+  for (const c of cases) {
+    if (results.some((r) => r.case === `${first.tag}${c.name}` && r.skipped === 'memory'))
+      want.push({ case: `${fallback.tag}${c.name}`, leg: 'wasm-webgl2' });
+  }
+  return want;
 }
 
 /**
@@ -470,7 +531,7 @@ test.describe(GATE, () => {
       cases: [plain],
       boxMs: box,
       synthTimeoutMs: 10_000,
-      fault: 'alloc',
+      faults: ['alloc'],
     });
     expect(alloc.results.map((r) => [r.case, r.skipped ?? null])).toEqual([
       ['t1', 'memory'],
@@ -482,7 +543,7 @@ test.describe(GATE, () => {
       cases: two,
       boxMs: box,
       synthTimeoutMs: 3_000,
-      fault: 'silent',
+      faults: ['silent'],
     });
     expect(silent.results.map((r) => [r.case, r.timedOut ?? false])).toEqual([
       ['t1', true],
@@ -495,9 +556,47 @@ test.describe(GATE, () => {
         cases: [plain],
         boxMs: box,
         synthTimeoutMs: 10_000,
-        fault: 'fatal',
+        faults: ['fatal'],
       }),
     ).rejects.toThrow(/fatal/);
+    // A fallback after an earlier case succeeded: only the cases skipped for memory rerun, and
+    // only they are expected at the fallback scale.
+    const late = await runGate(context, {
+      scales,
+      cases: two,
+      boxMs: box,
+      synthTimeoutMs: 10_000,
+      faults: [null, 'alloc'],
+      reloadEachCase: true,
+    });
+    expect(late.results.map((r) => [r.case, r.skipped ?? null])).toEqual([
+      ['t1', null],
+      ['t1-again', 'memory'],
+      ['t0-again', null],
+    ]);
+    const want = expectedCases(late.results, scales, two);
+    expect(want.map((w) => w.case)).toEqual(['t1', 't1-again', 't0-again']);
+    expect(reportGaps(late.results, want)).toEqual([]);
+  });
+
+  test('bench:frame-line-1e8 a real failure after the synthesis acknowledgement fails the run', async ({
+    context,
+  }) => {
+    test.setTimeout(180_000);
+    // The render worker traps right after the ack (a restart, every frame `onFail('restart')`):
+    // never a timeout.
+    await expect(
+      runGate(context, {
+        scales: [
+          { tag: 't1', series: 10, points: 1000 },
+          { tag: 't0', series: 10, points: 100 },
+        ],
+        cases: [{ name: '', keys: null, steps: SCRIPT }],
+        boxMs: 30_000,
+        synthTimeoutMs: 10_000,
+        trapAfterAck: true,
+      }),
+    ).rejects.toThrow(/failed/);
   });
 
   test('bench:frame-line-1e8: 10⁸ points (or 10⁷), plain, selected (1, 500) and hover (report only)', async ({
@@ -515,9 +614,7 @@ test.describe(GATE, () => {
     });
     await report(info, results);
     for (const c of checked) sanity(c);
-    const want = CASES.map((c) => ({ case: `1e8${c.name}`, leg: 'wasm-webgl2' }));
-    if (results.some((r) => r.skipped === 'memory'))
-      want.push(...CASES.map((c) => ({ case: `1e7${c.name}`, leg: 'wasm-webgl2' })));
+    const want = expectedCases(results, [{ tag: '1e8' }, { tag: '1e7' }], CASES);
     expect(reportGaps(readResults(GATE), want), 'the report').toEqual([]);
   });
 });

@@ -1,0 +1,209 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: engine-selection.spec.ts >> e2e:engine-selection >> S1b ADR-0032: dense unmatched series dim together: one composite of their image
+- Location: e2e/engine-selection.spec.ts:374:3
+
+# Error details
+
+```
+Test timeout of 180000ms exceeded.
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - link "Skip to main content" [ref=e3] [cursor=pointer]:
+    - /url: "#main"
+  - generic [ref=e4]:
+    - complementary [ref=e5]:
+      - generic [ref=e6]:
+        - link "Pulsus Dash home" [ref=e7] [cursor=pointer]:
+          - /url: /t/demo/boards?from=2026-11-19T12%3A00%3A00.000Z&to=2026-11-19T13%3A00%3A00.000Z&refresh=off
+        - generic [ref=e9]:
+          - generic [ref=e10]: Demo Org
+          - generic [ref=e11]:
+            - generic [ref=e12]: "Tenant:"
+            - 'button "Switch tenant, current: Demo" [ref=e13] [cursor=pointer]':
+              - generic [ref=e14]: Demo
+      - navigation "Main" [ref=e16]:
+        - generic [ref=e17]:
+          - list [ref=e18]:
+            - listitem [ref=e19]:
+              - link "Boards" [ref=e20] [cursor=pointer]:
+                - /url: /t/demo/boards?from=2026-11-19T12%3A00%3A00.000Z&to=2026-11-19T13%3A00%3A00.000Z&refresh=off
+          - heading "Explore" [level=2] [ref=e23]
+          - list [ref=e24]:
+            - listitem [ref=e25]:
+              - link "Metrics" [ref=e26] [cursor=pointer]:
+                - /url: /t/demo/explore/metrics?from=2026-11-19T12%3A00%3A00.000Z&to=2026-11-19T13%3A00%3A00.000Z&refresh=off
+            - listitem [ref=e29]:
+              - link "Logs" [ref=e30] [cursor=pointer]:
+                - /url: /t/demo/explore/logs?from=2026-11-19T12%3A00%3A00.000Z&to=2026-11-19T13%3A00%3A00.000Z&refresh=off
+          - heading "Starred" [level=2] [ref=e33]
+          - list [ref=e34]:
+            - listitem [ref=e35]:
+              - link "Service overview" [ref=e36] [cursor=pointer]:
+                - /url: /t/demo/board/b-1?from=2026-11-19T12%3A00%3A00.000Z&to=2026-11-19T13%3A00%3A00.000Z&refresh=off
+                - generic [aria-hidden] [ref=e37]: ★
+          - heading "Recent" [level=2] [ref=e39]
+          - paragraph [ref=e40]: No recent boards
+        - list [ref=e41]:
+          - listitem [ref=e42]:
+            - link "Admin" [ref=e43] [cursor=pointer]:
+              - /url: /t/demo/admin?from=2026-11-19T12%3A00%3A00.000Z&to=2026-11-19T13%3A00%3A00.000Z&refresh=off
+      - generic [ref=e46]:
+        - paragraph [ref=e47]: "Data source: demo · Connected"
+        - button "Collapse sidebar" [expanded] [ref=e48] [cursor=pointer]
+    - generic [ref=e51]:
+      - banner [ref=e52]:
+        - heading "Chart gallery" [level=1] [ref=e54]
+        - generic [ref=e55]:
+          - button "19 Nov 2026, 12:00:00 – 13:00:00" [ref=e56] [cursor=pointer]
+          - group "Refresh" [ref=e60]:
+            - button "Refresh now" [ref=e61] [cursor=pointer]
+            - 'button "Auto-refresh interval: Off" [ref=e64] [cursor=pointer]':
+              - generic [ref=e65]: "Off"
+          - 'button "AA, user menu: Ada Admin" [ref=e67] [cursor=pointer]':
+            - generic [aria-hidden] [ref=e68]: AA
+      - main [ref=e69]:
+        - generic [ref=e70]:
+          - paragraph [ref=e71]: Interim Canvas 2D charts on seeded synthetic data (seed 20261120). Development and stub builds only.
+          - paragraph [ref=e72]: Showing 19 Nov 2026, 12:00:00 – 13:00:00 (Europe/London)
+          - generic [ref=e73]:
+            - region "Request rate, 1 series" [ref=e74]:
+              - heading "Request rate, 1 series" [level=2] [ref=e75]
+              - generic [ref=e77]:
+                - 'img "Request rate, 1 series: line chart, 1 series, 12:00 – 13:00 GMT. Min 179 rps, max 1.09k rps, last 236 rps." [ref=e78]'
+                - status: "Recovered from an error: this chart uses the basic renderer."
+                - 'slider "Crosshair: Request rate, 1 series"'
+            - region "Request latency, 50 series × 1 440 points" [ref=e79]:
+              - heading "Request latency, 50 series × 1 440 points" [level=2] [ref=e80]
+              - generic [ref=e82]:
+                - 'img "Request latency, 50 series × 1 440 points: line chart, 50 series, 12:00 – 13:00 GMT. Min 29.5 ms, max 323 ms, last 318 ms." [ref=e83]'
+                - status: "Recovered from an error: this chart uses the basic renderer."
+                - 'slider "Crosshair: Request latency, 50 series × 1 440 points"'
+            - region "Queue depth with gaps, 3 series" [ref=e84]:
+              - heading "Queue depth with gaps, 3 series" [level=2] [ref=e85]
+              - generic [ref=e87]:
+                - 'img "Queue depth with gaps, 3 series: line chart, 3 series, 12:00 – 13:00 GMT. Min 37, max 70.3, last 54." [ref=e88]'
+                - status: "Recovered from an error: this chart uses the basic renderer."
+                - 'slider "Crosshair: Queue depth with gaps, 3 series"'
+            - region "Pod memory, 600 series" [ref=e89]:
+              - heading "Pod memory, 600 series" [level=2] [ref=e90]
+              - generic [ref=e92]:
+                - 'img "Pod memory, 600 series: line chart, 600 series, 12:00 – 13:00 GMT. Min 77.1 MiB, max 1.39 GiB, last 1.36 GiB." [ref=e93]'
+                - status: "Recovered from an error: this chart uses the basic renderer."
+                - 'slider "Crosshair: Pod memory, 600 series"'
+                - status [ref=e94]: Showing 500 of 600 series
+            - region "Request latency distribution" [ref=e95]:
+              - heading "Request latency distribution" [level=2] [ref=e96]
+              - generic [ref=e98]:
+                - 'img "Request latency distribution: heatmap, 12 buckets, 12:00 – 13:00 GMT. Min 0, max 1.12k, last 3.72k." [ref=e99]'
+                - 'slider "Crosshair: Request latency distribution"'
+            - region "Log volume by level" [ref=e100]:
+              - heading "Log volume by level" [level=2] [ref=e101]
+              - generic [ref=e103]:
+                - 'img "Log volume by level: stacked bar chart, 5 series, 12:00 – 13:00 GMT. Min 218 lines, max 441 lines, last 360 lines." [ref=e104]'
+                - 'slider "Crosshair: Log volume by level"'
+            - region "p99 latency" [ref=e105]:
+              - heading "p99 latency" [level=2] [ref=e106]
+              - 'img "p99 latency: stat, 1 series, 12:00 – 13:00 GMT. Min 2.84 s, max 2.84 s, last 2.84 s." [ref=e109]'
+            - region "Request latency with an SLO threshold" [ref=e110]:
+              - heading "Request latency with an SLO threshold" [level=2] [ref=e111]
+              - generic [ref=e113]:
+                - 'img "Request latency with an SLO threshold: line chart, 3 series, 12:00 – 13:00 GMT. Min 116 ms, max 309 ms, last 269 ms. Thresholds: Watch ≥ 250 ms; Failing SLO p99 ≤ 300 ms." [ref=e114]'
+                - status: "Recovered from an error: this chart uses the basic renderer."
+                - 'slider "Crosshair: Request latency with an SLO threshold"'
+            - region "p99 latency with a sparkline" [ref=e115]:
+              - heading "p99 latency with a sparkline" [level=2] [ref=e116]
+              - 'img "p99 latency with a sparkline: stat, 1 series, 12:00 – 13:00 GMT. Min 361 ms, max 361 ms, last 361 ms." [ref=e119]'
+            - region "Values near the largest finite number" [ref=e120]:
+              - heading "Values near the largest finite number" [level=2] [ref=e121]
+              - generic [ref=e123]:
+                - 'img "Values near the largest finite number: line chart, 1 series, 12:00 – 13:00 GMT. Min -1.8e+308, max 1.8e+308, last 1.14e+308." [ref=e124]'
+                - status: "Recovered from an error: this chart uses the basic renderer."
+                - 'slider "Crosshair: Values near the largest finite number"'
+            - region "Request rate with deploy and change markers" [ref=e125]:
+              - heading "Request rate with deploy and change markers" [level=2] [ref=e126]
+              - generic [ref=e128]:
+                - 'img "Request rate with deploy and change markers: line chart, 1 series, 12:00 – 13:00 GMT. Min 1.34k rps, max 1.9k rps, last 1.86k rps. Events in view: 3." [ref=e129]'
+                - status: "Recovered from an error: this chart uses the basic renderer."
+                - 'slider "Crosshair: Request rate with deploy and change markers"'
+                - img "Deploy · v2.31 · 12:18:00" [ref=e130]
+                - img "Config change · pool size 64 · 12:42:00; Feature flag · checkout-v2 · 12:42:30" [ref=e131]
+            - region "Requests by version" [ref=e132]:
+              - heading "Requests by version" [level=2] [ref=e133]
+              - generic [ref=e135]:
+                - generic [ref=e137]:
+                  - 'img "Requests by version: 5 bars" [ref=e138]'
+                  - 'listbox "Requests by version: 5 bars" [ref=e139]':
+                    - 'option "2.31: 120" [ref=e140]'
+                    - 'option "2.29: 40" [ref=e141]'
+                    - 'option "2.33: 15" [ref=e142]'
+                    - 'option "2.30: 7" [ref=e143]'
+                    - 'option "2.32: 3" [ref=e144]'
+                - status [ref=e147]: 100 %
+            - region "Errors by version with thresholds" [ref=e148]:
+              - heading "Errors by version with thresholds" [level=2] [ref=e149]
+              - generic [ref=e151]:
+                - generic [ref=e153]:
+                  - 'img "Errors by version with thresholds: 6 bars Thresholds: Watch ≥ 30; Failing ≥ 100." [ref=e154]'
+                  - 'listbox "Errors by version with thresholds: 6 bars" [ref=e155]':
+                    - 'option "2.31: 120, Failing" [ref=e156]'
+                    - 'option "2.29: 40, Watch" [ref=e157]'
+                    - 'option "2.33: 15, OK" [ref=e158]'
+                    - 'option "2.30: 7, OK" [ref=e159]'
+                    - 'option "2.32: 3, OK" [ref=e160]'
+                    - 'option "2.28: -20, OK" [ref=e161]'
+                  - img "◐ ≥ 30" [ref=e162]
+                  - img "■ ≥ 100" [ref=e163]
+                - status [ref=e166]: 100 %
+            - region "Two series named 2.31, told apart" [ref=e167]:
+              - heading "Two series named 2.31, told apart" [level=2] [ref=e168]
+              - generic [ref=e170]:
+                - generic [ref=e172]:
+                  - 'img "Two series named 2.31, told apart: 3 bars" [ref=e173]'
+                  - 'listbox "Two series named 2.31, told apart: 3 bars" [ref=e174]':
+                    - 'option "2.31 · region=\"us\": 70" [ref=e175]'
+                    - 'option "2.31 · region=\"eu\": 50" [ref=e176]'
+                    - 'option "2.30: 20" [ref=e177]'
+                - status [ref=e180]: 100 %
+            - region "A label set inside another" [ref=e181]:
+              - heading "A label set inside another" [level=2] [ref=e182]
+              - generic [ref=e184]:
+                - generic [ref=e186]:
+                  - 'img "A label set inside another: 2 bars" [ref=e187]'
+                  - 'listbox "A label set inside another: 2 bars" [ref=e188]':
+                    - 'option "2.31 · region=\"∅\": 60" [ref=e189]'
+                    - 'option "2.31 · region absent: 40" [ref=e190]'
+                - status [ref=e193]: 100 %
+            - region "250 categories, capped to the plot" [ref=e194]:
+              - heading "250 categories, capped to the plot" [level=2] [ref=e195]
+              - generic [ref=e197]:
+                - generic [ref=e199]:
+                  - 'img "250 categories, capped to the plot: 14 bars" [ref=e200]'
+                  - 'listbox "250 categories, capped to the plot: 14 bars" [ref=e201]':
+                    - 'option "250: 250, OK" [ref=e202]'
+                    - 'option "249: 249, OK" [ref=e203]'
+                    - 'option "248: 248, OK" [ref=e204]'
+                    - 'option "247: 247, OK" [ref=e205]'
+                    - 'option "246: 246, OK" [ref=e206]'
+                    - 'option "245: 245, OK" [ref=e207]'
+                    - 'option "244: 244, OK" [ref=e208]'
+                    - 'option "243: 243, OK" [ref=e209]'
+                    - 'option "242: 242, OK" [ref=e210]'
+                    - 'option "241: 241, OK" [ref=e211]'
+                    - 'option "240: 240, OK" [ref=e212]'
+                    - 'option "239: 239, OK" [ref=e213]'
+                    - 'option "10: 10, Failing" [ref=e214]'
+                    - 'option "1: 1, OK" [ref=e215]'
+                  - paragraph [ref=e216]: 236 more not shown
+                - status [ref=e219]: showing 14 of 250; kept min, max, 1 failing
+```

@@ -82,6 +82,8 @@ export interface ProbeHost {
   synth(id: number, series: number, points: number): Promise<SynthAck>;
   /** The probe build: frame `id`'s current chunk, or null. */
   chunk(id: number): Promise<ChunkInfo | null>;
+  /** The probe build (plan #68 C2d1): the render worker traps. */
+  trap(): void;
 }
 
 /**
@@ -269,6 +271,9 @@ class EngineHost implements Backend {
           this.chunkWaits.push({ id, resolve });
           worker.postMessage({ t: 'probe-chunk', id } satisfies MainToRender);
         }),
+      trap: () => {
+        worker.postMessage({ t: 'probe-trap' } satisfies MainToRender);
+      },
       inputLog: () =>
         new Promise<InputRec[]>((resolve) => {
           this.probeWaits.push((json) => {

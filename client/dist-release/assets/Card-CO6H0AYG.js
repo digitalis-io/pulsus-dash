@@ -1,0 +1,1 @@
+import{n as e,s as t,t as n}from"./jsx-runtime-B4UN2VIk.js";import{t as r}from"./cx-CykQDk87.js";var i=t(e(),1),a={card:`_card_osdb2_1`,title:`_title_osdb2_11`},o=n();function s({title:e,children:t}){let n=(0,i.useId)();return(0,o.jsxs)(`section`,{className:r(a.card),"aria-labelledby":n,children:[(0,o.jsx)(`h2`,{id:n,className:r(a.title),children:e}),t]})}export{s as t};

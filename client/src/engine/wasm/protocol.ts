@@ -77,7 +77,9 @@ export type MainToRender =
       readonly points: number;
     }
   /** The probe build (plan #68 C2d1 §3.2): describe frame `id`'s current chunk. */
-  | { readonly t: 'probe-chunk'; readonly id: number };
+  | { readonly t: 'probe-chunk'; readonly id: number }
+  /** The probe build (plan #68 C2d1): the worker throws, a real trap (the bench's failure test). */
+  | { readonly t: 'probe-trap' };
 
 export type RenderToMain =
   | {

@@ -27,6 +27,7 @@
  * | `synth(n, o, timeoutMs?)` | the probe build (plan #68 C2d1 §3.2): F1c of `o.series` × `o.points` built in the worker as the frame's data (`Frames::set_chunk`); resolves on the worker's acknowledgement `{ok, bytes}`, or `ok: false` with `reason` `alloc` (the worker's allocation failed), `fatal`, `restart` or `timeout` (120 s by default) |
  * | `synthFault(f)` | the next `synth` only: `alloc` answers `ok: false, reason: 'alloc'` at once, `silent` withholds the answer (it times out), `fatal` answers `reason: 'fatal'`; `null` clears it |
  * | `chunk(n)` | the probe build: `{series, points, bytes}` of the frame's current chunk (points: series 0's samples), or null |
+ * | `failed(n)`, `trap()` | the frame's `onFail` reasons (`restart`, `trap`, `surface`, …); the probe build: the render worker traps for real (plan #68 C2d1) |
  *
  * A frame's canvas is at (0, `o.top ?? 0`) CSS px.
  *
@@ -152,6 +153,10 @@ export interface DashProbe {
   synthFault(f: SynthFault | null): void;
   /** The probe build: the frame's current chunk, or null. */
   chunk(n: number): Promise<ChunkInfo | null>;
+  /** The frame's `onFail` reasons, in order. */
+  failed(n: number): string[];
+  /** The probe build: the render worker traps (a real failure). */
+  trap(): void;
 }
 
 export type SynthFault = 'alloc' | 'silent' | 'fatal';
@@ -174,6 +179,8 @@ interface Entry {
   readonly seqs: (DrawnEvent & { seq: number })[];
   /** The seq `freeze` waits for. */
   freezeAt: number | null;
+  /** The frame's `onFail` reasons. */
+  readonly failed: string[];
 }
 
 const SETTLE_POLL_MS = 5;
@@ -289,6 +296,7 @@ export function createProbe(o: {
     document.body.append(canvas);
     const init = { timeZone: 'UTC', keyTarget: canvas, id };
     const inner = b.createFrame(canvas.transferControlToOffscreen(), init, (reason) => {
+      e.failed.push(reason);
       console.warn(`${id} failed: ${reason}`);
     });
     if (!(inner instanceof WasmFrame)) throw new Error('not an engine frame');
@@ -335,6 +343,7 @@ export function createProbe(o: {
     selects: [],
     seqs: [],
     freezeAt: null,
+    failed: [],
   });
   /** A point at canvas-relative CSS px `(x, y)`, as client px. */
   const client = (c: HTMLCanvasElement, x: number, y: number) => {
@@ -569,6 +578,10 @@ export function createProbe(o: {
     },
     synthFault(f) {
       synthFault = f;
+    },
+    failed: (n) => [...entry(n).failed],
+    trap() {
+      o.host()?.trap();
     },
     chunk(n) {
       const id = entry(n).inner?.id;

@@ -113,6 +113,14 @@ function apply(m: MainToRender): void {
     case 'probe-chunk':
       if (import.meta.env.VITE_ENGINE_PROBE === '1') void probeChunk(m.id);
       return;
+    case 'probe-trap':
+      if (import.meta.env.VITE_ENGINE_PROBE === '1') {
+        // Uncaught, as a trap: the worker's error event (plan #68 C2d1, the bench's failure test).
+        setTimeout(() => {
+          throw new Error('probe trap');
+        }, 0);
+      }
+      return;
     case 'create':
       if (faults?.failCreate(m.id) === true) {
         scope.postMessage({

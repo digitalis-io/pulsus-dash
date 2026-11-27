@@ -1,0 +1,1 @@
+import{t as e}from"./cx-CykQDk87.js";import{t}from"./jsx-runtime-B4UN2VIk.js";var n={empty:`_empty_14t0c_1`,title:`_title_14t0c_11`,body:`_body_14t0c_17`},r=t();function i({title:t,children:i}){return(0,r.jsxs)(`div`,{className:e(n.empty),children:[(0,r.jsx)(`p`,{className:e(n.title),children:t}),i!==void 0&&(0,r.jsx)(`div`,{className:e(n.body),children:i})]})}export{i as t};

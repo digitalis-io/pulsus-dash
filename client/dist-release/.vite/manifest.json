@@ -1,0 +1,989 @@
+{
+  "_Button-BA3x1uvX.js": {
+    "file": "assets/Button-BA3x1uvX.js",
+    "name": "Button",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_clsx-BZbxhBNB.js",
+      "_cx-CykQDk87.js"
+    ],
+    "css": [
+      "assets/Button-cOnU7ERx.css"
+    ]
+  },
+  "_Button-cOnU7ERx.css": {
+    "file": "assets/Button-cOnU7ERx.css",
+    "src": "_Button-cOnU7ERx.css"
+  },
+  "_Card-CO6H0AYG.js": {
+    "file": "assets/Card-CO6H0AYG.js",
+    "name": "Card",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_cx-CykQDk87.js"
+    ],
+    "css": [
+      "assets/Card-K5fcbpKV.css"
+    ]
+  },
+  "_Card-K5fcbpKV.css": {
+    "file": "assets/Card-K5fcbpKV.css",
+    "src": "_Card-K5fcbpKV.css"
+  },
+  "_Checkbox-Bc0miXQ6.js": {
+    "file": "assets/Checkbox-Bc0miXQ6.js",
+    "name": "Checkbox",
+    "imports": [
+      "_Button-BA3x1uvX.js",
+      "_useFormValidation-CMWSHr3d.js",
+      "_jsx-runtime-B4UN2VIk.js",
+      "index.html",
+      "_cx-CykQDk87.js"
+    ],
+    "css": [
+      "assets/Checkbox-twcgDY1x.css"
+    ]
+  },
+  "_Checkbox-twcgDY1x.css": {
+    "file": "assets/Checkbox-twcgDY1x.css",
+    "src": "_Checkbox-twcgDY1x.css"
+  },
+  "_ContextSummary-DVQdpLc7.css": {
+    "file": "assets/ContextSummary-DVQdpLc7.css",
+    "src": "_ContextSummary-DVQdpLc7.css"
+  },
+  "_ContextSummary-Ro7jjhmU.js": {
+    "file": "assets/ContextSummary-Ro7jjhmU.js",
+    "name": "ContextSummary",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_clsx-BZbxhBNB.js",
+      "_useLoadMoreSentinel-DkzBdnQv.js",
+      "_useTimeContext-CgUaMEz9.js",
+      "_t-b1KZZgSW.js",
+      "_Button-BA3x1uvX.js",
+      "_cx-CykQDk87.js",
+      "index.html",
+      "_esm-xX_fNqDQ.js"
+    ],
+    "dynamicImports": [
+      "src/engine/wasm/engine.ts"
+    ],
+    "css": [
+      "assets/ContextSummary-DVQdpLc7.css"
+    ]
+  },
+  "_EmptyState-R_NulmuO.js": {
+    "file": "assets/EmptyState-R_NulmuO.js",
+    "name": "EmptyState",
+    "imports": [
+      "_cx-CykQDk87.js",
+      "_jsx-runtime-B4UN2VIk.js"
+    ],
+    "css": [
+      "assets/EmptyState-fNAMlRVm.css"
+    ]
+  },
+  "_EmptyState-fNAMlRVm.css": {
+    "file": "assets/EmptyState-fNAMlRVm.css",
+    "src": "_EmptyState-fNAMlRVm.css"
+  },
+  "_ListBox-i1_rIvl1.js": {
+    "file": "assets/ListBox-i1_rIvl1.js",
+    "name": "ListBox",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_useLoadMoreSentinel-DkzBdnQv.js",
+      "_Button-BA3x1uvX.js",
+      "_TextField-_iazg-I0.js"
+    ]
+  },
+  "_LogStream-BIxVtayr.js": {
+    "file": "assets/LogStream-BIxVtayr.js",
+    "name": "LogStream",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_clsx-BZbxhBNB.js",
+      "_useTimeContext-CgUaMEz9.js",
+      "_t-b1KZZgSW.js",
+      "_Button-BA3x1uvX.js",
+      "_Checkbox-Bc0miXQ6.js",
+      "_cx-CykQDk87.js",
+      "index.html",
+      "_esm-xX_fNqDQ.js",
+      "_SegmentedControl-B1rw7Fbq.js"
+    ],
+    "css": [
+      "assets/LogStream-CdbXmjKz.css"
+    ]
+  },
+  "_LogStream-CdbXmjKz.css": {
+    "file": "assets/LogStream-CdbXmjKz.css",
+    "src": "_LogStream-CdbXmjKz.css"
+  },
+  "_MetricPicker-dBVeNoqC.js": {
+    "file": "assets/MetricPicker-dBVeNoqC.js",
+    "name": "MetricPicker",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_useLoadMoreSentinel-DkzBdnQv.js",
+      "_useTimeContext-CgUaMEz9.js",
+      "_t-b1KZZgSW.js",
+      "_Button-BA3x1uvX.js",
+      "_TextField-_iazg-I0.js",
+      "_ListBox-i1_rIvl1.js",
+      "_useFormValidation-CMWSHr3d.js",
+      "_cx-CykQDk87.js",
+      "index.html",
+      "_ContextSummary-Ro7jjhmU.js",
+      "_querySize-3FX8oBx7.js",
+      "_QueryFallback-CAcrgXG-.js"
+    ],
+    "dynamicImports": [
+      "src/editor/editor.ts"
+    ]
+  },
+  "_QueryFallback-B3nuiZwy.css": {
+    "file": "assets/QueryFallback-B3nuiZwy.css",
+    "src": "_QueryFallback-B3nuiZwy.css"
+  },
+  "_QueryFallback-CAcrgXG-.js": {
+    "file": "assets/QueryFallback-CAcrgXG-.js",
+    "name": "QueryFallback",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_useTimeContext-CgUaMEz9.js",
+      "_t-b1KZZgSW.js",
+      "_TextField-_iazg-I0.js",
+      "_useFormValidation-CMWSHr3d.js",
+      "_cx-CykQDk87.js",
+      "index.html",
+      "_esm-xX_fNqDQ.js",
+      "_ContextSummary-Ro7jjhmU.js"
+    ],
+    "dynamicImports": [
+      "src/editor/lang/promql/promql.ts",
+      "src/editor/lang/logql/logql.ts"
+    ],
+    "css": [
+      "assets/QueryFallback-B3nuiZwy.css"
+    ]
+  },
+  "_QueryStatus-Cc2soMWL.js": {
+    "file": "assets/QueryStatus-Cc2soMWL.js",
+    "name": "QueryStatus",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_useTimeContext-CgUaMEz9.js",
+      "_t-b1KZZgSW.js",
+      "_Button-BA3x1uvX.js",
+      "_cx-CykQDk87.js",
+      "index.html",
+      "_ContextSummary-Ro7jjhmU.js",
+      "_Card-CO6H0AYG.js",
+      "_SegmentedControl-B1rw7Fbq.js",
+      "_QueryFallback-CAcrgXG-.js",
+      "_EmptyState-R_NulmuO.js"
+    ]
+  },
+  "_SegmentedControl-B1rw7Fbq.js": {
+    "file": "assets/SegmentedControl-B1rw7Fbq.js",
+    "name": "SegmentedControl",
+    "imports": [
+      "index.html",
+      "_cx-CykQDk87.js",
+      "_jsx-runtime-B4UN2VIk.js"
+    ],
+    "css": [
+      "assets/SegmentedControl-qnMK70n2.css"
+    ]
+  },
+  "_SegmentedControl-qnMK70n2.css": {
+    "file": "assets/SegmentedControl-qnMK70n2.css",
+    "src": "_SegmentedControl-qnMK70n2.css"
+  },
+  "_ShareLinkControls-BXKqwAqg.js": {
+    "file": "assets/ShareLinkControls-BXKqwAqg.js",
+    "name": "ShareLinkControls",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_hooks-B0qIYnkQ.js",
+      "_t-b1KZZgSW.js",
+      "_Button-BA3x1uvX.js",
+      "_Checkbox-Bc0miXQ6.js",
+      "_cx-CykQDk87.js",
+      "index.html",
+      "_useLoadMoreSentinel-DkzBdnQv.js",
+      "_useTimeContext-CgUaMEz9.js"
+    ],
+    "css": [
+      "assets/ShareLinkControls-Cusk0SgT.css"
+    ]
+  },
+  "_ShareLinkControls-Cusk0SgT.css": {
+    "file": "assets/ShareLinkControls-Cusk0SgT.css",
+    "src": "_ShareLinkControls-Cusk0SgT.css"
+  },
+  "_TextField-BZfgn1x_.css": {
+    "file": "assets/TextField-BZfgn1x_.css",
+    "src": "_TextField-BZfgn1x_.css"
+  },
+  "_TextField-DEnTNS2e.js": {
+    "file": "assets/TextField-DEnTNS2e.js",
+    "name": "TextField",
+    "imports": [
+      "_useFormValidation-CMWSHr3d.js",
+      "_TextField-_iazg-I0.js",
+      "_cx-CykQDk87.js",
+      "_jsx-runtime-B4UN2VIk.js"
+    ],
+    "css": [
+      "assets/TextField-BZfgn1x_.css"
+    ]
+  },
+  "_TextField-_iazg-I0.js": {
+    "file": "assets/TextField-_iazg-I0.js",
+    "name": "TextField",
+    "imports": [
+      "_Button-BA3x1uvX.js",
+      "_useFormValidation-CMWSHr3d.js",
+      "_useLoadMoreSentinel-DkzBdnQv.js",
+      "_jsx-runtime-B4UN2VIk.js"
+    ]
+  },
+  "_clsx-BZbxhBNB.js": {
+    "file": "assets/clsx-BZbxhBNB.js",
+    "name": "clsx",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js"
+    ]
+  },
+  "_cx-CykQDk87.js": {
+    "file": "assets/cx-CykQDk87.js",
+    "name": "cx"
+  },
+  "_editor-CC0vnuB7.js": {
+    "file": "assets/editor-CC0vnuB7.js",
+    "name": "QueryEditorHost",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_editor-DrYFjEAy.js",
+      "_editor-CjxFkfKi.js",
+      "_querySize-3FX8oBx7.js"
+    ]
+  },
+  "_editor-CjxFkfKi.js": {
+    "file": "assets/editor-CjxFkfKi.js",
+    "name": "extensions",
+    "imports": [
+      "_editor-DrYFjEAy.js"
+    ]
+  },
+  "_editor-DrYFjEAy.js": {
+    "file": "assets/editor-DrYFjEAy.js",
+    "name": "lookupWindow",
+    "imports": [
+      "_t-b1KZZgSW.js",
+      "index.html"
+    ]
+  },
+  "_esm-CO7ytI6g.css": {
+    "file": "assets/esm-CO7ytI6g.css",
+    "src": "_esm-CO7ytI6g.css"
+  },
+  "_esm-xX_fNqDQ.js": {
+    "file": "assets/esm-xX_fNqDQ.js",
+    "name": "esm",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_clsx-BZbxhBNB.js",
+      "_useTimeContext-CgUaMEz9.js",
+      "_t-b1KZZgSW.js",
+      "_hooks-B0qIYnkQ.js",
+      "_cx-CykQDk87.js",
+      "index.html"
+    ],
+    "css": [
+      "assets/esm-CO7ytI6g.css"
+    ]
+  },
+  "_fieldMessages-9hxyxGj7.js": {
+    "file": "assets/fieldMessages-9hxyxGj7.js",
+    "name": "fieldMessages",
+    "imports": [
+      "_t-b1KZZgSW.js"
+    ]
+  },
+  "_hooks-B0qIYnkQ.js": {
+    "file": "assets/hooks-B0qIYnkQ.js",
+    "name": "hooks",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js"
+    ]
+  },
+  "_jsx-runtime-B4UN2VIk.js": {
+    "file": "assets/jsx-runtime-B4UN2VIk.js",
+    "name": "jsx-runtime"
+  },
+  "_layout-UTbssZ--.js": {
+    "file": "assets/layout-UTbssZ--.js",
+    "name": "layout",
+    "imports": [
+      "_clsx-BZbxhBNB.js"
+    ]
+  },
+  "_lib-BDFOREvo.js": {
+    "file": "assets/lib-BDFOREvo.js",
+    "name": "lib",
+    "imports": [
+      "_hooks-B0qIYnkQ.js",
+      "_jsx-runtime-B4UN2VIk.js"
+    ]
+  },
+  "_promMetadata-Dxk96ulU.js": {
+    "file": "assets/promMetadata-Dxk96ulU.js",
+    "name": "promMetadata",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_querySize-3FX8oBx7.js": {
+    "file": "assets/querySize-3FX8oBx7.js",
+    "name": "querySize"
+  },
+  "_t-b1KZZgSW.js": {
+    "file": "assets/t-b1KZZgSW.js",
+    "name": "t"
+  },
+  "_useFormValidation-CMWSHr3d.js": {
+    "file": "assets/useFormValidation-CMWSHr3d.js",
+    "name": "useFormValidation",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_Button-BA3x1uvX.js"
+    ]
+  },
+  "_useLoadMoreSentinel-DkzBdnQv.js": {
+    "file": "assets/useLoadMoreSentinel-DkzBdnQv.js",
+    "name": "useLoadMoreSentinel",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_clsx-BZbxhBNB.js",
+      "_variableRefs-BJf1lxiA.js",
+      "_useTimeContext-CgUaMEz9.js",
+      "_layout-UTbssZ--.js",
+      "_Button-BA3x1uvX.js"
+    ]
+  },
+  "_useLogqlModules-BQh-ZXkv.js": {
+    "file": "assets/useLogqlModules-BQh-ZXkv.js",
+    "name": "useLogqlModules",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_useTimeContext-CgUaMEz9.js",
+      "_t-b1KZZgSW.js",
+      "index.html",
+      "_ContextSummary-Ro7jjhmU.js",
+      "_LogStream-BIxVtayr.js",
+      "_querySize-3FX8oBx7.js",
+      "_QueryFallback-CAcrgXG-.js"
+    ],
+    "dynamicImports": [
+      "src/editor/logqlEditor.ts"
+    ]
+  },
+  "_useTimeContext-CgUaMEz9.js": {
+    "file": "assets/useTimeContext-CgUaMEz9.js",
+    "name": "useTimeContext",
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_hooks-B0qIYnkQ.js",
+      "_lib-BDFOREvo.js",
+      "_t-b1KZZgSW.js"
+    ]
+  },
+  "_variableRefs-BJf1lxiA.js": {
+    "file": "assets/variableRefs-BJf1lxiA.js",
+    "name": "variableRefs"
+  },
+  "index.html": {
+    "file": "assets/index-CFN7xQEI.js",
+    "name": "index",
+    "src": "index.html",
+    "isEntry": true,
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_clsx-BZbxhBNB.js",
+      "_useLoadMoreSentinel-DkzBdnQv.js",
+      "_lib-BDFOREvo.js",
+      "_useTimeContext-CgUaMEz9.js",
+      "_Button-BA3x1uvX.js",
+      "_hooks-B0qIYnkQ.js",
+      "_t-b1KZZgSW.js",
+      "_cx-CykQDk87.js"
+    ],
+    "dynamicImports": [
+      "src/api/stub/promShape.ts",
+      "src/pages/boards/BoardsPage.tsx",
+      "src/pages/board/BoardPage.tsx",
+      "src/pages/explore/MetricsPage.tsx",
+      "src/pages/explore/LogsPage.tsx",
+      "src/pages/admin/AdminPage.tsx",
+      "src/pages/SignedOutPage.tsx",
+      "src/shell/TimeRangeDialog.tsx",
+      "src/dev/GalleryPage.tsx",
+      "src/dev/WidgetGalleryPage.tsx",
+      "src/dev/LogQLEditorBenchPage.tsx",
+      "src/dev/LogStreamBenchPage.tsx"
+    ],
+    "css": [
+      "assets/index-DMhCC03R.css"
+    ],
+    "assets": [
+      "assets/activity-CwgGnnnv.svg",
+      "assets/layout-dashboard-CrqxIGDa.svg",
+      "assets/chart-line-D2MMPX5d.svg",
+      "assets/scroll-text-B1hFA313.svg",
+      "assets/settings-3lz_K7Rd.svg",
+      "assets/panel-left-close-CtpCbBAD.svg",
+      "assets/panel-left-open-DmTNraxP.svg",
+      "assets/clock-BTlEzkBt.svg",
+      "assets/refresh-cw-DCgpCA7j.svg",
+      "assets/chevron-down-49LHBQMj.svg",
+      "assets/chevron-right-DgAK1XYR.svg",
+      "assets/sun-CrEmRzUQ.svg",
+      "assets/moon-M-zclgJk.svg",
+      "assets/monitor-x8XBlyQt.svg",
+      "assets/info-siN5XuKi.svg",
+      "assets/log-out-mURLslwU.svg",
+      "assets/link-DrtT7ReH.svg",
+      "assets/calendar-Dee01Mos.svg",
+      "assets/check-nJtMuJM7.svg",
+      "assets/plus-D_q_rQX5.svg",
+      "assets/maximize-2-C4_Uvumc.svg",
+      "assets/ellipsis-DYB3A1cC.svg",
+      "assets/move-C9VqXoau.svg",
+      "assets/x-DTZPA-lW.svg",
+      "assets/share-2-D0f7KdnI.svg",
+      "assets/square-arrow-out-up-right-DAvYaQk3.svg",
+      "assets/copy-DlQzkCZL.svg",
+      "assets/pencil-Bqv4ISe9.svg",
+      "assets/panel-right-close-Dw4Z6gl3.svg",
+      "assets/panel-right-open-BNQ1qmdC.svg",
+      "assets/arrow-up-right-ChGc-xqB.svg",
+      "assets/git-branch-D0AVJrWm.svg",
+      "assets/flame-DzzRlR8_.svg",
+      "assets/box-zNMrlr45.svg",
+      "assets/filter-C7ni3MSm.svg",
+      "assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+      "assets/jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2"
+    ]
+  },
+  "src/api/stub/promShape.ts": {
+    "file": "assets/promShape-s4RXyyou.js",
+    "name": "promShape",
+    "src": "src/api/stub/promShape.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "_editor-CjxFkfKi.js",
+      "src/editor/lang/promql/promql.ts",
+      "index.html"
+    ]
+  },
+  "src/assets/fonts/inter-latin-wght-normal.woff2": {
+    "file": "assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
+    "src": "src/assets/fonts/inter-latin-wght-normal.woff2"
+  },
+  "src/assets/fonts/jetbrains-mono-latin-wght-normal.woff2": {
+    "file": "assets/jetbrains-mono-latin-wght-normal-B9CIFXIH.woff2",
+    "src": "src/assets/fonts/jetbrains-mono-latin-wght-normal.woff2"
+  },
+  "src/dev/GalleryPage.tsx": {
+    "file": "assets/GalleryPage-CyxIT9LR.js",
+    "name": "GalleryPage",
+    "src": "src/dev/GalleryPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_hooks-B0qIYnkQ.js",
+      "_ContextSummary-Ro7jjhmU.js",
+      "_t-b1KZZgSW.js",
+      "_Card-CO6H0AYG.js",
+      "_cx-CykQDk87.js",
+      "index.html",
+      "_useTimeContext-CgUaMEz9.js",
+      "_clsx-BZbxhBNB.js"
+    ],
+    "css": [
+      "assets/GalleryPage-DkT31jQn.css"
+    ]
+  },
+  "src/dev/LogQLEditorBenchPage.tsx": {
+    "file": "assets/LogQLEditorBenchPage-Kb0bepb8.js",
+    "name": "LogQLEditorBenchPage",
+    "src": "src/dev/LogQLEditorBenchPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_t-b1KZZgSW.js",
+      "index.html",
+      "_useTimeContext-CgUaMEz9.js"
+    ],
+    "dynamicImports": [
+      "src/editor/logqlEditor.ts"
+    ]
+  },
+  "src/dev/LogStreamBenchPage.tsx": {
+    "file": "assets/LogStreamBenchPage-BPznRZ6T.js",
+    "name": "LogStreamBenchPage",
+    "src": "src/dev/LogStreamBenchPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_t-b1KZZgSW.js",
+      "_LogStream-BIxVtayr.js",
+      "index.html"
+    ],
+    "css": [
+      "assets/LogStreamBenchPage-B48j1Lk7.css"
+    ]
+  },
+  "src/dev/WidgetGalleryPage.tsx": {
+    "file": "assets/WidgetGalleryPage-DwOQSX2J.js",
+    "name": "WidgetGalleryPage",
+    "src": "src/dev/WidgetGalleryPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_hooks-B0qIYnkQ.js",
+      "_t-b1KZZgSW.js",
+      "_cx-CykQDk87.js",
+      "index.html"
+    ],
+    "dynamicImports": [
+      "src/pages/board/BoardPage.tsx"
+    ],
+    "css": [
+      "assets/WidgetGalleryPage-BIgtfm9p.css"
+    ]
+  },
+  "src/editor/editor.ts": {
+    "file": "assets/editor-BgdI2o2M.js",
+    "name": "editor",
+    "src": "src/editor/editor.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_editor-CjxFkfKi.js",
+      "_editor-CC0vnuB7.js",
+      "src/editor/lang/promql/promql.ts"
+    ]
+  },
+  "src/editor/lang/logql/logql.ts": {
+    "file": "assets/editor-CzlsR_-l.js",
+    "name": "logql",
+    "src": "src/editor/lang/logql/logql.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "_editor-DrYFjEAy.js"
+    ]
+  },
+  "src/editor/lang/promql/promql.ts": {
+    "file": "assets/editor-DZm9LBeK.js",
+    "name": "promql",
+    "src": "src/editor/lang/promql/promql.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "_editor-CjxFkfKi.js",
+      "_editor-DrYFjEAy.js",
+      "_promMetadata-Dxk96ulU.js"
+    ]
+  },
+  "src/editor/logqlEditor.ts": {
+    "file": "assets/editor-BikMnoI7.js",
+    "name": "logqlEditor",
+    "src": "src/editor/logqlEditor.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "src/editor/lang/logql/logql.ts",
+      "_editor-CC0vnuB7.js"
+    ]
+  },
+  "src/engine/wasm/engine.ts": {
+    "file": "assets/dash-engine-BANw6iU8.js",
+    "name": "engine",
+    "src": "src/engine/wasm/engine.ts",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ],
+    "dynamicImports": [
+      "virtual:dash-engine"
+    ],
+    "assets": [
+      "assets/dash-engine-render.worker-XdtUpVEA.js",
+      "assets/dash-engine-pool.worker-D6eTsG_K.js"
+    ]
+  },
+  "src/engine/wasm/gen/dash_core_mt_bg.wasm": {
+    "file": "assets/dash-engine-C9xBor25.wasm",
+    "src": "src/engine/wasm/gen/dash_core_mt_bg.wasm"
+  },
+  "src/icons/activity.svg": {
+    "file": "assets/activity-CwgGnnnv.svg",
+    "src": "src/icons/activity.svg"
+  },
+  "src/icons/arrow-up-right.svg": {
+    "file": "assets/arrow-up-right-ChGc-xqB.svg",
+    "src": "src/icons/arrow-up-right.svg"
+  },
+  "src/icons/box.svg": {
+    "file": "assets/box-zNMrlr45.svg",
+    "src": "src/icons/box.svg"
+  },
+  "src/icons/calendar.svg": {
+    "file": "assets/calendar-Dee01Mos.svg",
+    "src": "src/icons/calendar.svg"
+  },
+  "src/icons/chart-line.svg": {
+    "file": "assets/chart-line-D2MMPX5d.svg",
+    "src": "src/icons/chart-line.svg"
+  },
+  "src/icons/check.svg": {
+    "file": "assets/check-nJtMuJM7.svg",
+    "src": "src/icons/check.svg"
+  },
+  "src/icons/chevron-down.svg": {
+    "file": "assets/chevron-down-49LHBQMj.svg",
+    "src": "src/icons/chevron-down.svg"
+  },
+  "src/icons/chevron-right.svg": {
+    "file": "assets/chevron-right-DgAK1XYR.svg",
+    "src": "src/icons/chevron-right.svg"
+  },
+  "src/icons/clock.svg": {
+    "file": "assets/clock-BTlEzkBt.svg",
+    "src": "src/icons/clock.svg"
+  },
+  "src/icons/copy.svg": {
+    "file": "assets/copy-DlQzkCZL.svg",
+    "src": "src/icons/copy.svg"
+  },
+  "src/icons/ellipsis.svg": {
+    "file": "assets/ellipsis-DYB3A1cC.svg",
+    "src": "src/icons/ellipsis.svg"
+  },
+  "src/icons/filter.svg": {
+    "file": "assets/filter-C7ni3MSm.svg",
+    "src": "src/icons/filter.svg"
+  },
+  "src/icons/flame.svg": {
+    "file": "assets/flame-DzzRlR8_.svg",
+    "src": "src/icons/flame.svg"
+  },
+  "src/icons/git-branch.svg": {
+    "file": "assets/git-branch-D0AVJrWm.svg",
+    "src": "src/icons/git-branch.svg"
+  },
+  "src/icons/info.svg": {
+    "file": "assets/info-siN5XuKi.svg",
+    "src": "src/icons/info.svg"
+  },
+  "src/icons/layout-dashboard.svg": {
+    "file": "assets/layout-dashboard-CrqxIGDa.svg",
+    "src": "src/icons/layout-dashboard.svg"
+  },
+  "src/icons/link.svg": {
+    "file": "assets/link-DrtT7ReH.svg",
+    "src": "src/icons/link.svg"
+  },
+  "src/icons/log-out.svg": {
+    "file": "assets/log-out-mURLslwU.svg",
+    "src": "src/icons/log-out.svg"
+  },
+  "src/icons/maximize-2.svg": {
+    "file": "assets/maximize-2-C4_Uvumc.svg",
+    "src": "src/icons/maximize-2.svg"
+  },
+  "src/icons/monitor.svg": {
+    "file": "assets/monitor-x8XBlyQt.svg",
+    "src": "src/icons/monitor.svg"
+  },
+  "src/icons/moon.svg": {
+    "file": "assets/moon-M-zclgJk.svg",
+    "src": "src/icons/moon.svg"
+  },
+  "src/icons/move.svg": {
+    "file": "assets/move-C9VqXoau.svg",
+    "src": "src/icons/move.svg"
+  },
+  "src/icons/panel-left-close.svg": {
+    "file": "assets/panel-left-close-CtpCbBAD.svg",
+    "src": "src/icons/panel-left-close.svg"
+  },
+  "src/icons/panel-left-open.svg": {
+    "file": "assets/panel-left-open-DmTNraxP.svg",
+    "src": "src/icons/panel-left-open.svg"
+  },
+  "src/icons/panel-right-close.svg": {
+    "file": "assets/panel-right-close-Dw4Z6gl3.svg",
+    "src": "src/icons/panel-right-close.svg"
+  },
+  "src/icons/panel-right-open.svg": {
+    "file": "assets/panel-right-open-BNQ1qmdC.svg",
+    "src": "src/icons/panel-right-open.svg"
+  },
+  "src/icons/pencil.svg": {
+    "file": "assets/pencil-Bqv4ISe9.svg",
+    "src": "src/icons/pencil.svg"
+  },
+  "src/icons/plus.svg": {
+    "file": "assets/plus-D_q_rQX5.svg",
+    "src": "src/icons/plus.svg"
+  },
+  "src/icons/refresh-cw.svg": {
+    "file": "assets/refresh-cw-DCgpCA7j.svg",
+    "src": "src/icons/refresh-cw.svg"
+  },
+  "src/icons/scroll-text.svg": {
+    "file": "assets/scroll-text-B1hFA313.svg",
+    "src": "src/icons/scroll-text.svg"
+  },
+  "src/icons/settings.svg": {
+    "file": "assets/settings-3lz_K7Rd.svg",
+    "src": "src/icons/settings.svg"
+  },
+  "src/icons/share-2.svg": {
+    "file": "assets/share-2-D0f7KdnI.svg",
+    "src": "src/icons/share-2.svg"
+  },
+  "src/icons/square-arrow-out-up-right.svg": {
+    "file": "assets/square-arrow-out-up-right-DAvYaQk3.svg",
+    "src": "src/icons/square-arrow-out-up-right.svg"
+  },
+  "src/icons/sun.svg": {
+    "file": "assets/sun-CrEmRzUQ.svg",
+    "src": "src/icons/sun.svg"
+  },
+  "src/icons/x.svg": {
+    "file": "assets/x-DTZPA-lW.svg",
+    "src": "src/icons/x.svg"
+  },
+  "src/pages/SignedOutPage.tsx": {
+    "file": "assets/SignedOutPage-CxbhYrLe.js",
+    "name": "SignedOutPage",
+    "src": "src/pages/SignedOutPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_lib-BDFOREvo.js",
+      "_t-b1KZZgSW.js",
+      "_cx-CykQDk87.js",
+      "index.html"
+    ]
+  },
+  "src/pages/admin/AdminPage.tsx": {
+    "file": "assets/AdminPage-BXP_G9jM.js",
+    "name": "AdminPage",
+    "src": "src/pages/admin/AdminPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_t-b1KZZgSW.js",
+      "_Card-CO6H0AYG.js",
+      "index.html",
+      "_cx-CykQDk87.js",
+      "_jsx-runtime-B4UN2VIk.js"
+    ]
+  },
+  "src/pages/board/BoardGrid.tsx": {
+    "file": "assets/BoardGrid-CrsTVJPC.js",
+    "name": "BoardGrid",
+    "src": "src/pages/board/BoardGrid.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_clsx-BZbxhBNB.js",
+      "_layout-UTbssZ--.js",
+      "_cx-CykQDk87.js",
+      "src/pages/board/BoardPage.tsx"
+    ],
+    "css": [
+      "assets/BoardGrid-kzrx2K5g.css"
+    ]
+  },
+  "src/pages/board/BoardPage.tsx": {
+    "file": "assets/BoardPage-DwSGyJl1.js",
+    "name": "BoardPage",
+    "src": "src/pages/board/BoardPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_useTimeContext-CgUaMEz9.js",
+      "_jsx-runtime-B4UN2VIk.js",
+      "_lib-BDFOREvo.js",
+      "_hooks-B0qIYnkQ.js",
+      "_useLoadMoreSentinel-DkzBdnQv.js",
+      "_t-b1KZZgSW.js",
+      "_layout-UTbssZ--.js",
+      "_fieldMessages-9hxyxGj7.js",
+      "_cx-CykQDk87.js",
+      "_SegmentedControl-B1rw7Fbq.js",
+      "_Button-BA3x1uvX.js",
+      "_useFormValidation-CMWSHr3d.js",
+      "_TextField-_iazg-I0.js",
+      "_ListBox-i1_rIvl1.js",
+      "_QueryFallback-CAcrgXG-.js",
+      "_variableRefs-BJf1lxiA.js",
+      "_EmptyState-R_NulmuO.js",
+      "_esm-xX_fNqDQ.js",
+      "_ContextSummary-Ro7jjhmU.js",
+      "_TextField-DEnTNS2e.js",
+      "_Checkbox-Bc0miXQ6.js",
+      "_ShareLinkControls-BXKqwAqg.js",
+      "_useLogqlModules-BQh-ZXkv.js",
+      "_MetricPicker-dBVeNoqC.js",
+      "_LogStream-BIxVtayr.js",
+      "_clsx-BZbxhBNB.js",
+      "_promMetadata-Dxk96ulU.js"
+    ],
+    "dynamicImports": [
+      "src/widgets/text/TextMarkdown.tsx",
+      "src/pages/board/BoardGrid.tsx"
+    ],
+    "css": [
+      "assets/BoardPage-CrOIwRV5.css"
+    ]
+  },
+  "src/pages/boards/BoardsPage.tsx": {
+    "file": "assets/BoardsPage-CzNLOULh.js",
+    "name": "BoardsPage",
+    "src": "src/pages/boards/BoardsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_useTimeContext-CgUaMEz9.js",
+      "_jsx-runtime-B4UN2VIk.js",
+      "index.html",
+      "_lib-BDFOREvo.js",
+      "_hooks-B0qIYnkQ.js",
+      "_t-b1KZZgSW.js",
+      "_Button-BA3x1uvX.js",
+      "_cx-CykQDk87.js",
+      "_EmptyState-R_NulmuO.js",
+      "_fieldMessages-9hxyxGj7.js",
+      "_useLoadMoreSentinel-DkzBdnQv.js",
+      "_TextField-DEnTNS2e.js"
+    ],
+    "css": [
+      "assets/BoardsPage-BuGhDRV8.css"
+    ]
+  },
+  "src/pages/explore/LogsPage.tsx": {
+    "file": "assets/LogsPage-B7R1wKtQ.js",
+    "name": "LogsPage",
+    "src": "src/pages/explore/LogsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_useTimeContext-CgUaMEz9.js",
+      "_jsx-runtime-B4UN2VIk.js",
+      "index.html",
+      "_useLogqlModules-BQh-ZXkv.js",
+      "_querySize-3FX8oBx7.js",
+      "_QueryFallback-CAcrgXG-.js",
+      "_t-b1KZZgSW.js",
+      "_esm-xX_fNqDQ.js",
+      "_cx-CykQDk87.js",
+      "_EmptyState-R_NulmuO.js",
+      "_ContextSummary-Ro7jjhmU.js",
+      "_hooks-B0qIYnkQ.js",
+      "_Card-CO6H0AYG.js",
+      "_QueryStatus-Cc2soMWL.js",
+      "_Button-BA3x1uvX.js",
+      "_LogStream-BIxVtayr.js"
+    ]
+  },
+  "src/pages/explore/MetricsPage.tsx": {
+    "file": "assets/MetricsPage-BUrlYd-w.js",
+    "name": "MetricsPage",
+    "src": "src/pages/explore/MetricsPage.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_useTimeContext-CgUaMEz9.js",
+      "_jsx-runtime-B4UN2VIk.js",
+      "_promMetadata-Dxk96ulU.js",
+      "_querySize-3FX8oBx7.js",
+      "_QueryFallback-CAcrgXG-.js",
+      "_MetricPicker-dBVeNoqC.js",
+      "_t-b1KZZgSW.js",
+      "_esm-xX_fNqDQ.js",
+      "_cx-CykQDk87.js",
+      "_ContextSummary-Ro7jjhmU.js",
+      "_hooks-B0qIYnkQ.js",
+      "_Button-BA3x1uvX.js",
+      "_Card-CO6H0AYG.js",
+      "_QueryStatus-Cc2soMWL.js"
+    ]
+  },
+  "src/shell/TimeRangeDialog.tsx": {
+    "file": "assets/TimeRangeDialog-B9oc4wi3.js",
+    "name": "TimeRangeDialog",
+    "src": "src/shell/TimeRangeDialog.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_useTimeContext-CgUaMEz9.js",
+      "_jsx-runtime-B4UN2VIk.js",
+      "_Button-BA3x1uvX.js",
+      "_useLoadMoreSentinel-DkzBdnQv.js",
+      "_ListBox-i1_rIvl1.js",
+      "_t-b1KZZgSW.js",
+      "index.html",
+      "_TextField-DEnTNS2e.js",
+      "_ShareLinkControls-BXKqwAqg.js",
+      "_cx-CykQDk87.js"
+    ],
+    "css": [
+      "assets/TimeRangeDialog-Dhjhyadr.css"
+    ]
+  },
+  "src/vis/geo/data/basemap.json": {
+    "file": "assets/basemap-BIjHCxY7.json",
+    "src": "src/vis/geo/data/basemap.json"
+  },
+  "src/vis/geo/data/gazetteer.json": {
+    "file": "assets/gazetteer-Af_c0-sc.json",
+    "src": "src/vis/geo/data/gazetteer.json"
+  },
+  "src/vis/geo/urls.ts": {
+    "file": "assets/geo-assets-BvRk9kiK.js",
+    "name": "geo-assets",
+    "src": "src/vis/geo/urls.ts",
+    "isEntry": true
+  },
+  "src/widgets/text/TextMarkdown.tsx": {
+    "file": "assets/TextMarkdown-ClEKsgJu.js",
+    "name": "TextMarkdown",
+    "src": "src/widgets/text/TextMarkdown.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "_jsx-runtime-B4UN2VIk.js",
+      "_t-b1KZZgSW.js",
+      "_cx-CykQDk87.js",
+      "_variableRefs-BJf1lxiA.js",
+      "index.html",
+      "src/pages/board/BoardPage.tsx"
+    ],
+    "css": [
+      "assets/TextMarkdown-B25iN_xf.css"
+    ]
+  },
+  "virtual:dash-engine": {
+    "file": "assets/dash-engine-CHK1kgxu.js",
+    "name": "_virtual_dash-engine",
+    "src": "virtual:dash-engine",
+    "isDynamicEntry": true,
+    "assets": [
+      "assets/dash-engine-C9xBor25.wasm"
+    ]
+  }
+}
