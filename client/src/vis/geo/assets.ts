@@ -5,9 +5,10 @@
  * `console.debug` line naming the file; the other asset is unaffected. There is no retry and no
  * cancellation (the request is shared): a failed asset stays null until the page reloads (T24 §9).
  */
+import basemapUrl from './data/basemap.json?url';
+import gazetteerUrl from './data/gazetteer.json?url';
 import { decodeBasemap, decodeGazetteer } from './decode';
 import type { GeoData } from './types';
-import { basemapUrl, gazetteerUrl } from './urls';
 
 export { decodeBasemap, decodeGazetteer } from './decode';
 
@@ -45,7 +46,11 @@ export function geoLoader(
   };
 }
 
-/** The page's loader of the bundled assets (`urls.ts`); E2 imports it lazily. */
+/**
+ * The page's loader of the bundled assets. It imports the files' URLs itself (`?url`, the same
+ * content-hashed files as `urls.ts`): `urls.ts` stays the `geo-assets` build input that nothing
+ * imports, so it never shares the index chunk (`geo-entry-merged`, plan #263; #234 Part 3).
+ */
 export const loadGeoData: () => Promise<GeoData> = geoLoader((u, i) => fetch(u, i), {
   basemap: basemapUrl,
   gazetteer: gazetteerUrl,

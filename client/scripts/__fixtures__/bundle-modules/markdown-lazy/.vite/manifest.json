@@ -3,18 +3,21 @@
     "file": "assets/index-a1.js",
     "isEntry": true,
     "dynamicImports": [
-      "src/pages/board/BoardPage.tsx"
+      "src/pages/board/BoardPage.tsx",
+      "src/pages/boards/BoardsPage.tsx"
     ]
   },
   "src/pages/board/BoardPage.tsx": {
     "file": "assets/BoardPage-b1.js",
     "isDynamicEntry": true,
     "imports": [
-      "index.html"
+      "index.html",
+      "_ChartFrame-c1.js"
     ],
     "dynamicImports": [
       "src/widgets/text/TextMarkdown.tsx",
-      "_md-shared.js"
+      "_md-shared.js",
+      "src/charts/GeoMapFrame.tsx"
     ]
   },
   "src/widgets/text/TextMarkdown.tsx": {
@@ -26,5 +29,37 @@
   },
   "_md-shared.js": {
     "file": "assets/md-shared-s1.js"
+  },
+  "src/pages/boards/BoardsPage.tsx": {
+    "file": "assets/BoardsPage-l1.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_ChartFrame-c1.js": {
+    "file": "assets/ChartFrame-c1.js",
+    "imports": [
+      "index.html"
+    ],
+    "dynamicImports": [
+      "src/engine/canvas2d/geo/scene.ts"
+    ]
+  },
+  "src/charts/GeoMapFrame.tsx": {
+    "file": "assets/GeoMapFrame-g1.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_ChartFrame-c1.js"
+    ]
+  },
+  "src/engine/canvas2d/geo/scene.ts": {
+    "file": "assets/scene-s1.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_ChartFrame-c1.js"
+    ]
   }
 }

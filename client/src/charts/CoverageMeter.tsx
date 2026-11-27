@@ -25,10 +25,13 @@ export function CoverageMeter({
   coverage,
   onNarrow,
   timeZone,
+  focusable = false,
 }: {
   coverage: Coverage;
   onNarrow?: () => void;
   timeZone?: string;
+  /** A tab stop even as a status line (the geomap's Tab order ends at its meter, T24-093). */
+  focusable?: boolean;
 }): JSX.Element {
   const text = timeZone === undefined ? coverageText(coverage) : coverageText(coverage, timeZone);
   const query = warned(coverage.query) ? coverage.query : null;
@@ -36,7 +39,13 @@ export function CoverageMeter({
   if (query === null && baseline === null) {
     return (
       <div className={cx(styles['meter'])} data-coverage-meter="">
-        <p role="status" className={cx(styles['meterText'])}>
+        <p
+          role="status"
+          className={cx(styles['meterText'])}
+          // The geomap's meter closes its Tab order (T24-093).
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+          tabIndex={focusable ? 0 : undefined}
+        >
           {text}
         </p>
       </div>

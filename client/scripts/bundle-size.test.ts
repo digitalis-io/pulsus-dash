@@ -31,6 +31,9 @@ const LAZY = [
   ['src/shell/TimeRangeDialog.tsx', 'assets/TimeRangeDialog-x.js'],
   ['src/pages/board/BoardGrid.tsx', 'assets/BoardGrid-x.js'],
   ['src/widgets/text/TextMarkdown.tsx', 'assets/TextMarkdown-x.js'],
+  // The geomap host and scene (plan #234 Part 3 §4.8).
+  ['src/charts/GeoMapFrame.tsx', 'assets/GeoMapFrame-x.js'],
+  ['src/engine/canvas2d/geo/scene.ts', 'assets/scene-x.js'],
 ] as const;
 
 interface Overrides {

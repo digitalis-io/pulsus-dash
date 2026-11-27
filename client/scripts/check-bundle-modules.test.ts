@@ -8,7 +8,12 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { forbiddenModules, markdownInRoute, parseManifest } from './lib/bundleModules.ts';
+import {
+  forbiddenModules,
+  geoInRoute,
+  markdownInRoute,
+  parseManifest,
+} from './lib/bundleModules.ts';
 
 const clientRoot = fileURLToPath(new URL('..', import.meta.url));
 const fixtures = fileURLToPath(new URL('./__fixtures__/bundle-modules/', import.meta.url));
@@ -123,5 +128,53 @@ describe('unit:bundle-modules (Markdown in the route, plan #198 Part 3a §3.4)',
     const r = cli('no-manifest');
     expect(r.status).toBe(2);
     expect(r.stderr).toContain('manifest');
+  });
+});
+
+describe('unit:bundle-modules (geo in the route, plan #234 Part 3 §4.8)', () => {
+  it('clean: the geo host and scene are dynamic entries, targets and the model in the board route → none', () => {
+    expect(geoInRoute(manifest('clean'), graph('clean'))).toEqual([]);
+    expect(geoInRoute(manifest('markdown-lazy'), graph('markdown-lazy'))).toEqual([]);
+    expect(geoInRoute(manifest('geo-targets-in-board'), graph('geo-targets-in-board'))).toEqual([]);
+    expect(cli('clean').status).toBe(0);
+    expect(cli('geo-targets-in-board').status).toBe(0);
+  });
+
+  const GEO_BAD: [string, string, Record<string, string>][] = [
+    [
+      'geo-in-index',
+      'geo-in-route',
+      { chunk: 'assets/index-a1.js', module: '/repo/client/src/vis/geo/frame.ts' },
+    ],
+    [
+      'geo-frame-in-board',
+      'geo-in-route',
+      { chunk: 'assets/ChartFrame-c1.js', module: '/repo/client/src/vis/geo/frame.ts' },
+    ],
+    [
+      'geo-targets-in-list',
+      'geo-in-route',
+      { chunk: 'assets/BoardsPage-l1.js', module: '/repo/client/src/vis/geo/targets.ts' },
+    ],
+    ['geo-entry-static', 'missing-geo-entry', { subject: 'src/charts/GeoMapFrame.tsx' }],
+  ];
+  for (const [name, rule, at] of GEO_BAD) {
+    it(`${name} → exactly one ${rule}, exit 1`, () => {
+      const f = geoInRoute(manifest(name), graph(name));
+      expect(f).toHaveLength(1);
+      expect(f[0]).toMatchObject({ rule, ...at });
+      const r = cli(name);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(`error[${rule}]`);
+    });
+  }
+
+  it('fails closed: a missing root or an unmapped chunk is a finding', () => {
+    expect(geoInRoute(manifest('no-route-root'), graph('no-route-root'))).toEqual(
+      expect.arrayContaining([expect.objectContaining({ rule: 'missing-route-root' })]),
+    );
+    expect(geoInRoute(manifest('unmapped-chunk'), graph('unmapped-chunk'))).toEqual(
+      expect.arrayContaining([expect.objectContaining({ rule: 'unmapped-chunk' })]),
+    );
   });
 });

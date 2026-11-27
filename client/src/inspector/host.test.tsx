@@ -222,6 +222,41 @@ describe('unit:host-registries', () => {
     expect(h.api().resolveMembers('P1', 'P2:K:r0')).toBeNull();
   });
 
+  it('unit:geo-preview-members (c): a per-panel stack; each disposer removes only its own entry', () => {
+    const h = renderHost();
+    const a: MemberList = { texts: ['a'], members: [] };
+    const b: MemberList = { texts: ['b'], members: [] };
+    let offA: () => void = () => undefined;
+    let offB: () => void = () => undefined;
+    act(() => {
+      offA = h.api().registerMembers('P2', () => a);
+      offB = h.api().registerMembers('P2', () => b);
+    });
+    expect(h.api().resolveMembers('P2', 'r')).toBe(b);
+    act(() => {
+      offB();
+    });
+    // The earlier registration answers again (a full screen closed, StrictMode's re-mount).
+    expect(h.api().resolveMembers('P2', 'r')).toBe(a);
+    act(() => {
+      offA();
+    });
+    expect(h.api().resolveMembers('P2', 'r')).toBeNull();
+    act(() => {
+      offA = h.api().registerMembers('P2', () => a);
+      offB = h.api().registerMembers('P2', () => b);
+    });
+    act(() => {
+      offA();
+    });
+    expect(h.api().resolveMembers('P2', 'r')).toBe(b);
+    act(() => {
+      offB();
+      offB();
+    });
+    expect(h.api().resolveMembers('P2', 'r')).toBeNull();
+  });
+
   it('select never opens or closes the Inspector', () => {
     const h = renderHost();
     act(() => {

@@ -505,3 +505,48 @@ describe('unit:geo-marks-emit', () => {
     expect(h.marks[1]).toEqual(h.marks[0]);
   });
 });
+
+describe('unit:geo-render-failed (the producer, plan #234 Part 3 §4.4a)', () => {
+  it('(a) a rejected scene import for the live geomap: exactly one a11y {kind: geomap, geo: null}, no drawn; (b) after a line spec or dispose: none', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const d = deferred();
+    const h = geoHarness(d.load);
+    h.frame.setSpec(geoSpec());
+    h.frame.setData(geoData());
+    h.frame.resize(1024, 512, 1);
+    h.flush();
+    const before = h.a11y.length;
+    d.reject(new Error('chunk failed'));
+    await settle();
+    h.flush();
+    const failed = h.a11y.slice(before);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]?.kind).toBe('geomap');
+    expect(failed[0]?.geo).toBeNull();
+    expect(h.drawn).toEqual([]);
+    // Nothing more on later frames.
+    h.frame.setSelection({ keys: ['k01'], fromMs: null, toMs: null });
+    h.flush();
+    expect(h.a11y.slice(before)).toHaveLength(1);
+    // (b) setSpec(line) or dispose before the rejection: no summary.
+    for (const leave of ['line', 'dispose'] as const) {
+      const d = deferred();
+      const h = geoHarness(d.load);
+      h.frame.setSpec(geoSpec());
+      h.frame.setData(geoData());
+      h.frame.resize(1024, 512, 1);
+      h.flush();
+      if (leave === 'line') {
+        h.frame.setSpec(LINE_NONE);
+        h.frame.setData(seriesData(seriesFrame('00000000000000a1', [0, 1000], [1, 2])));
+      } else {
+        h.frame.dispose();
+      }
+      const n = h.a11y.length;
+      d.reject(new Error('chunk failed'));
+      await settle();
+      h.flush();
+      expect(h.a11y.slice(n).filter((s) => s.kind === 'geomap')).toEqual([]);
+    }
+  });
+});

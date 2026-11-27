@@ -290,3 +290,15 @@ describe('unit:frame-plan', () => {
     expect(toggleIsolation(k, fkey(0))).toBe(fkey(0));
   });
 });
+
+describe('framePlan: geomap (#234 Part 3 §4.7)', () => {
+  it('is planned by vis/geo/, never here: no spec, no data, the geomap notice', () => {
+    expect(framePlan('geomap', B(), { isolatedKey: null, title: 'T', rateApplied: false })).toEqual(
+      {
+        spec: null,
+        data: null,
+        notice: 'geomap',
+      },
+    );
+  });
+});

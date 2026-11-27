@@ -1,0 +1,38 @@
+{
+  "assets/index-a1.js": [
+    "/repo/client/index.html",
+    "/repo/client/src/main.tsx",
+    "/repo/client/node_modules/react/cjs/react.production.js",
+    "\u0000vite/modulepreload-polyfill.js",
+    "/repo/client/src/vis/geo/frame.ts"
+  ],
+  "assets/BoardPage-b1.js": [
+    "/repo/client/src/pages/board/BoardPage.tsx"
+  ],
+  "assets/TextMarkdown-m1.js": [
+    "/repo/client/src/widgets/text/TextMarkdown.tsx",
+    "/repo/client/src/security/sanitise/markdown.tsx",
+    "/repo/client/node_modules/commonmark/lib/index.js",
+    "/repo/client/node_modules/parse5/dist/index.js",
+    "/repo/client/node_modules/parse5-sax-parser/dist/parser-feedback-simulator.js",
+    "/repo/client/node_modules/entities/dist/esm/decode.js"
+  ],
+  "assets/BoardsPage-l1.js": [
+    "/repo/client/src/pages/boards/BoardsPage.tsx"
+  ],
+  "assets/ChartFrame-c1.js": [
+    "/repo/client/src/charts/ChartFrame.tsx",
+    "/repo/client/src/vis/geo/targets.ts",
+    "/repo/client/src/inspector/geoModel.ts"
+  ],
+  "assets/GeoMapFrame-g1.js": [
+    "/repo/client/src/charts/GeoMapFrame.tsx",
+    "/repo/client/src/charts/geo/GeoMarkList.tsx",
+    "/repo/client/src/vis/geo/frame.ts",
+    "/repo/client/src/vis/geo/plan.ts"
+  ],
+  "assets/scene-s1.js": [
+    "/repo/client/src/engine/canvas2d/geo/scene.ts",
+    "/repo/client/src/engine/controller/geo/camera.ts"
+  ]
+}

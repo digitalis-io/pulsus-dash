@@ -81,10 +81,15 @@ export interface PanelRun {
   readonly expanded: string | null;
   /** The LogQL stream path's pager and controls (plan #67); else null. */
   readonly stream: PanelStream | null;
+  /** `outcome` is the previous key's result (TanStack `isPlaceholderData`; plan #234 Part 3 §2). */
+  readonly placeholder: boolean;
+  /** Runs the current key again (TanStack `refetch()`; the geomap's Retry). */
+  readonly retry: () => void;
 }
 
 const NO_DIAGNOSTICS: readonly Diagnostic[] = Object.freeze([]);
 const NO_NAMES: readonly string[] = Object.freeze([]);
+const NO_RETRY = (): void => undefined;
 
 export function isAbort(e: unknown): boolean {
   return e instanceof DOMException && e.name === 'AbortError';
@@ -288,6 +293,8 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       stepMs,
       expanded,
       stream: null,
+      placeholder: false,
+      retry: NO_RETRY,
     }),
     [
       text,
