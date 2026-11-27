@@ -124,6 +124,7 @@ export function recordingContext(): RecordingContext {
     beginPath: rec('beginPath'),
     moveTo: rec('moveTo'),
     lineTo: rec('lineTo'),
+    closePath: rec('closePath'),
     arc: rec('arc'),
     fill: rec('fill'),
     stroke: rec('stroke'),
@@ -132,6 +133,11 @@ export function recordingContext(): RecordingContext {
     rect: rec('rect'),
     clip: rec('clip'),
     setLineDash: rec('setLineDash'),
+    /** A pattern object that remembers its tile; a fill with it records `gradient-or-pattern`. */
+    createPattern(image: CanvasImageSource, repetition: string | null): CanvasPattern {
+      rec('createPattern')(image, repetition);
+      return { setTransform: () => undefined, image } as unknown as CanvasPattern;
+    },
     rotate(r: number) {
       const [a = 1, b = 0, c = 0, d = 1, e = 0, f = 0] = state.transform;
       const [cos, sin] = [Math.cos(r), Math.sin(r)];

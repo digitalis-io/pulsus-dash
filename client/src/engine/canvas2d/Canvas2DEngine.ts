@@ -18,8 +18,15 @@
  * A bar chart (ADR-0028, ADR-0029) has no camera: its pointer events and its key target's keys go
  * to `BarInput` (`mark`, `pick`, the focus mark and the brush band in the overlay), and its wheel,
  * gestures, double click and context menu are ignored.
+ *
+ * A geomap (ADR-0027, plan #234 Part 2 §4.1) is drawn by its scene (`geo/scene.ts`), imported on the
+ * frame's first `geomap` spec (`loadGeoModule`). The frame stores and forwards its inputs; the
+ * scene owns the camera and input and paints the visible canvas directly (no layer cache). Until the
+ * module resolves the frame paints `map-water` and reports no `drawn`. Each load takes a generation
+ * (`geoGen`); leaving the kind and `dispose` bump it, so a late module attaches nothing.
  */
 import type {
+  CameraKey,
   ChartEngine,
   ChartFrame,
   EventMarker,
@@ -54,6 +61,7 @@ import { hoverAt } from './pick';
 import { themeColours } from './palette';
 import { sameSelection, type Listener } from './gesture';
 import { pickItem } from './select';
+import type { GeoScene } from './geo/scene';
 
 export { MAX_SERIES };
 
@@ -81,7 +89,33 @@ export interface Canvas2DOptions {
   clearTimer?: (id: number) => void;
   /** Default: one `windowWheelLatch(globalThis)` per page, created at the first `createFrame`. */
   wheelLatch?: WheelLatch;
+  /** The geomap scene module (plan #234 Part 2 §3.1); default `loadGeoModule`. */
+  loadGeo?: () => Promise<GeoModule>;
 }
+
+/** The geomap scene's dynamic entry (ADR-0027): imported on a frame's first `geomap` spec. */
+export type GeoModule = typeof import('./geo/scene');
+
+/**
+ * A loader of the geo module over `imp`: one shared promise, kept on success; a rejection clears
+ * it, so the next call imports again (plan #234 Part 2 §3.1).
+ */
+export function geoModuleLoader(imp: () => Promise<GeoModule>): () => Promise<GeoModule> {
+  let pending: Promise<GeoModule> | null = null;
+  return () => {
+    if (pending === null) {
+      const p = imp();
+      pending = p;
+      p.catch(() => {
+        if (pending === p) pending = null;
+      });
+    }
+    return pending;
+  };
+}
+
+/** The page's geo module loader. */
+export const loadGeoModule: () => Promise<GeoModule> = geoModuleLoader(() => import('./geo/scene'));
 
 interface Resolved {
   requestFrame: (cb: () => void) => number;
@@ -93,6 +127,7 @@ interface Resolved {
   setTimer: (cb: () => void, ms: number) => number;
   clearTimer: (id: number) => void;
   wheelLatch: WheelLatch;
+  loadGeo: () => Promise<GeoModule>;
 }
 
 /** The page's wheel latch: one passive window listener, created with the first frame. */
@@ -140,6 +175,7 @@ export class Canvas2DEngine implements ChartEngine {
           clearTimeout(id);
         }),
       wheelLatch: o.wheelLatch ?? defaultLatch(),
+      loadGeo: o.loadGeo ?? loadGeoModule,
     };
     return new Canvas2DFrame(canvas, init, r);
   }
@@ -177,6 +213,15 @@ class Canvas2DFrame implements ChartFrame {
   });
   /** The camera (#93): the shared controller, this frame its stage. */
   private readonly ctl: FrameController;
+  /** A geomap's scene (ADR-0027), once its module resolved for the current generation. */
+  private geo: GeoScene | null = null;
+  /** Bumped by each geo load, by leaving `geomap` and by `dispose` (the lifecycle guard). */
+  private geoGen = 0;
+  /** The generation of the load in flight; null: none. */
+  private geoPending: number | null = null;
+  private geoFocus: string | null = null;
+  /** The scene's last hover was a mark: leaving the kind clears it. */
+  private geoHover = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -274,21 +319,33 @@ class Canvas2DFrame implements ChartFrame {
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     }
+    if (prev?.kind === 'geomap' && spec.kind !== 'geomap') this.leaveGeo();
     this.spec = spec;
     this.ctl.setSpec(spec);
+    if (spec.kind === 'geomap') {
+      if (this.geo !== null) this.geo.setSpec(spec);
+      else this.loadGeo();
+      this.schedule();
+      return;
+    }
     this.changed();
   }
 
   setData(data: FrameData): void {
     if (this.disposed) return;
     this.data = data;
+    if (this.spec?.kind === 'geomap') {
+      if (data.kind === 'geo') this.geo?.setData(data.geo);
+      return;
+    }
     this.bar.newData();
     this.changed();
   }
 
   setTimeWindow(w: TimeWindow): void {
     if (this.disposed) return;
-    if (this.ctl.setTimeWindow(w)) this.changed();
+    // A geomap stores the window and draws nothing for it (ADR-0027 (2)).
+    if (this.ctl.setTimeWindow(w) && this.spec?.kind !== 'geomap') this.changed();
   }
 
   /**
@@ -300,6 +357,7 @@ class Canvas2DFrame implements ChartFrame {
     if (this.disposed || events === this.events) return;
     const band = this.events.length > 0 !== events.length > 0;
     this.events = events;
+    if (this.spec?.kind === 'geomap') return;
     if (band) this.changed();
     else this.invalidate();
   }
@@ -309,12 +367,21 @@ class Canvas2DFrame implements ChartFrame {
     if (this.disposed || sameSelection(sel, this.selection)) return;
     this.selection =
       sel === null ? null : { keys: [...sel.keys], fromMs: sel.fromMs, toMs: sel.toMs };
+    if (this.spec?.kind === 'geomap') {
+      this.geo?.setSelection(this.selection);
+      return;
+    }
     this.invalidate();
   }
 
   setTheme(t: ThemeName): void {
     if (this.disposed) return;
     this.theme = t;
+    if (this.spec?.kind === 'geomap') {
+      this.geo?.setTheme(t);
+      this.schedule();
+      return;
+    }
     this.changed();
   }
 
@@ -331,17 +398,28 @@ class Canvas2DFrame implements ChartFrame {
       c.height = h;
     }
     if (w === 0 || h === 0) releaseScratch(this.dim);
+    if (this.spec?.kind === 'geomap') {
+      this.geo?.resize(cssWidth, cssHeight, dpr);
+      this.schedule();
+      return;
+    }
     this.changed();
   }
 
-  /** ADR-0027: a geomap's focus ring and zoom anchor (#234 Part 2); a no-op on other kinds. */
-  setFocusMark(): void {
-    // No geomap scene yet: nothing to focus.
+  /** ADR-0027: a geomap's focus ring and zoom anchor; kept until the scene exists; a no-op elsewhere. */
+  setFocusMark(id: string | null): void {
+    if (this.disposed) return;
+    this.geoFocus = id;
+    if (this.spec?.kind === 'geomap') this.geo?.setFocusMark(id);
   }
 
-  /** ADR-0027: one geomap camera key (#234 Part 2); a no-op on other kinds. */
-  cameraKey(): void {
-    // No geomap camera yet: nothing to move.
+  /**
+   * ADR-0027: one geomap camera key; a no-op on other kinds, and while the scene is still loading
+   * (or has no size yet): a key is an action on the map shown, not a queued command.
+   */
+  cameraKey(k: CameraKey): void {
+    if (this.disposed || this.spec?.kind !== 'geomap') return;
+    this.geo?.cameraKey(k);
   }
 
   on<E extends keyof FrameEvents>(e: E, cb: (ev: FrameEvents[E]) => void): () => void {
@@ -361,6 +439,10 @@ class Canvas2DFrame implements ChartFrame {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.geoGen += 1;
+    this.geoPending = null;
+    this.geo?.dispose();
+    this.geo = null;
     if (this.scheduled !== null) this.r.cancelFrame(this.scheduled);
     this.scheduled = null;
     // No commit after dispose: the controller drops the gesture and its timers.
@@ -373,6 +455,119 @@ class Canvas2DFrame implements ChartFrame {
     }
     this.model = null;
     this.stageModel = null;
+  }
+
+  // Geomap (ADR-0027, plan #234 Part 2 §4.1).
+
+  /** Imports the scene for this generation; nothing attaches if the generation moved on. */
+  private loadGeo(): void {
+    if (this.geoPending !== null) return;
+    this.geoGen += 1;
+    const gen = this.geoGen;
+    this.geoPending = gen;
+    this.r.loadGeo().then(
+      (mod) => {
+        if (gen !== this.geoGen || this.disposed || this.spec?.kind !== 'geomap') return;
+        this.geoPending = null;
+        this.attachGeo(mod);
+      },
+      (e: unknown) => {
+        if (gen !== this.geoGen) return;
+        // The frame stays blank with no `drawn`; the next geomap spec imports again (Part 3 shows it).
+        this.geoPending = null;
+        console.warn(
+          `pulsus map renderer unavailable: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      },
+    );
+  }
+
+  /** Creates the scene and replays the spec, data, theme, size, selection and focus mark. */
+  private attachGeo(mod: GeoModule): void {
+    const spec = this.spec;
+    if (spec?.kind !== 'geomap') return;
+    const r = this.r;
+    const scene = mod.createGeoScene({
+      canvas: this.canvas,
+      keyTarget: this.init.keyTarget,
+      now: r.now,
+      setTimer: r.setTimer,
+      clearTimer: r.clearTimer,
+      wheelLatch: r.wheelLatch,
+      emit: (e, ev) => {
+        if (e === 'hover') this.geoHover = ev !== null;
+        this.emit(e, ev);
+      },
+      requestDraw: () => {
+        this.schedule();
+      },
+      createCanvas: r.createCanvas,
+      contextOf: r.contextOf,
+    });
+    this.geo = scene;
+    scene.setSpec(spec);
+    if (this.data?.kind === 'geo') scene.setData(this.data.geo);
+    scene.setTheme(this.theme);
+    if (this.cssW > 0 && this.cssH > 0) scene.resize(this.cssW, this.cssH, this.dpr);
+    scene.setSelection(this.selection);
+    scene.setFocusMark(this.geoFocus);
+    this.schedule();
+  }
+
+  /** Leaving `geomap`: the scene and its listeners go before the time camera listens again. */
+  private leaveGeo(): void {
+    this.geoGen += 1;
+    this.geoPending = null;
+    this.geo?.dispose();
+    this.geo = null;
+    if (this.geoHover) {
+      this.geoHover = false;
+      this.emit('hover', null);
+    }
+  }
+
+  /** A geomap frame: the scene paints the visible canvas; `map-water` until it exists. */
+  private geoFrame(): void {
+    const ctx = this.ctx;
+    const scene = this.geo;
+    if (scene === null) {
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      ctx.fillStyle = themeColours(this.theme).map.water;
+      ctx.fillRect(0, 0, this.cssW, this.cssH);
+      return;
+    }
+    const start = this.r.now();
+    const summary = scene.draw(ctx);
+    const end = this.r.now();
+    try {
+      performance.measure('chart-draw', {
+        start,
+        end,
+        detail: { kind: 'geomap', series: summary.geo?.marks ?? 0, frame: this.init.id ?? null },
+      });
+      performance.clearMeasures('chart-draw');
+    } catch {
+      // The User Timing API is optional: drawing does not depend on it.
+    }
+    const key = JSON.stringify(summary);
+    if (key !== this.summaryKey) {
+      this.summaryKey = key;
+      this.emit('a11y', summary);
+    }
+    this.presented();
+    if (scene.animating()) this.schedule();
+  }
+
+  /** The visible canvas is complete at this size (ADR-0019). */
+  private presented(): void {
+    // The frame benches time presented frames by this mark (plan #68 C2d1 §1).
+    try {
+      performance.mark('chart-present', { detail: { frame: this.init.id ?? null } });
+      performance.clearMarks('chart-present');
+    } catch {
+      // The User Timing API is optional: drawing does not depend on it.
+    }
+    this.emit('drawn', { cssWidth: this.cssW, cssHeight: this.cssH, dpr: this.dpr });
   }
 
   // Stage (plan #68 C2a2 §3.1).
@@ -425,6 +620,11 @@ class Canvas2DFrame implements ChartFrame {
       this.layerDirty = false;
       return;
     }
+    if (this.spec?.kind === 'geomap') {
+      this.layerDirty = false;
+      this.geoFrame();
+      return;
+    }
     if (this.layerDirty) {
       this.layerDirty = false;
       const start = this.r.now();
@@ -463,15 +663,8 @@ class Canvas2DFrame implements ChartFrame {
       }
     }
     this.drawVisible(hover);
-    // The visible canvas is complete at this size (ADR-0019); never at a zero size or disposed.
-    // The frame benches time presented frames by this mark (plan #68 C2d1 §1).
-    try {
-      performance.mark('chart-present', { detail: { frame: this.init.id ?? null } });
-      performance.clearMarks('chart-present');
-    } catch {
-      // The User Timing API is optional: drawing does not depend on it.
-    }
-    this.emit('drawn', { cssWidth: this.cssW, cssHeight: this.cssH, dpr: this.dpr });
+    // Never at a zero size or disposed.
+    this.presented();
   }
 
   private setModel(m: LayerModel | null): void {

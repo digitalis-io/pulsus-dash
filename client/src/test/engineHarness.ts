@@ -16,7 +16,7 @@ import type {
   SeriesFrame,
   VisSpec,
 } from '../engine/api';
-import type { Canvas2DEngine as EngineClass } from '../engine/canvas2d/Canvas2DEngine';
+import type { Canvas2DEngine as EngineClass, GeoModule } from '../engine/canvas2d/Canvas2DEngine';
 import type { WheelLatch } from '../engine/canvas2d/input';
 import { recordingContext, type RecordingContext } from './recordingContext';
 
@@ -48,7 +48,16 @@ export interface Harness {
 
 export function harness(
   Engine: typeof EngineClass,
-  o: { keyTarget?: HTMLElement | null; timeZone?: string; id?: string; latch?: WheelLatch } = {},
+  o: {
+    keyTarget?: HTMLElement | null;
+    timeZone?: string;
+    id?: string;
+    latch?: WheelLatch;
+    /** The geomap scene loader (plan #234 Part 2); default the engine's. */
+    loadGeo?: () => Promise<GeoModule>;
+    /** `now()` reads the fake timer clock (`advance`) instead of 0. */
+    clockNow?: boolean;
+  } = {},
 ): Harness {
   const queue = new Map<number, () => void>();
   let next = 0;
@@ -77,7 +86,7 @@ export function harness(
       return c;
     },
     fonts: null,
-    now: () => 0,
+    now: o.clockNow === true ? () => clock : () => 0,
     setTimer: (cb, ms) => {
       timerSeq += 1;
       timerQueue.set(timerSeq, { due: clock + ms, cb });
@@ -88,6 +97,7 @@ export function harness(
     },
     // No unconsumed page wheel unless a test says so.
     wheelLatch: o.latch ?? { lastPageWheel: () => -Infinity },
+    ...(o.loadGeo === undefined ? {} : { loadGeo: o.loadGeo }),
   });
   const canvas = document.createElement('canvas');
   const frame = engine.createFrame(canvas, {
