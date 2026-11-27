@@ -18,6 +18,7 @@ export type Ctx2D = Pick<
   | 'rect'
   | 'clip'
   | 'createPattern'
+  | 'createLinearGradient'
   | 'save'
   | 'restore'
   | 'rotate'

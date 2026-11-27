@@ -18,6 +18,7 @@ import { ModalDialog } from '../../kit/Dialog';
 import { TextField } from '../../kit/TextField';
 import type { WidgetDef } from '../../widgets/registry';
 import styles from './Board.module.css';
+import { panelCard } from './panelCard';
 
 export interface WidgetEditorProps {
   panel: WidgetPanelSpec;
@@ -71,6 +72,7 @@ export function WidgetEditor({
       title={t(def.editTitle)}
       isOpen
       size="editor"
+      origin={() => panelCard(document, panel.id)}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
@@ -114,7 +116,7 @@ export function WidgetEditor({
           >
             {status}
           </p>
-          <Button variant="primary" onPress={onClose} isDisabled={local !== null}>
+          <Button variant="primary" slot="close" isDisabled={local !== null}>
             {t('editor.close')}
           </Button>
         </div>

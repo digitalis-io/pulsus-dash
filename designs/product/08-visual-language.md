@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-27 |
+| **Version** | 1.7-rc · 2026-11-27 |
 | **Requirement area** | `VL` |
 | **Source draft** | plans/08-visual-language.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [T02](../technical/T02-vis-engine.md), [T08](../technical/T08-dom-component-kit.md) |
@@ -58,6 +58,7 @@ character: one light, fog, hairline grid, no decoration ([05](05-visualisation-c
 | `ok` | `#2FB59A` (teal-green) | `watch` | `#D9C84A` (cool yellow) |
 | `degraded` | `#E8923A` (amber) | `failing` | `#E0457B` (red-magenta) |
 | `unknown` | `#6B7280` + hatch (hatched grey) | `surface-float` | `#15171CF0` (geomap overlay) |
+| `failing-glow` | `#E0457B26` (a failing board panel's glow; state use only) | | |
 | `series-1`…`series-8` | `#7AA2D6` `#C9A36B` `#8FBF8F` `#B48FC9` `#6FB8B8` `#C98F8F` `#A8A8D9` `#BFB07A` | | |
 
 #### VL-001 — Dark-first themes, both designed
@@ -120,15 +121,18 @@ health encodings; the series palette contains none of them.
 
 Deviation MUST be shown as an additive bloom whose intensity is proportional to the anomaly score.
 It is the only visual "effect" allowed, because it carries information; no decorative glow, shadow
-or bloom MAY be used in a visualisation. DOM chrome MAY use only the three hue-free elevation
-tokens (`elevation.1` to `elevation.3`: a 1 px top highlight and neutral shadows), and only to show
-stacking order (controls and cards, then popovers and menus, then dialogs). The depth cues of §10 (lighting, fog, ground grid, contact shadows) are shading
+or bloom MAY be used in a visualisation. DOM chrome MAY use only four hue-free elevation tokens
+(`elevation.1`, `elevation.card`, `elevation.2` and `elevation.3`: a 1 px top highlight, a hairline
+ring for cards, and neutral shadows), and only to show stacking order (controls, then cards and
+board panels, then popovers and menus, then dialogs), and `elevation.state`, which only a failing
+board panel takes: a ring and a glow in its state colour (`failing-glow`) that encode health
+together with the panel's state tag and its glyph (VL-007), never decoration. The depth cues of §10 (lighting, fog, ground grid, contact shadows) are shading
 in 3D scenes, not effects; they MUST NOT add hue or glow.
 
 *Acceptance:* Two entities with anomaly scores 0.4 and 0.8 render glows whose measured intensity
 ratio is 1 : 2 (±10%), in 2D and in 3D scenes; an entity with score 0 has no glow; no other bloom
 appears in any frame capture; `ci:token-lint`'s `shadow-token` rule finds no drop shadow outside the
-elevation tokens.
+elevation tokens; only a board panel whose stat is failing shows `elevation.state`.
 
 #### VL-005 — Victims and origin
 **MUST** · M-UI3 · NOC, SRE, Platform, Engineer
@@ -208,7 +212,7 @@ at least 3:1; the M-UI6 AA audit passes.
 |---|---|---|
 | UI | Inter (variable); the platform UI face on Apple systems | Tabular numerals wherever numbers align |
 | Data and code (logs, queries, labels) | JetBrains Mono | — |
-| Sizes | 11 / 12 / 13 / 16 / 20 px | Compact scale; Wall is ×1.6 |
+| Sizes | 11 / 12 / 13 / 16 / 20 / 22 px | Compact scale (22 px: the page title); Wall is ×1.6 |
 
 | Density mode | Use |
 |---|---|
@@ -310,14 +314,16 @@ ring, which is shown as a static double ring.
 
 | Token | Value |
 |---|---|
-| Sidebar width | 240 px expanded; 56 px collapsed (icon rail) |
+| Sidebar width | 212 px expanded; 56 px collapsed (icon rail) |
 | Page header height | 56 px |
-| Page content padding | 24 px |
-| Board panel gap | 16 px |
+| Page content padding | 12 px top; 20 px sides and bottom |
+| Page title | 22 px bold |
+| Board panel gap | 12 px |
+| Board panel header | 36 px |
 | Time Ribbon height (Space scenes) | 40 px |
 | Base grid | 4 px |
 | Viewport gutter (inside dense views: Lens strips, small multiples) | 8 px |
-| Corner radius | 4 / 6 / 10 / 14 px and capsule (menu items, checkbox / fields, tooltips / cards, popovers, menus, Inspector / dialogs / buttons, segmented control, header controls) |
+| Corner radius | 3 / 4 / 6 / 8 / 10 px, no capsules (tags / menu items, segments, chips, checkbox / buttons, segmented track, fields, tooltips, header controls / cards, board panels, popovers, menus, Inspector / dialogs) |
 | Control insets | 2 px |
 | Hairline border | 1 px at 8% contrast (`hairline`) |
 
@@ -325,8 +331,9 @@ ring, which is shown as a static double ring.
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
 
 The application layout ([02](02-information-architecture.md) IA-016) MUST use the sizes of the table
-above: a 240 px sidebar that collapses to a 56 px icon rail, a 56 px page header, 24 px page content
-padding and 16 px gaps between board panels, so boards stay roomy. The sidebar is opaque
+above: a 212 px sidebar that collapses to a 56 px icon rail, a 56 px page header with a 22 px bold
+title, page content padding of 12 px at the top and 20 px at the sides and bottom, and 12 px gaps
+between board panels, so boards stay dense. The sidebar is opaque
 `sidebar`; the page header is the translucent `material-bar` where `backdrop-filter` is supported
 and no reduced transparency or forced colours apply, otherwise opaque `surface-1`; both have a 1 px
 `hairline` edge; the sidebar's top block is 56 px high, so its bottom
@@ -335,9 +342,10 @@ control moves or the page scrolls sideways. The time range trigger adds the abso
 relative range (for example `12:03 – 13:03 GMT`) only when the viewport is at least 1520 px wide. In
 Space scenes the Time Ribbon is 40 px and, like the minimap, translucent over the canvas.
 
-*Acceptance:* At 1440×900 the expanded sidebar is 240 px wide and 56 px when collapsed, the page
+*Acceptance:* At 1440×900 the expanded sidebar is 212 px wide and 56 px when collapsed, the page
 header is 56 px high with the sidebar's top block ending on the same line, the content padding is
-24 px and board panels are 16 px apart; with the 240 px sidebar, a board with a long title shows it
+12 px at the top and 20 px at the sides and bottom, the title is 22 px bold and board panels are
+12 px apart; with the 212 px sidebar, a board with a long title shows it
 truncated with an ellipsis and the page does not scroll sideways; the absolute window shows at
 1520 px and not at 1519 px; in a Space scene the Ribbon is 40 px high and canvas content is visible
 through it.
@@ -353,13 +361,13 @@ an IDE; the arrangement MUST persist per user.
 #### VL-019 — Layout grid
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC, Admin
 
-Layout MUST use the 4 px base grid, 8 px viewport gutters inside dense views, 16 px gaps between
-board panels (VL-017), the radius scale of §7 (4, 6, 10, 14 px and capsule; 6 px in canvas),
+Layout MUST use the 4 px base grid, 8 px viewport gutters inside dense views, 12 px gaps between
+board panels (VL-017), the radius scale of §7 (3, 4, 6, 8 and 10 px, no capsules; 6 px in canvas),
 2 px insets inside controls and 1 px hairline borders at 8% contrast, in canvas and DOM alike.
 
 *Acceptance:* A layout audit of the Atlas, a Board and each room finds every position and size a
-multiple of 4 px (control insets 2 px), gutters of 8 px inside dense views and 16 px between board
-panels, radii from the §7 scale and borders of 1 px `hairline`.
+multiple of 4 px (control insets 2 px), gutters of 8 px inside dense views and 12 px between board
+panels, radii from the §7 scale (no capsule) and borders of 1 px `hairline`.
 
 ## 8. Iconography and glyphs
 
@@ -562,6 +570,12 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
     canvas text staying Inter (VL-011), popover and dialog motion (VL-014, VL-016), and field
     boundaries at 3:1 (VL-009). State-colour text below 4.5:1 on the surfaces predates the refresh
     and is tracked in #284.
+12. **Second direction (1.7-rc, owner, 2026-11-27, #282 Part 2).** The owner asked for small radii
+    and dense spacing, with boldness from depth: radii 3/4/6/8/10 px with no capsules (VL-019), a
+    212 px sidebar, 12/20/20 px content padding, 12 px panel gaps and a 22 px bold title (VL-017),
+    the card elevation and, for a failing board panel only, the state elevation's ring and glow
+    (VL-004). Tags and chips are tinted with their token colour at a token opacity; their labels stay
+    `text`, because state-coloured text on a tint falls below 4.5:1 (VL-009).
 
 ## 13. Change log
 
@@ -575,3 +589,4 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
 | 1.4-rc | 2026-11-23 | #66 Part B: Table 8-1a adds `unknown` → `series-3`; the `level-*` tokens hold the table's hues (Q2) |
 | 1.5-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): §6 motion row for floating panels (open / close / content change 200 / 150 / 150 ms, ease-out; reduced motion instant); VL-014's acceptance adds floating panels |
 | 1.6-rc | 2026-11-27 | #282 Part 1, resolution 11: §3.1 to the refreshed chrome tokens; VL-001 acceptance `#0E1014` / `#15171C` / `#1D2026`; VL-004 allows the three elevation tokens in DOM chrome; VL-009 field boundaries ≥ 3:1; VL-010 platform UI face on Apple systems; VL-011 canvas text Inter everywhere; §6 and VL-014 popover, tooltip, dialog and control motion; VL-016 popovers and dialogs; VL-017 `material-bar` header, opaque `sidebar`; §7 and VL-019 radius scale and 2 px control insets |
+| 1.7-rc | 2026-11-27 | #282 Part 2a, resolution 12: §3.1 adds `failing-glow`; VL-004 four hue-free elevation tokens (1, card, 2, 3) and `elevation.state` for a failing board panel only; VL-017 212 px sidebar, 12/20/20 px content padding, 12 px panel gaps, 22 px bold title, "boards stay dense", acceptance to match; VL-019 radii 3/4/6/8/10 px, no capsules, 12 px panel gaps; §5 sizes add 22; §7 table |

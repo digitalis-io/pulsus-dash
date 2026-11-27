@@ -1,13 +1,15 @@
 /**
- * Panel chrome (plan #61 Part B §4.3, plan #64 §3.7, A.11): a 40 px header with the title, the unit
- * subtitle, the completeness badge and the tools (Open in Explore, Full screen, Panel menu and, in
+ * Panel chrome (plan #61 Part B §4.3, plan #64 §3.7, A.11; #282 Part 2a §4.3): a 36 px header with
+ * the title, the unit subtitle, a stat's state tag, the completeness badge and the tools (Open in Explore, Full screen, Panel menu and, in
  * Edit mode, Move or resize), and the body drawn through `<ChartFrame>`. The header is the drag
  * handle in Edit mode. Tools stay in the tab order and show on hover and focus. The panel runs its
  * query through `usePanelRun` while it is in the viewport or at full screen (T07-012); a refetch
  * shows the shimmer after 300 ms (VL-015). `PanelPreview` is the panel editor's live preview (#90).
  * A line or bars body has its legend below the chart (a table, or compact on short panels) with
- * local isolation and the threshold highlights; a stat body has the state chip and the threshold
- * text (plan #64 Part B §3.9, §4.4, §4.5). A LogQL stream panel's body is its `LogStream` (plan
+ * local isolation and the threshold highlights; a stat body has the chart and the threshold text,
+ * and its state chip is a tag in the header (plan #64 Part B §3.9, §4.4, §4.5; #282 Part 2a §4.4).
+ * A failing stat panel takes the failing state class (its ring and glow) and reports itself to the
+ * board's health status line (#282 Part 2a §4.9). A LogQL stream panel's body is its `LogStream` (plan
  * #67 §3.5), which yields to the full screen dialog while that is open: one pager, one list. A
  * widget panel (board spec v5, plan #198 Part 1 §4.2) is a `WidgetFrame` instead: no run, chart or
  * data tools.
@@ -32,6 +34,7 @@ import { MenuTrigger, RouterProvider, type ButtonProps } from 'react-aria-compon
 import { Link, useHref, useNavigate } from 'react-router';
 import type { DataPanelSpec, PanelSpec } from '../../api/types';
 import { BoardEventsContext } from '../../boards/boardEvents';
+import { useReportHealth } from '../../boards/boardHealth';
 import { BoardFiltersContext } from '../../boards/boardFilters';
 import { BoardRunContext } from '../../boards/boardRunContext';
 import { exploreHref } from '../../boards/exploreLink';
@@ -73,7 +76,7 @@ import { LogStream } from '../../logs/LogStream';
 import { StateGlyph } from '../../kit/StateGlyph';
 import type { BoardFilter } from '../../state/boardParams';
 import { useTimeContext } from '../../state/useTimeContext';
-import { StateEncoding } from '../../theme/stateEncoding';
+import { StateEncoding, type State } from '../../theme/stateEncoding';
 import { barAction, type BarAction, type BarContext } from '../../vis/barAction';
 import {
   crossed,
@@ -179,7 +182,26 @@ function statState(t: Thresholds, view: FrameView) {
   } as const;
 }
 
-/** The stat tile (§3.9, §4.4): the state chip, the chart and the threshold text. */
+/** A stat frame with thresholds: its chip state (statState(...).chip); otherwise null (§4.4). */
+export function panelHealth(view: PanelView): State | null {
+  if (view.kind !== 'frame' || view.vis !== 'stat' || view.thresholds === null) return null;
+  return statState(view.thresholds, view).chip;
+}
+
+/** The stat's state tag in the panel header (#282 Part 2a §4.4). */
+function StatTag({ state }: { state: State | null }) {
+  if (state === null) return null;
+  return (
+    <span className={cx(styles['statChip'])} data-stat-chip="" data-state={state}>
+      <StateGlyph state={state} variant="tag" />
+    </span>
+  );
+}
+
+/**
+ * The stat tile (§3.9, §4.4; #282 Part 2a): the chart fills the body, and the threshold text is
+ * the subline over it, under the value; the chip is the header's tag.
+ */
 function StatStack({
   t,
   view,
@@ -194,11 +216,6 @@ function StatStack({
   const s = t === null ? null : statState(t, view);
   return (
     <div className={cx(styles['statStack'])} data-stat-stack="">
-      {s !== null && (
-        <div className={cx(styles['statChip'])} data-stat-chip="" data-state={s.chip}>
-          <StateGlyph state={s.chip} />
-        </div>
-      )}
       <div ref={cellRef} className={cx(styles['chartCell'])}>
         {chart}
       </div>
@@ -222,8 +239,8 @@ function StatStack({
 /**
  * A chart frame titled with the panel's current title (a rename shows at once). It shows the
  * panel's Loading until the engine has drawn it, and a new frame is sized from `sizeMemo` (#90).
- * Line and bars stack the legend under the chart; stat stacks the chip, the chart and the
- * threshold text (§3.9). The isolation and the legend sort are this instance's own, never saved.
+ * Line and bars stack the legend under the chart; stat has the chart with the threshold text over
+ * it (§3.9; #282 Part 2a). The isolation and the legend sort are this instance's own, never saved.
  * Memoised: a board change that leaves a panel's view and title alone (an edit to another panel,
  * opening the editor) does not render its chart or legend again. The board's event markers come
  * from `BoardEventsContext` (plan #64 Part C).
@@ -252,7 +269,7 @@ const PanelChart = memo(function PanelChart({
   const cellRef = useRef<HTMLDivElement>(null);
   const rows = legendRows(view.result);
   const legend = view.legend === 'table' && rows.length > 0;
-  // The chart cell is smaller than the body by the legend or the stat's chip and text: its size
+  // The chart cell is smaller than the body by the legend (a stat's fills it): its size
   // goes into the memo in the commit, before the chart's mount effect pre-sizes from it, so a
   // re-created chart is sized once and draws in its first frame (#90, ADR-0019).
   const structure = `${view.vis}|${String(legend)}|${layout}|${String(measured)}|${String(view.thresholds !== null)}`;
@@ -304,6 +321,7 @@ const PanelChart = memo(function PanelChart({
   const th = view.thresholds;
   const table: SeriesTableProps = {
     caption: t('panel.legend.caption'),
+    captionDisplay: 'hidden',
     columns: ['mean', 'max', 'last'],
     maxRows: LEGEND_ROWS,
     swatches: true,
@@ -563,6 +581,7 @@ export function PanelPreview({
     dispatch({ type: 'zoom', dir: 'in' });
   }, [dispatch]);
   const unit = view.kind === 'frame' ? unitLabel(view.spec.unit) : null;
+  const health = panelHealth(view);
   // A bar chart previews with its pick context and no pick (plan #173 Part 3b §4.3).
   const category = useMemo<PanelCategory>(
     () => ({
@@ -580,6 +599,7 @@ export function PanelPreview({
       data-panel-preview=""
       data-panel-state={stateOf(view)}
       data-panel-vis={visOf(view)}
+      data-stat-state={health ?? undefined}
     >
       <div className={cx(styles['panelHeader'])}>
         <div className={cx(styles['titles'])}>
@@ -591,6 +611,7 @@ export function PanelPreview({
             {title}
           </p>
           {unit !== null && <p className={cx(styles['unit'])}>{t('panel.unit', { unit })}</p>}
+          <StatTag state={health} />
         </div>
       </div>
       <div ref={bodyRef} className={cx(styles['body'])} data-preview-body="">
@@ -746,6 +767,9 @@ const DataPanelFrame = forwardRef<
   // The body's size, across message states and remounts of its chart (#90); full screen holds its own.
   const frameSize = useRef<FrameSize | null>(null);
   const unit = view.kind === 'frame' ? unitLabel(view.spec.unit) : null;
+  // A stat's state (#282 Part 2a): the header tag, the failing ring and glow, the board's count.
+  const health = panelHealth(view);
+  useReportHealth(panel.id, health === 'failing');
   const g = panel.grid;
   const explore = exploreHref(tenant, panel, search, run.expanded);
   // The Inspector's origin (T25 §5), memoised on its fields so the chart's props stay stable.
@@ -846,7 +870,11 @@ const DataPanelFrame = forwardRef<
   return (
     <section
       ref={rootRef}
-      className={cx(styles['panel'], className)}
+      className={cx(
+        styles['panel'],
+        health === 'failing' && StateEncoding.failing.className,
+        className,
+      )}
       aria-labelledby={headingId}
       // The Inspector's focus fallback when its return target is gone (T25-008).
       tabIndex={-1}
@@ -858,6 +886,7 @@ const DataPanelFrame = forwardRef<
       data-panel-state={stateOf(view)}
       data-panel-vis={visOf(view)}
       data-selected={selected ? '' : undefined}
+      data-stat-state={health ?? undefined}
       // #304 §4.2: `held` (the range store), `bypass` (today's single request) or `off`.
       data-store={run.store}
       // Part B §4.3: 0 a fill from other steps, 1 the view's own step; absent without an outcome.
@@ -873,6 +902,7 @@ const DataPanelFrame = forwardRef<
             {title}
           </h3>
           {unit !== null && <p className={cx(styles['unit'])}>{t('panel.unit', { unit })}</p>}
+          <StatTag state={health} />
           {notices !== null && (
             <PanelNotices title={title} completeness={notices} onNarrow={onNarrow} />
           )}

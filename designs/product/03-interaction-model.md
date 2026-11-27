@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.5-rc · 2026-11-25 |
+| **Version** | 1.6-rc · 2026-11-27 |
 | **Requirement area** | `INT` |
 | **Source draft** | plans/03-interaction-model.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [02](02-information-architecture.md), [04](04-surfaces.md), [05](05-visualisation-catalogue.md), [06](06-ai-copilot.md), [07](07-alerting.md), [08](08-visual-language.md), [09](09-performance-contract.md), [15](15-estate-navigation.md) |
@@ -127,10 +127,11 @@ on a board keeps no history (its view is not in the URL). The acceptance holds f
 
 | Input | 2D chart | 3D scene |
 |---|---|---|
-| Wheel / pinch | Zoom X (time) around cursor | Dolly toward cursor point (3D signal views: zoom the time axis) |
-| `Shift` + wheel | Zoom Y | 3D signal views: zoom the value axis |
+| Wheel | Scrolls the page (not consumed); shows the zoom hint | Dolly toward cursor point (3D signal views: zoom the time axis) |
+| `Ctrl`/`⌘` + wheel, pinch | Zoom X (time) around cursor | Change height (FOV-free) in Map mode; dolly along depth in 3D signal views |
+| `Ctrl`/`⌘` + `Shift` + wheel | Zoom Y | — |
+| `Shift` + wheel | — | 3D signal views: zoom the value axis |
 | `Alt` + wheel | — | 3D signal views: zoom lane depth ([05](05-visualisation-catalogue.md) VIZ-085) |
-| `Ctrl`/`⌘` + wheel | Zoom both axes | Change height (FOV-free) in Map mode; dolly along depth in 3D signal views |
 | Left drag (empty space) | Pan (with inertia) | Orbit (Orbit mode) / pan (Map mode) |
 | Right drag | Box-zoom | Pan |
 | Right button held + `W`/`A`/`S`/`D` | — | Fly while held (enters Fly context) |
@@ -161,6 +162,15 @@ on a board keeps no history (its view is not in the URL). The acceptance holds f
 > way, which is accepted). Right drag (and `Alt`+left drag) box-zooms the time span, replacing
 > the earlier left-drag brush; on the plot, neither a right drag nor a right click opens the
 > browser menu, and outside the plot right click is unchanged.
+
+> **Note (2026-11-27, owner decision, supersedes the wheel rows of the #93 note):** A 2D time
+> chart zooms only with `Ctrl`/`⌘` held, so a plain wheel always scrolls the page or board: it is
+> neither prevented nor stopped. A trackpad pinch arrives as `Ctrl`+wheel and zooms time like
+> `Ctrl`/`⌘`+wheel; `Ctrl`/`⌘`+`Shift`+wheel zooms the value axis, and a mostly horizontal
+> `Ctrl`/`⌘`+swipe pans time. A held modifier prevents the browser's page zoom. A plain wheel over
+> the plot shows "Hold Ctrl to zoom" ("Hold ⌘ to zoom" on Apple platforms) over the chart for
+> 1.2 s, at most once per 3 s on the page, fading (no fade with reduced motion); the polite live
+> region speaks it once per session. Maps keep their own wheel (#184 note).
 
 > **Note (#184, 2D maps):** On a 2D map ([T24-091](../technical/T24-geo-schematic-and-widget-panels.md#t24-091--camera-and-picking))
 > the wheel zooms both axes about the pointer (over the map only; a panel can turn wheel zoom off,
@@ -830,3 +840,4 @@ restores the original Context; `⌘⇧Z` re-applies each step.
 | 1.3-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): INT-034, INT-035 and INT-036 gain staging notes with interim acceptance and their delivering issues (M-UI4 actions; I6 baseline; I4 split and `\`); INT-016 note: a kind's steps go before and after the host's (T25-007) |
 | 1.4-rc | 2026-11-25 | #184 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part E step 1b): INT-001 note (a 2D map has one zoom for both axes in one unrepeated world, ADR-0027); §4.1 note on the 2D map's wheel, drag, right drag, `Alt`+drag and double-click |
 | 1.5-rc | 2026-11-25 | #184 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part E step 2): INT-006 note (a board map's camera history is the board URL's history, one entry per distinct encoded view; `Alt+←`/`Alt+→` step it; the ninth and later unsynced maps keep none) |
+| 1.6-rc | 2026-11-27 | Owner decision: §4.1 a 2D time chart zooms only with `Ctrl`/`⌘` held (pinch included); a plain wheel scrolls the page and shows a zoom hint; `Ctrl`/`⌘`+`Shift`+wheel zooms Y; the both-axes `Ctrl`+wheel zoom is withdrawn |

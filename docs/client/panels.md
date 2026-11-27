@@ -319,7 +319,10 @@ read-only grid over a `TableView` (`vis/reduce.ts`, re-exported here; #216 Part 
 - **Null rows:** `rows: null` (a list with nothing to show yet) shows `emptyText` as a
   `role="status"` paragraph instead of the grid, and Export is disabled.
 - **Grid:** `role="grid"`, named by the title, `aria-rowcount` n + 1, `aria-colcount` the column
-  count, one tab stop, a sticky header row of the columns.
+  count, one tab stop, a sticky header row of the columns. It has no border or corners of its own
+  (the panel is the card, #282 Part 2a); the header row is 12 px medium `text-muted` on `surface-1`
+  over a hairline, and a body row's hover is `surface-hover`. The series table (`SeriesTable`) has
+  the same header and hover.
 - **Rows:** virtualised (`useVirtualizer`, 28 px rows (`--size-table-row`), overscan 10). Each row
   is `role="row"` with the id `<tableId>-r<i>`, `aria-rowindex` i + 2, `data-row-key`,
   `data-drawn` (`yes` or `no`) and `aria-selected` (its key in `selected`); one `gridcell` per
@@ -469,6 +472,58 @@ The builders `byVersion`, `many`, `threeKeys` and the `barchart-dupes` series ar
 `client/src/dev/categorySynth.ts`, shared with the gallery and re-exported by
 `client/src/test/categoryFixtures.ts`.
 
+## Stat tiles (#282 Part 2a)
+
+A stat panel (Canvas 2D only: stat never routes to the WASM engine, `engine/route.ts`) is drawn by
+`drawStat` (`engine/canvas2d/draw.ts`) under a DOM header and subline
+([ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md), T02 as amended):
+
+```
+┌ header: Error ratio  [■ Failing]          ┐  the tag: StateGlyph variant tag, data-stat-chip, data-state
+│ 85.4                     ← the value: STAT_FONT, left, x = 12, its middle at y = min(28, height / 2)
+│ ■ ≥ 0.05 SLO breach      ← the DOM subline: y 48..68, 12 px in from each side
+│ ╱╲__╱╲  shaded           ← the sparkline: x 0..width, y 72..height (flush with the card's edges)
+└───────────────────────────────────────────┘
+```
+
+- **Body.** A stat's body has no padding (`.panel[data-panel-vis='stat'] > .body`, board and
+  preview), so the chart fills it. `StatStack` is one grid row, the chart cell; the threshold text
+  (`[data-stat-threshold]`) is absolutely placed over it at `top: 8 + 40` px, 12 px from each side,
+  12 px text on a 20 px line, one line with an ellipsis, `pointer-events: none`. This row is
+  reserved: a stat without thresholds shows no text but keeps the head, and a later delta
+  (VIZ-095) will take it.
+- **The head.** `STAT_HEAD` = 8 (inset) + 40 (the value line, `ceil(32 × 1.25)`) + 20 (the
+  subline) + 4 = 72 px. 72 + `size.chart-sparkline` (32) = `SPARK_MIN_H` (104 px), ADR-0022's
+  rule: a frame lower than 104 px draws no sparkline. A 3-row stat (116 px, a body of 80 px) has
+  none; 4 rows draw it.
+- **The sparkline.** When the first series has at least one finite point in the window and the
+  frame is at least 104 px tall: the rect `{x: 0, y: 72, width, height − 72}`; x spans the whole
+  width; the points' max is at `y + chart-line`, the min at `y + 0.75 × height`, equal values at
+  the middle of that band. The line joins the finite points across absent ones (ADR-0022 §4).
+- **The area.** Under the line: the line's path from the first to the last finite point in the
+  window, closed straight down to the rect's bottom at the last point's x and back at the first
+  point's (never to the window's corners), filled with a vertical gradient from
+  `withAlpha(colour, opacity.area)` (0.28) at the rect's top to `withAlpha(colour, 0)` at its
+  bottom; then the line is stroked (`chart-line`, round joins). One point is a dot, with no area.
+  `withAlpha('#RRGGBB', a)` (`engine/canvas2d/palette.ts`) appends the alpha byte, clamped to
+  0..1 and rounded.
+- **The tag.** Whenever `panelHealth(view)` is not null (a stat with thresholds: ok, watch,
+  degraded, failing or unknown), the header shows the tag after the title and the unit. A failing
+  stat panel also takes the failing ring and glow ([Boards](boards.md#panel-chrome-and-the-health-status-line-282-part-2a)).
+- **Selection.** The T25-006 focus ring is unchanged.
+
+## Legend chips (#282 Part 2a)
+
+A compact legend's item (`LegendCompact`, `[data-legend-item]`) is a chip: 24 px high
+(`size.target-min`), padding 0 8 px, an 8 px gap, 4 px corners, 12 px text. It is tinted with its
+series colour at `opacity.chip` (0.12) through the [tint pattern](visual-design.md#the-tint-pattern-part-2a):
+`data-series="N"` (the colour index + 1) sets `--tint: var(--series-N)`; without a colour index
+there is no tint. The name is `text`; the last value is mono `text-muted`. A value beyond a
+threshold is `text` with its state glyph (in the state colour, `aria-hidden`) and the hidden state
+name, never state-coloured text on the tint. An isolated item (`aria-pressed="true"`) has a 1 px
+inset `accent` ring. The list wraps with a 4 × 8 px gap and is at most two rows high
+(`min(2 × 24 + 4 px, 40cqh)`), scrolling past that.
+
 ## Designs
 
 - [T22](../../designs/technical/T22-value-categorical-and-table-panels.md): T22-003, T22-004
@@ -484,7 +539,11 @@ The builders `byVersion`, `many`, `threeKeys` and the `barchart-dupes` series ar
 - [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md): VIZ-004,
   VIZ-005, VIZ-027, VIZ-065 (row 11), VIZ-066 (rows and CSV text), VIZ-067, VIZ-068 (facts),
   VIZ-069.
-- [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md) (the value range).
+- [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md) (the value range; the
+  stat sparkline's 104 px rule and its join across absent points).
+- [T02](../../designs/technical/T02-vis-engine.md) (the stat row as amended by #282 Part 2a) and
+  [08 Visual language](../../designs/product/08-visual-language.md) VL-007, VL-009 (the chips'
+  contrast).
 - Range data as DSF: [ADR-0034](../../designs/adr/0034-grid-part-joined-into-one-chunk.md),
   [T04](../../designs/technical/T04-wire-format-and-data-plane.md) §5.2, T04-010, T04-012,
   [T03](../../designs/technical/T03-browser-runtime.md) T03-003.

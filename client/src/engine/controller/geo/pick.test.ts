@@ -136,7 +136,7 @@ describe('unit:geo-marks', () => {
     const start = { lat: viewOf(fit).lat, lon: viewOf(fit).lon, zoom: 3.2 };
     const k = sceneKit({ spec: { motion: 'ease', view: start } });
     expect(k.marks.at(-1)?.level).toBe(3);
-    wheel(k.canvas, 512, 256, { deltaY: 104 });
+    wheel(k.canvas, 512, 256, { deltaY: 104, ctrlKey: false });
     const next = zoomAbout(camOf(start), -0.208 / Math.LN2, 512, 256, W, H);
     expect(Math.floor(next.z)).toBe(2);
     k.clock.advance(16);

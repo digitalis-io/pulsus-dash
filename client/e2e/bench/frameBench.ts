@@ -142,6 +142,8 @@ const inPage = async (collect: typeof collectUntil, a: DriveArgs): Promise<Drive
             deltaY: s.dy,
             deltaMode: 0,
             shiftKey: s.shift ?? false,
+            // A time chart zooms only with Ctrl/⌘ held.
+            ctrlKey: true,
             bubbles: true,
             cancelable: true,
           }),

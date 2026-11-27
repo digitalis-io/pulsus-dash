@@ -101,8 +101,8 @@ export const TOKEN_MESSAGES: Readonly<Record<TokenRule, string>> = {
   'duration-literal': 'duration literal: use a motion token (T01-010)',
 };
 
-/** The only drop shadows the DOM chrome may use (VL-004 as amended, #282). */
-const ELEVATION = /^var\(\s*--elevation-[123]\s*\)$/;
+/** The only drop shadows the DOM chrome may use (VL-004 as amended, #282; card and state, Part 2a). */
+const ELEVATION = /^var\(\s*--elevation-(?:[123]|card|state)\s*\)$/;
 
 export const SHADOW_MESSAGE = 'drop shadows come only from the elevation tokens (VL-004)';
 
@@ -110,7 +110,7 @@ export const SHADOW_MESSAGE = 'drop shadows come only from the elevation tokens 
  * Whether a `box-shadow` value breaks `shadow-token`: it is split on top-level commas, and a
  * shadow is a drop shadow when it has no `inset` keyword and its third component is not the
  * literal `0` (so inset bars and spread-only rings pass). A drop shadow is allowed only as the
- * whole value `var(--elevation-1|2|3)`; `none` passes.
+ * whole value `var(--elevation-1|2|3|card|state)`; `none` passes.
  */
 export function breaksShadowToken(value: string): boolean {
   const v = value.trim();

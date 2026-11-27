@@ -243,7 +243,11 @@ export interface WheelInit {
   timeStamp?: number;
 }
 
-/** A cancelable wheel event at canvas-relative CSS px; returns it (`defaultPrevented`). */
+/**
+ * A cancelable wheel event at canvas-relative CSS px; returns it (`defaultPrevented`). A time
+ * chart zooms only with `Ctrl`/`⌘` held, so `ctrlKey` defaults to true unless `metaKey` is set;
+ * pass `ctrlKey: false` for a plain (page) wheel.
+ */
 export function wheel(target: EventTarget, x: number, y: number, init: WheelInit = {}): WheelEvent {
   const e = new WheelEvent('wheel', {
     clientX: x,
@@ -252,7 +256,7 @@ export function wheel(target: EventTarget, x: number, y: number, init: WheelInit
     deltaY: init.deltaY ?? 0,
     deltaMode: init.deltaMode ?? 0,
     shiftKey: init.shiftKey ?? false,
-    ctrlKey: init.ctrlKey ?? false,
+    ctrlKey: init.ctrlKey ?? init.metaKey !== true,
     metaKey: init.metaKey ?? false,
     bubbles: true,
     cancelable: true,

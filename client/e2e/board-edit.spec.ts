@@ -221,8 +221,9 @@ test.describe('e2e:board-tall', () => {
         const g = await container.boundingBox();
         const b = await far.boundingBox();
         if (g === null || b === null) throw new Error('no box');
-        expect(Math.abs(b.y - g.y - 9999 * 56)).toBeLessThanOrEqual(1);
-        expect(Math.abs(b.height - (100 * 40 + 99 * 16))).toBeLessThanOrEqual(1);
+        // 40 px rows and 12 px gaps (#282 Part 2a).
+        expect(Math.abs(b.y - g.y - 9999 * 52)).toBeLessThanOrEqual(1);
+        expect(Math.abs(b.height - (100 * 40 + 99 * 12))).toBeLessThanOrEqual(1);
       };
       await expect(far).toHaveAttribute('data-grid', '0,9999,6,100');
       await check();
@@ -232,7 +233,7 @@ test.describe('e2e:board-tall', () => {
       await check();
       const header = await far.getByRole('heading', { level: 3 }).boundingBox();
       if (header === null) throw new Error('no header');
-      await dragBy(page, header, 0, 56);
+      await dragBy(page, header, 0, 52);
       await expect(far).toHaveAttribute('data-grid', '0,9999,6,100');
     } finally {
       await remove(request, uid);

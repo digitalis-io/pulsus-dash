@@ -99,9 +99,10 @@
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-lg);
+  /* The 22 px bold page title (#282 Part 2a); the Apple system face tracks itself (global.css). */
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-bold);
+  letter-spacing: var(--tracking-xl);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -114,7 +115,7 @@
   width: var(--size-control);
   height: var(--size-control);
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius);
   background: transparent;
   color: var(--text-muted);
   font: inherit;

@@ -1,7 +1,9 @@
 /**
  * A single-choice segmented control (plan #63 Part C §3.4): React Aria's `ToggleButtonGroup` with
  * single selection, which renders a `radiogroup` of `radio`s; the arrow keys move between options
- * (one tab stop) and the selected option cannot be deselected.
+ * (one tab stop) and the selected option cannot be deselected. A `null` value selects nothing (the
+ * header's quick ranges while the range is another, #282 Part 2a); `ariaLabel` names an option whose
+ * label is short.
  */
 import type { JSX } from 'react';
 import { ToggleButton, ToggleButtonGroup, type Key } from 'react-aria-components';
@@ -11,12 +13,15 @@ import { cx } from './cx';
 export interface SegmentedOption<K extends string> {
   readonly id: K;
   readonly label: string;
+  /** The option's accessible name, when its visible label is an abbreviation. */
+  readonly ariaLabel?: string;
 }
 
 export interface SegmentedControlProps<K extends string> {
   readonly label: string;
   readonly options: readonly SegmentedOption<K>[];
-  readonly value: K;
+  /** The selected option; null selects none. */
+  readonly value: K | null;
   readonly onChange: (v: K) => void;
   /** Shown but not operable (a read-only editor). */
   readonly isDisabled?: boolean;
@@ -36,7 +41,7 @@ export function SegmentedControl<K extends string>({
       selectionMode="single"
       disallowEmptySelection
       isDisabled={isDisabled}
-      selectedKeys={[value]}
+      selectedKeys={value === null ? [] : [value]}
       onSelectionChange={(s: Set<Key>) => {
         const next = ids.find((id) => s.has(id));
         if (next !== undefined && next !== value) onChange(next);
@@ -44,7 +49,12 @@ export function SegmentedControl<K extends string>({
       className={cx(styles['group'])}
     >
       {options.map((o) => (
-        <ToggleButton key={o.id} id={o.id} className={cx(styles['item'])}>
+        <ToggleButton
+          key={o.id}
+          id={o.id}
+          className={cx(styles['item'])}
+          {...(o.ariaLabel === undefined ? {} : { 'aria-label': o.ariaLabel })}
+        >
           {o.label}
         </ToggleButton>
       ))}

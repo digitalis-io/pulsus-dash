@@ -13,12 +13,16 @@ pub mod colour {
         pub const BORDER_FIELD: Rgba8 = Rgba8([0x6A, 0x71, 0x7C, 0xFF]);
         pub const BRUSH: Rgba8 = Rgba8([0x5B, 0x9B, 0xFF, 0x29]);
         pub const CANVAS: Rgba8 = Rgba8([0x0E, 0x10, 0x14, 0xFF]);
+        pub const CARD_HIGHLIGHT: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x0F]);
+        pub const CARD_SHADE: Rgba8 = Rgba8([0x00, 0x00, 0x00, 0x1F]);
+        pub const CARD_SHEEN: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x09]);
         pub const CATEGORY_OTHER: Rgba8 = Rgba8([0x8A, 0x91, 0x9C, 0xFF]);
         pub const CONTROL: Rgba8 = Rgba8([0x23, 0x27, 0x2E, 0xFF]);
         pub const CONTROL_HOVER: Rgba8 = Rgba8([0x2A, 0x2F, 0x37, 0xFF]);
         pub const CONTROL_PRESSED: Rgba8 = Rgba8([0x31, 0x36, 0x3F, 0xFF]);
         pub const DEGRADED: Rgba8 = Rgba8([0xE8, 0x92, 0x3A, 0xFF]);
         pub const FAILING: Rgba8 = Rgba8([0xE0, 0x45, 0x7B, 0xFF]);
+        pub const FAILING_GLOW: Rgba8 = Rgba8([0xE0, 0x45, 0x7B, 0x26]);
         pub const FIELD: Rgba8 = Rgba8([0x11, 0x13, 0x17, 0xFF]);
         pub const FOCUS: Rgba8 = Rgba8([0x4D, 0x9B, 0xFF, 0xFF]);
         pub const HAIRLINE: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x14]);
@@ -84,12 +88,16 @@ pub mod colour {
         pub const BORDER_FIELD: Rgba8 = Rgba8([0x7D, 0x84, 0x90, 0xFF]);
         pub const BRUSH: Rgba8 = Rgba8([0x25, 0x63, 0xC9, 0x29]);
         pub const CANVAS: Rgba8 = Rgba8([0xF2, 0xF3, 0xF6, 0xFF]);
+        pub const CARD_HIGHLIGHT: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xB3]);
+        pub const CARD_SHADE: Rgba8 = Rgba8([0x00, 0x00, 0x00, 0x0A]);
+        pub const CARD_SHEEN: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0x00]);
         pub const CATEGORY_OTHER: Rgba8 = Rgba8([0x6B, 0x72, 0x80, 0xFF]);
         pub const CONTROL: Rgba8 = Rgba8([0xFF, 0xFF, 0xFF, 0xFF]);
         pub const CONTROL_HOVER: Rgba8 = Rgba8([0xF6, 0xF7, 0xF9, 0xFF]);
         pub const CONTROL_PRESSED: Rgba8 = Rgba8([0xEC, 0xEE, 0xF1, 0xFF]);
         pub const DEGRADED: Rgba8 = Rgba8([0xA8, 0x5A, 0x12, 0xFF]);
         pub const FAILING: Rgba8 = Rgba8([0xB8, 0x28, 0x5C, 0xFF]);
+        pub const FAILING_GLOW: Rgba8 = Rgba8([0xB8, 0x28, 0x5C, 0x1A]);
         pub const FIELD: Rgba8 = Rgba8([0xFC, 0xFC, 0xFD, 0xFF]);
         pub const FOCUS: Rgba8 = Rgba8([0x18, 0x5F, 0xCC, 0xFF]);
         pub const HAIRLINE: Rgba8 = Rgba8([0x1C, 0x22, 0x33, 0x14]);
@@ -174,8 +182,9 @@ pub mod space {
 pub mod size {
     pub const AVATAR: f32 = 28.0;
     pub const BOARD_COLS: f32 = 12.0;
+    pub const BOARD_GAP: f32 = 12.0;
     pub const BOARD_LEGEND_TABLE_MIN: f32 = 240.0;
-    pub const BOARD_PANEL_HEADER: f32 = 40.0;
+    pub const BOARD_PANEL_HEADER: f32 = 36.0;
     pub const BOARD_ROW: f32 = 40.0;
     pub const CHART: f32 = 240.0;
     pub const CHART_BRUSH_MIN: f32 = 4.0;
@@ -199,12 +208,14 @@ pub mod size {
     pub const LIST_CHIP: f32 = 20.0;
     pub const LIST_ROW: f32 = 36.0;
     pub const LOG_LEVEL_BAR: f32 = 3.0;
-    pub const LOG_ROW: f32 = 20.0;
+    pub const LOG_ROW: f32 = 24.0;
     pub const LOG_SENTINEL: f32 = 40.0;
     pub const LOG_STREAM: f32 = 560.0;
-    pub const PAGE_PADDING: f32 = 24.0;
+    pub const LOG_TAG: f32 = 16.0;
+    pub const PAGE_PADDING: f32 = 20.0;
+    pub const PAGE_PADDING_TOP: f32 = 12.0;
     pub const SIDEBAR_COLLAPSED: f32 = 56.0;
-    pub const SIDEBAR_EXPANDED: f32 = 240.0;
+    pub const SIDEBAR_EXPANDED: f32 = 212.0;
     pub const TABLE_ROW: f32 = 28.0;
     pub const TARGET_MIN: f32 = 24.0;
     pub const TENANT_BADGE: f32 = 32.0;
@@ -212,13 +223,18 @@ pub mod size {
 
 pub mod radius {
     pub const DEFAULT: f32 = 6.0;
-    pub const LG: f32 = 14.0;
-    pub const MD: f32 = 10.0;
-    pub const PILL: f32 = 9999.0;
+    pub const LG: f32 = 10.0;
+    pub const MD: f32 = 8.0;
+    pub const TAG: f32 = 3.0;
     pub const XS: f32 = 4.0;
 }
 
-pub mod opacity { pub const DIMMED: f32 = 0.35; }
+pub mod opacity {
+    pub const AREA: f32 = 0.28;
+    pub const CHIP: f32 = 0.12;
+    pub const DIMMED: f32 = 0.35;
+    pub const TAG: f32 = 0.18;
+}
 
 pub mod border { pub const HAIRLINE: f32 = 1.0; }
 
@@ -233,6 +249,7 @@ pub mod font {
         pub const LG: f32 = 16.0;
         pub const MD: f32 = 13.0;
         pub const SM: f32 = 12.0;
+        pub const TITLE: f32 = 22.0;
         pub const XL: f32 = 20.0;
         pub const XS: f32 = 11.0;
     }
@@ -254,9 +271,14 @@ pub mod elevation {
     pub const E_1: &str = "inset 0 1px 0 var(--highlight), 0 1px 2px var(--shadow-ambient)";
     pub const E_2: &str = "inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key)";
     pub const E_3: &str = "inset 0 1px 0 var(--highlight), 0 4px 12px var(--shadow-ambient), 0 24px 64px var(--shadow-key)";
+    pub const CARD: &str = "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)";
+    pub const STATE: &str = "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow)";
 }
 
-pub mod material { pub const FILTER: &str = "blur(24px) saturate(180%)"; }
+pub mod material {
+    pub const CARD: &str = "linear-gradient(180deg, var(--card-sheen), transparent var(--size-board-panel-header))";
+    pub const FILTER: &str = "blur(24px) saturate(180%)";
+}
 
 pub mod line_height {
     pub const NORMAL: f32 = 1.5;
@@ -266,8 +288,11 @@ pub mod line_height {
 pub mod motion {
     pub const EASING_IN: &str = "cubic-bezier(0.4, 0, 1, 1)";
     pub const EASING_OUT: &str = "cubic-bezier(0.2, 0, 0, 1)";
+    pub const EASING_ZOOM: &str = "cubic-bezier(0.16, 1, 0.3, 1)";
     pub const FAST: f32 = 150.0;
     pub const FLOAT_OPEN: f32 = 200.0;
     pub const QUICK: f32 = 100.0;
     pub const STANDARD: f32 = 250.0;
+    pub const ZOOM_CLOSE: f32 = 200.0;
+    pub const ZOOM_OPEN: f32 = 320.0;
 }

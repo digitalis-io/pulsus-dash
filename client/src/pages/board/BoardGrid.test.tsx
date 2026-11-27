@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PanelSpec } from '../../api/types';
 import type { LayoutItem } from '../../boards/editorState';
-import { cellPx } from '../../boards/layout';
+import { cellPx, GAP, ROW } from '../../boards/layout';
 import { installResizeObserver, resizeAll } from '../../test/fakeResizeObserver';
 import { BoardGrid } from './BoardGrid';
 
@@ -97,20 +97,20 @@ describe('BoardGrid', () => {
       await new Promise((r) => requestAnimationFrame(r));
     });
     const cell = cellPx(WIDTH);
-    expect(cell).toBeCloseTo(81.333, 2);
-    expect(offsetOf(item('B')).left).toBeCloseTo(6 * (cell + 16), 1);
-    expect(offsetOf(item('C')).top).toBe(8 * 56);
-    expect(parseFloat(item('A').style.width)).toBeCloseTo(6 * cell + 5 * 16, 1);
+    expect(cell).toBeCloseTo((WIDTH - 11 * GAP) / 12, 2);
+    expect(offsetOf(item('B')).left).toBeCloseTo(6 * (cell + GAP), 1);
+    expect(offsetOf(item('C')).top).toBe(8 * (ROW + GAP));
+    expect(parseFloat(item('A').style.width)).toBeCloseTo(6 * cell + 5 * GAP, 1);
 
     // Each fireEvent is its own act(), so React renders between the pointer events.
-    drag('C', 6 * (cell + 16), 0);
+    drag('C', 6 * (cell + GAP), 0);
     expect(onLayout).toHaveBeenCalledTimes(1);
     const items = (onLayout.mock.calls[0]?.[0] ?? []) as LayoutItem[];
     expect(items.map((l) => [l.i, l.x, l.y, l.w, l.h])).toEqual([['C', 6, 8, 6, 8]]);
 
-    drag('B', -6 * (cell + 16), 0);
+    drag('B', -6 * (cell + GAP), 0);
     expect(onLayout).toHaveBeenCalledTimes(1);
-    expect(offsetOf(item('B')).left).toBeCloseTo(6 * (cell + 16), 1);
+    expect(offsetOf(item('B')).left).toBeCloseTo(6 * (cell + GAP), 1);
     expect(offsetOf(item('A')).left).toBe(0);
 
     view.unmount();
@@ -141,7 +141,7 @@ describe('BoardGrid', () => {
     expect(order()).toEqual(['A', 'B', 'C']);
     expect(document.querySelector('.react-resizable-handle')).toBeNull();
     const b = item('B');
-    drag('B', 0, 16 * 56);
+    drag('B', 0, 16 * (ROW + GAP));
     expect(onLayout).not.toHaveBeenCalled();
 
     view.rerender(

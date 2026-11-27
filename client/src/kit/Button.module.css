@@ -1,4 +1,4 @@
-/* Capsule buttons (#282, VL-019 as amended): a lifted control with a 1 px top highlight. */
+/* Buttons (#282, VL-019 as amended): a lifted control with a 1 px top highlight and 6 px corners. */
 .button {
   display: inline-flex;
   align-items: center;
@@ -8,7 +8,7 @@
   min-height: var(--size-control);
   padding: 0 var(--space-3);
   border: var(--border-hairline) solid var(--border-control);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius);
   background: var(--control);
   box-shadow: var(--elevation-1);
   color: var(--text);
