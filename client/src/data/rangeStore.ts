@@ -205,6 +205,8 @@ interface JobState {
   readonly anchorMs: number;
   readonly purpose: Purpose;
   cancelled: boolean;
+  /** Set when it settles. */
+  outcome: Outcome | null;
   readonly done: Promise<Outcome>;
   settle(o: Outcome): void;
 }
@@ -597,8 +599,10 @@ export function createRangeStore(d: StoreDeps): RangeStore {
       anchorMs: v.anchorMs,
       purpose,
       cancelled: false,
+      outcome: null,
       done,
       settle: (o) => {
+        j.outcome ??= o;
         settle(o);
       },
     };
@@ -967,6 +971,8 @@ export function createRangeStore(d: StoreDeps): RangeStore {
     // Past the lease, the visible run is fetched before any cached paint (§4.5).
     let forced = !leaseValid(tenant);
     let coarseDone = false;
+    // The coarse pass is interactive (Part B §4.1): its error is the panel's, as the fine one's.
+    const coarseJobs: JobState[] = [];
     for (let attempt = 0; attempt < LOAD_ATTEMPTS; attempt++) {
       if (signal?.aborted === true) throw abortError();
       if (tenants.has(tenant) && v.id.scope !== scopeOf(tenant)) throw abortError();
@@ -1013,17 +1019,31 @@ export function createRangeStore(d: StoreDeps): RangeStore {
           const ci = identOf(atStep(v, c, v.windowMs));
           const cr = { k0: bucketOf(v.grid.startMs, c), k1: bucketOf(v.grid.endMs, c) + 1 };
           if (!ci.bypassed) {
-            for (const r of runsOf(bucketsOf(cr))) submit(ci, r, v, 'interactive', 'coarse');
+            for (const r of runsOf(bucketsOf(cr))) {
+              coarseJobs.push(submit(ci, r, v, 'interactive', 'coarse'));
+            }
           }
-          await debounced(owner, v, signal);
+          // A failed coarse pass fails the load at once (its error is the panel's), as today's
+          // single request does; the pending fine pass goes with it.
+          const failed = Promise.all(coarseJobs.map((j) => j.done)).then((os) => {
+            const e = os.find((o) => o.kind === 'error');
+            if (e?.kind === 'error') throw e.error;
+            return new Promise<void>(() => undefined);
+          });
+          try {
+            await Promise.race([debounced(owner, v, signal), failed]);
+          } catch (e) {
+            if (fines.get(owner)?.vk === viewKey(v)) clearFine(owner);
+            throw e;
+          }
           cls = 'refine';
         }
       }
       for (const r of runsOf(need)) waiting.push(submit(i, r, v, cls, 'visible'));
       const outcomes = await waitAll(waiting, signal);
-      for (const o of outcomes) {
-        if (o.kind === 'error') throw o.error;
-        if (o.kind === 'bypass') throw new StoreBypass();
+      for (const o of [...outcomes, ...coarseJobs.map((j) => j.outcome)]) {
+        if (o?.kind === 'error') throw o.error;
+        if (o?.kind === 'bypass' && outcomes.includes(o)) throw new StoreBypass();
       }
       if (outcomes.some((o) => o.kind === 'aborted')) {
         const mine = owners.get(owner);

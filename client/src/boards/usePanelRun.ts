@@ -221,14 +221,12 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   );
   const view = sr.backed ? sr.view : null;
   const { store } = sr;
-  // Part B §4.3: a fill from the family's other steps, the placeholder while the view's own runs.
+  // Part B §4.3: the placeholder while the view's own run loads: a fill from the family's other
+  // steps (rank 0), or the view's own data once held (rank 1), so the panel never drops back to
+  // loading between the fill and the answer.
   const filled = useSyncExternalStore(
     (cb) => store.subscribe(view?.idKey ?? '', cb),
-    () => {
-      if (view === null) return null;
-      const f = store.peekFilled(view);
-      return f !== null && f.rank === 0 ? f : null;
-    },
+    () => (view === null ? null : store.peekFilled(view)),
   );
 
   // Read by the query function: a width change within one step does not refetch.

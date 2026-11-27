@@ -511,6 +511,19 @@ describe('rangeStore ranks and ladder (#304 Part B §4.1)', () => {
     expect(store.peekFilled(v)?.rank).toBe(0);
   });
 
+  it('a failed coarse pass fails the load at once', async () => {
+    const { api, store } = setupB();
+    const v = view(SIX);
+    store.retain('o', v);
+    const p = store.load('o', v);
+    await drain();
+    expect(api.calls[0]?.req.stepMs).toBe(60_000);
+    api.calls[0]?.reject(new ApiError('network', 'down'));
+    // Before the 120 ms debounce: no fine pass, the load rejected with the coarse error.
+    await expect(p).rejects.toBeInstanceOf(ApiError);
+    expect(api.calls.filter((c) => c.req.stepMs === STEP)).toHaveLength(0);
+  });
+
   it('debounce cancels', async () => {
     const { api, t, store } = setupB();
     const v = view(SIX);
