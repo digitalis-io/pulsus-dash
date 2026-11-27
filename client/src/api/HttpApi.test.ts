@@ -542,7 +542,9 @@ describe('http starred and recent', () => {
     const down = await signedIn(() =>
       Promise.resolve(json(503, { error: { code: 'unavailable', message: 'store down' } })),
     );
-    expect(isApiError(await rejection(down.api.recordView('demo', 'a', 1)), 'unknown')).toBe(true);
+    expect(isApiError(await rejection(down.api.recordView('demo', 'a', 1)), 'unavailable')).toBe(
+      true,
+    );
     const net = await signedIn(() => Promise.reject(new TypeError('Failed to fetch')));
     expect(isApiError(await rejection(net.api.listRecent('demo')), 'network')).toBe(true);
 

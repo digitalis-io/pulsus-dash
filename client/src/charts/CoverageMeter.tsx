@@ -25,7 +25,7 @@ export function CoverageMeter({
   onNarrow,
 }: {
   coverage: Coverage;
-  onNarrow: () => void;
+  onNarrow?: () => void;
 }): JSX.Element {
   const text = coverageText(coverage);
   const query = warned(coverage.query) ? coverage.query : null;
@@ -51,13 +51,16 @@ export function CoverageMeter({
             {query !== null && (
               <section>
                 <h4 className={cx(styles['meterHeading'])}>{t('meter.query')}</h4>
-                <CompletenessNotice completeness={query} onNarrow={onNarrow} />
+                <CompletenessNotice completeness={query} onNarrow={onNarrow ?? (() => undefined)} />
               </section>
             )}
             {baseline !== null && (
               <section>
                 <h4 className={cx(styles['meterHeading'])}>{t('meter.baseline')}</h4>
-                <CompletenessNotice completeness={baseline} onNarrow={onNarrow} />
+                <CompletenessNotice
+                  completeness={baseline}
+                  onNarrow={onNarrow ?? (() => undefined)}
+                />
               </section>
             )}
           </Dialog>

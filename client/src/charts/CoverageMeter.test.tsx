@@ -79,3 +79,14 @@ describe('meter', () => {
     for (const w of ['a', 'b', 'c']) expect(screen.getByText(w)).toBeInTheDocument();
   });
 });
+
+// Plan #216 Part 2a §2: without `onNarrow` a truncated run's popover has no Narrow.
+describe('meter without Narrow', () => {
+  it('truncated, no onNarrow: the popover without Narrow', async () => {
+    const user = userEvent.setup();
+    render(<CoverageMeter coverage={cov(run({ truncated: true }))} />);
+    await user.click(screen.getByRole('button', { name: 'Coverage: truncated' }));
+    expect(await screen.findByText('Partial data')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Narrow the time range' })).toBeNull();
+  });
+});

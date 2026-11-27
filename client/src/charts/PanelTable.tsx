@@ -32,8 +32,20 @@ const COUNT = new Intl.NumberFormat('en-GB');
 
 const px = (n: number): string => `${String(n)}px`;
 
+export interface TableView {
+  readonly columns: readonly string[];
+  readonly rows: readonly {
+    readonly key: string;
+    readonly drawn: boolean;
+    readonly cells: readonly string[];
+  }[];
+}
+
 export interface PanelTableProps {
-  rows: PanelRows;
+  rows: PanelRows | TableView | null;
+  caption?: string;
+  closeLabel?: string;
+  emptyText?: string;
   title: string;
   /** The keys of the page selection: their rows are `aria-selected`. */
   selected: ReadonlySet<string>;
@@ -54,13 +66,19 @@ function exportCsv(rows: PanelRows, title: string): void {
   }, 0);
 }
 
-export function PanelTable({
+export function PanelTable(p: PanelTableProps): JSX.Element {
+  const r = p.rows;
+  if (r === null || r.rows.some((x) => !('mark' in x))) return <div data-panel-table="" />;
+  return <Table {...p} rows={r as PanelRows} />;
+}
+
+function Table({
   rows,
   title,
   selected,
   onRow,
   onClose,
-}: PanelTableProps): JSX.Element {
+}: PanelTableProps & { rows: PanelRows }): JSX.Element {
   const tableId = useId();
   const gridRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);

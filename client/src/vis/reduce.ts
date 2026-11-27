@@ -652,6 +652,7 @@ export type TableKind = 'barchart' | 'geomap';
 export interface PanelRows {
   readonly columns: readonly string[];
   readonly rows: readonly {
+    readonly key?: string;
     readonly mark: Mark;
     readonly drawn: boolean;
     readonly shownAs: string;
@@ -725,7 +726,10 @@ export function panelRows(
 }
 
 /** The CSV of `t` (T22-013): the header, then every row; each cell through `csvCell`; CRLF. */
-export function panelCsv(t: PanelRows): string {
+export function panelCsv(t: {
+  readonly columns: readonly string[];
+  readonly rows: readonly { readonly cells: readonly string[] }[];
+}): string {
   const line = (cells: readonly string[]): string => `${cells.map(csvCell).join(',')}\r\n`;
   return line(t.columns) + t.rows.map((r) => line(r.cells)).join('');
 }
