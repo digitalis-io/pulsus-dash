@@ -124,6 +124,7 @@ export function recordingContext(): RecordingContext {
     beginPath: rec('beginPath'),
     moveTo: rec('moveTo'),
     lineTo: rec('lineTo'),
+    closePath: rec('closePath'),
     arc: rec('arc'),
     fill: rec('fill'),
     stroke: rec('stroke'),

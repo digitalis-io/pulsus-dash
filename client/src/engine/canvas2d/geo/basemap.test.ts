@@ -110,7 +110,8 @@ describe('unit:geo-basemap-draw', () => {
     expect(strokes.filter((p) => p.op.strokeStyle === c['map-coast'])).toHaveLength(1);
     expect(strokes.filter((p) => p.op.strokeStyle === c['map-border'])).toHaveLength(0);
     const yEdge = px(cam, 0, -85.05).y;
-    const xs = [px(cam, -180, 0).x, px(cam, 180, 0).x];
+    // The world's west and east edges (u 0 and 1; a basemap x of ±18000 is not wrapped).
+    const xs = [toPx(cam, 0, 0.5, W, H).x, toPx(cam, 1, 0.5, W, H).x];
     for (const p of strokes) {
       for (const sub of p.subpaths) {
         for (let i = 1; i < sub.length; i++) {

@@ -8,6 +8,7 @@ export type Ctx2D = Pick<
   | 'beginPath'
   | 'moveTo'
   | 'lineTo'
+  | 'closePath'
   | 'arc'
   | 'fill'
   | 'stroke'

@@ -66,7 +66,10 @@ describe('unit:geo-state-glyph', () => {
     const ops = paintOne(f, spec, 's2');
     const fill = index(ops, (o) => o.op === 'fill' && o.fillStyle === FAILING);
     const pattern = index(ops, (o) => o.op === 'fill' && o.fillStyle === 'gradient-or-pattern');
-    const glyph = index(ops, (o) => o.op === 'fillText' && o.args[0] === StateEncoding.failing.glyph);
+    const glyph = index(
+      ops,
+      (o) => o.op === 'fillText' && o.args[0] === StateEncoding.failing.glyph,
+    );
     expect(fill).toBeGreaterThanOrEqual(0);
     expect(pattern).toBeGreaterThan(fill);
     expect(glyph).toBeGreaterThan(pattern);
@@ -86,8 +89,14 @@ describe('unit:geo-state-glyph', () => {
     });
     expect(f.groups).toHaveLength(1);
     const ops = paintOne(f, spec, 's2');
-    const glyph = index(ops, (o) => o.op === 'fillText' && o.args[0] === StateEncoding.failing.glyph);
-    const chip = index(ops, (o) => (o.op === 'fill' || o.op === 'fillRect') && o.fillStyle === CHIP);
+    const glyph = index(
+      ops,
+      (o) => o.op === 'fillText' && o.args[0] === StateEncoding.failing.glyph,
+    );
+    const chip = index(
+      ops,
+      (o) => (o.op === 'fill' || o.op === 'fillRect') && o.fillStyle === CHIP,
+    );
     expect(chip).toBeGreaterThanOrEqual(0);
     expect(glyph).toBeGreaterThan(chip);
     const g = ops[glyph];
@@ -107,7 +116,10 @@ describe('unit:geo-state-glyph', () => {
       ops,
       (o) => o.op === 'stroke' && o.strokeStyle === FAILING && o.lineWidth === 2,
     );
-    const glyph = index(ops, (o) => o.op === 'fillText' && o.args[0] === StateEncoding.failing.glyph);
+    const glyph = index(
+      ops,
+      (o) => o.op === 'fillText' && o.args[0] === StateEncoding.failing.glyph,
+    );
     expect(fill).toBeGreaterThanOrEqual(0);
     expect(pattern).toBeGreaterThan(fill);
     expect(outline).toBeGreaterThan(fill);
