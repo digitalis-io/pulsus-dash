@@ -607,9 +607,9 @@ describe('WasmFrame fit and crossfade (#304 §A.3, ADR-0039)', () => {
     const p = port();
     const canvas = { width: 0, height: 0 } as unknown as OffscreenCanvas;
     const f = new WasmFrame(p, 1, canvas, { timeZone: 'UTC', keyTarget: null }, vi.fn(), 1);
-    f.setData({ kind: 'series', series: A, fit: { fromMs: 1, toMs: 2 } } as FrameData);
+    f.setData({ kind: 'series', series: A, fit: { fromMs: 1, toMs: 2 } });
     // The same fit again posts nothing; dropping it posts nulls.
-    f.setData({ kind: 'series', series: A, fit: { fromMs: 1, toMs: 2 } } as FrameData);
+    f.setData({ kind: 'series', series: A, fit: { fromMs: 1, toMs: 2 } });
     f.setData({ kind: 'series', series: A });
     expect(p.sent.slice(1).map((m) => m.msg)).toEqual([
       { t: 'fit', id: 1, fromMs: 1, toMs: 2 },
@@ -624,8 +624,12 @@ describe('WasmFrame fit and crossfade (#304 §A.3, ADR-0039)', () => {
     const p = port();
     const canvas = { width: 0, height: 0 } as unknown as OffscreenCanvas;
     const f = new WasmFrame(p, 1, canvas, { timeZone: 'UTC', keyTarget: null }, vi.fn(), 0);
-    f.setData({ kind: 'series', series: [s('00000000000000cc')], transition: 'crossfade' } as FrameData);
-    const m = p.sent.at(-1)?.msg as MainToRender | undefined;
+    f.setData({
+      kind: 'series',
+      series: [s('00000000000000cc')],
+      transition: 'crossfade',
+    });
+    const m: MainToRender | undefined = p.sent.at(-1)?.msg;
     expect(m?.t).toBe('data');
     expect(m !== undefined && 'crossfade' in m ? m.crossfade : undefined).toBe(true);
   });

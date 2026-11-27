@@ -143,6 +143,19 @@ export function decodeValue(v: unknown, path: string): number {
   throw new DecodeError(path, 'expected a number, "NaN", "+Inf", "-Inf" or null');
 }
 
+/** A frame and its absent mask (1 where the point was `null`); null when none is. */
+function decodeFrameAbsent(v: unknown, path: string): [SeriesFrame, Uint8Array | null] {
+  const f = decodeFrame(v, path);
+  const vs = (v as Obj)['values'] as readonly unknown[];
+  let mask: Uint8Array | null = null;
+  for (let i = 0; i < vs.length; i++) {
+    if (vs[i] !== null) continue;
+    mask ??= new Uint8Array(vs.length);
+    mask[i] = 1;
+  }
+  return [f, mask];
+}
+
 function decodeFrame(v: unknown, path: string): SeriesFrame {
   const f = object(v, path);
   const key = string(f['key'], `${path}/key`);
@@ -268,10 +281,30 @@ export function decodeRangeFrame(body: unknown): RangeFrame {
   };
 }
 
-/** Decodes a `PromRangeResponse` body; `planned` is required. */
+/**
+ * Decodes a `PromRangeResponse` body; `planned` is required. `absent` (#304 §A.3) marks the
+ * `null` points; a `"NaN"` point is present.
+ */
 export function decodeRange(body: unknown): RangeResult {
   const b = object(body, '');
-  return { planned: decodePlanned(b['planned'], '/planned'), ...decodeRangeFrame(b) };
+  const planned = decodePlanned(b['planned'], '/planned');
+  // The members in decodeRangeFrame's order, so the first bad one is reported as before.
+  const startMs = integer(b['start'], '/start');
+  const endMs = integer(b['end'], '/end');
+  const stepMs = integer(b['step'], '/step');
+  const fs = array(b['frames'], '/frames').map((f, i) =>
+    decodeFrameAbsent(f, `/frames/${String(i)}`),
+  );
+  const absent = fs.map(([, m]) => m);
+  return {
+    planned,
+    startMs,
+    endMs,
+    stepMs,
+    series: fs.map(([f]) => f),
+    completeness: decodeCompleteness(b['completeness'], '/completeness'),
+    ...(absent.some((m) => m !== null) ? { absent } : {}),
+  };
 }
 
 const RESULT_TYPES = ['vector', 'matrix', 'scalar', 'string'] as const;

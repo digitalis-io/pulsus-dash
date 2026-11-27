@@ -5,7 +5,11 @@ import { chunkable, coarseStep, ladderOf, planRangeView, usesRangeMacro } from '
 const H = 3_600_000;
 const B = 3_840_000;
 
-const plan = (fromMs: number, toMs: number, o: { line?: boolean; anchorMs?: number; text?: string } = {}) =>
+const plan = (
+  fromMs: number,
+  toMs: number,
+  o: { line?: boolean; anchorMs?: number; text?: string } = {},
+) =>
   planRangeView({
     tenant: 'demo',
     scope: 'A',
@@ -45,9 +49,7 @@ describe('rangeView (#304 §4.1, §A.7)', () => {
     expect(plan(10 * B, 10 * B + H, { line: false })?.flanks).toEqual([]);
     // Left clamped at bucket 0; right dropped past the anchor's bucket.
     expect(plan(0, H)?.flanks).toEqual([{ k0: 1, k1: 2 }]);
-    expect(plan(10 * B, 10 * B + H, { anchorMs: 10 * B + H })?.flanks).toEqual([
-      { k0: 9, k1: 10 },
-    ]);
+    expect(plan(10 * B, 10 * B + H, { anchorMs: 10 * B + H })?.flanks).toEqual([{ k0: 9, k1: 10 }]);
     expect(plan(10 * B, 10 * B + H, { text: 'increase(x[$__range])' })?.id.rangeMs).toBe(H);
   });
 
@@ -74,7 +76,10 @@ describe('rangeView (#304 §4.1, §A.7)', () => {
     // 18 h about the centre at 60 s: buckets of 256 min.
     const c = 100 * B + 3 * H;
     const k = 256 * 60_000;
-    expect(three?.run).toEqual({ k0: Math.floor((c - 9 * H) / k), k1: Math.floor((c + 9 * H) / k) + 1 });
+    expect(three?.run).toEqual({
+      k0: Math.floor((c - 9 * H) / k),
+      k1: Math.floor((c + 9 * H) / k) + 1,
+    });
   });
 
   it('coarse step', () => {

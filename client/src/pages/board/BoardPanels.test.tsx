@@ -92,6 +92,8 @@ describe('panel runs', () => {
       widthPx: 1000,
       vars: {},
       rate: true,
+      // Through the board range scheduler (#304 §4.6): an interactive request.
+      priority: 'high',
     });
     const r = await (t.range.mock.results[0]?.value as Promise<RangeResult>);
     expect(r.planned.query).toBe('rate(http_requests_total[1m])');

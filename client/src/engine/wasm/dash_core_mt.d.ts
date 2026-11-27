@@ -49,7 +49,7 @@ export function engine_decode_end(req: number): void;
 
 /**
  * The decode results since the last call, as the messages the worker posts (§3.1): `decode-credit`
- * `{req, bytes}`; `decoded` `{req, chunk, epoch, head (JSON), ts, vs}`; `decode-failed` `{req,
+ * `{req, bytes}`; `decoded` `{req, chunk, epoch, head (JSON), ts, vs, absent}`; `decode-failed` `{req,
  * kind, message, row, coverage (JSON or null), planned}`. Called at tick start.
  */
 export function engine_decode_take(): Array<any>;
@@ -83,6 +83,12 @@ export function engine_wants_frame(): boolean;
  */
 export function frame_create(id: number, canvas: OffscreenCanvas, frame_id?: string | null): void;
 
+/**
+ * Whether the frame's next data fades in over its current one (ADR-0039): called before every
+ * `data` and `data-chunk`; false cuts.
+ */
+export function frame_crossfade(id: number, on: boolean): void;
+
 export function frame_data_begin(id: number): void;
 
 export function frame_data_clear(id: number): void;
@@ -112,6 +118,12 @@ export function frame_set_chunk_ref(id: number, chunk: number, epoch: number): b
  * §3.3): a layer input, so the frame is rebuilt.
  */
 export function frame_set_events(id: number, at_ms: Float64Array | number[]): void;
+
+/**
+ * The line's auto-fit window (#304 §A.3): the summary and the auto domain over
+ * `from_ms ≤ t ≤ to_ms` only; both None = every sample. Posted before the frame's data.
+ */
+export function frame_set_fit(id: number, from_ms?: number | null, to_ms?: number | null): void;
 
 /**
  * The page selection (plan #68 C2c2 §3.1): its keys (only 16 lower-case hex digits can match a
@@ -158,6 +170,7 @@ export interface InitOutput {
     readonly engine_tick: (a: number) => [number, number];
     readonly engine_wants_frame: () => number;
     readonly frame_create: (a: number, b: any, c: number, d: number) => [number, number];
+    readonly frame_crossfade: (a: number, b: number) => void;
     readonly frame_data_begin: (a: number) => void;
     readonly frame_data_clear: (a: number) => void;
     readonly frame_data_end: (a: number) => [number, number];
@@ -165,6 +178,7 @@ export interface InitOutput {
     readonly frame_dispose: (a: number) => void;
     readonly frame_set_chunk_ref: (a: number, b: number, c: number) => number;
     readonly frame_set_events: (a: number, b: number, c: number) => void;
+    readonly frame_set_fit: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly frame_set_selection: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly frame_set_spec: (a: number, b: number, c: number) => [number, number];
     readonly frame_set_theme: (a: number, b: number) => void;
@@ -173,12 +187,12 @@ export interface InitOutput {
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___js_sys_5ad0944f19124a33___Function_fn_wasm_bindgen_fdf7a4a3b6a46677___JsValue_____wasm_bindgen_fdf7a4a3b6a46677___sys__Undefined___js_sys_5ad0944f19124a33___Function_fn_wasm_bindgen_fdf7a4a3b6a46677___JsValue_____wasm_bindgen_fdf7a4a3b6a46677___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue__core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true_: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true_: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__36: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__37: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__38: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___sys__JsNullable_wgpu_1630092ed8d14337___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_fe68b9cd74b8de19___result__Result_____wasm_bindgen_fdf7a4a3b6a46677___JsError___true__39: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___js_sys_5ad0944f19124a33___futures__task__wait_async_polyfill__MessageEvent______true_: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true_: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__34: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__35: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__36: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_fdf7a4a3b6a46677___convert__closures_____invoke___wasm_bindgen_fdf7a4a3b6a46677___JsValue______true__37: (a: number, b: number, c: any) => void;
     readonly memory: WebAssembly.Memory;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

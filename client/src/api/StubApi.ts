@@ -47,6 +47,7 @@ import {
   STUB_PROM_LABELS,
   STUB_PROM_METADATA,
   STUB_PROM_METRIC_NAMES,
+  STUB_SCOPE,
 } from './stubData';
 import type {
   Completeness,
@@ -62,7 +63,7 @@ import type {
 } from '../data/decode';
 import type { SeriesFrame } from '../data/frames';
 import { LOG_LEVELS, type LogFrame } from '../data/logFrame';
-import { logGrid, promGrid } from '../data/step';
+import { logGrid, promGrid, promGridAt } from '../data/step';
 import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
 import {
@@ -583,7 +584,11 @@ export class StubApi implements Api {
     await queryHooks('range', req.query, signal);
     const g = await settle(() => {
       this.checkTenant(tenant);
-      const grid = promGrid(req.fromMs, req.toMs, req.widthPx);
+      // A ladder step from the range store is taken as the server takes it (#304 §A.1).
+      const grid =
+        req.stepMs === undefined
+          ? promGrid(req.fromMs, req.toMs, req.widthPx)
+          : promGridAt(req.fromMs, req.toMs, req.stepMs);
       if (grid === null) throw new ApiError('queryInvalid', 'the range is too long for the width');
       return grid;
     }, signal);
@@ -595,7 +600,7 @@ export class StubApi implements Api {
         kind: 'range',
         stepMs: g.stepMs,
         rate: req.rate ?? true,
-        rangeMs: req.toMs - req.fromMs,
+        rangeMs: req.rangeMs ?? req.toMs - req.fromMs,
       },
       signal,
     );
@@ -613,6 +618,7 @@ export class StubApi implements Api {
         completeness: req.query.includes('topk(1000')
           ? { ...c, truncated: true, warnings: [...c.warnings, TRUNCATED_WARNING] }
           : c,
+        scope: STUB_SCOPE,
       };
     }, signal);
   }

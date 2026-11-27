@@ -17,13 +17,30 @@ export interface Stats {
 export const NONE: Stats = { min: null, max: null, last: null };
 
 /** Line: min and max over every finite shown value; last = the highest last finite value. */
-export function lineStats(series: readonly SeriesFrame[]): Stats {
+/** The first index with `t ≥ x` (`t > x` when `after`), in an increasing array. */
+function lowerBound(t: Float64Array, x: number, after = false): number {
+  let lo = 0;
+  let hi = t.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    const v = t[mid] ?? 0;
+    if (after ? v <= x : v < x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+export function lineStats(series: readonly SeriesFrame[], fit?: TimeWindow): Stats {
   let min = Infinity;
   let max = -Infinity;
   let last = -Infinity;
   for (const s of series) {
     let lastOf = NaN;
-    for (const v of s.values) {
+    // #304 §A.8: only the samples inside `fit` (binary search on the timestamps); absent = all.
+    const lo = fit === undefined ? 0 : lowerBound(s.timestamps, fit.fromMs);
+    const hi = fit === undefined ? s.values.length : lowerBound(s.timestamps, fit.toMs, true);
+    for (let i = lo; i < hi; i++) {
+      const v = s.values[i] ?? NaN;
       if (!Number.isFinite(v)) continue;
       if (v < min) min = v;
       if (v > max) max = v;

@@ -292,6 +292,7 @@ const PanelChart = memo(function PanelChart({
       pending={<p className={cx(styles['message'])}>{t('panel.loading')}</p>}
       sizeMemo={memo}
       events={markers}
+      {...(view.stale === undefined ? {} : { stale: view.stale })}
       {...(onInspect === undefined ? {} : { onInspect })}
       {...(inspect?.onEmptyClick === undefined ? {} : { onEmptyClick: inspect.onEmptyClick })}
     />
@@ -857,6 +858,10 @@ const DataPanelFrame = forwardRef<
       data-panel-state={stateOf(view)}
       data-panel-vis={visOf(view)}
       data-selected={selected ? '' : undefined}
+      // #304 §4.2: `held` (the range store), `bypass` (today's single request) or `off`.
+      data-store={run.store}
+      // Part B §4.3: 0 a fill from other steps, 1 the view's own step; absent without an outcome.
+      data-rank={run.rank ?? undefined}
     >
       <PanelHeader>
         <div className={cx(styles['titles'])}>

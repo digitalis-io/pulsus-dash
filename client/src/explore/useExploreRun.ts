@@ -7,8 +7,19 @@
  * (D-RUN), so an error or a pending key never blanks the chart.
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useApi } from '../app/providers';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import { useApi, useRangeStore } from '../app/providers';
+import { chunkable, planRangeView } from '../boards/rangeView';
+import { StoreBypass, type Assembled } from '../data/rangeStore';
 import type { PlannedQuery } from '../data/decode';
 import type { QueryLanguage } from '../editor/lang/types';
 import { fromInstant, fromRange, type ExploreResult } from '../vis/autovis';
@@ -27,6 +38,8 @@ export interface RunOutcome {
   /** What the server planned and sent. */
   readonly planned: PlannedQuery;
   readonly result: ExploreResult;
+  /** Through the range store (#304 Part B §2): the scope epoch it was assembled under. */
+  readonly scope?: string;
   readonly durationMs: number;
 }
 
@@ -60,6 +73,9 @@ export interface RunInput {
   /** Read through a ref by the query function: a width change within one step does not refetch. */
   readonly widthPx: number | null;
   readonly window: { readonly fromMs: number; readonly toMs: number };
+  /** The clock anchor and the refresh epoch of the window (the range store's freshness, #304). */
+  readonly anchorMs?: number;
+  readonly epoch?: number;
 }
 
 /** True when the language (or `degraded`) and the step are known: the inputs of a run. */
@@ -130,13 +146,82 @@ export function useExploreRun(a: RunInput): ExploreRun {
     [tenant, q, kind, rate, fromMs, toMs, stepMs],
   );
 
+  // The range run through the page's range store (#304 Part B §2), with Part A's eligibility;
+  // the chart draws the visible slice, a one-window pan paints from held flanks.
+  const store = useRangeStore();
+  const owner = `explore:${useId()}`;
+  const scope = useSyncExternalStore(
+    (cb) => store.subscribe(tenant, cb),
+    () => store.scopeOf(tenant),
+  );
+  const lease = useSyncExternalStore(
+    (cb) => store.subscribe(tenant, cb),
+    () => store.leaseValid(tenant),
+  );
+  const widthPx = a.widthPx;
+  const anchorMs = a.anchorMs ?? toMs;
+  const epoch = a.epoch ?? 0;
+  const planned = useMemo(
+    () =>
+      store.enabled &&
+      kind === 'range' &&
+      stepMs !== null &&
+      chunkable(q) &&
+      widthPx !== null &&
+      widthPx > 0
+        ? planRangeView({
+            tenant,
+            scope,
+            text: q,
+            vars: '[]',
+            rate,
+            line: true,
+            window: { fromMs, toMs },
+            widthPx,
+            epoch,
+            anchorMs,
+          })
+        : null,
+    [store, kind, stepMs, q, widthPx, tenant, scope, rate, fromMs, toMs, epoch, anchorMs],
+  );
+  const bypassed = useSyncExternalStore(
+    (cb) => store.subscribe(planned?.idKey ?? '', cb),
+    () => planned !== null && store.bypassed(planned.idKey),
+  );
+  const view = bypassed ? null : planned;
+  const enabled = kind !== null && runnable(inputs) && refusal === null;
+  useEffect(() => {
+    if (!enabled || view === null) return;
+    store.retain(owner, view);
+    return () => {
+      store.release(owner);
+    };
+  }, [store, owner, view, enabled]);
+  const fromAssembly = (a: Assembled, durationMs: number): RunOutcome => ({
+    text: q,
+    planned: a.visible.planned,
+    result: fromRange(a.visible),
+    durationMs,
+    scope: view?.id.scope ?? '',
+  });
+
   const query = useQuery({
     queryKey: key,
-    enabled: kind !== null && runnable(inputs) && refusal === null,
+    enabled,
     retry: false,
     structuralSharing: false,
+    initialData:
+      view === null
+        ? undefined
+        : () => {
+            const held = store.peek(view);
+            return held !== null && held.stale.length === 0 ? fromAssembly(held, 0) : undefined;
+          },
     placeholderData: (prev: RunOutcome | undefined, prevQuery) =>
-      prevQuery?.queryKey[2] === tenant ? prev : undefined,
+      prevQuery?.queryKey[2] === tenant &&
+      (prev?.scope === undefined || (lease && prev.scope === scope))
+        ? prev
+        : undefined,
     queryFn: async ({ signal }): Promise<RunOutcome> => {
       if (kind === null || stepMs === null) throw new Error('explore: a run without its inputs');
       const t0 = performance.now();
@@ -147,11 +232,24 @@ export function useExploreRun(a: RunInput): ExploreRun {
         durationMs: Math.round(performance.now() - t0),
       });
       if (kind === 'range') {
-        const r = await api.queryRange(
-          tenant,
-          { query: q, fromMs, toMs, widthPx: widthRef.current ?? 0, rate },
-          signal,
+        if (view !== null) {
+          try {
+            const held = await store.load(owner, view, signal);
+            return fromAssembly(held, Math.round(performance.now() - t0));
+          } catch (e) {
+            if (!(e instanceof StoreBypass)) throw e;
+          }
+        }
+        const r = await store.scheduler.exec(signal, (sig, priority) =>
+          api.queryRange(
+            tenant,
+            { query: q, fromMs, toMs, widthPx: widthRef.current ?? 0, rate, priority },
+            sig,
+          ),
         );
+        if (r.scope !== undefined && r.scope !== null) {
+          store.observeScope(tenant, r.scope, store.now());
+        }
         return done(r.planned, fromRange(r));
       }
       const r = await api.queryInstant(tenant, { query: q, atMs: toMs, stepMs }, signal);
@@ -176,7 +274,14 @@ export function useExploreRun(a: RunInput): ExploreRun {
   }
 
   const kept = last?.tenant === tenant ? last.outcome : null;
-  const shown = q === '' ? null : query.isError ? kept : (data ?? kept);
+  const candidate = q === '' ? null : query.isError ? kept : (data ?? kept);
+  // Store-derived data past the lease, or of another scope, is not shown before revalidation.
+  const leased = candidate?.scope !== undefined && (!lease || candidate.scope !== scope);
+  const shown = leased ? null : candidate;
+  const isFetching = query.isFetching;
+  useEffect(() => {
+    if (leased && enabled && !isFetching) void refetch();
+  }, [leased, enabled, isFetching, refetch]);
   const error = query.isError && !isAbort(query.error) ? query.error : null;
 
   return useMemo(

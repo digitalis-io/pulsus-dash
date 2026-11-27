@@ -34,7 +34,11 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const url = (fromMs: number, toMs: number) =>
   `/t/demo/x?from=${iso(fromMs)}&to=${iso(toMs)}&refresh=off`;
 
-const panel = (id: string, text: string, vis: DataPanelSpec['vis'] = { kind: 'line' }): DataPanelSpec => ({
+const panel = (
+  id: string,
+  text: string,
+  vis: DataPanelSpec['vis'] = { kind: 'line' },
+): DataPanelSpec => ({
   id,
   title: id,
   grid: { x: 0, y: 0, w: 6, h: 6 },
@@ -60,7 +64,11 @@ interface Mounted {
   go(fromMs: number, toMs: number): Promise<void>;
 }
 
-function mount(panels: readonly DataPanelSpec[], window: { fromMs: number; toMs: number }, o: { degraded?: boolean } = {}): Mounted {
+function mount(
+  panels: readonly DataPanelSpec[],
+  window: { fromMs: number; toMs: number },
+  o: { degraded?: boolean } = {},
+): Mounted {
   installResizeObserver();
   const stub = new StubApi();
   const api = scriptedRange();
@@ -87,8 +95,11 @@ function mount(panels: readonly DataPanelSpec[], window: { fromMs: number; toMs:
       }),
     ),
   );
-  const clock = { t: 10_000_000 };
+  // The clock (anchor and lease) a month after the windows: every right flank is in the past.
+  const clock = { t: T0 + 30 * DAY };
   const store = createRangeStore({ api: stub, scheduler: createScheduler(), now: () => clock.t });
+  // The bootstrap the app always has before a board (its tenants' scope, §4.5).
+  store.observeScope('demo', STUB, clock.t);
   const recs = new Map<string, Rec>();
   function Run({ p }: { p: DataPanelSpec }) {
     const run = usePanelRun({
@@ -168,7 +179,9 @@ function mount(panels: readonly DataPanelSpec[], window: { fromMs: number; toMs:
 
 const meets = (c: RangeCall, fromMs: number, toMs: number) =>
   c.req.fromMs <= toMs && c.req.toMs >= fromMs;
-const seriesOf = (v: PanelView | undefined): readonly { labels: Readonly<Record<string, string>> }[] =>
+const seriesOf = (
+  v: PanelView | undefined,
+): readonly { labels: Readonly<Record<string, string>> }[] =>
   v?.kind === 'frame' && v.data.kind === 'series' ? v.data.series : [];
 const answer = (series: readonly FnSeries[]) => () => ({ series, scope: STUB });
 const ONE = [fn({ a: '1' }, (t) => 1 + ((t / 60_000) % 60) / 10)];
@@ -182,14 +195,16 @@ describe('store-backed panel run (#304 §4.1)', () => {
     });
     await drain();
     await waitFor(() => {
-      expect(m.api.calls).toHaveLength(3);
+      expect(m.api.calls.filter((c) => c.req.stepMs === 15_000)).toHaveLength(3);
     });
     const before = m.api.calls.length;
     await m.go(T0 + H, T0 + 2 * H);
     // The first render after the commit holds the new window.
     const o = m.recs.get('p')?.run?.outcome;
     expect(o?.key[8]).toBe(T0 + H);
-    expect(o?.held?.kind === 'series' ? o.held.series[0]?.timestamps[0] : undefined).toBeLessThanOrEqual(T0 + H);
+    expect(
+      o?.held?.kind === 'series' ? o.held.series[0]?.timestamps[0] : undefined,
+    ).toBeLessThanOrEqual(T0 + H);
     await drain();
     for (const c of m.api.calls.slice(before)) {
       expect(meets(c, T0 + H, T0 + 2 * H)).toBe(false);
@@ -226,7 +241,10 @@ describe('store-backed panel run (#304 §4.1)', () => {
 
   it('ineligible unchanged, placeholder kept', async () => {
     const m = mount(
-      [panel('s', 'rate(x[5m] @ start())'), panel('g', 'up', { kind: 'barchart', options: { baselineOffset: '1d' } })],
+      [
+        panel('s', 'rate(x[5m] @ start())'),
+        panel('g', 'up', { kind: 'barchart', options: { baselineOffset: '1d' } }),
+      ],
       { fromMs: T0, toMs: T0 + H },
     );
     m.api.auto = answer(ONE);
@@ -252,7 +270,10 @@ describe('store-backed panel run (#304 §4.1)', () => {
         panel('e', 'rate(y[5m] @ start())'),
         panel('f', 'up', { kind: 'barchart', options: { baselineOffset: '1d' } }),
         panel('g', 'down', { kind: 'barchart', options: { baselineOffset: '1d' } }),
-        { ...panel('h', 'sum(count_over_time({app="x"}[1m]))'), query: { lang: 'logql', text: 'sum(count_over_time({app="x"}[1m]))' } },
+        {
+          ...panel('h', 'sum(count_over_time({app="x"}[1m]))'),
+          query: { lang: 'logql', text: 'sum(count_over_time({app="x"}[1m]))' },
+        },
       ],
       { fromMs: T0, toMs: T0 + H },
     );
@@ -284,7 +305,7 @@ describe('scope and lease in the panel run (#304 §4.5)', () => {
     const m = mount([panel('p', 'up')], { fromMs: T0, toMs: T0 + H });
     m.api.auto = answer(both);
     await waitFor(() => {
-      expect(m.api.calls).toHaveLength(3);
+      expect(m.api.calls.filter((c) => c.req.stepMs === 15_000)).toHaveLength(3);
     });
     await drain();
     m.api.auto = null;
@@ -294,12 +315,12 @@ describe('scope and lease in the panel run (#304 §4.5)', () => {
     const flank = m.api.open().at(-1);
     const B2 = { epoch: 'stub2', seq: 2 };
     const at = m.recs.get('p')?.views.length ?? 0;
+    // Refetched under B: only team a.
+    m.api.auto = () => ({ series: [both[0] as FnSeries], scope: B2 });
     await act(async () => {
       flank?.respond({ series: [both[0] as FnSeries], scope: B2 });
       await drain();
     });
-    // Refetched under B: only team a.
-    m.api.auto = () => ({ series: [both[0] as FnSeries], scope: B2 });
     await waitFor(() => {
       expect(seriesOf(m.recs.get('p')?.views.at(-1))).toHaveLength(1);
     });
@@ -312,7 +333,7 @@ describe('scope and lease in the panel run (#304 §4.5)', () => {
     const m = mount([panel('p', 'up')], { fromMs: T0, toMs: T0 + H });
     m.api.auto = answer(ONE);
     await waitFor(() => {
-      expect(m.api.calls).toHaveLength(3);
+      expect(m.api.calls.filter((c) => c.req.stepMs === 15_000)).toHaveLength(3);
     });
     m.api.auto = null;
     const n = m.api.calls.length;
@@ -334,7 +355,7 @@ describe('scope and lease in the panel run (#304 §4.5)', () => {
     const m = mount([panel('p', 'up')], { fromMs: T0, toMs: T0 + H });
     m.api.auto = answer(ONE);
     await waitFor(() => {
-      expect(m.api.calls).toHaveLength(3);
+      expect(m.api.calls.filter((c) => c.req.stepMs === 15_000)).toHaveLength(3);
     });
     m.api.auto = null;
     m.clock.t += LEASE_MS + 1;
@@ -347,9 +368,11 @@ describe('scope and lease in the panel run (#304 §4.5)', () => {
     await drain();
     const after = m.recs.get('p')?.views.slice(views) ?? [];
     expect(after.every((v) => v.kind !== 'frame')).toBe(true);
-    const re = m.api.open().filter((c) => c.req.priority === 'high');
-    expect(re).toHaveLength(1);
-    re[0]?.respond({ series: ONE, scope: STUB });
+    // The revalidation of the mounted window and the pan's visible run: all interactive.
+    const re = m.api.open();
+    expect(re.length).toBeGreaterThan(0);
+    expect(re.every((c) => c.req.priority === 'high')).toBe(true);
+    for (const c of re) c.respond({ series: ONE, scope: STUB });
     await waitFor(() => {
       expect(m.recs.get('p')?.views.at(-1)?.kind).toBe('frame');
     });
@@ -378,7 +401,8 @@ describe('ranks in the panel run (#304 Part B §4.3)', () => {
     await m.go(z.fromMs, z.toMs);
     expect(m.recs.get('p')?.run?.rank).toBe(1);
     await drain();
-    for (const x of m.api.calls.slice(n)) expect(meets(x, z.fromMs, z.toMs) && x.req.stepMs === 60_000).toBe(false);
+    for (const x of m.api.calls.slice(n))
+      expect(meets(x, z.fromMs, z.toMs) && x.req.stepMs === 60_000).toBe(false);
   });
 
   it('zoom-in paints rank 0', async () => {
@@ -402,7 +426,9 @@ describe('ranks in the panel run (#304 Part B §4.3)', () => {
     const d = frameData(m.recs.get('p')?.views.at(-1));
     expect(d?.kind === 'series' ? d.series[0]?.values.some(Number.isFinite) : false).toBe(true);
     await drain();
-    const fine = m.api.calls.slice(n).filter((x) => x.req.stepMs === 15_000 && x.req.priority === 'high');
+    const fine = m.api.calls
+      .slice(n)
+      .filter((x) => x.req.stepMs === 15_000 && x.req.priority === 'high');
     expect(fine).toHaveLength(1);
     fine[0]?.respond({ series: ONE, scope: STUB });
     await waitFor(() => {

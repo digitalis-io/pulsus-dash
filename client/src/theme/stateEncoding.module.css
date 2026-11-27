@@ -19,3 +19,12 @@
 .unknown {
   --state-colour: var(--unknown);
 }
+
+/* Held data not fresh for the view (#304 §4.3, PRF-026): the unknown colour as a 45° hatch. */
+.staleHatch {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--unknown) 0 var(--size-focus-offset),
+    transparent var(--size-focus-offset) var(--size-chart-dash)
+  );
+}

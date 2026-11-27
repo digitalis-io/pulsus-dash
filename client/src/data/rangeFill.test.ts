@@ -23,7 +23,14 @@ function source(stepMs: number, fromMs: number, toMs: number): StepSource {
 }
 
 const own = (stepMs: number, ks: readonly number[]) =>
-  new Map(ks.map((k) => [k, source(stepMs, bucketStartMs(k, stepMs), bucketLastMs(k, stepMs)).buckets.get(k) as RangeResult]));
+  new Map(
+    ks.map((k) => [
+      k,
+      source(stepMs, bucketStartMs(k, stepMs), bucketLastMs(k, stepMs)).buckets.get(
+        k,
+      ) as RangeResult,
+    ]),
+  );
 
 describe('rangeFill (#304 Part B §4.2)', () => {
   const V = 60_000;

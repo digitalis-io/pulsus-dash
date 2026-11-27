@@ -194,6 +194,9 @@ export class WasmFrame implements EngineFrame {
   private drawnSeq = 0;
   /** The last `setData`, when it went by reference: its values go on `chunk-missing`. */
   private byRef: { readonly chunk: number; readonly data: FrameData } | null = null;
+  /** The fit window last posted (#304 §A.3); `null` / `null` = none. */
+  private fitFrom: number | null = null;
+  private fitTo: number | null = null;
 
   constructor(
     private readonly port: Port,
@@ -244,15 +247,36 @@ export class WasmFrame implements EngineFrame {
    */
   setData(data: FrameData): void {
     if (this.disposed) return;
+    // The fit first (#304 §A.3), when it changed: the build that takes the data reads it.
+    const fit = data.kind === 'series' ? data.fit : undefined;
+    const from = fit?.fromMs ?? null;
+    const to = fit?.toMs ?? null;
+    if (from !== this.fitFrom || to !== this.fitTo) {
+      this.fitFrom = from;
+      this.fitTo = to;
+      this.post({ t: 'fit', id: this.id, fromMs: from, toMs: to });
+    }
+    const fade = data.kind === 'series' && data.transition === 'crossfade';
     const ref = data.kind === 'series' ? refOf(data.series) : undefined;
     if (ref !== undefined && this.epoch !== 0 && ref.epoch === this.epoch) {
       this.byRef = { chunk: ref.chunk, data };
       refStats.byRef++;
-      this.post({ t: 'data-chunk', id: this.id, chunk: ref.chunk, epoch: ref.epoch });
+      this.post({
+        t: 'data-chunk',
+        id: this.id,
+        chunk: ref.chunk,
+        epoch: ref.epoch,
+        ...(fade ? { crossfade: true as const } : {}),
+      });
       return;
     }
     this.byRef = null;
-    this.post({ t: 'data', id: this.id, series: series(data) });
+    this.post({
+      t: 'data',
+      id: this.id,
+      series: series(data),
+      ...(fade ? { crossfade: true as const } : {}),
+    });
   }
 
   setCamera(c: CameraState): void {

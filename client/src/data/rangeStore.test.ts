@@ -58,6 +58,9 @@ function setup(nowStart = 1_000_000) {
 }
 
 const A1 = { epoch: 'A', seq: 1 };
+/** The calls at the view's 15 s step (Part B's ladder runs at its own). */
+const fine = (api: { calls: readonly { req: { stepMs?: number } }[] }) =>
+  api.calls.filter((c) => c.req.stepMs === STEP);
 const keys = (r: { series: readonly { labels: Readonly<Record<string, string>> }[] }) =>
   r.series.map((s) => Object.values(s.labels).join(','));
 
@@ -136,7 +139,7 @@ describe('rangeStore assembly (#304 §4.4)', () => {
     store.retain('o', v);
     const a = await store.load('o', v);
     await drain();
-    expect(api.calls).toHaveLength(3);
+    expect(fine(api)).toHaveLength(3);
     const now = store.peek(v);
     expect(now).not.toBeNull();
     expect(keys(now?.visible ?? a.visible)).toEqual(['P']);
@@ -225,7 +228,12 @@ describe('rangeStore freshness (#304 §4.3)', () => {
     expect(store.staleSpans(v3)).toBe('[]');
 
     // A pan within the held buckets: nothing stale, nothing fetched.
-    const v4 = view({ fromMs: A0 - H - 1_800_000 + 5_000, toMs: A0 - 1_800_000 + 5_000, anchorMs: A0 + 5_000, epoch: 1 });
+    const v4 = view({
+      fromMs: A0 - H - 1_800_000 + 5_000,
+      toMs: A0 - 1_800_000 + 5_000,
+      anchorMs: A0 + 5_000,
+      epoch: 1,
+    });
     expect(store.staleSpans(v4)).toBe('[]');
     await store.load('o', v4);
     expect(api.calls).toHaveLength(3);
@@ -282,7 +290,7 @@ describe('rangeStore scope (#304 §4.5, ADR-0038)', () => {
     store.retain('o', v);
     await store.load('o', v);
     await drain();
-    expect(api.calls).toHaveLength(3);
+    expect(fine(api)).toHaveLength(3);
     api.auto = null;
     // The server narrows; a pan before any response paints the cached A data (within the lease).
     const pan = view({ fromMs: W1.fromMs + H, toMs: W1.toMs + H, line: true });
@@ -314,7 +322,7 @@ describe('rangeStore scope (#304 §4.5, ADR-0038)', () => {
     store.retain('o', v);
     await store.load('o', v);
     await drain();
-    expect(api.calls).toHaveLength(3);
+    expect(fine(api)).toHaveLength(3);
     api.auto = null;
     clock.t += LEASE_MS + 1;
     expect(store.leaseValid('demo')).toBe(false);
@@ -389,9 +397,7 @@ describe('rangeStore memory (#304 §4.2, §4.7)', () => {
     const { api, store } = setup();
     const v = view({ fromMs: 10 * B, toMs: 10 * B + 1_200 * STEP });
     expect(v.visible.k1 - v.visible.k0).toBe(5);
-    const many: FnSeries[] = Array.from({ length: 2_000 }, (_, i) =>
-      fn({ i: String(i) }, () => i),
-    );
+    const many: FnSeries[] = Array.from({ length: 2_000 }, (_, i) => fn({ i: String(i) }, () => i));
     const p = store.load('o', v);
     await drain();
     api.calls[0]?.respond({ series: many, scope: A1 });
@@ -467,7 +473,10 @@ describe('rangeStore ranks and ladder (#304 Part B §4.1)', () => {
 
   it('ranks never regress', async () => {
     const { api, store } = setupB();
-    api.auto = (c) => ({ series: [fn({ a: '1' }, () => (c.req.stepMs === STEP ? 1 : 9))], scope: A1 });
+    api.auto = (c) => ({
+      series: [fn({ a: '1' }, () => (c.req.stepMs === STEP ? 1 : 9))],
+      scope: A1,
+    });
     const v = view(W1);
     await store.load('o', v);
     const a = store.peek(v);
@@ -513,9 +522,9 @@ describe('rangeStore ranks and ladder (#304 Part B §4.1)', () => {
     expect(api.calls[0]?.signal?.aborted).toBe(true);
     t.advance(100);
     await drain();
-    expect(
-      api.calls.filter((c) => c.req.stepMs === STEP && c.req.fromMs < 200 * B),
-    ).toHaveLength(0);
+    expect(api.calls.filter((c) => c.req.stepMs === STEP && c.req.fromMs < 200 * B)).toHaveLength(
+      0,
+    );
   });
 
   it('ladder after flanks, cancelled on move', async () => {

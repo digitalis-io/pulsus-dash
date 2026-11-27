@@ -44,8 +44,10 @@ export function openBoard(panels: readonly PanelSpec[], o: Opts = {}) {
   const instant = vi.spyOn(api, 'queryInstant');
   const engine = fakeEngine();
   const url = o.url ?? `/t/demo/board/b-1?${o.search ?? ABS}${o.extra ?? ''}`;
+  // The single-request path (the range store off): these tests pin today's request shapes (#304).
   const r = renderApp(url, {
     api,
+    rangeStore: 'off',
     wrapper: engineWrapper(engine),
     ...(o.now === undefined ? {} : { now: o.now }),
   });

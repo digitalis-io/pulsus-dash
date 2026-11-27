@@ -27,6 +27,7 @@ import {
   type PromSeriesSet,
   type PromValues,
   type RangeResult,
+  type ScopeStamp,
   type VolumeResult,
 } from '../data/decode';
 import {
@@ -102,6 +103,9 @@ function toSession(b: Bootstrap): Session {
       slug: t.slug,
       name: t.name,
       dataSource: { state: 'notChecked' },
+      // An old BFF sends neither (#304 §A.2): the range store then learns the scope from responses.
+      ...(typeof t.scope_epoch === 'string' ? { scopeEpoch: t.scope_epoch } : {}),
+      ...(typeof t.scope_seq === 'number' ? { scopeSeq: t.scope_seq } : {}),
     })),
     defaultTenant: b.default_tenant,
     server: { version: b.server.version, commit: b.server.commit },
@@ -199,7 +203,38 @@ function rangeBody(req: RangeRequest): RangeBody {
     ...(req.timeoutMs === undefined ? {} : { timeout_ms: req.timeoutMs }),
     ...(req.vars === undefined ? {} : { vars: { ...req.vars } }),
     ...(req.rate === undefined ? {} : { rate: req.rate }),
+    ...(req.stepMs === undefined ? {} : { step_ms: req.stepMs }),
+    ...(req.rangeMs === undefined ? {} : { range_ms: req.rangeMs }),
   } as RangeBody;
+}
+
+/** The fetch options of a range request: its signal and `priority` (never in the body). */
+function rangeInit(req: RangeRequest, signal: AbortSignal | undefined) {
+  return {
+    ...(signal === undefined ? {} : { signal }),
+    ...(req.priority === undefined ? {} : { priority: req.priority }),
+  };
+}
+
+/** The scope the BFF used (`X-Pulsus-Scope-Epoch`, `-Seq`, #304 §A.2); null when it sent none. */
+function scopeOf(r: Response): ScopeStamp | null {
+  const epoch = r.headers.get('X-Pulsus-Scope-Epoch');
+  const seq = Number(r.headers.get('X-Pulsus-Scope-Seq') ?? '');
+  return epoch === null || epoch === '' || !Number.isSafeInteger(seq) ? null : { epoch, seq };
+}
+
+/** `queryError` with the response's scope (a `scope_denied` drops the tenant's store, §4.5). */
+function rangeError(r: Response, error: unknown): ApiError {
+  const e = queryError(r.status, error);
+  const sc = scopeOf(r);
+  if (sc !== null) e.scope = sc;
+  return e;
+}
+
+/** A range result with its response's scope, when it had one. */
+function scoped(res: RangeResult, r: Response): RangeResult {
+  const sc = scopeOf(r);
+  return sc === null ? res : { ...res, scope: sc };
 }
 
 /** Runs a query request: an abort is re-thrown unchanged, any other rejection is `network`. */
@@ -502,10 +537,10 @@ export class HttpApi implements Api {
         body: rangeBody(req),
         headers: { Accept: DSF_ACCEPT },
         parseAs: 'stream',
-        ...(signal === undefined ? {} : { signal }),
+        ...rangeInit(req, signal),
       }),
     );
-    if (data === undefined || data === null) throw queryError(response.status, error);
+    if (data === undefined || data === null) throw rangeError(response, error);
     const body = data as unknown as ReadableStream<Uint8Array>;
     const type = response.headers.get('Content-Type') ?? '';
     if (!type.startsWith(DSF_TYPE)) {
@@ -517,7 +552,7 @@ export class HttpApi implements Api {
         if (isAbort(e)) throw e;
         throw new ApiError('badResponse', 'the range body is not JSON');
       }
-      return decoded(decodeRange, json);
+      return scoped(decoded(decodeRange, json), response);
     }
     let m: DecodedRange;
     try {
@@ -528,13 +563,22 @@ export class HttpApi implements Api {
         return this.rangeJson(tenant, req, signal);
       }
       if (e instanceof DecodeFailed) {
-        if (e.kind === 'error' && e.row !== null) throw errorFromRow(e.row, e.coverage, e.planned);
+        if (e.kind === 'error' && e.row !== null) {
+          const err = errorFromRow(e.row, e.coverage, e.planned);
+          const sc = scopeOf(response);
+          if (sc !== null) err.scope = sc;
+          throw err;
+        }
         throw wireInvalid(e.message);
       }
       if (isAbort(e)) throw e;
       throw new ApiError('network', 'the BFF could not be reached');
     }
-    return this.assemble(decoder, m);
+    const assembled = this.assemble(decoder, m);
+    const sc = scopeOf(response);
+    // The series array stays the registered one (by reference, ADR-0034); only the result is new.
+    if (sc !== null) Object.assign(assembled, { scope: sc });
+    return assembled;
   }
 
   /** The `RangeResult` of a decoded message, its series registered against the chunk. */
@@ -563,11 +607,11 @@ export class HttpApi implements Api {
       this.client.POST(RANGE_ROUTE, {
         params: { query: { tenant } },
         body: rangeBody(req),
-        ...(signal === undefined ? {} : { signal }),
+        ...rangeInit(req, signal),
       }),
     );
-    if (data === undefined) throw queryError(response.status, error);
-    return decoded(decodeRange, data);
+    if (data === undefined) throw rangeError(response, error);
+    return scoped(decoded(decodeRange, data), response);
   }
 
   async queryInstant(

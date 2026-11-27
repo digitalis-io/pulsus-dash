@@ -51,9 +51,15 @@ export function promGrid(fromMs: number, toMs: number, widthPx: number): Grid | 
   return null;
 }
 
-/** Stub (tests first, #304). */
-export function promGridAt(_fromMs: number, _toMs: number, _stepMs: number): Grid | null {
-  return null;
+/**
+ * The PromQL grid at a ladder step the client chose (#304 §A.1), Go's `PromGridStep`, checked
+ * against `wire/fixtures/json/promql-step-at.json`: aligned as `promGrid` aligns; `null` when the
+ * step is not a ladder entry or the grid would have more than 11 000 steps.
+ */
+export function promGridAt(fromMs: number, toMs: number, stepMs: number): Grid | null {
+  if (!PROM_LADDER_MS.includes(stepMs)) return null;
+  const g = align(fromMs, toMs, stepMs);
+  return (g.endMs - g.startMs) / g.stepMs > MAX_STEPS ? null : g;
 }
 
 /**

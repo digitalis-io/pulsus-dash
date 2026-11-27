@@ -64,6 +64,10 @@ export function rangeFromDecoded(m: DecodedRange, receivedAtMs: number): RangeRe
     }
     return { key: s.key, labels: s.labels, timestamps: m.ts, values };
   });
+  const absent = m.absent;
+  if (absent !== undefined && absent.length !== series.length) {
+    throw new DecodeError('/frames', 'series and absent masks differ in count');
+  }
   return {
     planned: p,
     startMs: h.startMs,
@@ -71,6 +75,8 @@ export function rangeFromDecoded(m: DecodedRange, receivedAtMs: number): RangeRe
     stepMs: h.stepMs,
     series,
     completeness: completeness(h.coverage, receivedAtMs),
+    // The validity bitmap's null slots (#304 §A.3); none absent: no member, as the JSON path.
+    ...(absent !== undefined && absent.some((a) => a !== null) ? { absent: [...absent] } : {}),
   };
 }
 

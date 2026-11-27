@@ -16,7 +16,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useApi } from '../app/providers';
+import { useApi, useRangeStore } from '../app/providers';
 import { isApiError } from '../api/types';
 import { logGrid } from '../data/step';
 import type { Diagnostic } from '../editor/lang/types';
@@ -47,6 +47,17 @@ const NO_RETRY = (): void => undefined;
 
 export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const api = useApi();
+  // The LogQL frame and its volume run through the page's one range scheduler (#304 §4.6).
+  const scheduler = useRangeStore().scheduler;
+  const scheduled = useMemo(
+    () => ({
+      queryLogs: (t: string, r: Parameters<typeof api.queryLogs>[1], s?: AbortSignal) =>
+        scheduler.exec(s, (sig) => api.queryLogs(t, r, sig)),
+      queryVolume: (t: string, r: Parameters<typeof api.queryVolume>[1], s?: AbortSignal) =>
+        scheduler.exec(s, (sig) => api.queryVolume(t, r, sig)),
+    }),
+    [api, scheduler],
+  );
   const { vars, timeReady } = useContext(BoardRunContext);
   const { window, refreshEpoch } = useTimeContext();
   const { tenant, panel, text, enabled, widthPx } = a;
@@ -153,7 +164,7 @@ export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
     queryFn: async ({ signal, queryKey }): Promise<PanelOutcome> => {
       if (path === 'stream') throw new Error('panel: a frame run on the stream path');
       const o = await fetchLogFrame(
-        api,
+        scheduled,
         tenant,
         { query: text, fromMs, toMs, widthPx: widthRef.current ?? 0, vars: sent },
         path === 'logs-bars',

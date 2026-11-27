@@ -35,7 +35,10 @@ export interface FnSeries {
   readonly at: (tMs: number) => number | null;
 }
 
-export const fn = (labels: Record<string, string>, at: (tMs: number) => number | null): FnSeries => ({
+export const fn = (
+  labels: Record<string, string>,
+  at: (tMs: number) => number | null,
+): FnSeries => ({
   labels,
   at,
 });
@@ -86,7 +89,7 @@ export interface RangeCall {
   settled: boolean;
   /** Answers on the request's grid; returns the result it resolved with. */
   respond(a?: Answer): RangeResult;
-  reject(e: unknown): void;
+  reject(e: Error): void;
 }
 
 export interface ScriptedRange {
@@ -101,9 +104,26 @@ export interface ScriptedRange {
 }
 
 export function scriptedRange(): ScriptedRange {
+  let autoFn: ((c: RangeCall) => Answer | null) | null = null;
+  const answerLater = (call: RangeCall): void => {
+    const f = autoFn;
+    if (f === null) return;
+    queueMicrotask(() => {
+      if (call.settled || call.signal?.aborted === true) return;
+      const ans = f(call);
+      if (ans !== null) call.respond(ans);
+    });
+  };
   const s: ScriptedRange = {
     calls: [],
-    auto: null,
+    get auto() {
+      return autoFn;
+    },
+    /** Setting it answers the calls already open too. */
+    set auto(f) {
+      autoFn = f;
+      for (const c of s.open()) answerLater(c);
+    },
     ignoreAbort: false,
     open: () => s.calls.filter((c) => !c.settled && c.signal?.aborted !== true),
     queryRange(tenant, req, signal) {
@@ -119,9 +139,7 @@ export function scriptedRange(): ScriptedRange {
           settled: false,
           respond(a = {}) {
             const grid =
-              a.stepMs === undefined || g === null
-                ? g
-                : promGridAt(g.startMs, g.endMs, a.stepMs);
+              a.stepMs === undefined || g === null ? g : promGridAt(g.startMs, g.endMs, a.stepMs);
             if (grid === null) throw new Error('scriptedRange: no grid');
             const r = gridResult(grid, req.query, a);
             call.settled = true;
@@ -139,13 +157,7 @@ export function scriptedRange(): ScriptedRange {
           reject(new DOMException('aborted', 'AbortError'));
         });
         s.calls.push(call);
-        if (s.auto !== null) {
-          const answer = s.auto;
-          queueMicrotask(() => {
-            const ans = answer(call);
-            if (ans !== null && !call.settled) call.respond(ans);
-          });
-        }
+        answerLater(call);
       });
     },
   };

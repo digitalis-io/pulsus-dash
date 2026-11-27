@@ -73,6 +73,7 @@ import { useTimeZone } from '../state/timeZone';
 import { useTimeContext } from '../state/useTimeContext';
 import { size, space } from '../styles/tokens';
 import { useResolvedTheme } from '../theme/useResolvedTheme';
+import stateStyles from '../theme/stateEncoding.module.css';
 import styles from './ChartFrame.module.css';
 import { ChartTooltip } from './ChartTooltip';
 import { BarList } from './BarList';
@@ -159,6 +160,53 @@ const px = (n: number): string => `${String(n)}px`;
 
 /** No events: one frozen value, so an absent prop never changes. */
 const NO_MARKERS: readonly EventMarker[] = Object.freeze([]);
+
+/**
+ * A held span not fresh for the view (#304 §4.3, PRF-026's subtle hatching): its part of the plot,
+ * from the latest summary's plot and window, placed through CSSOM (no inline styles, T01-010).
+ */
+function StaleSpan({ box }: { box: PlotRect }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    el.style.left = px(box.x);
+    el.style.top = px(box.y);
+    el.style.width = px(box.width);
+    el.style.height = px(box.height);
+  }, [box]);
+  return (
+    <div
+      ref={ref}
+      aria-hidden="true"
+      data-stale-span=""
+      className={cx(styles['stale'], stateStyles['staleHatch'])}
+    />
+  );
+}
+
+/** Each stale span clipped to the plot, as boxes; [] without a summary. */
+function staleBoxes(s: FrameSummary | null, spans: readonly TimeWindow[]): PlotRect[] {
+  if (s === null || spans.length === 0 || !(s.toMs > s.fromMs)) return [];
+  const x = (t: number): number => s.plot.x + ((t - s.fromMs) / (s.toMs - s.fromMs)) * s.plot.width;
+  const out: PlotRect[] = [];
+  for (const w of spans) {
+    const x0 = x(Math.max(w.fromMs, s.fromMs));
+    const x1 = x(Math.min(w.toMs, s.toMs));
+    if (x1 > x0) out.push({ x: x0, y: s.plot.y, width: x1 - x0, height: s.plot.height });
+  }
+  return out;
+}
+
+/** `prefers-reduced-motion: reduce` (VL-016): a data transition becomes an instant cut. */
+function reducedMotion(): boolean {
+  return (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+const NO_STALE: readonly TimeWindow[] = Object.freeze([]);
 
 /**
  * The focusable target over a clipped threshold label: its tooltip and accessible name are the
@@ -270,6 +318,7 @@ export function ChartFrame({
   markLines,
   onFrame,
   onSummary,
+  stale = NO_STALE,
   surface = 'chart',
 }: ChartFrameProps) {
   const engine = useContext(ChartEngineContext);
@@ -277,10 +326,19 @@ export function ChartFrame({
   const tz = useTimeZone();
   const theme = useResolvedTheme();
   const issue = useMemo(() => validateFrameData(spec, data), [spec, data]);
-  const frameData = useMemo(
-    () => (issue === null ? data : emptyFrameData(spec)),
-    [issue, data, spec],
-  );
+  const frameData = useMemo(() => {
+    if (issue !== null) return emptyFrameData(spec);
+    // ADR-0039: under reduced motion the crossfade is stripped before the engine sees it.
+    if (data.kind === 'series' && data.transition !== undefined && reducedMotion()) {
+      const cut: FrameData = {
+        kind: 'series',
+        series: data.series,
+        ...(data.fit === undefined ? {} : { fit: data.fit }),
+      };
+      return cut;
+    }
+    return data;
+  }, [issue, data, spec]);
   const { fromMs, toMs } = win;
   const isStat = spec.kind === 'stat';
   // A bar chart has no crosshair: its bars report `mark` and `pick` (ADR-0028).
@@ -764,6 +822,10 @@ export function ChartFrame({
           ))}
         </div>
       )}
+      {spec.kind === 'line' &&
+        staleBoxes(summary, stale).map((b) => (
+          <StaleSpan key={`${String(b.x)}:${String(b.width)}`} box={b} />
+        ))}
       {!isStat &&
         !isGeo &&
         (summary?.thresholdLabels ?? [])

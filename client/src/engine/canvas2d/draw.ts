@@ -491,7 +491,7 @@ const axisSummary = (i: LayerInput, a: ValueAxis): FrameSummary['valueAxis'] => 
 
 function lineModel(i: LayerInput, series: readonly SeriesFrame[]) {
   const shown = series.slice(0, MAX_SERIES);
-  const stats = lineStats(shown);
+  const stats = lineStats(shown, i.data.kind === 'series' ? i.data.fit : undefined);
   // The auto domain includes every finite threshold (§4.2); a pin (`valueRange`) wins.
   const w = withThresholds(stats.min, stats.max, thresholdsOf(i.spec));
   const axis = valueAxis(i, w.min, w.max, i.spec.unit);

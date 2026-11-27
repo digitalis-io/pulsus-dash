@@ -330,7 +330,16 @@ class EngineHost implements Backend {
         this.sessions.delete(m.req);
         // The session is gone (aborted while the result was in flight): nobody will hold it.
         if (s === undefined) this.releaseChunk({ chunk: m.chunk, epoch: m.epoch });
-        else s.resolve({ chunk: m.chunk, epoch: m.epoch, head: m.head, ts: m.ts, vs: m.vs });
+        else {
+          s.resolve({
+            chunk: m.chunk,
+            epoch: m.epoch,
+            head: m.head,
+            ts: m.ts,
+            vs: m.vs,
+            ...(m.absent === undefined ? {} : { absent: m.absent }),
+          });
+        }
         return;
       }
       case 'decode-failed': {

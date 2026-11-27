@@ -151,7 +151,10 @@ export function openExplore(u: string, o: { api?: StubApi; queryClient?: QueryCl
   function Wrapper({ children }: { children: ReactNode }) {
     return <ChartEngineContext.Provider value={engine}>{children}</ChartEngineContext.Provider>;
   }
+  // The single-request path (the range store off): these tests pin today's request shapes (#304);
+  // the store-backed run is unit:explore-through-store.
   const r = renderApp(u, {
+    rangeStore: 'off',
     api,
     wrapper: Wrapper,
     ...(o.queryClient === undefined ? {} : { queryClient: o.queryClient }),

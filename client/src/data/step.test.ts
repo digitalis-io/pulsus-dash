@@ -2,14 +2,7 @@ import { describe, expect, it } from 'vitest';
 import logCasesRaw from '../../../wire/fixtures/json/log-step.json?raw';
 import atCasesRaw from '../../../wire/fixtures/json/promql-step-at.json?raw';
 import casesRaw from '../../../wire/fixtures/json/promql-step.json?raw';
-import {
-  LOG_LADDER_MS,
-  PROM_LADDER_MS,
-  logGrid,
-  promGrid,
-  promGridAt,
-  type Grid,
-} from './step';
+import { LOG_LADDER_MS, PROM_LADDER_MS, logGrid, promGrid, promGridAt, type Grid } from './step';
 
 interface StepCase {
   from: number;

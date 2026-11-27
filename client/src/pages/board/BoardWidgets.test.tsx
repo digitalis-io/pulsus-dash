@@ -338,6 +338,7 @@ describe('unit:widget-registry-generic', () => {
     const api = new StubApi(seedWith({ boards: [stubBoard('b-1', widgets())] }));
     const save = vi.spyOn(api, 'saveBoard');
     const t = renderApp('/t/demo/board/b-1', {
+      rangeStore: 'off',
       api,
       wrapper: ({ children }) => (
         <EngineWrapper>

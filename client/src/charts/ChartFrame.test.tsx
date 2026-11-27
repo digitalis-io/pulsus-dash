@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient } from '@tanstack/react-query';
 import { StrictMode, useState, type ReactNode } from 'react';
 import { createMemoryRouter, RouterProvider, type DataRouter } from 'react-router';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../api/StubApi';
 import { Providers } from '../app/providers';
 import type { RouterDeps } from '../app/router';
@@ -1028,20 +1028,20 @@ describe('stale spans and reduced motion (#304 §4.3, Part B §4.5)', () => {
   });
 
   it('reduced motion', async () => {
-    const real = window.matchMedia;
-    window.matchMedia = ((q: string) => ({
-      matches: q.includes('prefers-reduced-motion: reduce'),
-      media: q,
-      onchange: null,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      addListener: () => undefined,
-      removeListener: () => undefined,
-      dispatchEvent: () => false,
-    })) as typeof window.matchMedia;
+    const reduce = vi.spyOn(window, 'matchMedia').mockImplementation(
+      (q: string) =>
+        ({
+          matches: q.includes('prefers-reduced-motion: reduce'),
+          media: q,
+          onchange: null,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+          dispatchEvent: () => false,
+        }) as unknown as MediaQueryList,
+    );
     try {
       const engine = fakeEngine();
-      renderFrame(engine, LINE, { ...DATA, transition: 'crossfade' } as FrameData);
+      renderFrame(engine, LINE, { ...DATA, transition: 'crossfade' });
       await waitFor(() => {
         expect(engine.frames).toHaveLength(1);
       });
@@ -1049,7 +1049,7 @@ describe('stale spans and reduced motion (#304 §4.3, Part B §4.5)', () => {
       expect(d?.kind).toBe('series');
       expect(d !== undefined && 'transition' in d ? d.transition : undefined).toBeUndefined();
     } finally {
-      window.matchMedia = real;
+      reduce.mockRestore();
     }
   });
 });

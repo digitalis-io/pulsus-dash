@@ -2,6 +2,9 @@ import type { PromMetricMetadata } from '../data/decode';
 import type { StubSeed } from './StubApi';
 import type { DataPanelSpec, DataVisKind, QueryLang } from './types';
 
+/** The stub's scope epoch and sequence (#304 §A.2): one scope, never narrowed. */
+export const STUB_SCOPE = Object.freeze({ epoch: 'stub', seq: 1 });
+
 function panel(
   id: string,
   title: string,
@@ -27,8 +30,20 @@ export const defaultSeed: StubSeed = {
     user: { id: 'u-ada', name: 'Ada Admin', email: 'ada@example.com', role: 'admin' },
     org: { name: 'Demo Org' },
     tenants: [
-      { slug: 'demo', name: 'Demo', dataSource: { state: 'notChecked' } },
-      { slug: 'sandbox', name: 'Sandbox', dataSource: { state: 'notChecked' } },
+      {
+        slug: 'demo',
+        name: 'Demo',
+        dataSource: { state: 'notChecked' },
+        scopeEpoch: STUB_SCOPE.epoch,
+        scopeSeq: STUB_SCOPE.seq,
+      },
+      {
+        slug: 'sandbox',
+        name: 'Sandbox',
+        dataSource: { state: 'notChecked' },
+        scopeEpoch: STUB_SCOPE.epoch,
+        scopeSeq: STUB_SCOPE.seq,
+      },
     ],
     defaultTenant: 'demo',
     server: null,

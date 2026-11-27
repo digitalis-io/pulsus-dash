@@ -60,7 +60,7 @@ export function MetricsPage() {
   const api = useApi();
   const queryClient = useQueryClient();
   const { tenant } = useShellRoute();
-  const { window: win, dispatch } = useTimeContext();
+  const { window: win, dispatch, anchorMs, refreshEpoch } = useTimeContext();
   const { params, set } = useExploreParams();
   const q = params.q;
 
@@ -82,7 +82,15 @@ export function MetricsPage() {
     [modules.lang, degraded, stepMs, rate],
   );
   const runReady = editorReady && runnable(inputs);
-  const run = useExploreRun({ tenant, q, inputs, widthPx, window: win });
+  const run = useExploreRun({
+    tenant,
+    q,
+    inputs,
+    widthPx,
+    window: win,
+    anchorMs,
+    epoch: refreshEpoch,
+  });
 
   // The draft lives in a ref: typing re-renders nothing unless one of the flags below flips.
   const draftRef = useRef(q);

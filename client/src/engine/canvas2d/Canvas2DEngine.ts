@@ -38,6 +38,7 @@ import type {
   FrameSelection,
   FrameSummary,
   HoverEvent,
+  PlotRect,
   ThemeName,
   TimeWindow,
   VisSpec,
@@ -65,6 +66,9 @@ import { themeColours } from './palette';
 import { sameSelection, type Listener } from './gesture';
 import { pickItem } from './select';
 import type { GeoScene } from './geo/scene';
+
+/** The data crossfade's length, ms (ADR-0039, T02-007). */
+const FADE_MS = 150;
 
 export { MAX_SERIES };
 
@@ -209,6 +213,15 @@ class Canvas2DFrame implements ChartFrame {
   private stageModel: StageModel | null = null;
   private summaryKey = '';
   private lastHover: HoverEvent | null = null;
+  /**
+   * A data crossfade in progress (ADR-0039, T02-007): the series layer drawn before, kept as a
+   * bitmap, composited over the new layer at 1 − t within the plot for 150 ms.
+   */
+  private fade: {
+    readonly canvas: HTMLCanvasElement;
+    readonly startMs: number;
+    readonly plot: PlotRect;
+  } | null = null;
   private readonly listeners = new Map<keyof FrameEvents, Set<Listener>>();
   /** The bar chart's `mark` and `pick` (ADR-0028). */
   private readonly bar = new BarInput(this.emit.bind(this), () => {
@@ -340,6 +353,17 @@ class Canvas2DFrame implements ChartFrame {
 
   setData(data: FrameData): void {
     if (this.disposed) return;
+    this.endFade();
+    if (
+      data.kind === 'series' &&
+      data.transition === 'crossfade' &&
+      this.spec?.kind === 'line' &&
+      this.model !== null &&
+      this.layer.width > 0 &&
+      this.layer.height > 0
+    ) {
+      this.startFade(this.model.summary.plot);
+    }
     this.data = data;
     if (this.spec?.kind === 'geomap') {
       if (data.kind === 'geo') this.geo?.setData(data.geo);
@@ -351,6 +375,8 @@ class Canvas2DFrame implements ChartFrame {
 
   setTimeWindow(w: TimeWindow): void {
     if (this.disposed) return;
+    // A camera change ends a fade at once: input never waits for it (PRF-003).
+    this.endFade();
     // A geomap stores the window and draws nothing for it (ADR-0027 (2)).
     if (this.ctl.setTimeWindow(w) && this.spec?.kind !== 'geomap') this.changed();
   }
@@ -394,6 +420,7 @@ class Canvas2DFrame implements ChartFrame {
 
   resize(cssWidth: number, cssHeight: number, dpr: number): void {
     if (this.disposed) return;
+    this.endFade();
     this.ctl.resize(cssWidth, cssHeight);
     this.cssW = cssWidth;
     this.cssH = cssHeight;
@@ -445,6 +472,7 @@ class Canvas2DFrame implements ChartFrame {
 
   dispose(): void {
     if (this.disposed) return;
+    this.endFade();
     this.disposed = true;
     this.geoGen += 1;
     this.geoPending = null;
@@ -747,10 +775,45 @@ class Canvas2DFrame implements ChartFrame {
     });
   }
 
+  /** Keeps the drawn layer as the fade's bitmap (ADR-0039). */
+  private startFade(plot: PlotRect): void {
+    const canvas = this.r.createCanvas();
+    canvas.width = this.layer.width;
+    canvas.height = this.layer.height;
+    const c = this.r.contextOf(canvas);
+    if (c === null) return;
+    c.drawImage(this.layer, 0, 0);
+    this.fade = { canvas, startMs: this.r.now(), plot };
+  }
+
+  private endFade(): void {
+    if (this.fade === null) return;
+    this.fade.canvas.width = 0;
+    this.fade.canvas.height = 0;
+    this.fade = null;
+  }
+
   private drawVisible(hover: HoverEvent | null): void {
     const ctx = this.ctx;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     ctx.drawImage(this.layer, 0, 0, this.cssW, this.cssH);
+    const f = this.fade;
+    if (f !== null) {
+      const t = (this.r.now() - f.startMs) / FADE_MS;
+      if (t >= 1) {
+        this.endFade();
+      } else {
+        // The old series layer over the new one at 1 − t, inside the plot; the next frame follows.
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(f.plot.x, f.plot.y, f.plot.width, f.plot.height);
+        ctx.clip();
+        ctx.globalAlpha = 1 - Math.max(0, t);
+        ctx.drawImage(f.canvas, 0, 0, this.cssW, this.cssH);
+        ctx.restore();
+        this.schedule();
+      }
+    }
     if (this.model === null) return;
     const bar = this.barPick();
     if (bar !== null) drawBarOverlay(ctx, bar, themeColours(this.theme), this.bar.overlay());

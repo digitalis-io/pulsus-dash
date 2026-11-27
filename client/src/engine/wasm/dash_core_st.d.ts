@@ -53,6 +53,12 @@ export function engine_wants_frame(): boolean;
  */
 export function frame_create(id: number, canvas: OffscreenCanvas, frame_id?: string | null): void;
 
+/**
+ * Whether the frame's next data fades in over its current one (ADR-0039): called before every
+ * `data` and `data-chunk`; false cuts.
+ */
+export function frame_crossfade(id: number, on: boolean): void;
+
 export function frame_data_begin(id: number): void;
 
 export function frame_data_clear(id: number): void;
@@ -75,6 +81,12 @@ export function frame_dispose(id: number): void;
  * §3.3): a layer input, so the frame is rebuilt.
  */
 export function frame_set_events(id: number, at_ms: Float64Array | number[]): void;
+
+/**
+ * The line's auto-fit window (#304 §A.3): the summary and the auto domain over
+ * `from_ms ≤ t ≤ to_ms` only; both None = every sample. Posted before the frame's data.
+ */
+export function frame_set_fit(id: number, from_ms?: number | null, to_ms?: number | null): void;
 
 /**
  * The page selection (plan #68 C2c2 §3.1): its keys (only 16 lower-case hex digits can match a
@@ -105,22 +117,24 @@ export interface InitOutput {
     readonly engine_tick: (a: number) => [number, number];
     readonly engine_wants_frame: () => number;
     readonly frame_create: (a: number, b: any, c: number, d: number) => [number, number];
+    readonly frame_crossfade: (a: number, b: number) => void;
     readonly frame_data_begin: (a: number) => void;
     readonly frame_data_clear: (a: number) => void;
     readonly frame_data_end: (a: number) => [number, number];
     readonly frame_data_series: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number];
     readonly frame_dispose: (a: number) => void;
     readonly frame_set_events: (a: number, b: number, c: number) => void;
+    readonly frame_set_fit: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly frame_set_selection: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly frame_set_spec: (a: number, b: number, c: number) => [number, number];
     readonly frame_set_theme: (a: number, b: number) => void;
     readonly wasm_bindgen_c668c5b1fab83e48___convert__closures_____invoke___js_sys_d91882e5995570d3___Function_fn_wasm_bindgen_c668c5b1fab83e48___JsValue_____wasm_bindgen_c668c5b1fab83e48___sys__Undefined___js_sys_d91882e5995570d3___Function_fn_wasm_bindgen_c668c5b1fab83e48___JsValue_____wasm_bindgen_c668c5b1fab83e48___sys__Undefined_______true_: (a: number, b: number, c: any, d: any) => void;
     readonly wasm_bindgen_c668c5b1fab83e48___convert__closures_____invoke___wasm_bindgen_c668c5b1fab83e48___JsValue__core_28b6126153244bc8___result__Result_____wasm_bindgen_c668c5b1fab83e48___JsError___true_: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen_c668c5b1fab83e48___convert__closures_____invoke___wasm_bindgen_c668c5b1fab83e48___sys__JsNullable_wgpu_e7347bf7fa5e5f17___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_28b6126153244bc8___result__Result_____wasm_bindgen_c668c5b1fab83e48___JsError___true_: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_c668c5b1fab83e48___convert__closures_____invoke___wasm_bindgen_c668c5b1fab83e48___sys__JsNullable_wgpu_e7347bf7fa5e5f17___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_28b6126153244bc8___result__Result_____wasm_bindgen_c668c5b1fab83e48___JsError___true__25: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen_c668c5b1fab83e48___convert__closures_____invoke___wasm_bindgen_c668c5b1fab83e48___sys__JsNullable_wgpu_e7347bf7fa5e5f17___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_28b6126153244bc8___result__Result_____wasm_bindgen_c668c5b1fab83e48___JsError___true__26: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_c668c5b1fab83e48___convert__closures_____invoke___wasm_bindgen_c668c5b1fab83e48___sys__JsNullable_wgpu_e7347bf7fa5e5f17___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_28b6126153244bc8___result__Result_____wasm_bindgen_c668c5b1fab83e48___JsError___true__27: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen_c668c5b1fab83e48___convert__closures_____invoke___wasm_bindgen_c668c5b1fab83e48___sys__JsNullable_wgpu_e7347bf7fa5e5f17___backend__webgpu__webgpu_sys__gen_GpuError__GpuError___core_28b6126153244bc8___result__Result_____wasm_bindgen_c668c5b1fab83e48___JsError___true__28: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen_c668c5b1fab83e48___convert__closures_____invoke___wgpu_e7347bf7fa5e5f17___backend__webgpu__webgpu_sys__gen_GpuDeviceLostInfo__GpuDeviceLostInfo______true_: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen_c668c5b1fab83e48___convert__closures_____invoke___wgpu_e7347bf7fa5e5f17___backend__webgpu__webgpu_sys__gen_GpuDeviceLostInfo__GpuDeviceLostInfo______true__24: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen_c668c5b1fab83e48___convert__closures_____invoke___wgpu_e7347bf7fa5e5f17___backend__webgpu__webgpu_sys__gen_GpuDeviceLostInfo__GpuDeviceLostInfo______true__26: (a: number, b: number, c: any) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;

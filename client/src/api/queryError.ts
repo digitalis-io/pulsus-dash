@@ -97,6 +97,9 @@ export function queryError(
     if (queryId !== undefined) d.queryId = queryId;
     return new ApiError('queryInvalid', message, { detail: detail(d) });
   }
+  if (status === 403 && body.code === 'scope_denied') {
+    return new ApiError('scopeDenied', message, { detail: detail() });
+  }
   switch (status) {
     case 404:
       return new ApiError('notFound', message, { detail: detail() });

@@ -11,9 +11,17 @@
  * and the inactive one sends nothing and loads no language.
  */
 import { useQuery } from '@tanstack/react-query';
-import { useContext, useLayoutEffect, useMemo, useRef } from 'react';
+import {
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react';
 import { useApi } from '../app/providers';
 import { isApiError, type DataPanelSpec } from '../api/types';
+import { StoreBypass } from '../data/rangeStore';
 import { promGrid } from '../data/step';
 import type { Diagnostic } from '../editor/lang/types';
 import type { TimeWindow } from '../engine/api';
@@ -32,6 +40,8 @@ import {
   type PanelState,
   type PanelStream,
 } from './panelRun';
+import { fromStore, outcomeOf, useStoreRun } from './panelStore';
+import { chunkable } from './rangeView';
 import { useLogPanelRun } from './useLogPanelRun';
 import { useQueryLanguage } from './useQueryLanguage';
 import { panelVars, referencedVariables } from './variableRefs';
@@ -122,7 +132,7 @@ export function usePanelRun(a: PanelRunInput): PanelRun {
 function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const api = useApi();
   const { vars, timeReady } = useContext(BoardRunContext);
-  const { window } = useTimeContext();
+  const { window, anchorMs, refreshEpoch } = useTimeContext();
   const { tenant, panel, text, enabled, widthPx } = a;
   const { fromMs, toMs } = window;
   const { lang, failed } = useQueryLanguage(active ? 'promql' : null);
@@ -181,8 +191,48 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
     [runKey, tenant, panel.id, text],
   );
 
+  // Store-backed (#304 §4.1): PromQL range, chunkable, no baseline, not degraded.
+  const eligible =
+    runKey !== null &&
+    kind === 'range' &&
+    baselineMs === null &&
+    !degraded &&
+    chunkable(text) &&
+    widthPx !== null &&
+    widthPx > 0;
+  const sr = useStoreRun(
+    eligible
+      ? {
+          tenant,
+          text,
+          vars: varsJson,
+          rate: true,
+          line: panel.vis.kind === 'line',
+          window: { fromMs, toMs },
+          widthPx,
+          epoch: refreshEpoch,
+          anchorMs,
+        }
+      : null,
+    enabled && runKey !== null,
+    key,
+  );
+  const view = sr.backed ? sr.view : null;
+  const { store } = sr;
+  // Part B §4.3: a fill from the family's other steps, the placeholder while the view's own runs.
+  const filled = useSyncExternalStore(
+    (cb) => store.subscribe(view?.idKey ?? '', cb),
+    () => {
+      if (view === null) return null;
+      const f = store.peekFilled(view);
+      return f !== null && f.rank === 0 ? f : null;
+    },
+  );
+
   // Read by the query function: a width change within one step does not refetch.
   const widthRef = useRef(widthPx);
+  // What was shown last (Part B: a rank 1 answer over a rank 0 fill of the same key crossfades).
+  const shownRef = useRef<{ readonly key: readonly unknown[]; readonly rank: 0 | 1 } | null>(null);
   useLayoutEffect(() => {
     widthRef.current = widthPx;
   });
@@ -192,33 +242,73 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
     enabled: enabled && runKey !== null,
     // Fresh within the window epoch only: the provider invalidates (§4.1).
     staleTime: Infinity,
+    ...(view === null ? {} : { gcTime: 0 }),
     retry: false,
     structuralSharing: false,
-    placeholderData: (prev: PanelOutcome | undefined, prevQuery) =>
-      prevQuery !== undefined &&
-      prevQuery.state.status !== 'error' &&
-      sameExceptWindow(prevQuery.queryKey, key)
-        ? prev
-        : undefined,
+    // A pan within held data is painted in its first render, with no request (PRF-028).
+    initialData:
+      view === null
+        ? undefined
+        : () => {
+            const held = store.peek(view);
+            return held !== null && held.stale.length === 0
+              ? outcomeOf(key, held, view.id.scope)
+              : undefined;
+          },
+    placeholderData: (prev: PanelOutcome | undefined, prevQuery) => {
+      if (view !== null && filled !== null) return outcomeOf(key, filled, view.id.scope);
+      if (
+        prevQuery === undefined ||
+        prevQuery.state.status === 'error' ||
+        !sameExceptWindow(prevQuery.queryKey, key)
+      ) {
+        return undefined;
+      }
+      // Store-derived data is reused only under its scope and a valid lease (§4.5).
+      if (fromStore(prev) && (!sr.lease || prev?.scope !== sr.scope)) return undefined;
+      return prev;
+    },
     queryFn: async ({ signal, queryKey }): Promise<PanelOutcome> => {
       if (kind === null || stepMs === null) throw new Error('panel: a run without its inputs');
+      if (view !== null) {
+        try {
+          // Part B §4.3: a run that starts over a rank 0 fill of this key crossfades into it.
+          const overFill = store.peek(view) === null && store.peekFilled(view)?.rank === 0;
+          const shown = shownRef.current;
+          const overShown = shown?.rank === 0 && sameKey(shown.key, queryKey);
+          const held = await store.load(sr.owner, view, signal);
+          const fade =
+            held.rank === 1 && (overFill || overShown) ? ('crossfade' as const) : undefined;
+          return outcomeOf(queryKey, held, view.id.scope, fade);
+        } catch (e) {
+          // Admission refused (§4.2): today's single request below.
+          if (!(e instanceof StoreBypass)) throw e;
+        }
+      }
       const sent = Object.fromEntries(sentPairs);
       const widthPx = widthRef.current ?? 0;
       // One request: the panel's window, or that window moved back by `shift` (the baseline).
+      // Every board range request runs through the page's one scheduler (§4.6).
       const request = async (shift: number, s: AbortSignal): Promise<PanelOutcome> => {
         if (kind === 'range') {
-          const r = await api.queryRange(
-            tenant,
-            {
-              query: text,
-              fromMs: fromMs - shift,
-              toMs: toMs - shift,
-              widthPx,
-              vars: sent,
-              rate: true,
-            },
-            s,
+          const r = await store.scheduler.exec(s, (sig, priority) =>
+            api.queryRange(
+              tenant,
+              {
+                query: text,
+                fromMs: fromMs - shift,
+                toMs: toMs - shift,
+                widthPx,
+                vars: sent,
+                rate: true,
+                priority,
+              },
+              sig,
+            ),
           );
+          if (r.scope !== undefined && r.scope !== null) {
+            store.observeScope(tenant, r.scope, store.now());
+          }
           return { key: queryKey, planned: r.planned, result: fromRange(r) };
         }
         const r = await api.queryInstant(
@@ -255,6 +345,15 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
     },
   });
 
+  // Past the lease a mounted panel's store data is not painted: it revalidates first (§4.5).
+  const data = runKey === null ? null : (query.data ?? null);
+  const leased = data !== null && fromStore(data) && (!sr.lease || data.scope !== sr.scope);
+  const { refetch } = query;
+  const isFetching = query.isFetching;
+  useEffect(() => {
+    if (leased && enabled && !isFetching) void refetch();
+  }, [leased, enabled, isFetching, refetch]);
+
   const rejection = query.isError && !isAbort(query.error) ? query.error : null;
   const serverMissing = useMemo(() => missingOf(rejection), [rejection]);
   const serverRefused = isApiError(rejection, 'queryTooLong');
@@ -274,7 +373,10 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
     [error, text, lang],
   );
 
-  const outcome = runKey === null ? null : (query.data ?? null);
+  const outcome = leased ? null : data;
+  useEffect(() => {
+    shownRef.current = outcome === null ? null : { key: outcome.key, rank: outcome.rank ?? 1 };
+  }, [outcome]);
   const expanded =
     runKey === null
       ? null
@@ -287,6 +389,9 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
           : null;
 
   const fetching = query.isFetching;
+  const storeState: PanelRun['store'] = sr.view === null ? 'off' : sr.backed ? 'held' : 'bypass';
+  const rank = outcome?.rank ?? null;
+  const stale = sr.backed ? sr.stale : NO_STALE;
   return useMemo(
     () => ({
       text,
@@ -303,9 +408,9 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       stream: null,
       placeholder: false,
       retry: NO_RETRY,
-      store: 'off' as const,
-      rank: null,
-      stale: NO_STALE,
+      store: storeState,
+      rank,
+      stale,
     }),
     [
       text,
@@ -319,6 +424,9 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       fetching,
       stepMs,
       expanded,
+      storeState,
+      rank,
+      stale,
     ],
   );
 }

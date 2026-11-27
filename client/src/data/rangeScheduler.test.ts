@@ -71,7 +71,11 @@ describe('rangeScheduler (#304 §4.6, §A.10)', () => {
     for (let i = 0; i < 10; i++) h.add(`p${String(i)}`, 'prefetch');
     await flush();
     expect(h.running.size).toBe(MAX_IN_FLIGHT);
-    // One slot is reserved for the queued prefetch work.
+    expect(h.lowRunning()).toBe(0);
+    // A freed slot goes to the waiting prefetch work: one is reserved for it.
+    h.probes.get('i0')?.finish();
+    await flush();
+    expect(h.running.size).toBe(MAX_IN_FLIGHT);
     expect(h.lowRunning()).toBe(1);
     // Drain: finish everything as it starts.
     for (let round = 0; round < 40 && h.running.size > 0; round++) {

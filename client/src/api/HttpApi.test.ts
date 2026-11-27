@@ -1356,7 +1356,9 @@ describe('HttpApi range store wire (#304 §A.1, §A.2)', () => {
     expect((await plain.api.queryRange('demo', R)).scope ?? null).toBeNull();
     const denied = api(() =>
       Promise.resolve(
-        withScope(403, { error: { code: 'scope_denied', message: 'data scopes are not supported yet' } }),
+        withScope(403, {
+          error: { code: 'scope_denied', message: 'data scopes are not supported yet' },
+        }),
       ),
     );
     const e = (await rejection(denied.api.queryRange('demo', R))) as ApiError;
