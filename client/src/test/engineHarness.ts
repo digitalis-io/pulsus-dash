@@ -16,10 +16,7 @@ import type {
   SeriesFrame,
   VisSpec,
 } from '../engine/api';
-import type {
-  Canvas2DEngine as EngineClass,
-  GeoModule,
-} from '../engine/canvas2d/Canvas2DEngine';
+import type { Canvas2DEngine as EngineClass, GeoModule } from '../engine/canvas2d/Canvas2DEngine';
 import type { WheelLatch } from '../engine/canvas2d/input';
 import { recordingContext, type RecordingContext } from './recordingContext';
 

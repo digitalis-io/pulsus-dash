@@ -5,7 +5,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { colour } from '../../styles/tokens';
-import { harness, LINE_NONE, pointer, seriesData, seriesFrame, type Harness } from '../../test/engineHarness';
+import {
+  harness,
+  LINE_NONE,
+  pointer,
+  seriesData,
+  seriesFrame,
+  type Harness,
+} from '../../test/engineHarness';
 import { frameOf, geoSpec, pxOf } from '../../test/geoKit';
 import { G } from '../../vis/geo/fixtures/series';
 import type { FrameData, GeoMapSpec, GeoMarksEvent, GeoView } from '../api';
@@ -322,7 +329,9 @@ describe('unit:geo-scene', () => {
     expect(h.a11y.at(-1)?.geo?.marks).toBe(5);
     const ops = h.visible().ops;
     // Light map water.
-    expect(ops.some((o) => o.op === 'fillRect' && o.fillStyle === colour.light['map-water'])).toBe(true);
+    expect(ops.some((o) => o.op === 'fillRect' && o.fillStyle === colour.light['map-water'])).toBe(
+      true,
+    );
     // The selection ring on k05 and the focus ring on k06 (2 px, `focus`).
     const at = (key: string) => pxOf(frameOf(), key, FIT);
     const rings = ringCentres(ops, colour.light.focus);
@@ -351,7 +360,10 @@ describe('unit:geo-scene', () => {
 
   it('the chart-draw measure is tagged geomap with the marks', async () => {
     const measures: { name: string; detail: unknown }[] = [];
-    vi.spyOn(performance, 'measure').mockImplementation(((name: string, o: { detail?: unknown }) => {
+    vi.spyOn(performance, 'measure').mockImplementation(((
+      name: string,
+      o: { detail?: unknown },
+    ) => {
       measures.push({ name, detail: o.detail });
       return undefined;
     }) as unknown as typeof performance.measure);
