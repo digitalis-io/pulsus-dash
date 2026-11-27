@@ -733,6 +733,54 @@ fn chunk_table() {
     );
 }
 
+#[test]
+fn chunk_table_cap_holds_as_frames_let_go() {
+    // Cap: one chunk. Four chunks, each held by a frame as it arrives, so none is evicted.
+    let one = {
+        let mut t = ChunkTable::new(1);
+        t.insert(Arc::new(grid_chunk(0, 2, 100)));
+        t.unheld_bytes()
+    };
+    let mut t = ChunkTable::with_cap(1, one);
+    let mut frames: Vec<Arc<Chunk>> = Vec::new();
+    for i in 0..4 {
+        let id = t.insert(Arc::new(grid_chunk(i, 2, 100))).unwrap_or(0);
+        frames.extend(t.get(1, id));
+    }
+    assert_eq!(t.len(), 4);
+    assert_eq!(t.unheld_bytes(), 0);
+    // The frames take other data: all four chunks become unheld, with no insertion after.
+    frames.clear();
+    assert_eq!(
+        t.unheld_bytes(),
+        4 * one,
+        "unheld before the cap is enforced"
+    );
+    t.enforce_cap();
+    assert!(
+        t.unheld_bytes() <= one,
+        "{} over the cap {one}",
+        t.unheld_bytes()
+    );
+    assert_eq!(t.len(), 1, "the most recently used stays");
+    // The service enforces it at every tick, with nothing decoded.
+    let mut svc = DecodeService::new(1);
+    *svc.table_mut() = ChunkTable::with_cap(1, one);
+    let held: Vec<Arc<Chunk>> = (0..3)
+        .filter_map(|i| {
+            let id = svc.table_mut().insert(Arc::new(grid_chunk(i, 2, 100)))?;
+            svc.table_mut().get(1, id)
+        })
+        .collect();
+    assert_eq!(held.len(), 3);
+    assert_eq!(svc.table().len(), 3);
+    drop(held);
+    let _ = svc.take_done();
+    assert!(svc.table().unheld_bytes() <= one);
+    assert_eq!(svc.table().len(), 1);
+    assert_eq!(svc.in_flight(), 0);
+}
+
 /// `bench:decode-r1` (T04-015, plan #68 D2 §5), report-only in MT: the decode and the join of the
 /// `many` route fixture (600 series × 11 points) on the native pool, in one push and split as the
 /// browser reads it (64 KiB reads). Run with `--ignored --nocapture`.

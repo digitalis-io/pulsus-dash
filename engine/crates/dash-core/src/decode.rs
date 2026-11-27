@@ -240,7 +240,7 @@ impl ChunkTable {
                 last_used,
             },
         );
-        self.evict();
+        self.enforce_cap();
         Some(id)
     }
 
@@ -284,7 +284,11 @@ impl ChunkTable {
             .sum()
     }
 
-    fn evict(&mut self) {
+    /// Evicts unheld chunks, least recently used first, until their bytes are within the cap. Run
+    /// on every insert, and whenever a frame drops or replaces a chunk (`web`: after each change of
+    /// a frame's data) and at each tick (`DecodeService::take_done`): a chunk becomes unheld when
+    /// the last frame holding it lets it go, not only when another arrives.
+    pub fn enforce_cap(&mut self) {
         let mut unheld: Vec<(u64, u32, usize)> = self
             .entries
             .iter()
@@ -760,6 +764,7 @@ impl DecodeService {
     /// table here (`ids` when the table has no id left). Also starts the tasks `pump` would.
     pub fn take_done(&mut self) -> Vec<Done> {
         self.pump();
+        self.table.enforce_cap();
         let mut out = std::mem::take(&mut self.local);
         let mut credits: BTreeMap<u32, u64> = BTreeMap::new();
         while let Ok(o) = self.rx.try_recv() {
@@ -814,6 +819,11 @@ impl DecodeService {
             .collect();
         credited.append(&mut out);
         credited
+    }
+
+    /// Requests begun and not yet ended (the probe's `chunks().inflight`).
+    pub fn in_flight(&self) -> usize {
+        self.reqs.len()
     }
 
     /// Decodes in flight: `engine_wants_frame` stays true.

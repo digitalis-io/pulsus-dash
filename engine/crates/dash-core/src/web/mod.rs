@@ -149,6 +149,16 @@ pub fn engine_on_wake(wake: &js_sys::Function) {
     WAKE.with_borrow_mut(|w| *w = Some(wake.clone()));
 }
 
+/// A frame's data changed (replaced, cleared, disposed): a chunk it held may be unheld now, so the
+/// table's unheld cap is enforced at once (plan #68 D2, review r1 #1).
+#[cfg(feature = "mt")]
+fn data_changed(e: &mut Engine) {
+    e.decode.table_mut().enforce_cap();
+}
+
+#[cfg(not(feature = "mt"))]
+fn data_changed(_: &mut Engine) {}
+
 fn with<T>(f: impl FnOnce(&mut Engine) -> T) -> Option<T> {
     ENGINE.with_borrow_mut(|e| e.as_mut().map(f))
 }
@@ -292,7 +302,9 @@ pub fn frame_data_series(
 pub fn frame_data_end(id: u32) -> Result<(), JsError> {
     with(|e| {
         e.dirty.insert(id);
-        e.frames.data_end(id)
+        let r = e.frames.data_end(id);
+        data_changed(e);
+        r
     })
     .unwrap_or(Ok(()))
     .map_err(|err| JsError::new(&err.to_string()))
@@ -303,6 +315,7 @@ pub fn frame_data_clear(id: u32) {
     with(|e| {
         e.dirty.insert(id);
         e.frames.data_clear(id);
+        data_changed(e);
     });
 }
 
@@ -328,6 +341,7 @@ pub fn frame_dispose(id: u32) {
         e.dirty.remove(&id);
         e.awaiting.remove(&id);
         e.failed.remove(&id);
+        data_changed(e);
     });
 }
 
@@ -495,6 +509,7 @@ pub fn frame_set_chunk_ref(id: u32, chunk: u32, epoch: u32) -> bool {
         };
         e.frames.set_chunk(id, Some(c));
         e.dirty.insert(id);
+        data_changed(e);
         true
     })
     .unwrap_or(false)
@@ -513,7 +528,14 @@ pub fn engine_chunk_release(chunk: u32, epoch: u32) {
 pub fn engine_chunk_stats() -> String {
     with(|e| {
         let t = e.decode.table();
-        serde_json::json!({"count": t.len(), "bytes": t.bytes(), "epoch": e.epoch}).to_string()
+        serde_json::json!({
+            "count": t.len(),
+            "bytes": t.bytes(),
+            "unheld": t.unheld_bytes(),
+            "inflight": e.decode.in_flight(),
+            "epoch": e.epoch,
+        })
+        .to_string()
     })
     .unwrap_or_else(|| "null".to_owned())
 }
