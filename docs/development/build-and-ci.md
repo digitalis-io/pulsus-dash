@@ -1051,7 +1051,10 @@ test annotation and a console line, with PRF-001 (p50 interval ≤ 16.7 ms) and 
 22.2 ms) marked `ok`, `over`, or `n/a` for an empty percentile.
 
 **Failures.** Only relative sanity checks fail the run, never a per-step count:
-- a case that is neither skipped nor timed out has fewer than 2 presented frames;
+- a case whose drive ran did not dispatch every step of its script;
+- a case that is neither skipped nor timed out has fewer than 2 presented frames. A timed-out
+  drive is still held to the movement checks below; only a case whose box ran out before its
+  drive (the synthesis or the selection's settle, as m = 500 at 10⁸) is not checked;
 - a script case ends at the window of its first `a11y` (nothing moved);
 - a hover case has no hover event, or its crosshair never reached a position other than its one
   before the case. The engine answers only the latest Overlay (C2b), so a slow frame can report a

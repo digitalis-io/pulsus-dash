@@ -286,7 +286,8 @@ harness (`client/e2e/bench/frameBench.ts`):
   thread's frames, the input ring coalesces (T03-020), and each case reports its steps and
   `coalescing` (steps per presented frame). After the script the harness collects until the frame
   has presented twice. Each case has a time box (60 s in the gallery, 120 s at 10⁸); a case that
-  runs out is recorded `timedOut`, which is a figure, not a failure.
+  runs out is recorded `timedOut`, which is a figure, not a failure of its frame count; a drive that
+  ran must still have dispatched its steps and moved the window or the crosshair.
 - **Status.** On the gate host (`make engine-bench`) both are report-only until the lab exists
   (§7.1, T05-006). Only relative sanity checks fail a run: at least 2 presented frames, the window
   moved by a script, a hover that moved the crosshair, and no failed frame or `fatal`. PRF-001
