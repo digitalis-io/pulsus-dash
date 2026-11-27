@@ -18,22 +18,27 @@
   color: var(--text);
 }
 
-/* VL-014, VL-016: none under reduced motion, so React Aria mounts and unmounts on one frame. */
+/* VL-014, VL-016, #282: the modal zooms open from its origin (FLIP: `--zoom-*`, set by
+   `ModalDialog` from the trigger's or panel's rect; else from the centre at `scale(0.04)`) and
+   closes back to it, on transform and opacity only, with the backdrop fading alongside. None under
+   reduced motion, so React Aria mounts and unmounts on one frame. */
 @media (prefers-reduced-motion: no-preference) {
   .overlay[data-entering] {
-    animation: fade var(--motion-float-open) var(--motion-easing-out);
+    animation: fade var(--motion-zoom-open) var(--motion-easing-zoom);
   }
 
   .overlay[data-exiting] {
-    animation: fade var(--motion-fast) var(--motion-easing-in) reverse forwards;
+    animation: fade var(--motion-zoom-close) var(--motion-easing-in) reverse forwards;
   }
 
   .modal[data-entering] {
-    animation: rise var(--motion-float-open) var(--motion-easing-out);
+    animation: zoom-in var(--motion-zoom-open) var(--motion-easing-zoom);
+    will-change: transform;
   }
 
   .modal[data-exiting] {
-    animation: fade var(--motion-fast) var(--motion-easing-in) reverse forwards;
+    animation: zoom-out var(--motion-zoom-close) var(--motion-easing-in) forwards;
+    will-change: transform;
   }
 }
 
@@ -47,15 +52,35 @@
   }
 }
 
-@keyframes rise {
+@keyframes zoom-in {
   from {
     opacity: 0;
-    translate: 0 calc(var(--space-2) * -1);
+    transform: translate(var(--zoom-x, 0), var(--zoom-y, 0)) scale(var(--zoom-scale, 0.04));
+  }
+
+  40% {
+    opacity: 1;
   }
 
   to {
     opacity: 1;
-    translate: 0 0;
+    transform: none;
+  }
+}
+
+@keyframes zoom-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+
+  60% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    transform: translate(var(--zoom-x, 0), var(--zoom-y, 0)) scale(var(--zoom-scale, 0.04));
   }
 }
 

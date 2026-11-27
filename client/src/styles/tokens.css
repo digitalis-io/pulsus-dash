@@ -172,10 +172,13 @@
   --material-filter: blur(24px) saturate(180%);
   --motion-easing-in: cubic-bezier(0.4, 0, 1, 1);
   --motion-easing-out: cubic-bezier(0.2, 0, 0, 1);
+  --motion-easing-zoom: cubic-bezier(0.16, 1, 0.3, 1);
   --motion-fast: 150ms;
   --motion-float-open: 200ms;
   --motion-quick: 100ms;
   --motion-standard: 250ms;
+  --motion-zoom-close: 200ms;
+  --motion-zoom-open: 320ms;
   --opacity-area: 0.28;
   --opacity-chip: 0.12;
   --opacity-dimmed: 0.35;
@@ -246,5 +249,7 @@
     --motion-float-open: 0ms;
     --motion-quick: 0ms;
     --motion-standard: 0ms;
+    --motion-zoom-close: 0ms;
+    --motion-zoom-open: 0ms;
   }
 }

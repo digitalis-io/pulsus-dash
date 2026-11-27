@@ -40,6 +40,7 @@ import { t, type MessageId } from '../../i18n/t';
 import { Button } from '../../kit/Button';
 import { cx } from '../../kit/cx';
 import { ModalDialog } from '../../kit/Dialog';
+import { panelCard } from './panelCard';
 import { Select } from '../../kit/Select';
 import { TextField } from '../../kit/TextField';
 import { autoVis } from '../../vis/autovis';
@@ -333,6 +334,7 @@ export function PanelEditor({
       title={t('editor.title')}
       isOpen
       size="editor"
+      origin={() => panelCard(document, panel.id)}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
@@ -428,7 +430,7 @@ export function PanelEditor({
           >
             {statusText}
           </p>
-          <Button variant="primary" onPress={onClose}>
+          <Button variant="primary" slot="close">
             {t('editor.close')}
           </Button>
         </div>
