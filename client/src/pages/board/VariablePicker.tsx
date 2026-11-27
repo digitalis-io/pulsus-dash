@@ -65,7 +65,7 @@ function chipText(state: VarState, labelOf: (name: string) => string): string {
     case 'ready':
       return state.display;
     case 'loading':
-      return t('variables.loadingChip');
+      return t('panel.loading');
     case 'waiting':
       return t('variables.waiting', { label: labelOf(state.on) });
     case 'failed':
@@ -73,7 +73,7 @@ function chipText(state: VarState, labelOf: (name: string) => string): string {
     case 'tooMany':
       return t('variables.tooMany');
     case 'unset':
-      return t('variables.notSet');
+      return t('filters.notSet');
   }
 }
 
@@ -274,7 +274,7 @@ function PickerBody({
       {anyBlocked && <p className={cx(styles['note'])}>{t('variables.tooMany')}</p>}
       {error !== null && <p className={cx(styles['note'])}>{t(error)}</p>}
       <div className={cx(styles['footer'])}>
-        {status === 'failed' && <Button onPress={onRetry}>{t('variables.retry')}</Button>}
+        {status === 'failed' && <Button onPress={onRetry}>{t('boardList.retry')}</Button>}
         <Button
           onPress={() => {
             commit(null);
@@ -284,7 +284,7 @@ function PickerBody({
         </Button>
         {multi && (
           <Button variant="primary" isDisabled={!canApply} onPress={apply}>
-            {t('variables.apply')}
+            {t('filters.apply')}
           </Button>
         )}
       </div>

@@ -1,4 +1,5 @@
-/* The variable chip (plan #289 §4.4): a 28 px field capsule, a muted label, the value ellipsised. */
+/* The variable chip (plan #289 §4.4): a 28 px field, a muted label, the value ellipsised; its corner
+   is on the radius scale (VL-019: no capsules). */
 .chip {
   display: inline-flex;
   align-items: center;
@@ -7,7 +8,7 @@
   max-width: calc(var(--size-crumb-max) * 2);
   padding: 0 var(--space-2);
   border: var(--border-hairline) solid var(--border-field);
-  border-radius: calc(var(--size-control) / 2);
+  border-radius: var(--radius-md);
   background: var(--field);
   overflow: hidden;
 }
