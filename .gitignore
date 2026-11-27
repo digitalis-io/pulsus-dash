@@ -53,3 +53,6 @@ server/internal/gateway/static/dist/
 # Local dev stack settings, including the real PulsusDB URL (docs/development/dev-stack.md)
 dev/local.env
 __pycache__/
+
+# Local cargo cache used during code review (never tracked)
+.review-cache/
