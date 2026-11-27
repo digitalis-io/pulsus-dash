@@ -8,7 +8,7 @@
 
 [color.dark]
 canvas = "#0E1014"
-surface-1 = "#16181D"
+surface-1 = "#15171C"
 surface-2 = "#1D2026"
 surface-hover = "#262A31"
 hairline = "#FFFFFF14"
@@ -40,7 +40,7 @@ shadow-ambient = "#00000066"
 shadow-key = "#0000008C"
 accent-fill = "#2B68D6"
 accent-pressed = "#255CC0"
-material-bar = "#16181DE6"
+material-bar = "#15171CE6"
 material-menu = "#1E2127EB"
 series-1 = "#7AA2D6"
 series-2 = "#C9A36B"
@@ -61,7 +61,7 @@ ramp-8 = "#B1D3F7"
 ramp-9 = "#D8EAFE"
 brush = "#5B9BFF29"
 # The geomap's floating overlay (T24-091): surface-1 at 94 %.
-surface-float = "#16181DF0"
+surface-float = "#15171CF0"
 # The shared selection's band and log-row background (T25-006): accent at 16 %.
 selection = "#5B9BFF29"
 # Query syntax (#63 Part B): each at least 4.5:1 on surface-1 and surface-2.

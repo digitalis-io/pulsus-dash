@@ -21,7 +21,7 @@ describe('tokens generate', () => {
     const { css } = generate(toml);
     const dark = /:root,\n:root\[data-theme="dark"\] \{([^}]*)\}/.exec(css)?.[1] ?? '';
     expect(dark).toContain('--canvas: #0E1014;');
-    expect(dark).toContain('--surface-1: #16181D;');
+    expect(dark).toContain('--surface-1: #15171C;');
     expect(dark).toContain('--surface-2: #1D2026;');
     expect(css).toContain('--size-sidebar-expanded: 240px;');
   });
@@ -143,7 +143,7 @@ describe('ci:token-lint Rust output', () => {
 
   it('emits every colour as sRGB-encoded Rgba8 bytes equal to its CSS hex', () => {
     const { rs } = generate(toml);
-    expect(rs).toContain('pub const SURFACE_1: Rgba8 = Rgba8([0x16, 0x18, 0x1D, 0xFF]);');
+    expect(rs).toContain('pub const SURFACE_1: Rgba8 = Rgba8([0x15, 0x17, 0x1C, 0xFF]);');
     expect(rs).toContain('pub mod advance { pub const MONO: f32 = 0.6; }');
     const tk = parseTokens(toml);
     for (const theme of ['dark', 'light'] as const) {
