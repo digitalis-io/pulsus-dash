@@ -566,6 +566,30 @@ describe('unit:geo-states', () => {
     kept(k);
   });
 
+  it('(n) Shift+T while there are no rows is a no-op: no table and no focus move when they arrive', () => {
+    for (const away of ['header', 'inspector'] as const) {
+      const k = okG();
+      k.set({ run: runOf(null, { fetching: true }) });
+      const s = status();
+      expect(s).toHaveAttribute('aria-busy', 'true');
+      expect(fireEvent.keyDown(s as HTMLElement, { key: 'T', shiftKey: true })).toBe(true);
+      const to =
+        away === 'header'
+          ? document.querySelector<HTMLElement>('[data-outside]')
+          : (k.h.aside()?.querySelector<HTMLElement>('button') ?? null);
+      act(() => {
+        to?.focus();
+      });
+      k.set({ run: run({}) });
+      emitMarks(k.frame());
+      expect(document.querySelector('[data-panel-table]')).toBeNull();
+      expect(document.activeElement).toBe(to);
+      kept(k);
+      cleanup();
+      vi.useRealTimers();
+    }
+  });
+
   it('(k) (c) with focus in the Inspector: focus stays there', () => {
     const k = okG();
     const close = k.h.aside()?.querySelector<HTMLElement>('button');

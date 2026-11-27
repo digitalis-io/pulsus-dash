@@ -203,6 +203,8 @@ export default function GeoMapFrame(props: GeoMapFrameHostProps): JSX.Element {
   const tableIntent = useRef<'open' | 'close' | null>(null);
   const [focusToggle, setFocusToggle] = useState(false);
   const tableOn = useRef(table);
+  /** Rows exist (T24 §4.12: the table is disabled while loading, after an error or invalid data). */
+  const rowsOn = useRef(false);
   useLayoutEffect(() => {
     tableOn.current = table;
   });
@@ -344,6 +346,8 @@ export default function GeoMapFrame(props: GeoMapFrameHostProps): JSX.Element {
       if (!e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
       if (e.key !== 'T' && e.key !== 't') return;
       if (inTextField(e.target)) return;
+      // No rows: the table is disabled, so nothing is queued (review r2).
+      if (!rowsOn.current) return;
       e.preventDefault();
       userTable(!tableOn.current);
     };
@@ -353,6 +357,9 @@ export default function GeoMapFrame(props: GeoMapFrameHostProps): JSX.Element {
     };
   }, [userTable]);
   const hasRows = rows !== null;
+  useLayoutEffect(() => {
+    rowsOn.current = hasRows;
+  });
   const showTable = table && hasRows;
   const tableRows = useMemo(() => (rows === null ? null : geoTable(rows, unit)), [rows, unit]);
   // States (T24-095) and the table: focus moves only while it is in this panel.

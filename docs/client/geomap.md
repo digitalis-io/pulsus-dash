@@ -608,7 +608,8 @@ it was inside the list. A refetch that drops the focused mark announces "‹old 
 shown".
 
 Tab order: the surface, the list, the legend's entries, the meter. Shift+T anywhere in the panel
-(not in a text field) shows the table, and again the map.
+(not in a text field) shows the table, and again the map. While there are no rows (loading, an
+error, invalid data) the table is disabled: Shift+T does nothing and nothing is queued for later.
 
 ### The table
 
