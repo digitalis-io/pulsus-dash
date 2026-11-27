@@ -155,10 +155,13 @@ const EDITOR_FILE = /^assets\/editor-[^/]+\.js$/;
 
 /** Every engine file (`vite.config.ts`: chunks, workers and the wasm are `dash-engine-*`). */
 const ENGINE_FILE = /^assets\/dash-engine-[^/]+\.(js|wasm)$/;
-/** The engine modes (`vite.config.ts` `enginePrefix`) and their budget classes (plan #68 C2d2). */
+/**
+ * The engine modes (`vite.config.ts` `enginePrefix`), their budget classes and the manifest key of
+ * their glue chunk (plan #68 C2d2).
+ */
 const ENGINE_MODES = [
-  ['mt', 'engineMt'],
-  ['st', 'engineSt'],
+  ['mt', 'engineMt', 'virtual:dash-engine'],
+  ['st', 'engineSt', 'virtual:dash-engine-st'],
 ] as const;
 const modeOf = (f: string): 'mt' | 'st' | null =>
   f.startsWith('assets/dash-engine-mt-')
@@ -408,20 +411,25 @@ export function checkBundle(dist: string, budgetsJson: unknown): BundleResult {
   }
   const engineSet = new Set(engine);
   const shared = engine.filter((f) => modeOf(f) === null);
-  for (const [mode, cls] of ENGINE_MODES) {
+  for (const [mode, cls, glueKey] of ENGINE_MODES) {
     const own = engine.filter((f) => modeOf(f) === mode);
-    for (const [ext, what] of [
-      ['.wasm', 'wasm'],
-      ['.js', 'js'],
-    ] as const) {
-      if (!own.some((f) => f.endsWith(ext))) {
-        findings.push(
-          missing(
-            `engine-${mode}-${what}`,
-            `no assets/dash-engine-${mode}-*${ext}: build the engine (make engine-wasm)`,
-          ),
-        );
-      }
+    if (!own.some((f) => f.endsWith('.wasm'))) {
+      findings.push(
+        missing(
+          `engine-${mode}-wasm`,
+          `no assets/dash-engine-${mode}-*.wasm: build the engine (make engine-wasm)`,
+        ),
+      );
+    }
+    // The mode's glue: the chunk the manifest names for its virtual module, a file of that mode.
+    const glue = manifest.get(glueKey)?.file;
+    if (glue === undefined || !own.includes(glue)) {
+      findings.push(
+        missing(
+          `engine-${mode}-js`,
+          `no glue chunk of ${glueKey} (assets/dash-engine-${mode}-*.js): build the engine (make engine-wasm)`,
+        ),
+      );
     }
     if (own.length === 0) continue;
     const files = [...own, ...shared];

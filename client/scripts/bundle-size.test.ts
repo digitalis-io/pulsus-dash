@@ -58,6 +58,9 @@ const ENGINE_WASM = 'assets/dash-engine-mt-a.wasm';
 const ENGINE_WORKER = 'assets/dash-engine-mt-render.worker-a.js';
 const ST_WASM = 'assets/dash-engine-st-b.wasm';
 const ST_WORKER = 'assets/dash-engine-st-render-st.worker-b.js';
+/** Each mode's glue chunk, named by the manifest for its virtual module. */
+const MT_GLUE = 'assets/dash-engine-mt-g.js';
+const ST_GLUE = 'assets/dash-engine-st-g.js';
 /** The geo assets (plan #231 §3.3) and the `geo-assets` entry that names them. */
 const GEO_BASEMAP = 'assets/basemap-a1.json';
 const GEO_GAZETTEER = 'assets/gazetteer-b2.json';
@@ -103,6 +106,8 @@ function makeDist(o: Overrides = {}): string {
     'src/editor/lang/logql/logql.ts': { file: E3, isDynamicEntry: true, imports: ['_editor-s.js'] },
     'src/editor/logqlEditor.ts': { file: E4, isDynamicEntry: true, imports: ['_editor-s.js'] },
     '_editor-s.js': { file: S, imports: ['index.html'] },
+    'virtual:dash-engine': { file: MT_GLUE, isDynamicEntry: true },
+    'virtual:dash-engine-st': { file: ST_GLUE, isDynamicEntry: true },
     'src/vis/geo/urls.ts': {
       file: GEO_ENTRY,
       src: 'src/vis/geo/urls.ts',
@@ -147,6 +152,8 @@ function makeDist(o: Overrides = {}): string {
     [ENGINE_WORKER]: Buffer.from('export {}'),
     [ST_WASM]: Buffer.from('wasm-st'),
     [ST_WORKER]: Buffer.from('export {s}'),
+    [MT_GLUE]: Buffer.from('export {g}'),
+    [ST_GLUE]: Buffer.from('export {h}'),
     [GEO_BASEMAP]: Buffer.from('{"v":1}'),
     [GEO_GAZETTEER]: Buffer.from('{"v":1}'),
     [GEO_ENTRY]: Buffer.from('const a="/assets/basemap-a1.json";export{a}'),
@@ -288,9 +295,17 @@ describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', 
     const mt = rowsOf(r, 'engineMt');
     const st = rowsOf(r, 'engineSt');
     expect([mt.length, st.length]).toEqual([1, 1]);
-    expect(mt[0]?.bytes).toBe(brotliSize(wasm) + brotliSize(worker) + brotliSize(big));
+    expect(mt[0]?.bytes).toBe(
+      brotliSize(wasm) +
+        brotliSize(worker) +
+        brotliSize(Buffer.from('export {g}')) +
+        brotliSize(big),
+    );
     expect(st[0]?.bytes).toBe(
-      brotliSize(stWasm) + brotliSize(Buffer.from('export {s}')) + brotliSize(big),
+      brotliSize(stWasm) +
+        brotliSize(Buffer.from('export {s}')) +
+        brotliSize(Buffer.from('export {h}')) +
+        brotliSize(big),
     );
     expect([mt[0]?.budget, st[0]?.budget]).toEqual([1_900_000, 1_900_000]);
     // PRF-009 per mode: initial JS + initial CSS + that mode's row.
@@ -313,7 +328,7 @@ describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', 
     const { brotliSize } = await import('./bundle-size.ts');
     // Brotli of incompressible bytes is a little over their length: find the length that
     // compresses to exactly the budget plus one with the worker's bytes.
-    const rest = brotliSize(Buffer.from('export {s}'));
+    const rest = brotliSize(Buffer.from('export {s}')) + brotliSize(Buffer.from('export {h}'));
     let n = 1_900_001 - rest - 10;
     let b = randomBytes(n, 9);
     for (let i = 0; i < 40 && brotliSize(b) + rest !== 1_900_001; i++) {
@@ -368,12 +383,30 @@ describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', 
     }
   });
   it.each([
-    ['no MT wasm', { [ENGINE_WASM]: null }, 'missing-artefact:engine-mt-wasm'],
-    ['no MT glue', { [ENGINE_WORKER]: null }, 'missing-artefact:engine-mt-js'],
-    ['no ST wasm', { [ST_WASM]: null }, 'missing-artefact:engine-st-wasm'],
-    ['no ST glue', { [ST_WORKER]: null }, 'missing-artefact:engine-st-js'],
-  ])('%s', (_name, files, rule) => {
-    expect(rules(makeDist({ files }))).toEqual([rule]);
+    ['no MT wasm', { [ENGINE_WASM]: null }, ['missing-artefact:engine-mt-wasm']],
+    [
+      'no MT glue file, its workers kept',
+      { [MT_GLUE]: null },
+      [`missing-artefact:${MT_GLUE}`, 'missing-artefact:engine-mt-js'],
+    ],
+    ['no ST wasm', { [ST_WASM]: null }, ['missing-artefact:engine-st-wasm']],
+    [
+      'no ST glue file, its worker kept',
+      { [ST_GLUE]: null },
+      [`missing-artefact:${ST_GLUE}`, 'missing-artefact:engine-st-js'],
+    ],
+  ])('%s', (_name, files, want) => {
+    expect(rules(makeDist({ files }))).toEqual(want);
+  });
+  it('a glue chunk the manifest does not name, or of another mode, is missing', () => {
+    expect(rules(makeDist({ dropKeys: ['virtual:dash-engine-st'] }))).toEqual([
+      'missing-artefact:engine-st-js',
+    ]);
+    expect(
+      rules(
+        makeDist({ manifest: { 'virtual:dash-engine': { file: ST_GLUE, isDynamicEntry: true } } }),
+      ),
+    ).toEqual(['missing-artefact:engine-mt-js']);
   });
   it('each mode core total against 3 MB', () => {
     // 1.8 MB of ST is under its row but, with a 1.25 MB initial JS, over 3 MB in all (the

@@ -40,7 +40,7 @@ ST worker cannot be started under the production CSP.
 
 - `e2e:csp-violations` gains an ST leg: the ST engine boots under the production policy with no
   CSP or Trusted Types violation, and a page script can start no other worker script (a string URL
-  is refused by the sink, and a second `pulsus-engine` policy cannot be made).
+  is refused by the sink, and a second `pulsus-engine` policy cannot be made); and the page's own policy, called through the fault build's probe, refuses an unrelated same-origin script with a `TypeError` and starts no worker.
 - `unit:worker-policy` admits the three URLs and rejects the ST worker's URL with a query, another
   file under `assets/`, the same path on another port, `blob:` and `data:`.
 - `e2e:mode-matrix` M7 (`?mode=st`), M9 (not isolated) and M11 (no `Atomics.waitAsync`) run the ST
