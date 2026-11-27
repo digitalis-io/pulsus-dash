@@ -91,9 +91,17 @@ fn area_item() {
     let matched = SelectionIn::new(["0000000000000002"], None, None);
     assert_eq!(item_area(3, true, matched).0, None, "a matched selection");
     let unmatched = SelectionIn::new(["00000000000000ff"], None, None);
-    assert_eq!(item_area(3, true, unmatched).0, None, "an unmatched selection");
+    assert_eq!(
+        item_area(3, true, unmatched).0,
+        None,
+        "an unmatched selection"
+    );
     let interval = SelectionIn::new(std::iter::empty(), Some(T0), Some(T0 + 9_000.0));
-    assert_eq!(item_area(3, true, interval).0, None, "an interval selection");
+    assert_eq!(
+        item_area(3, true, interval).0,
+        None,
+        "an interval selection"
+    );
     let (_, b) = item_area(1, true, none());
     let Some(s) = b.summary else {
         panic!("no summary")
@@ -104,8 +112,14 @@ fn area_item() {
         _ => None,
     });
     assert_eq!(baseline, Some(want));
-    assert_eq!(b.list.palette[8], colour(Theme::Dark, ColourRole::ChartGrid));
-    assert_eq!(b.list.palette[9], colour(Theme::Dark, ColourRole::ChartAxis));
+    assert_eq!(
+        b.list.palette[8],
+        colour(Theme::Dark, ColourRole::ChartGrid)
+    );
+    assert_eq!(
+        b.list.palette[9],
+        colour(Theme::Dark, ColourRole::ChartAxis)
+    );
 }
 
 /// The plot of the fixture: x 0–100, rows 100 (top) to 300 (bottom).
@@ -151,7 +165,14 @@ fn gpu_join(row: &serde_json::Value) -> Option<(f32, f32, [f32; 2], [f32; 2])> {
     }
     // The plot's x is 0 and joins run between column centres: shift by −0.5 to the fixture's x.
     let col = c | (dx << 16);
-    join_ends(col, a, b, inst.2, [-0.5, PLOT[1], PLOT[2], PLOT[3]], (m.ku as f32, m.ou as f32))
+    join_ends(
+        col,
+        a,
+        b,
+        inst.2,
+        [-0.5, PLOT[1], PLOT[2], PLOT[3]],
+        (m.ku as f32, m.ou as f32),
+    )
 }
 
 fn class_of(s: &str) -> PieceClass {
@@ -172,15 +193,24 @@ fn agrees(got: &[AreaPiece], want: &[serde_json::Value]) -> Result<(), String> {
         .filter(|p| fixture::num(&p["x1"]) - fixture::num(&p["x0"]) > 1.0)
         .collect();
     if got.len() != want.len() {
-        return Err(format!("{} pieces, want {}: {got:?}", got.len(), want.len()));
+        return Err(format!(
+            "{} pieces, want {}: {got:?}",
+            got.len(),
+            want.len()
+        ));
     }
     for (g, w) in got.iter().zip(want) {
         let n = |k: &str| fixture::num(&w[k]) as f32;
         if g.class != class_of(w["cls"].as_str().unwrap_or_default()) {
             return Err(format!("{g:?} vs {w}"));
         }
-        for (a, b) in [(g.x0, n("x0")), (g.x1, n("x1")), (g.y0, n("y0")), (g.y1, n("y1"))] {
-            if !((a - b).abs() <= 1.0) {
+        for (a, b) in [
+            (g.x0, n("x0")),
+            (g.x1, n("x1")),
+            (g.y0, n("y0")),
+            (g.y1, n("y1")),
+        ] {
+            if (a - b).abs().is_nan() || (a - b).abs() > 1.0 {
                 return Err(format!("{g:?} vs {w}"));
             }
         }

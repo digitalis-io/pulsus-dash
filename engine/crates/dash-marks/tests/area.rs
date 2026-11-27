@@ -49,9 +49,7 @@ fn list(chunk: Arc<Chunk>, axis: Range64, area: Option<f32>, width: f32) -> Draw
     let mut l = line_list(chunk, (400.0, 400.0), 1.0, PLOT, (0.0, 400.0), axis, false);
     for i in &mut l.items {
         if let MarkItem::Line {
-            area: a,
-            width_css,
-            ..
+            area: a, width_css, ..
         } = i
         {
             *a = area.map(|alpha_top| Area { alpha_top });
@@ -129,14 +127,18 @@ fn area_crossing() {
         let col = |x: f64| (x * 4.0).min(399.0);
         let (c0, c1) = (col(n("x0")), col(n("x1")));
         let (va, vb, min, max) = (n("va"), n("vb"), n("min"), n("max"));
-        let ch = chunk(&[(vec![c0 + 0.5, c1 + 0.5], vec![va, vb])]);
+        // Two samples in one column (case f) lie 0.25 apart.
+        let t1 = c1 + if c1 > c0 { 0.5 } else { 0.75 };
+        let ch = chunk(&[(vec![c0 + 0.5, t1], vec![va, vb])]);
         let l = list(ch, Range64 { lo: min, hi: max }, Some(1.0), -2.0);
         let img = both(&l);
         let (_, r) = draw(&ctx(Tier::T2), &l);
         let Some(dec) = r.read_decimation(&ctx(Tier::T2)) else {
             panic!("{id}: no decimation")
         };
-        let Some(MarkItem::Line { axis, .. }) = l.items.iter().find(|i| matches!(i, MarkItem::Line { .. })) else {
+        let Some(MarkItem::Line { axis, .. }) =
+            l.items.iter().find(|i| matches!(i, MarkItem::Line { .. }))
+        else {
             panic!("{id}: no Line item")
         };
         let plot = PLOT.map(|v| v as f32);
@@ -189,14 +191,26 @@ fn area_crossing() {
             }
             let t = (cx as f32 - p.x0) / (p.x1 - p.x0).max(f32::MIN_POSITIVE);
             let want = row_of(p.class, f64::from(p.y0 + t * (p.y1 - p.y0)));
-            assert!(near(got, want), "{id}: column {x}: first row {got:?}, pieces {want:?}");
-            if [cx - 1.0, cx, cx + 1.0].iter().all(|v| class64(*v) == class64(cx)) {
+            assert!(
+                near(got, want),
+                "{id}: column {x}: first row {got:?}, pieces {want:?}"
+            );
+            if [cx - 1.0, cx, cx + 1.0]
+                .iter()
+                .all(|v| class64(*v) == class64(cx))
+            {
                 let want64 = row_of(class64(cx), y64(cx));
-                assert!(near(got, want64), "{id}: column {x}: {got:?}, Canvas 2D {want64:?}");
+                assert!(
+                    near(got, want64),
+                    "{id}: column {x}: {got:?}, Canvas 2D {want64:?}"
+                );
             }
         }
         for y in (0..TOP).chain(BOTTOM..H) {
-            assert!((0..W).all(|x| !img.filled(x, y)), "{id}: row {y} outside the plot");
+            assert!(
+                (0..W).all(|x| !img.filled(x, y)),
+                "{id}: row {y} outside the plot"
+            );
         }
     }
 }
@@ -261,10 +275,16 @@ fn area_inner_gap() {
 fn area_dot() {
     let lone = chunk(&[samples([200].into_iter(), |_| 50.0)]);
     let img = both(&list(lone, AXIS, Some(1.0), -2.0));
-    assert!(img.0.chunks(4).all(|p| p[0] == 0), "a lone sample has no area");
+    assert!(
+        img.0.chunks(4).all(|p| p[0] == 0),
+        "a lone sample has no area"
+    );
     let pair = chunk(&[samples([100, 151].into_iter(), |_| 50.0)]);
     let img = both(&list(pair, AXIS, Some(1.0), -2.0));
-    assert!((101..=150).all(|x| img.filled(x, 290)), "one span across the empty columns");
+    assert!(
+        (101..=150).all(|x| img.filled(x, 290)),
+        "one span across the empty columns"
+    );
 }
 
 const RED: Rgba8 = Rgba8([255, 0, 0, 255]);
@@ -272,10 +292,7 @@ const GREEN: Rgba8 = Rgba8([0, 255, 0, 255]);
 
 /// Series 1 (red) flat at 50 inside series 2's (green, flat at 90) area.
 fn order_list() -> DrawList {
-    let ch = chunk(&[
-        samples(0..W, |_| 50.0),
-        samples(0..W, |_| 90.0),
-    ]);
+    let ch = chunk(&[samples(0..W, |_| 50.0), samples(0..W, |_| 90.0)]);
     let mut l = list(ch, AXIS, Some(1.0), 4.0);
     l.palette[0] = RED;
     l.palette[1] = GREEN;

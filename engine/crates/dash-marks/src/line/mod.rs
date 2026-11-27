@@ -8,3 +8,4 @@ mod t1;
 
 pub use gpu::{DebugCounters, Pending, Renderer, RendererOptions, Sync};
 pub use passes::PassKind;
+pub use pipeline::{AREA_WGSL, LINE_WGSL};

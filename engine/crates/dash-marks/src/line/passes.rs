@@ -11,6 +11,10 @@
 //! | B_r | lane r (the r-th matched series in shown order), 4 px wider, `focus` | the frame |
 //! | C_r | lane r, at its colour | the frame |
 //!
+//! Without an emphasis, a Line item with an area (ADR-0036) draws the `Area` pass first (the
+//! guides, then the area under every join, `area.wgsl`), then `All` without the guides: every
+//! area of the item precedes its first stroke, batched or not.
+//!
 //! Lanes come from the emphasis: a matched series' lane is its rank r (1…m), every other series'
 //! lane 0. With one instance batch every pass reuses the decimated instances (T1: the same
 //! indirect args; the CPU path: the same buffer); with more, passes are outer and batches inner,
@@ -75,6 +79,8 @@ pub(super) struct Pass {
     pub(super) target: Target,
     /// A3: the composite's opacity.
     pub(super) dimmed: f32,
+    /// The area pass: its top alpha (ADR-0036); 0 otherwise.
+    pub(super) area_alpha: f32,
 }
 
 impl Pass {
@@ -88,6 +94,7 @@ impl Pass {
             width_css,
             target: Target::Frame,
             dimmed: 1.0,
+            area_alpha: 0.0,
         }
     }
 }
@@ -97,7 +104,22 @@ impl Pass {
 pub(super) fn plan(line: &LineRef) -> Vec<Pass> {
     let w = line.width_css;
     let Some(e) = line.emphasis.filter(|e| e.matched.iter().any(|m| *m)) else {
-        return vec![Pass::all(w)];
+        // ADR-0036: the area (with the guides under it) before the line, which then draws no
+        // guides.
+        return match line.area {
+            Some(a) => vec![
+                Pass {
+                    kind: PassKind::Area,
+                    area_alpha: a.alpha_top,
+                    ..Pass::all(w)
+                },
+                Pass {
+                    guides: false,
+                    ..Pass::all(w)
+                },
+            ],
+            None => vec![Pass::all(w)],
+        };
     };
     let m = e.matched.iter().filter(|m| **m).count() as u32;
     let lines = |kind, lane_only, guides, target| Pass {
@@ -108,6 +130,7 @@ pub(super) fn plan(line: &LineRef) -> Vec<Pass> {
         width_css: w,
         target,
         dimmed: 1.0,
+        area_alpha: 0.0,
     };
     let mut out = vec![
         lines(PassKind::A1, NO_LANE, true, Target::Frame),
@@ -340,8 +363,10 @@ impl Renderer {
         }
         self.write_view(ctx, f, line.plot, line.axis, p);
         f.target = p.target;
+        f.area = p.kind == PassKind::Area;
         self.draw_pass_on(ctx, enc, f, draw, status);
         f.target = Target::Frame;
+        f.area = false;
     }
 
     /// A3: the dim layer onto the frame at `dimmed`, one full-target triangle.

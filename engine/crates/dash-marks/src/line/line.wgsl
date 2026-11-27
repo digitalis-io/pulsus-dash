@@ -7,31 +7,8 @@
 // Plan #68 C2c2 §3.3: one pass draws one lane of the decimated instances. `lane_only` picks the
 // lane of kinds 0–2 (0xFFFFFFFF every lane; 0xFFFFFFFE none), `guides` whether kind 3 is drawn,
 // and `use_colour` replaces the series' colours with `colour` (the `focus` underlay). An instance
-// a pass skips is a degenerate quad: all six corners at one clip point outside the view.
-
-struct View {
-  view_proj: mat4x4<f32>,
-  device_px: vec2<f32>,
-  dpr: f32,
-  width_css: f32,
-  plot: vec4<f32>,
-  ku: f32,
-  ou: f32,
-  lane_z0: f32,
-  lane_dz: f32,
-  colours: array<vec4<f32>, 10>,
-  lane_only: u32,
-  guides: u32,
-  use_colour: u32,
-  area_alpha: f32,
-  colour: vec4<f32>,
-};
-
-const ALL_LANES: u32 = 0xFFFFFFFFu;
-
-@group(0) @binding(0) var<uniform> view: View;
-
-const U_CLAMP: f32 = 16777216.0;
+// a pass skips is a degenerate quad: all six corners at one clip point outside the view. A guide
+// takes its colour slot from its flags: 8 the value guides, 9 the baseline (#282 Part 2b).
 
 struct Out {
   @builtin(position) pos: vec4<f32>,
@@ -41,25 +18,6 @@ struct Out {
   @location(3) @interpolate(flat) kind: u32,
   @location(4) @interpolate(flat) colour: vec4<f32>,
 };
-
-fn y_of(u: f32) -> f32 {
-  return view.plot.y + view.plot.w - (u - view.ou) * view.ku;
-}
-
-/// CSS px (and lane z) → device px, through view_proj and the perspective divide.
-fn device(x: f32, y: f32, z: f32) -> vec2<f32> {
-  let clip = view.view_proj * vec4<f32>(x, y, z, 1.0);
-  let ndc = clip.xy / clip.w;
-  return vec2<f32>((ndc.x + 1.0) * 0.5 * view.device_px.x, (1.0 - ndc.y) * 0.5 * view.device_px.y);
-}
-
-fn to_clip(p: vec2<f32>) -> vec4<f32> {
-  return vec4<f32>(p.x / view.device_px.x * 2.0 - 1.0, 1.0 - p.y / view.device_px.y * 2.0, 0.0, 1.0);
-}
-
-fn clipped_u(code: u32) -> f32 {
-  return select(U_CLAMP, -U_CLAMP, code == 1u);
-}
 
 /// Clips the device-px segment a→b to the rows [−m, H + m] (x needs no clip: columns lie in the
 /// plot). A cut end takes the bound as its y exactly and its x from the cut parameter, so far
@@ -99,7 +57,7 @@ fn vs(@builtin(vertex_index) vi: u32, @location(0) col: u32, @location(1) va: f3
   let lane = flags >> 16u;
   let z = view.lane_z0 + f32(lane) * view.lane_dz;
   o.kind = kind;
-  o.colour = view.colours[min(slot, 8u)];
+  o.colour = view.colours[min(slot, 9u)];
   let skipped = select(view.lane_only != ALL_LANES && lane != view.lane_only, view.guides == 0u, kind == 3u);
   if (skipped) {
     o.pos = vec4<f32>(-2.0, -2.0, 0.0, 1.0);

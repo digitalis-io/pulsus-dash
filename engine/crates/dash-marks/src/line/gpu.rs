@@ -44,8 +44,10 @@ const MIN_INSTANCES: u64 = 1 << 20;
 pub(super) const STATUS_HEADER: u64 = 8;
 pub(super) const INSTANCE_BYTES: u64 = 16;
 pub(super) const COL_BYTES: u64 = 40;
-/// The guide colour slot.
+/// The guide colour slot (`chart-grid`).
 const GRID_SLOT: u32 = 8;
+/// The baseline's colour slot (`chart-axis`, #282 Part 2b).
+const AXIS_SLOT: u32 = 9;
 
 /// How the renderer waits for the GPU (plan #68 C1 §3.1).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -238,6 +240,8 @@ pub(super) struct Frame<'a> {
     size: (u32, u32),
     first: bool,
     pub(super) target: Target,
+    /// The pass being drawn is the area pass (`area.wgsl`, ADR-0036).
+    pub(super) area: bool,
     dim: Option<wgpu::TextureView>,
     dim_first: bool,
 }
@@ -294,6 +298,7 @@ pub(super) struct LineRef<'a> {
     pub(super) width_css: f32,
     pub(super) far: bool,
     pub(super) emphasis: Option<&'a crate::desc::Emphasis>,
+    pub(super) area: Option<crate::desc::Area>,
 }
 
 impl<'a> LineRef<'a> {
@@ -312,7 +317,7 @@ impl<'a> LineRef<'a> {
                 width_css,
                 far,
                 emphasis,
-                ..
+                area,
             } => Some(Self {
                 chunk,
                 series,
@@ -326,6 +331,7 @@ impl<'a> LineRef<'a> {
                 width_css: *width_css,
                 far: *far,
                 emphasis: emphasis.as_ref(),
+                area: *area,
             }),
             MarkItem::Guides { .. } | MarkItem::Overlay { .. } => None,
         }
@@ -348,14 +354,18 @@ impl<'a> LineRef<'a> {
     }
 }
 
-fn guide_instances(lines: &[f32]) -> impl Iterator<Item = LineInstance> + '_ {
-    let meta = GRID_SLOT | (KIND_HLINE << INST_KIND_SHIFT);
-    lines.iter().map(move |y| LineInstance {
+/// The value guides (slot 8), then the baseline (slot 9, #282 Part 2b): one hairline each.
+fn guide_instances(lines: &[f32], baseline: f32) -> impl Iterator<Item = LineInstance> + '_ {
+    let hline = |slot: u32, y: f32| LineInstance {
         col: 0,
-        va: *y,
+        va: y,
         vb: 0.0,
-        meta,
-    })
+        meta: slot | (KIND_HLINE << INST_KIND_SHIFT),
+    };
+    lines
+        .iter()
+        .map(move |y| hline(GRID_SLOT, *y))
+        .chain(std::iter::once(hline(AXIS_SLOT, baseline)))
 }
 
 /// The device-px scissor of a CSS plot rect (`round(x·dpr)` …), clamped to the target.
@@ -456,6 +466,7 @@ impl Renderer {
             size,
             first: true,
             target: Target::Frame,
+            area: false,
             dim: self.dim.as_ref().map(|d| d.view.clone()),
             dim_first: true,
         };
@@ -495,6 +506,7 @@ impl Renderer {
                 size,
                 first: true,
                 target: Target::Frame,
+                area: false,
                 dim: None,
                 dim_first: true,
             };
@@ -507,8 +519,13 @@ impl Renderer {
         let mut guides: Vec<LineInstance> = Vec::new();
         let mut guides_plot = [0.0f32; 4];
         for item in &f.list.items {
-            if let MarkItem::Guides { lines, plot, .. } = item {
-                guides.extend(guide_instances(lines));
+            if let MarkItem::Guides {
+                lines,
+                plot,
+                baseline,
+            } = item
+            {
+                guides.extend(guide_instances(lines, *baseline));
                 guides_plot = *plot;
                 continue;
             }
@@ -571,7 +588,7 @@ impl Renderer {
             lane_only: p.lane_only,
             guides: u32::from(p.guides),
             use_colour: u32::from(p.colour.is_some()),
-            area_alpha: 0.0,
+            area_alpha: p.area_alpha,
             colour: p.colour.unwrap_or([0.0; 4]),
         };
         ctx.queue
@@ -671,7 +688,9 @@ impl Renderer {
         if empty_clip || matches!(draw, Draw::Direct(0)) {
             return;
         }
-        pass.set_pipeline(if f.target == Target::Dim {
+        pass.set_pipeline(if f.area {
+            &self.p.area
+        } else if f.target == Target::Dim {
             &self.p.line_dim
         } else {
             &self.p.line

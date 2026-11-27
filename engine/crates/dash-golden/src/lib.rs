@@ -184,7 +184,12 @@ pub fn page_viewport(
 /// The layer pages (plan #68 C2c1): gallery pages with threshold lines and event lines, whose
 /// inputs (spec JSON, series and event times) are the `engine/fixtures/layer.json` cases of the
 /// same id (written from `dev/gallery.ts` by `engine-fixtures.ts`).
-pub const LAYER_PAGES: [&str; 2] = ["line-thresholds", "line-events"];
+pub const LAYER_PAGES: [&str; 4] = [
+    "line-thresholds",
+    "line-events",
+    "line-area",
+    "line-area-manual",
+];
 
 /// A fixture number: a JSON number or "NaN", "Infinity", "-Infinity".
 fn fixture_num(v: &serde_json::Value) -> f64 {
