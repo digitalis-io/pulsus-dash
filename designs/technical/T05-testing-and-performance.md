@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.81-rc · 2026-11-27 |
+| **Version** | 1.82-rc · 2026-11-27 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -1046,6 +1046,8 @@ the merge train), nightly (release blocker).
 | `e2e:board-states` | Partial-data badge with Narrow, a too-broad error with Narrow, a parse error with line and column, and the empty panel, on a board |
 | `e2e:board-thresholds-legend` | Against the BFF and the fake: a line panel's legend table shows mean, max and last with threshold states; a row isolates its series; a 4-row panel's compact legend is reachable by keyboard and opens the full table; Legend Hidden and a threshold edit survive save and reload; an unparsable value blocks the save |
 | `e2e:board-stat-tile` | Against the BFF and the fake: a stat panel with thresholds shows the state chip and the threshold text; a range stat draws a sparkline (canvas pixels in its band) and a scalar stat draws none |
+| `e2e:board-stat-graph-none` | Against the BFF and the fake (#297): a range stat with `options.graphMode: "none"` draws its value and no sparkline (no canvas pixels in the band); the same series with no options draws one |
+| `e2e:board-stat-scroll` | Against the BFF and the fake (#296): a range stat scrolled out of view and back keeps the ink of its value and its sparkline; after its canvas is cleared while out of view and gets `contextrestored`, the same ink is back |
 | `e2e:board-event-markers` | Against the BFF, Postgres and the fake (#64 Part C): annotations posted through the API show on a line panel as focusable markers with their kind, title and time, evenly spaced, none outside the window and none on a stat tile; a window change and Refresh now after a delete update them; the first marker is reached by keyboard and shows its tooltip |
 | `e2e:board-logql-save` | Against the BFF and the fake (#67): a board with a PromQL, a LogQL stream and a LogQL Bars panel typed into the panel editor shows a line, six log lines and the volume stacked by level; the saved vis kinds and the views survive save and reload (SRF-033, SRF-036, VIZ-065) |
 | `e2e:board-logql-brush` | Against the BFF and the fake (#67): a brush 12:20–12:25 on a board's volume panel sets the board window, and one PromQL range, one stream page, one kind probe and one volume request run for it; the stream lists that window's lines (SRF-033, T03-016) |
@@ -1491,3 +1493,4 @@ Meta-testing:
 | 1.79-rc | 2026-11-27 | #68 Part D2 ([ADR-0034](../adr/0034-grid-part-joined-into-one-chunk.md); numbered after #234 Part 4's 1.78-rc): §7.1 new `e2e:engine-dsf` (E1–E6) with its unit rows; `bench:decode-r1` report-only in MT (the decode and join of `many`) |
 | 1.80-rc | 2026-11-27 | #282 Part 1: §7.1 adds `unit:tokens-gen`, `unit:ui-token-contrast`, `unit:shadow-token`, `unit:material-fallback`, `unit:platform-face`, `e2e:kit-materials`, `e2e:kit-shapes`, `e2e:kit-focus`, `e2e:kit-motion`; `e2e:font-origin` adds the Apple legs; `ci:token-lint` adds `shadow-token` |
 | 1.81-rc | 2026-11-27 | #291: §7.1 `unit:plan-parity` adds the range-macro cases (RG) of `promql.json` and `logql.json` and their Go tests; `itest:plan-authority` adds the range macros on the range, volume and instant routes |
+| 1.82-rc | 2026-11-27 | #296, #297: §7.1 adds `e2e:board-stat-graph-none` and `e2e:board-stat-scroll` |

@@ -331,7 +331,10 @@ A panel can have up to 8 **thresholds**: absolute values that mark a state, set 
 A stat panel shows one number: the scalar, or the last value of the first series. With a range
 query, a **sparkline** of that series runs under the number when the panel is tall enough (104 px
 of chart). The sparkline shows the trend: it joins the points across gaps in the data, and a
-single point shows as a dot. With thresholds, the tile also shows:
+single point shows as a dot. A panel whose graph mode is **none** (`options.graphMode: "none"`, for
+example from an imported dashboard) shows the number alone, centred, with no sparkline. A tile
+that scrolls out of view and back keeps its number and sparkline. With thresholds, the tile also
+shows:
 
 - a **state chip** above the number: the state of the value (OK when it crosses no threshold,
   Unknown when there is no value);
