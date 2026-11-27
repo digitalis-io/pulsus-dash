@@ -23,13 +23,14 @@ import {
   HOVER,
   MIN_PRESENTS,
   open,
+  READY_TIMEOUT_MS,
   readResults,
   report,
   reportGaps,
   SCRIPT,
 } from './bench/frameBench.ts';
 import { framesReady, liveCanvas, webgpuReportOnly } from './engine.ts';
-import { frame, GALLERY_URL } from './helpers.ts';
+import { frame, GALLERY_IDS, GALLERY_URL } from './helpers.ts';
 import { SWIFTSHADER_ARGS } from '../playwright.engine.config.ts';
 
 const GATE = 'bench:frame-gallery' as const;
@@ -116,6 +117,10 @@ async function runCase(
   try {
     const page = await ctx.newPage();
     await open(page, `${GALLERY_URL}${leg.query}`);
+    await expect(page.locator('[data-chart-frame][data-frame-ready="true"]')).toHaveCount(
+      GALLERY_IDS.length,
+      { timeout: READY_TIMEOUT_MS },
+    );
     await framesReady(page);
     const canvas = liveCanvas(page, p.id);
     if ((await canvas.getAttribute('data-engine')) !== leg.leg) return 'leg-unavailable';

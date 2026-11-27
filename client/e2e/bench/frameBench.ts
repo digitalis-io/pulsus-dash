@@ -224,10 +224,18 @@ export async function drive(
  */
 export async function open(page: Page, url: string): Promise<void> {
   await page.goto(url);
-  await page.locator('html[data-shell-ready="true"]').waitFor();
-  if (url.includes('probe=1')) await page.waitForFunction(() => '__dashProbe' in window);
-  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]').first()).toBeVisible();
+  // A loaded gate host is slow to boot the engine: the waits are a bench's, not a gate's.
+  const timeout = READY_TIMEOUT_MS;
+  await page.locator('html[data-shell-ready="true"]').waitFor({ timeout });
+  if (url.includes('probe=1'))
+    await page.waitForFunction(() => '__dashProbe' in window, undefined, { timeout });
+  await expect(page.locator('[data-chart-frame][data-frame-ready="true"]').first()).toBeVisible({
+    timeout,
+  });
 }
+
+/** How long `open` (and the gallery's every-frame wait) waits for a page to be ready. */
+export const READY_TIMEOUT_MS = 60_000;
 
 const fmt = (v: number | null): string => (v !== null && Number.isFinite(v) ? v.toFixed(1) : '–');
 
