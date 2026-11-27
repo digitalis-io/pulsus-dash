@@ -17,7 +17,16 @@
  * field is the LogQL editor (plan #67 §3.5) with the same run rules; a language change keeps the
  * text, and the Auto option names what the preview's answer draws (Logs for log lines).
  */
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import type { DataPanelSpec, DataVisKind, FieldError, QueryLang } from '../../api/types';
 import type { PanelPatch } from '../../boards/editorState';
 import { panelView } from '../../boards/panelRun';
@@ -79,6 +88,14 @@ function useAfterFirstFrame(): boolean {
     };
   }, []);
   return after;
+}
+
+/**
+ * `children` from the animation frame after this mounts: the Unit field appears a frame after a
+ * kind change from Logs, so the preview's cached chart still paints in the first frame (#90 E13).
+ */
+function AfterFirstFrame({ children }: { children: ReactNode }) {
+  return useAfterFirstFrame() ? children : null;
 }
 
 /** `value` by its JSON: the same object while the JSON is unchanged, so memoised children skip. */
@@ -155,16 +172,18 @@ const VisExtras = memo(function VisExtras({
   return (
     <>
       {vis.kind !== 'logs' && (
-        <div className={cx(styles['editorWide'])}>
-          <UnitField
-            vis={vis}
-            rateApplied={rateApplied}
-            drawnKind={drawnKind}
-            errorAt={(suffix) => errorAt(`/vis/unit${suffix}`)}
-            readOnly={readOnly}
-            onVis={onVis}
-          />
-        </div>
+        <AfterFirstFrame>
+          <div className={cx(styles['editorWide'])}>
+            <UnitField
+              vis={vis}
+              rateApplied={rateApplied}
+              drawnKind={drawnKind}
+              errorAt={(suffix) => errorAt(`/vis/unit${suffix}`)}
+              readOnly={readOnly}
+              onVis={onVis}
+            />
+          </div>
+        </AfterFirstFrame>
       )}
       <div className={cx(styles['editorWide'])}>
         <ThresholdsField
