@@ -63,9 +63,11 @@ and the backing store is `round(css × dpr)`.
 A canvas keeps its pixels while it is out of view: scrolling a frame away and back draws nothing.
 When the browser loses a 2D context (a GPU reset, or memory reclaimed from a GPU-backed canvas) it
 gives the canvas back blank and fires `contextrestored` on it. The frame listens for that event on
-its visible canvas and on its layer canvas, and then draws both again from its stored inputs (#296);
+its visible canvas and on its layer canvas, and then draws both again from its stored inputs;
 `dispose()` removes the listeners. Without it a frame whose inputs do not change again, such as a
-stat tile, would stay blank.
+stat tile, would stay blank. This is hardening for #296 (stat tiles reported blank after scrolling
+out of view and back): the report did not reproduce in headless Chromium, Firefox or WebKit, and a
+lost context is the likely cause but is not confirmed.
 
 ### Adding a chart
 
@@ -273,7 +275,8 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
   shorter frame or a spec with `graphMode: 'none'` draws the value alone, centred, as before. The
   board sets `graphMode: 'none'` from the panel's `options.graphMode` (`boards/panelRun.ts`,
   [T22 §5.1](../../designs/technical/T22-value-categorical-and-table-panels.md#51-seam-types-every-field-readonly-in-the-files));
-  absent and `sparkline` leave it absent, which draws the sparkline (#297).
+  absent and `sparkline` leave it absent, which draws the sparkline (#297,
+  [ADR-0037](../../designs/adr/0037-stat-graph-mode-none.md)).
 
 ### Threshold lines (ADR-0022, #64 Part B)
 
@@ -876,6 +879,7 @@ form in #68/#62).
 `valueAxis`); [ADR-0025](../../designs/adr/0025-chart-frame-selection.md) (`setSelection`,
 `select`); [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)
 (`thresholds`, `thresholdLabels`, the stat sparkline);
+[ADR-0037](../../designs/adr/0037-stat-graph-mode-none.md) (the stat's `graphMode: 'none'`);
 [ADR-0023](../../designs/adr/0023-chart-event-markers.md) (`setEvents`, `eventLabels`, the event
 mark); [ADR-0028](../../designs/adr/0028-chart-seam-bar-chart.md) (the bar chart: `barchart`,
 `categories`, `mark`, `pick`, `coverage`, the extent and the layout);
