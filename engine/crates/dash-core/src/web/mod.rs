@@ -406,6 +406,28 @@ pub fn engine_probe_synth(id: u32, series: u32, points: u32) -> u32 {
     .unwrap_or(0)
 }
 
+/// The probe build (plan #68 C2d1 §3.2): frame `id`'s chunk as JSON `{series, points, bytes}`
+/// (points: the samples of series 0; bytes: of all values), or `null` without one.
+#[cfg(feature = "probe")]
+#[wasm_bindgen]
+pub fn engine_probe_chunk(id: u32) -> String {
+    with(|e| {
+        e.frames.chunk(id).map_or_else(
+            || "null".to_owned(),
+            |c| {
+                let points = c.offsets.get(1).copied().unwrap_or(0);
+                serde_json::json!({
+                    "series": c.series.len(),
+                    "points": points,
+                    "bytes": c.values.len() * 8,
+                })
+                .to_string()
+            },
+        )
+    })
+    .unwrap_or_else(|| "null".to_owned())
+}
+
 /// The device px of a Resize, at least 1 and at most the device's texture limit.
 fn device_px(px: u32, max: u32) -> u32 {
     px.clamp(1, max.max(1))

@@ -240,6 +240,8 @@ export function createProbe(o: {
     return e;
   };
   let enqueued = 0;
+  /** The next `synth`'s simulated outcome (plan #68 C2d1). */
+  let synthFault: SynthFault | null = null;
   // The probe frames' controller timers, holdable (`holdTimers`).
   let held = false;
   let nextTimer = 1;
@@ -542,6 +544,17 @@ export function createProbe(o: {
     synth(n, s, timeoutMs = SYNTH_TIMEOUT_MS) {
       const id = entry(n).inner?.id;
       const h = o.host();
+      // A simulated outcome, once (`synthFault`): the precedence the bench applies.
+      const f = synthFault;
+      synthFault = null;
+      if (f === 'alloc') return Promise.resolve({ ok: false, bytes: 0, reason: 'alloc' });
+      if (f === 'fatal') return Promise.resolve({ ok: false, bytes: 0, reason: 'fatal' });
+      if (f === 'silent')
+        return new Promise<SynthAck>((resolve) => {
+          setTimeout(() => {
+            resolve({ ok: false, bytes: 0, reason: 'timeout' });
+          }, timeoutMs);
+        });
       if (id === undefined || h === null)
         return Promise.resolve({ ok: false, bytes: 0, reason: 'timeout' });
       return new Promise<SynthAck>((resolve) => {
@@ -554,8 +567,8 @@ export function createProbe(o: {
         });
       });
     },
-    synthFault() {
-      // Test-first stub: no fault applies yet.
+    synthFault(f) {
+      synthFault = f;
     },
     chunk(n) {
       const id = entry(n).inner?.id;

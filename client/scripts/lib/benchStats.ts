@@ -96,7 +96,7 @@ export function summarise(
     over1: intervals.filter((x) => x > OVER_1_MS).length,
     over2: intervals.filter((x) => x > OVER_2_MS).length,
     steps: d.steps,
-    coalescing: 0,
+    coalescing: marks.length > 0 ? d.steps / marks.length : NaN,
     ...(d.timedOut ? { timedOut: true as const } : {}),
   };
 }
@@ -117,7 +117,13 @@ export function budgets(r: Pick<BenchResult, 'intervalMs'>): {
   prf001: BudgetStatus;
   prf002: BudgetStatus;
 } {
-  return { prf001: r.intervalMs.p50 > 0 ? 'over' : 'ok', prf002: 'ok' };
+  // A JSON-read result has null for an empty percentile.
+  const status = (v: number | null, limit: number): BudgetStatus =>
+    v === null || !Number.isFinite(v) ? 'n/a' : v <= limit ? 'ok' : 'over';
+  return {
+    prf001: status(r.intervalMs.p50, PRF_001_MS),
+    prf002: status(r.intervalMs.p99, PRF_002_MS),
+  };
 }
 
 /** The clock `collectUntil` runs on (the page's in `drive`; a fake in the unit tests). */
@@ -135,6 +141,9 @@ export async function collectUntil(
   presents: () => number,
   o: { start: number; boxMs: number; min: number; pollMs: number },
 ): Promise<boolean> {
-  await clock.wait(0);
-  return presents() < 0 && o.boxMs < 0;
+  while (presents() < o.min) {
+    if (clock.now() - o.start >= o.boxMs) return true;
+    await clock.wait(o.pollMs);
+  }
+  return false;
 }
