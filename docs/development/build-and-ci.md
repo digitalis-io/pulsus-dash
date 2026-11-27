@@ -168,8 +168,8 @@ the dev-only routes and the lazy routes import the same modules (`Button`, `clsx
 shared chunks, each compressed on its own. `vite.config.ts` therefore sets one
 `output.codeSplitting` group, `INITIAL_GROUP` in `client/config/chunks.ts` (tag `$initial`),
 which keeps that closure in one chunk that Rolldown folds into the `index` entry. When it was added
-(#263, measured on the tree it merged into), the stub build's initial JS went from 202 667 B (over
-the budget) to 191 260 B and the http build's from 192 431 B to 190 180 B; the initial CSS went
+(#263, measured on the tree it merged into), the stub build's initial JS went from 202 511 B (over
+the budget) to 191 396 B and the http build's from 192 463 B to 190 337 B; the initial CSS went
 from 6 050 B (stub) and 5 864 B (http) to 5 815 B in both. A lazy chunk that uses one of those modules now
 imports it from `index`, which is always loaded first; no module moves from a lazy chunk into the
 initial set. The group excludes `GEO_ENTRY` (`src/vis/geo/urls.ts`): captured, the `geo-assets`
