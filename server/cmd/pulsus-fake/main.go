@@ -33,6 +33,7 @@ func run(args []string) int {
 	dir := fs.String("transcripts", "", "directory of *.json transcripts (default: the embedded set)")
 	generate := fs.Bool("generate", true, "answer unmatched range and instant queries with a generated series")
 	control := fs.Bool("control", false, "serve /__fake/requests and /__fake/reset; keep records")
+	clip := fs.Bool("clip-grid", false, "answer a range transcript's matrix with only its samples on the request's grid")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -44,7 +45,7 @@ func run(args []string) int {
 			return 2
 		}
 	}
-	o := pulsusfake.Options{Generate: *generate}
+	o := pulsusfake.Options{Generate: *generate, ClipToGrid: *clip}
 	if *control {
 		o.MaxRecords = controlRecords
 	}

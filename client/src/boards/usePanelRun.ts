@@ -191,8 +191,10 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
     [runKey, tenant, panel.id, text],
   );
 
-  // Store-backed (#304 §4.1): PromQL range, chunkable, no baseline, not degraded.
+  // Store-backed (#304 §4.1): a line panel's PromQL range run, chunkable, no baseline, not
+  // degraded. Other kinds keep today's single request (through the scheduler).
   const eligible =
+    panel.vis.kind === 'line' &&
     runKey !== null &&
     kind === 'range' &&
     baselineMs === null &&

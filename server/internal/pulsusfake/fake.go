@@ -23,6 +23,10 @@ import (
 type Options struct {
 	Generate   bool
 	MaxRecords int
+	// ClipToGrid answers a query_range transcript's matrix with only its samples on the request's
+	// grid (start ≤ t ≤ end, on the step), as a real PulsusDB does (#304: the range store asks for
+	// neighbouring windows and coarser steps of a recorded query).
+	ClipToGrid bool
 }
 
 // Recorded is one request the fake received.
@@ -62,14 +66,14 @@ func (f *Fake) Serve(w http.ResponseWriter, r *http.Request) Recorded {
 	rec := &Recorded{Method: r.Method, Path: r.URL.Path, Form: r.Form, Header: r.Header.Clone(), ReceivedAt: time.Now()}
 	var t *Transcript
 	for i := range f.ts {
-		if f.ts[i].matches(r.Method, r.URL.Path, r.Form) && f.ts[i].Match.Query != nil {
+		if f.ts[i].matches(r.Method, r.URL.Path, r.Form) && (f.ts[i].Match.Query != nil || f.ts[i].Match.QueryPrefix != nil) {
 			t = &f.ts[i]
 			break
 		}
 	}
 	if t == nil {
 		for i := range f.ts {
-			if f.ts[i].Match.Query == nil && f.ts[i].matches(r.Method, r.URL.Path, r.Form) {
+			if f.ts[i].Match.Query == nil && f.ts[i].Match.QueryPrefix == nil && f.ts[i].matches(r.Method, r.URL.Path, r.Form) {
 				t = &f.ts[i]
 				break
 			}
@@ -124,6 +128,8 @@ func (f *Fake) replay(w http.ResponseWriter, r *http.Request, rec *Recorded, res
 		_, _ = io.WriteString(w, generated(r, *resp.Generate))
 	case resp.BodyText != nil:
 		_, _ = io.WriteString(w, *resp.BodyText)
+	case f.o.ClipToGrid && r.URL.Path == "/api/v1/query_range" && resp.Status == http.StatusOK:
+		_, _ = w.Write(clipMatrix(r, resp.Body))
 	default:
 		_, _ = w.Write(resp.Body)
 	}
@@ -172,6 +178,63 @@ func (f *Fake) generate(w http.ResponseWriter, r *http.Request, rec *Recorded) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, body)
 	f.update(rec, func(x *Recorded) { x.Completed = true })
+}
+
+// clipMatrix is body with every matrix series' samples outside the request's grid dropped (every
+// other member kept as it was); a body that is not a success matrix is returned unchanged.
+func clipMatrix(r *http.Request, body []byte) []byte {
+	var top map[string]json.RawMessage
+	var data map[string]json.RawMessage
+	var result []map[string]json.RawMessage
+	if json.Unmarshal(body, &top) != nil || string(top["status"]) != `"success"` ||
+		json.Unmarshal(top["data"], &data) != nil || string(data["resultType"]) != `"matrix"` ||
+		json.Unmarshal(data["result"], &result) != nil {
+		return body
+	}
+	num := func(k string) (float64, bool) {
+		v, err := strconv.ParseFloat(r.Form.Get(k), 64)
+		return v, err == nil
+	}
+	start, ok1 := num("start")
+	end, ok2 := num("end")
+	step, ok3 := num("step")
+	if !ok1 || !ok2 || !ok3 || step <= 0 {
+		return body
+	}
+	for _, s := range result {
+		var values [][]json.RawMessage
+		if json.Unmarshal(s["values"], &values) != nil {
+			return body
+		}
+		kept := values[:0]
+		for _, p := range values {
+			if len(p) != 2 {
+				continue
+			}
+			t, err := strconv.ParseFloat(string(p[0]), 64)
+			if err != nil || t < start || t > end || math.Abs(math.Remainder(t-start, step)) > 1e-6 {
+				continue
+			}
+			kept = append(kept, p)
+		}
+		v, err := json.Marshal(kept)
+		if err != nil {
+			return body
+		}
+		s["values"] = v
+	}
+	var err error
+	if data["result"], err = json.Marshal(result); err != nil {
+		return body
+	}
+	if top["data"], err = json.Marshal(data); err != nil {
+		return body
+	}
+	out, err := json.Marshal(top)
+	if err != nil {
+		return body
+	}
+	return out
 }
 
 // generated is the matrix body of g on the request's grid (start, end and step in seconds).

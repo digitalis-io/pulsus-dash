@@ -117,8 +117,8 @@ and query caches hold. The board query itself and the picker's metadata are not 
 
 ## The range store (#304)
 
-A PromQL range panel that is eligible (no `@ start()` / `@ end()`, no baseline run, not degraded)
-reads its data from the page's [range store](range-store.md): buckets of 256 grid points shared
+A PromQL range panel whose saved vis is `line` and that is eligible (no `@ start()` / `@ end()`,
+not degraded) reads its data from the page's [range store](range-store.md): buckets of 256 grid points shared
 across panels, pans and refreshes, requested with `step_ms`; a line panel also holds one window
 either side, so a pan of up to one window paints in its first frame with no request. Its outcome
 carries the visible slice (`result`, for the legend and every non-line consumer) and, for a line,

@@ -41,13 +41,15 @@ bucket (no future buckets).
 
 | Eligible (store-backed) | Not (today's single request, through the scheduler) |
 |---|---|
-| a PromQL range run of a board panel or Explore | an instant run; a LogQL run |
+| a PromQL range run of a board panel whose saved vis is `line`, or of Explore | an instant run; a LogQL run; a board panel of another kind (`auto`, bars, heatmap, stat, …) |
 | `chunkable(text)`: no `@ start()` / `@ end()` | `@ start()` / `@ end()` (the value depends on the request window) |
 | no bar chart baseline run | a bar chart with a baseline offset or its ghost |
 | not degraded (#147) | a degraded run |
 | not bypassed (below) | a bypassed identity |
 
-Flanks and the ladder are for `line` panels (and Explore's chart) only.
+Flanks and the ladder are for these line panels and Explore's chart. Board panels of other kinds
+keep one request per window: their recorded e2e data selects windows by start, and their pan and
+zoom are not the issue's subject.
 
 ## The panel run
 

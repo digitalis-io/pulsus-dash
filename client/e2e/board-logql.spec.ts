@@ -195,7 +195,12 @@ test.describe('e2e:board-logql (fake)', () => {
       const hi = L0 + 25 * MIN;
       await page.waitForTimeout(1_000);
       const at = (x: Body) => x.from === lo && x.to === hi;
-      expect(b.prom.filter(at), 'PromQL range').toHaveLength(1);
+      // The PromQL panel's run covers the brushed window (a bucket-aligned run of the range
+      // store, #304).
+      expect(
+        b.prom.filter((x) => x.from <= lo && x.to >= hi),
+        'PromQL range',
+      ).toHaveLength(1);
       expect(
         b.range.filter((x) => at(x) && x.limit === 1000),
         'stream page',

@@ -277,3 +277,20 @@ func TestGenerateWave(t *testing.T) {
 		t.Errorf("a part differs from the whole: %s", part)
 	}
 }
+
+// ClipToGrid (#304): a range transcript answers only its samples on the request's grid, every
+// other member kept.
+func TestClipToGrid(t *testing.T) {
+	body := []byte(`{"status":"success","warnings":["w"],"data":{"resultType":"matrix","result":[{"metric":{"a":"1"},"values":[[100,"1"],[115,"2"],[130,"3"],[200,"4"]]}]}}`)
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/query_range", strings.NewReader("query=x&start=115&end=145&step=15"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	_ = r.ParseForm()
+	got := string(clipMatrix(r, body))
+	if !strings.Contains(got, `"values":[[115,"2"],[130,"3"]]`) || !strings.Contains(got, `"warnings":["w"]`) {
+		t.Errorf("clipped %s", got)
+	}
+	vec := []byte(`{"status":"success","data":{"resultType":"vector","result":[]}}`)
+	if string(clipMatrix(r, vec)) != string(vec) {
+		t.Error("a vector body changed")
+	}
+}
