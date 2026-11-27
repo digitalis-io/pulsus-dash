@@ -320,7 +320,7 @@ export const messages = {
   'field.board.options.tag.invalid': 'Use one valid tag, in tag mode only.',
   'field.board.options.limit.invalid': 'Use a whole number from 1 to 50.',
   'field.board.options.location.invalid':
-    'Choose auto, coordinates (latitude and longitude labels), a geohash label or a lookup label and gazetteer (a country code with regions only).',
+    'Choose a location mode with only its labels (a country code with regions only).',
   'field.board.options.size.invalid': 'Use sizes from 2 to 40, the minimum at most the maximum.',
   'field.board.options.colour.invalid': 'Choose group, or state with thresholds.',
   'field.board.options.groupBy.invalid': 'Use a label name, or none.',

@@ -196,7 +196,6 @@ export const OPTION_VALUES = Object.freeze({
   boardListMode: ['starred', 'recent', 'search', 'tag'],
   boardListSort: ['default', 'incidents'],
   geomapLabels: ['auto', 'none'],
-  locationMode: ['auto', 'coords', 'geohash', 'lookup'],
   gazetteer: ['country', 'region', 'iata', 'cloud'],
   sizeBy: ['value', 'fixed'],
   colour: ['group', 'state'],
