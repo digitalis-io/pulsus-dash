@@ -45,6 +45,9 @@ describe('exploreHref', () => {
       'http_requests_total',
       `/t/demo/explore/metrics?${Q}&q=http_requests_total`,
     ],
+    // #173 Part 3b: a bar chart opens Explore's bar chart; a pie opens on Auto.
+    ['L8', p('up', 'barchart'), 'up', `/t/demo/explore/metrics?${Q}&q=up&vis=barchart`],
+    ['L9', p('up', 'pie'), 'up', `/t/demo/explore/metrics?${Q}&q=up`],
   ] as const)('%s', (_n, panel, expanded, href) => {
     expect(exploreHref('demo', panel, ABS, expanded)).toBe(href);
   });

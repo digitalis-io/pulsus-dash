@@ -70,7 +70,9 @@ export function commonGrid(series: readonly SeriesFrame[]): readonly SeriesFrame
   });
 }
 
+/** A bar chart isolates nothing: its table selects instead (#173 Part 3b §4.4). */
 export function canIsolate(vis: VisKind | null, r: ExploreResult): boolean {
+  if (vis === 'barchart') return false;
   return r.kind === 'series' && vis !== null && (vis !== 'heatmap' || isHistogram(r.series));
 }
 
@@ -80,8 +82,8 @@ export function framePlan(
   o: { readonly isolatedKey: string | null; readonly title: string; readonly rateApplied: boolean },
 ): FramePlan {
   if (r.kind === 'string') return { spec: null, data: null, notice: 'string' };
-  // A bar chart is planned by `vis/barchart.ts` (ADR-0028); no surface offers it here until
-  // #173 Part 3, so it is planned as a line.
+  // A bar chart is planned by `vis/barchart.ts` (ADR-0028): Explore draws it from its model, and
+  // this line plan only carries the unit of the Inspector's origin.
   if (vis === 'barchart') return framePlan('line', r, o);
   const unit: Unit = o.rateApplied ? { kind: 'suffix', suffix: '/s' } : { kind: 'none' };
   const { title } = o;

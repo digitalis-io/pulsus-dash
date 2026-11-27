@@ -4,7 +4,7 @@
  * key of `vis.options` and showing the T22 defaults when the key is absent. A field set back to its
  * empty state removes its key; no key left gives `undefined`. Min and Max write only a finite
  * number, and say so under the field otherwise; `errorAt(key)` (the spec validator's message) shows
- * under its field. #173 Part 3b mounts it in the editor.
+ * under its field. The panel editor mounts it for a bar chart (#173 Part 3b).
  */
 import { useState, type JSX } from 'react';
 import type { VisOptions } from '../../api/types';

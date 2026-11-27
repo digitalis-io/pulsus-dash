@@ -9,6 +9,14 @@ import {
 const ENV = { nowMs: Date.UTC(2026, 10, 19, 13, 3), timeZone: 'Europe/London' };
 
 describe('unit:explore-params', () => {
+  it('vis=barchart is valid (#173 Part 3b)', () => {
+    expect(readExploreParams([['vis', 'barchart']]).vis).toBe('barchart');
+    expect(writeExploreParams([], { q: 'up', vis: 'barchart', rate: 'auto' })).toEqual([
+      ['q', 'up'],
+      ['vis', 'barchart'],
+    ]);
+  });
+
   it('reads q, vis and rate', () => {
     expect(readExploreParams([['q', 'up']])).toEqual({ q: 'up', vis: 'auto', rate: 'auto' });
     expect(

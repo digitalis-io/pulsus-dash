@@ -21,7 +21,7 @@ export interface ExploreParams {
 export const DEFAULT_EXPLORE: ExploreParams = Object.freeze({ q: '', vis: 'auto', rate: 'auto' });
 
 const EXPLORE_KEYS: readonly string[] = ['q', 'vis', 'rate'];
-const VIS_VALUES: readonly string[] = ['line', 'bars', 'heatmap', 'stat'];
+const VIS_VALUES: readonly string[] = ['line', 'bars', 'heatmap', 'stat', 'barchart'];
 
 function isVis(v: string): v is Exclude<VisParam, 'auto'> {
   return VIS_VALUES.includes(v);

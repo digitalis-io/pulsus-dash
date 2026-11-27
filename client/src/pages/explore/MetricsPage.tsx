@@ -3,7 +3,9 @@
  * IA-022): the Query card (picker, Run, the PromQL editor from the lazy chunk, the status line) and
  * the Result card (vis, rate chip, notices, chart, series table). The page owns the draft, the Run
  * order and refusals (T09-015, B.8 #12), the sort and the isolated series (D-ISO); the run itself
- * is `useExploreRun`. The language is reached only through `LANGUAGES` (ADR-0018).
+ * is `useExploreRun`. The language is reached only through `LANGUAGES` (ADR-0018). Auto-vis offers
+ * `EXPLORE_VIS`, so row 11 can choose the bar chart, which the page plans as a `barchartModel`
+ * (plan #173 Part 3b §4.4).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -39,7 +41,8 @@ import { usePageTitle } from '../../shell/PageTitle';
 import { useShellRoute } from '../../shell/useShellRoute';
 import { useExploreParams } from '../../state/useExploreParams';
 import { useTimeContext } from '../../state/useTimeContext';
-import { autoVis, chooseVis, type VisParam } from '../../vis/autovis';
+import { autoVis, chooseVis, EXPLORE_VIS, type VisParam } from '../../vis/autovis';
+import { barchartModel } from '../../vis/barchart';
 import { canIsolate, framePlan } from '../../vis/framePlan';
 import styles from '../pages.module.css';
 import { QueryCard } from './QueryCard';
@@ -175,6 +178,8 @@ export function MetricsPage() {
             histogram: shown.planned.histogram,
             rateApplied: shown.planned.rateApplied,
             result: shown.result,
+            // Row 11 can fire here: Explore stores nothing (#173 Part 3b §4.4).
+            available: EXPLORE_VIS,
           }),
     [shown],
   );
@@ -190,6 +195,16 @@ export function MetricsPage() {
       rateApplied: shown.planned.rateApplied,
     });
   }, [shown, vis, isolatedKey]);
+  // The bar chart's model (#173 Part 3b §4.4): Explore has no options, thresholds or baseline.
+  const model = useMemo(() => {
+    if (vis !== 'barchart' || shown === null || shown.result.kind === 'string') return null;
+    return barchartModel(shown.result, {
+      title: t('explore.result.title'),
+      rateApplied: shown.planned.rateApplied,
+      options: undefined,
+      thresholds: null,
+    });
+  }, [vis, shown]);
   const rows = useMemo(
     () => (shown === null ? [] : sortRows(seriesRows(shown.result), sort)),
     [shown, sort],
@@ -259,6 +274,7 @@ export function MetricsPage() {
           auto={auto}
           vis={vis}
           plan={plan}
+          model={model}
           rows={rows}
           sort={sort}
           onSort={onSort}

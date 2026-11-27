@@ -32,6 +32,7 @@ import { MenuTrigger, RouterProvider, type ButtonProps } from 'react-aria-compon
 import { Link, useHref, useNavigate } from 'react-router';
 import type { DataPanelSpec, PanelSpec } from '../../api/types';
 import { BoardEventsContext } from '../../boards/boardEvents';
+import { BoardFiltersContext } from '../../boards/boardFilters';
 import { BoardRunContext } from '../../boards/boardRunContext';
 import { exploreHref } from '../../boards/exploreLink';
 import type { LayoutOp } from '../../boards/layout';
@@ -46,11 +47,12 @@ import { useLegendLayout } from '../../boards/useLegendLayout';
 import { PANEL_PREFETCH_ROWS, streamMeta } from '../../boards/logPanel';
 import { usePanelRun, type PanelRun } from '../../boards/usePanelRun';
 import { useInViewport } from '../../boards/visibility';
+import { CategoryChart } from '../../charts/CategoryChart';
 import { ChartFrame, type ChartFrameProps, type FrameSize } from '../../charts/ChartFrame';
 import type { SeriesTableProps } from '../../charts/SeriesTable';
 import { SeriesTable } from '../../charts/SeriesTable';
 import { statValue } from '../../data/frames';
-import type { ThresholdState, Unit } from '../../engine/api';
+import type { PickEvent, ThresholdState, Unit } from '../../engine/api';
 import { nextSort, sortRows, toggleIsolation, type SortState } from '../../explore/seriesRows';
 import { useDelayedFlag } from '../../explore/useDelayedFlag';
 import { useElementWidth } from '../../explore/useElementWidth';
@@ -67,8 +69,10 @@ import { Menu, MenuItem } from '../../kit/Menu';
 import { Popover } from '../../kit/Popover';
 import { LogStream } from '../../logs/LogStream';
 import { StateGlyph } from '../../kit/StateGlyph';
+import type { BoardFilter } from '../../state/boardParams';
 import { useTimeContext } from '../../state/useTimeContext';
 import { StateEncoding } from '../../theme/stateEncoding';
+import { barAction, type BarAction, type BarContext } from '../../vis/barAction';
 import {
   crossed,
   displayText,
@@ -128,9 +132,14 @@ export function keyOp(e: {
   return ops === undefined ? null : ops[e.shiftKey ? 1 : 0];
 }
 
-/** `data-panel-state`: the view kind, or the message's state. */
+/** `data-panel-state`: the view kind, or the message's state; a bar chart is a `frame`. */
 function stateOf(v: PanelView): string {
-  return v.kind === 'message' ? v.state : v.kind;
+  return v.kind === 'message' ? v.state : v.kind === 'category' ? 'frame' : v.kind;
+}
+
+/** `data-panel-vis`: the drawn kind of a frame or a bar chart; none for the other views. */
+function visOf(v: PanelView): string | undefined {
+  return v.kind === 'frame' ? v.vis : v.kind === 'category' ? 'barchart' : undefined;
 }
 
 /** The host's last non-empty size, held above `ChartFrame` across its unmounts (#90). */
@@ -315,6 +324,80 @@ const PanelChart = memo(function PanelChart({
   );
 });
 
+/** A category view's session state and actions (plan #173 Part 3b §4.3). */
+export interface PanelCategory {
+  readonly ghost: boolean;
+  readonly anomaly: boolean;
+  readonly table: boolean;
+  /** Absent: Shift+T does nothing (the editor preview). */
+  readonly onTable?: (on: boolean) => void;
+  readonly origin: Omit<InspectOrigin, 'window'>;
+  /** A pick's decided action (`barAction`) and the pick; absent in the editor preview. */
+  readonly onPick?: (a: BarAction, e: PickEvent, returnFocus: HTMLElement | null) => void;
+}
+
+type CategoryView = Extract<PanelView, { kind: 'category' }>;
+
+const NO_FILTERS: readonly BoardFilter[] = Object.freeze([]);
+
+/**
+ * A saved bar chart's body (plan #173 Part 3b §4.3): `CategoryChart` with the panel's session state,
+ * its pick context (the board's filters, the origin and the Context window) and the pick decided by
+ * `barAction`. A failed baseline draws no ghost and shows the note. Memoised on stable props.
+ */
+const CategoryPanel = memo(function CategoryPanel({
+  title,
+  view,
+  sizeMemo,
+  onNarrow,
+  category,
+}: {
+  title: string;
+  view: CategoryView;
+  sizeMemo: SizeMemo | undefined;
+  onNarrow: () => void;
+  category: PanelCategory | undefined;
+}) {
+  const board = useContext(BoardFiltersContext);
+  const filters = board?.filters ?? NO_FILTERS;
+  const { window: win } = useTimeContext();
+  const { fromMs, toMs } = win;
+  const origin = category?.origin;
+  const context = useMemo<Omit<BarContext, 'model'> | undefined>(
+    () =>
+      origin === undefined
+        ? undefined
+        : { surface: 'board', filters, origin, window: { fromMs, toMs } },
+    [origin, filters, fromMs, toMs],
+  );
+  const decide = category?.onPick;
+  const model = view.model;
+  const onPick = useMemo(
+    () =>
+      decide === undefined || context === undefined
+        ? undefined
+        : (e: PickEvent, returnFocus: HTMLElement | null): void => {
+            decide(barAction(e, { ...context, model }), e, returnFocus);
+          },
+    [decide, context, model],
+  );
+  return (
+    <CategoryChart
+      model={model}
+      title={title}
+      onNarrow={onNarrow}
+      {...(sizeMemo === undefined ? {} : { sizeMemo })}
+      {...(onPick === undefined ? {} : { onPick })}
+      {...(context === undefined ? {} : { context })}
+      ghost={(category?.ghost ?? false) && !view.baselineFailed}
+      anomaly={category?.anomaly ?? false}
+      table={category?.table ?? false}
+      {...(category?.onTable === undefined ? {} : { onTable: category.onTable })}
+      baselineFailed={view.baselineFailed}
+    />
+  );
+});
+
 export function PanelBody({
   title,
   view,
@@ -323,7 +406,10 @@ export function PanelBody({
   streamHidden = false,
   inspect,
   selectPanelId,
+  category,
 }: {
+  /** A category view's state and actions; absent: all off, no pick. */
+  category?: PanelCategory;
   title: string;
   view: PanelView;
   /** Kept by the caller (board panel, full screen, preview), above the chart (#90). */
@@ -366,6 +452,16 @@ export function PanelBody({
           selectPanelId={selectPanelId}
         />
       );
+    case 'category':
+      return (
+        <CategoryPanel
+          title={title}
+          view={view}
+          sizeMemo={sizeMemo}
+          onNarrow={onNarrow}
+          category={category}
+        />
+      );
     case 'loading':
       return <p className={cx(styles['message'])}>{t('panel.loading')}</p>;
     case 'message':
@@ -389,18 +485,16 @@ export function PanelBody({
 }
 
 /**
- * The completeness badge shows with any frame or message view of an outcome (§4.2); a LogQL stream
- * panel's is its pager's (plan #67 §3.4), with its stream view too.
+ * The completeness badge shows with any frame, bar chart or message view of an outcome (§4.2); a
+ * LogQL stream panel's is its pager's (plan #67 §3.4), with its stream view too.
  */
 function noticesOf(run: PanelRun, view: PanelView) {
+  // A bar chart's header badge too (PRF-031): its meter shows the detail under the bars.
+  const drawn = view.kind === 'frame' || view.kind === 'category' || view.kind === 'message';
   if (run.stream !== null) {
-    return view.kind === 'stream' || view.kind === 'frame' || view.kind === 'message'
-      ? streamMeta(run.stream.state).completeness
-      : null;
+    return drawn || view.kind === 'stream' ? streamMeta(run.stream.state).completeness : null;
   }
-  return run.outcome !== null && (view.kind === 'frame' || view.kind === 'message')
-    ? run.outcome.result.completeness
-    : null;
+  return run.outcome !== null && drawn ? run.outcome.result.completeness : null;
 }
 
 /**
@@ -441,13 +535,23 @@ export function PanelPreview({
     dispatch({ type: 'zoom', dir: 'in' });
   }, [dispatch]);
   const unit = view.kind === 'frame' ? unitText(view.spec.unit) : null;
+  // A bar chart previews with its pick context and no pick (plan #173 Part 3b §4.3).
+  const category = useMemo<PanelCategory>(
+    () => ({
+      ghost: false,
+      anomaly: false,
+      table: false,
+      origin: { surface: 'board', panelId: panel.id, title, query: null, unit: null },
+    }),
+    [panel.id, title],
+  );
   return (
     <section
       className={cx(styles['panel'], styles['preview'])}
       aria-label={t('editor.preview')}
       data-panel-preview=""
       data-panel-state={stateOf(view)}
-      data-panel-vis={view.kind === 'frame' ? view.vis : undefined}
+      data-panel-vis={visOf(view)}
     >
       <div className={cx(styles['panelHeader'])}>
         <div className={cx(styles['titles'])}>
@@ -463,7 +567,13 @@ export function PanelPreview({
       </div>
       <div ref={bodyRef} className={cx(styles['body'])} data-preview-body="">
         <div ref={hostRef} className={cx(styles['previewHost'])} data-preview-host="">
-          <PanelBody title={title} view={view} sizeMemo={frameSize} onNarrow={onNarrow} />
+          <PanelBody
+            title={title}
+            view={view}
+            sizeMemo={frameSize}
+            onNarrow={onNarrow}
+            category={category}
+          />
         </div>
       </div>
     </section>
@@ -573,6 +683,10 @@ const DataPanelFrame = forwardRef<
   const { search, dispatch } = useTimeContext();
   const navigate = useNavigate();
   const [full, setFull] = useState(false);
+  // A bar chart's session toggles (plan #173 Part 3b §4.3): shared by the body and full screen.
+  const [ghost, setGhost] = useState(false);
+  const [anomaly, setAnomaly] = useState(false);
+  const [table, setTable] = useState(false);
   // The root element, for the board's viewport tracker.
   const [el, setEl] = useState<HTMLElement | null>(null);
   const visible = useInViewport(el);
@@ -593,6 +707,7 @@ const DataPanelFrame = forwardRef<
     editing: runText !== undefined,
     ...(runSeq === undefined ? {} : { runSeq }),
     degraded: runDegraded ?? false,
+    ghost,
   });
   const title = panelTitle(panel);
   const view = useMemo(() => panelView(run, panel.vis, title), [run, panel.vis, title]);
@@ -622,6 +737,64 @@ const DataPanelFrame = forwardRef<
   const onNarrow = useCallback(() => {
     dispatch({ type: 'zoom', dir: 'in' });
   }, [dispatch]);
+  // The coverage meter's Narrow opens Explore with the panel's query, else zooms (T22-006).
+  const onCategoryNarrow = useCallback(() => {
+    if (explore === null) dispatch({ type: 'zoom', dir: 'in' });
+    else void navigate(explore);
+  }, [explore, dispatch, navigate]);
+  const board = useContext(BoardFiltersContext);
+  const setFilter = board?.setFilter;
+  const { onInspect, onSelect, onEmptyClick } = inspect;
+  /** A bar pick's action (§4.3); `fullScreen` closes the modal before it inspects. */
+  const act = useCallback(
+    (fullScreen: boolean, a: BarAction, e: PickEvent, returnFocus: HTMLElement | null): void => {
+      switch (a.kind) {
+        case 'click': {
+          let to = returnFocus;
+          if (fullScreen) {
+            // The modal makes the Inspector inert: close it, then inspect from the panel.
+            setFull(false);
+            to = el?.querySelector<HTMLElement>('[data-bar-list]') ?? el;
+          }
+          onInspect?.(a.target, e.source, to);
+          if (a.filter !== null) setFilter?.(a.filter.key, a.filter.value);
+          return;
+        }
+        case 'brush':
+          onSelect?.(a.selection, 'brush');
+          return;
+        case 'clear':
+          onEmptyClick?.();
+          return;
+        case 'none':
+          return;
+      }
+    },
+    [el, onInspect, onSelect, onEmptyClick, setFilter],
+  );
+  const bodyCategory = useMemo<PanelCategory>(
+    () => ({
+      ghost,
+      anomaly,
+      table,
+      onTable: setTable,
+      origin,
+      onPick: (a, e, rf) => {
+        act(false, a, e, rf);
+      },
+    }),
+    [ghost, anomaly, table, origin, act],
+  );
+  const fullCategory = useMemo<PanelCategory>(
+    () => ({
+      ...bodyCategory,
+      onPick: (a, e, rf) => {
+        act(true, a, e, rf);
+      },
+    }),
+    [bodyCategory, act],
+  );
+  const categoryLang = view.kind === 'category' ? view.lang : null;
 
   const rootRef = (node: HTMLElement | null): void => {
     assignRef(ref, node);
@@ -652,7 +825,7 @@ const DataPanelFrame = forwardRef<
       data-grid={[g.x, g.y, g.w, g.h].join(',')}
       data-vis={panel.vis.kind}
       data-panel-state={stateOf(view)}
-      data-panel-vis={view.kind === 'frame' ? view.vis : undefined}
+      data-panel-vis={visOf(view)}
       data-selected={selected ? '' : undefined}
     >
       <PanelHeader>
@@ -747,6 +920,36 @@ const DataPanelFrame = forwardRef<
                   >
                     {t('panel.copyQuery')}
                   </MenuItem>
+                  {categoryLang !== null && (
+                    <MenuItem
+                      id="table"
+                      onAction={() => {
+                        setTable((on) => !on);
+                      }}
+                    >
+                      {t(table ? 'panel.menu.chart' : 'panel.menu.table')}
+                    </MenuItem>
+                  )}
+                  {categoryLang === 'promql' && (
+                    <MenuItem
+                      id="ghost"
+                      onAction={() => {
+                        setGhost((on) => !on);
+                      }}
+                    >
+                      {t(ghost ? 'panel.menu.ghostOff' : 'panel.menu.ghostOn')}
+                    </MenuItem>
+                  )}
+                  {categoryLang !== null && (
+                    <MenuItem
+                      id="anomaly"
+                      onAction={() => {
+                        setAnomaly((on) => !on);
+                      }}
+                    >
+                      {t(anomaly ? 'panel.menu.anomalyOff' : 'panel.menu.anomalyOn')}
+                    </MenuItem>
+                  )}
                 </Menu>
               </Popover>
             </MenuTrigger>
@@ -760,17 +963,19 @@ const DataPanelFrame = forwardRef<
           title={title}
           view={view}
           sizeMemo={frameSize}
-          onNarrow={onNarrow}
+          onNarrow={view.kind === 'category' ? onCategoryNarrow : onNarrow}
           streamHidden={full}
           inspect={inspect}
           selectPanelId={panel.id}
+          category={bodyCategory}
         />
       </div>
       <PanelFullScreen
         isOpen={full}
         title={title}
         view={view}
-        onNarrow={onNarrow}
+        onNarrow={view.kind === 'category' ? onCategoryNarrow : onNarrow}
+        category={fullCategory}
         onClose={() => {
           setFull(false);
         }}

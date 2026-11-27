@@ -10,8 +10,10 @@
  * the Run keys or leaving the field; the dialog owns the preview's run, which shares the board
  * panel's key (the run text and the panel's width). After Visualisation come Thresholds and Legend
  * (plan #64 Part B §3.10); every vis edit merges into the panel's `vis`, so a kind change keeps
- * them, and keeps only the options the new kind allows (`withKind`, board spec v3). A stored kind
- * this version does not draw (`PENDING_KINDS`) shows as a disabled option. They change the spec, not the query key: the preview reruns nothing. For LogQL the Query
+ * them, and keeps only the options and values the new kind allows (`withKind`, board spec v3). A
+ * bar chart has its options field in place of Legend (plan #173 Part 3b §4.5). A stored kind this
+ * version does not draw (`PENDING_KINDS`) shows as a disabled option. They change the spec, not the
+ * query key: the preview reruns nothing, except a bar chart's baseline offset. For LogQL the Query
  * field is the LogQL editor (plan #67 §3.5) with the same run rules; a language change keeps the
  * text, and the Auto option names what the preview's answer draws (Logs for log lines).
  */
@@ -32,6 +34,7 @@ import { ModalDialog } from '../../kit/Dialog';
 import { Select } from '../../kit/Select';
 import { TextField } from '../../kit/TextField';
 import { autoVis } from '../../vis/autovis';
+import { BarchartOptionsField } from './BarchartOptionsField';
 import styles from './Board.module.css';
 import { PanelPreview } from './PanelFrame';
 import { PanelLogqlField } from './PanelLogqlField';
@@ -83,7 +86,10 @@ function useStable<T>(value: T): T {
 }
 
 /** `vis` without the member `key` (absent, not undefined: the saved spec has no such key). */
-function without(vis: DataPanelSpec['vis'], key: 'thresholds' | 'legend'): DataPanelSpec['vis'] {
+function without(
+  vis: DataPanelSpec['vis'],
+  key: 'thresholds' | 'legend' | 'options',
+): DataPanelSpec['vis'] {
   return Object.fromEntries(Object.entries(vis).filter(([k]) => k !== key)) as DataPanelSpec['vis'];
 }
 
@@ -99,18 +105,20 @@ const KINDS: readonly { id: DataVisKind; label: MessageId }[] = [
   { id: 'bars', label: 'editor.vis.bars' },
   { id: 'heatmap', label: 'editor.vis.heatmap' },
   { id: 'stat', label: 'editor.vis.stat' },
+  { id: 'barchart', label: 'editor.vis.barchart' },
   { id: 'logs', label: 'editor.vis.logs' },
 ];
 
 /** The labels of the kinds not drawn yet (`PENDING_KINDS`): shown, disabled, only when stored. */
 const PENDING_LABELS: Readonly<Partial<Record<DataVisKind, MessageId>>> = {
-  barchart: 'editor.vis.barchart',
   pie: 'editor.vis.pie',
 };
 
 /**
- * Thresholds and Legend (§3.10). Memoised, with stable props from the editor, so an edit elsewhere
- * in the dialog (title, language, query) does not render them again (`bench:rooms-long-tasks`).
+ * Thresholds and Legend (§3.10); for a bar chart, Thresholds and its options field instead of
+ * Legend (plan #173 Part 3b §4.5). Memoised, with stable props from the editor, so an edit
+ * elsewhere in the dialog (title, language, query) does not render them again
+ * (`bench:rooms-long-tasks`).
  */
 const VisExtras = memo(function VisExtras({
   vis,
@@ -145,18 +153,31 @@ const VisExtras = memo(function VisExtras({
           readOnly={readOnly}
         />
       </div>
-      <div className={cx(styles['editorWide'])}>
-        <Select
-          label={t('editor.legend')}
-          value={vis.legend?.mode ?? 'table'}
-          options={LEGENDS.map((l) => ({ id: l.id, label: t(l.label) }))}
-          onChange={(mode) => {
-            onVis(mode === 'hidden' ? { ...vis, legend: { mode } } : without(vis, 'legend'));
-          }}
-          error={errorAt('/vis/legend/mode')}
-          isDisabled={readOnly}
-        />
-      </div>
+      {vis.kind === 'barchart' ? (
+        <div className={cx(styles['editorWide'])}>
+          <BarchartOptionsField
+            options={vis.options}
+            errorAt={(key) => errorAt(`/vis/options/${key}`)}
+            readOnly={readOnly}
+            onChange={(options) => {
+              onVis(options === undefined ? without(vis, 'options') : { ...vis, options });
+            }}
+          />
+        </div>
+      ) : (
+        <div className={cx(styles['editorWide'])}>
+          <Select
+            label={t('editor.legend')}
+            value={vis.legend?.mode ?? 'table'}
+            options={LEGENDS.map((l) => ({ id: l.id, label: t(l.label) }))}
+            onChange={(mode) => {
+              onVis(mode === 'hidden' ? { ...vis, legend: { mode } } : without(vis, 'legend'));
+            }}
+            error={errorAt('/vis/legend/mode')}
+            isDisabled={readOnly}
+          />
+        </div>
+      )}
     </>
   );
 });

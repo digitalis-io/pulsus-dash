@@ -86,6 +86,30 @@ it still reads for the picker and completion.
 A range result is never a stat: the BFF puts it on the grid, so a series with one sample is a
 series with gaps. `chooseVis(param, auto)` returns the URL's `vis` when it is not `auto`.
 
+Explore passes `available: EXPLORE_VIS` (the default set and `barchart`, #173 Part 3b), so row 11
+(reduced categories: 2 to 50 series of an instant answer with at most one sample each, or a range
+answer with a reducer) can choose the bar chart. Explore sends vectors on the range route without a
+reducer, so a vector query stays a line until Explore runs instant vectors. Explore stores nothing,
+so no saved choice changes; boards keep the default set ([Boards](boards.md#bar-chart-panels-173-part-3b)).
+
+## The bar chart (`vis=barchart`, #173 Part 3b)
+
+With `vis=barchart` (the picker's **Bar chart**, or Auto when row 11 fires) and a series or scalar
+result, `MetricsPage` builds `barchartModel(result, {title: 'Query result', rateApplied, options:
+undefined, thresholds: null})` (memoised on the result and the rate) and `ResultCard` draws a
+`CategoryChart` in the chart host (a chart's height plus the meter's line) instead of `ChartFrame`:
+
+- the coverage meter under the bars (`100 %`, `limited (…)`, `truncated`, `showing k of n…`), whose
+  Narrow is Explore's Narrow;
+- the table view: Shift+T in the chart (also from the `tooSmall` notice) opens `PanelTable`, and
+  again returns to the chart, with focus on the listbox (or the notice); the state is the card's;
+- the pick context `{surface: 'explore', filters: [], origin, window}`: a click inspects the bar
+  (the `mark` target), a brush selects its keys, an empty pick clears. Explore never filters: the
+  tooltip says "Filters apply on boards" and no `f=` is written.
+
+The series table stays, without row isolation (`canIsolate` is false for a bar chart). Explore has
+no options, thresholds, baseline, ghost or anomaly toggle for the bar chart.
+
 ## Histogram buckets
 
 `histogramBuckets(series)` is `null` unless every series has an `le` label (`+Inf`, `Inf` or a
@@ -143,7 +167,7 @@ bounds and fills only that series' row with its group's term of the full view's 
 cell is NaN, and a row whose group lacks the interval's lower bound has no fill. A key that is not
 in the result gives the full view. `toggleIsolation(current, key)` returns `null` for the
 isolated row, so a second click restores the full view. `canIsolate(vis, result)` is true for a
-series result with a vis, except a heatmap whose buckets do not convert.
+series result with a vis, except a heatmap whose buckets do not convert and a bar chart.
 
 **Series rows.** `seriesRows(result)` gives one row per series in response order: the series name,
 its colour index, the last and the largest non-NaN value (±Inf included), `null` when none; a
@@ -156,7 +180,7 @@ descending, and flips on the same column.
 | Key    | Read                                                                             | Written             |
 | ------ | -------------------------------------------------------------------------------- | ------------------- |
 | `q`    | the first value (`+` is a space)                                                 | omitted when empty  |
-| `vis`  | the first of the values that is `line`, `bars`, `heatmap` or `stat`; else `auto` | omitted when `auto` |
+| `vis`  | the first of the values that is `line`, `bars`, `heatmap`, `stat` or `barchart`; else `auto` | omitted when `auto` |
 | `rate` | `off` when the first value is `off`; else `auto`                                 | `rate=off` only     |
 
 The keys are written after the time Context, with every other key, sorted by key. The `metrics`

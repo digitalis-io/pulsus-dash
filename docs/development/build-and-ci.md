@@ -721,6 +721,27 @@ the browser otherwise).
   and threshold text of a stat with thresholds; canvas pixels in the sparkline band of a range stat,
   none for a scalar stat). `e2e:a11y-rooms` adds `b-1 view, legend and stat chip`, `b-1 edit,
   compact legend table` and `b-1 edit, thresholds`.
+- **Board bar charts** (`panels-categorical.spec.ts`, #173 Part 3b, T22 §10.3, all three engines, on
+  the http-mode BFF and the fake, in the same 2026-01-01 00:00–01:00 UTC window; boards through
+  `e2e/boardApi.ts`, whose `PanelInput.vis` takes `options`; each test deletes its board). The
+  `bars-*` transcripts (`bars-by-version`, `bars-by-version-base` for the window one day earlier,
+  `bars-warn`, `bars-trunc`, `bars-keys`, `bars-many`; listed in `transcripts_test.go`) answer
+  `POST /api/v1/query_range` by `query`, with samples at 00:00, 00:30 and 01:00 (on every step's
+  grid). "Bar i" is band i of the frame's `data-plot` in draw order; a probe reads the canvas pixel
+  at the band centre, at 25 % of the bar's length, and `data-value-axis` (`min,max,manual|auto`)
+  gives the value scale. **`e2e:categorical-coverage`** (the meter's `100 %`, `limited (1 warning)`
+  and its popover, `truncated` and Narrow to Explore with `vis=barchart`), **`e2e:bars-bounds`**
+  (fixed `min`/`max` through a reload, `5 values outside the fixed range`), **`e2e:bars-filter`**
+  (a click toggles `f=version=…` and the chip, with no new range request: interim until #193),
+  **`e2e:bars-inspect`** (the Inspector's value, labels, Explore chip and the disabled Label
+  filter), **`e2e:categorical-interactions`** (the listbox keys, the Shift brush across panels,
+  Escape, Enter, the tooltip lines and the baseline ghost: the request one day earlier and a
+  `text-muted` pixel at the baseline), **`e2e:selection-empty`** (bars in their
+  `series-{1 + seriesColourIndex(key)}` colours, a pointer brush dims the other panel's
+  unselected bars, Escape restores them; `seriesColourIndex` is imported from the CSS-free
+  `engine/canvas2d/seriesColour.ts`), **`e2e:selection-keys`** (a bar and a line panel's legend
+  Select share one selection by key) and **`e2e:categorical-table-view`** (`bars_many`: the cap of
+  42 at a 588–602 px plot, the table's rows and the CSV export).
 - **Board event markers** (`board-events.spec.ts`, #64 Part C, all three engines, on the http-mode
   BFF, Postgres and the fake, in the same window; the tests run one at a time because annotations
   are the organisation's, and each deletes its board and annotations): **`e2e:board-event-markers`**,
