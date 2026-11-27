@@ -706,8 +706,11 @@
   min-height: 0;
 }
 
+/* A flex column, so the legend's 40 % cap resolves against the stack and the plot takes the rest:
+   no empty track below a capped legend. */
 .frameStack {
-  grid-template-rows: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   container-type: size;
 }
@@ -723,10 +726,28 @@
   min-width: 0;
 }
 
-/* From 240 px of stack: the table, at most 40 % of the stack, scrolling. */
+/* In a line or bars stack the plot takes the height the legend leaves, at least 120 px. */
+.frameStack > .chartCell {
+  flex: 1 1 0;
+  min-height: calc(var(--space-16) * 2);
+}
+
+.frameStack > .legendCompact {
+  flex: none;
+}
+
+/* From 240 px of stack: the table at its natural height, at most 40 % of the stack; its scroll
+   region shrinks to the cap and scrolls inside it. */
 .legend {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
   max-height: 40%;
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.legend > * {
   min-height: 0;
 }
 
