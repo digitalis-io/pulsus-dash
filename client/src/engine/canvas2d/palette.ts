@@ -14,7 +14,10 @@ export { LEVEL_COLOUR, LEVEL_LABELS, seriesColourIndex } from './seriesColour';
 
 export interface ThemeColours {
   background: string;
+  /** Value guides (`chart-grid`, #282 Part 2b). */
   grid: string;
+  /** The line plot's bottom baseline (`chart-axis`). */
+  axis: string;
   axisText: string;
   crosshair: string;
   brush: string;
@@ -52,7 +55,8 @@ export function themeColours(t: ThemeName): ThemeColours {
   const c = colour[t];
   return {
     background: c['surface-1'],
-    grid: c.hairline,
+    grid: c['chart-grid'],
+    axis: c['chart-axis'],
     axisText: c['text-muted'],
     crosshair: c['text-muted'],
     brush: c.brush,

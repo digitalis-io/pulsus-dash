@@ -86,6 +86,26 @@ holds, ADR-0014 §4); the statistics are the client's `lineStats`; the value axi
 per tick at `round(y)` and the line item; a manual axis sets the scissor to the plot rect. No data,
 no window, an unsupported kind or an empty plot gives the clear only and no summary.
 
+**The area pass** (#282 Part 2b, [ADR-0036](../../designs/adr/0036-line-spec-area.md)). `build`
+sets a Line item's `area: Some(Area { alpha_top })` when the spec has `area: true`, 1–4 series are
+shown, the viewport has no selection and the item has no lanes; `alpha_top` is
+`opacity::CHART_AREA / shown`. The renderer then draws the item in two passes over the same
+instances (`passes.rs` `plan`): `Area` (`area.wgsl`: the guides, then one quad per SEGMENT
+instance over the join's x-span and the plot's height) and `All` without the guides. With one
+batch both reuse the decimation (T1: the same indirect args); with more, passes are outer and
+batches inner, so every area batch precedes every line batch; a deferred T1 frame draws the area
+first within the current capacity. The fragment stage applies the piecewise edge rule (Rust
+reference `dash_scene::area_pieces`, instance rebuild `dash_scene::join_ends`): the join is split
+where the line crosses the plot's top and bottom rows, a clipped end is rebuilt from the cut
+parameter and side the instance carries (`x0 + t·(x1 − x0)`, `y_of(±U_CLAMP)`), and alpha falls
+linearly from `alpha_top` at the top row to 0 at the bottom. Column x edges come from integer
+column arithmetic, so neighbouring quads share their edges and nothing blends twice. Cost: one
+more draw per Line item; no compute pass, buffer or read-back (`area_cost`). `common.wgsl` (the
+`View` uniform, `y_of`, `device`, `to_clip`, `clipped_u`) is prepended to `line.wgsl` and
+`area.wgsl` (`LINE_WGSL`, `AREA_WGSL`). The palette has ten slots: 0–7 series, 8 `chart-grid` (the
+value guides), 9 `chart-axis` (the baseline, one more guide instance at `Guides.baseline` =
+`round(plot.y + plot.h) − 1`); a guide takes its slot from its flags.
+
 `Renderer::render` returns `Some(DrawnEvent)` only for a complete frame at a non-zero size with at
 least one item (the `drawn` event of ADR-0019, #90; Part C emits it).
 

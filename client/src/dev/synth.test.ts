@@ -29,6 +29,8 @@ describe('unit:synth', () => {
       'line-events',
       'line-bytes-rate',
       'stat-uptime',
+      'line-area',
+      'line-area-manual',
     ]);
     expect(b).toEqual(a);
     for (const [i, e] of a.entries()) {

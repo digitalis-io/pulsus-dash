@@ -47,7 +47,14 @@ interface Threshold {
 }
 interface LayerCase {
   id: string;
-  spec: { kind: 'line'; title: string; unit: Unit; thresholds?: Threshold[]; valueRange?: Span2 };
+  spec: {
+    kind: 'line';
+    title: string;
+    unit: Unit;
+    thresholds?: Threshold[];
+    valueRange?: Span2;
+    area?: boolean;
+  };
   series: readonly Series[];
   events: Marker[];
   sizes: readonly (readonly [number, number, number])[];
@@ -71,6 +78,8 @@ function recordingCtx(s: Sources, labels: string[], strokes: Stroke[]): Record<s
     fillRect: nop,
     clearRect: nop,
     arc: nop,
+    closePath: nop,
+    createLinearGradient: () => ({ addColorStop: nop }),
     fill: nop,
     drawImage: nop,
     beginPath: () => {
@@ -295,6 +304,9 @@ export function layerRows(
   const cases: LayerCase[] = [
     fromGallery('line-thresholds'),
     fromGallery('line-events'),
+    // #282 Part 2b (ADR-0036): the shaded pages, auto and pinned.
+    fromGallery('line-area'),
+    fromGallery('line-area-manual'),
     {
       id: 'thresholds-mixed',
       // Above, below and inside the data, a NaN (null on the wire), and 10 lines (8 kept: the 9th
@@ -424,6 +436,8 @@ function selectionCtx(
     setTransform: nop,
     clearRect: nop,
     arc: nop,
+    closePath: nop,
+    createLinearGradient: () => ({ addColorStop: nop }),
     fill: nop,
     drawImage: nop,
     rect: nop,
