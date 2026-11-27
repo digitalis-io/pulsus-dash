@@ -12,19 +12,33 @@ import { fromRange } from '../vis/autovis';
 import type { PanelOutcome } from './panelRun';
 import { planRangeView, type ViewInput } from './rangeView';
 
-const outcomes = new WeakMap<Assembled, PanelOutcome>();
+/**
+ * Outcomes per assembly, then per query key and transition: panels of one query share an assembly
+ * but not their key, and each must get the same outcome object on every render (a new placeholder
+ * object would notify its query again).
+ */
+const outcomes = new WeakMap<Assembled, Map<readonly unknown[], Map<string, PanelOutcome>>>();
 
-/** `{ key, planned, scope, result: visible, held, fit, rank }`, per assembly (stable identity). */
+/** `{ key, planned, scope, result: visible, held, fit, rank }`, per assembly and key (stable). */
 export function outcomeOf(
   key: readonly unknown[],
   a: Assembled,
   scope: string,
   transition?: 'crossfade',
 ): PanelOutcome {
-  const cached = outcomes.get(a);
-  if (cached !== undefined && cached.key === key && cached.transition === transition) {
-    return cached;
+  let byKey = outcomes.get(a);
+  if (byKey === undefined) {
+    byKey = new Map();
+    outcomes.set(a, byKey);
   }
+  let byFade = byKey.get(key);
+  if (byFade === undefined) {
+    byFade = new Map();
+    byKey.set(key, byFade);
+  }
+  const fk = `${transition ?? ''}|${scope}`;
+  const cached = byFade.get(fk);
+  if (cached !== undefined) return cached;
   const o: PanelOutcome = {
     key,
     planned: a.visible.planned,
@@ -35,7 +49,7 @@ export function outcomeOf(
     fit: a.fit,
     ...(transition === undefined ? {} : { transition }),
   };
-  outcomes.set(a, o);
+  byFade.set(fk, o);
   return o;
 }
 

@@ -438,6 +438,33 @@ describe('ranks in the panel run (#304 Part B §4.3)', () => {
     expect(last?.kind === 'series' ? last.transition : undefined).toBe('crossfade');
   });
 
+  it('two panels of one query share a rank 0 fill without a render loop', async () => {
+    const c = T0 + 96 * H;
+    const w = centred(c, 24 * H);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const m = mount([panel('a', 'up'), panel('b', 'up')], w);
+    m.api.auto = answer(ONE);
+    await waitFor(
+      () => {
+        expect(m.api.calls.filter((x) => x.req.stepMs === 600_000)).toHaveLength(1);
+      },
+      { timeout: 3_000 },
+    );
+    await drain();
+    m.api.auto = null;
+    const z = centred(c, 6 * H);
+    await m.go(z.fromMs, z.toMs);
+    expect(m.recs.get('a')?.run?.rank).toBe(0);
+    expect(m.recs.get('b')?.run?.rank).toBe(0);
+    // The same outcome object on every render of a panel: no new placeholder, no loop.
+    expect(m.recs.get('a')?.run?.outcome).toBe(m.recs.get('a')?.run?.outcome);
+    await drain();
+    expect(
+      errors.mock.calls.map((x) => String(x[0])).filter((x) => x.includes('Maximum update depth')),
+    ).toEqual([]);
+    errors.mockRestore();
+  });
+
   it('pan cuts', async () => {
     const m = mount([panel('p', 'up')], { fromMs: T0, toMs: T0 + H });
     m.api.auto = answer(ONE);

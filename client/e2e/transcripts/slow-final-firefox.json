@@ -1,7 +1,7 @@
 {
   "name": "slow-final-firefox",
-  "provenance": {"synthetic": "e2e:board-cancel's final window (firefox, day 2 + 2 d), its bucket-aligned start (#304): a series the superseded windows never answer"},
-  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query_prefix": "slow_metric", "form": {"start": "1771975680"}},
+  "provenance": {"synthetic": "e2e:board-cancel's final window (firefox, day 2 + 2 d) (#304: a day apart): a series the superseded windows never answer"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query_prefix": "slow_metric", "form": {"start": "1771977600"}},
   "response": {
     "status": 200,
     "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-slow-final-firefox-1"},
