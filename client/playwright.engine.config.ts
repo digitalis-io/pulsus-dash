@@ -15,7 +15,10 @@
  * `dist-release-stub` with its computed manifest (4177) and the dev server (5175).
  * `e2e:engine-selection` (plan #68 C2c2) runs as `e2e:engine-camera` does, its S11 in `probe`; the
  * engine leg of `e2e:selection-sources` (`inspector.spec.ts`) runs on `lavapipe` against the
- * http-mode BFF (port 4174).
+ * http-mode BFF (port 4174). The frame benches (plan #68 C2d1), `bench:frame-gallery` and
+ * `bench:frame-line-1e8`, run in project `bench` (lavapipe, the probe build, one worker), which
+ * exists only with `ENGINE_BENCH=1` (`make engine-bench`), so `make engine-e2e` never runs them;
+ * the bench then starts only the fake and the probe BFF.
  */
 import { defineConfig, devices } from '@playwright/test';
 import { ENGINE_ONLY_SPECS, ENGINE_SHARED_SPECS } from './config/engineSpecs.ts';
@@ -34,6 +37,9 @@ export const SWIFTSHADER_ARGS = [
   '--enable-unsafe-swiftshader',
   '--use-webgpu-adapter=swiftshader',
 ] as const;
+
+/** `make engine-bench` (plan #68 C2d1 §2): only project `bench`, report-only. */
+const BENCH = process.env['ENGINE_BENCH'] === '1';
 
 export default defineConfig({
   testDir: 'e2e',
@@ -87,6 +93,24 @@ export default defineConfig({
         launchOptions: { args: [...LAVAPIPE_ARGS] },
       },
     },
+    // The frame benches (plan #68 C2d1), report-only: only with ENGINE_BENCH=1.
+    ...(BENCH
+      ? [
+          {
+            name: 'bench',
+            testMatch: ['bench-frame-gallery.spec.ts', 'bench-frame-line-1e8.spec.ts'],
+            grep: /bench:frame-gallery|bench:frame-line-1e8/,
+            workers: 1,
+            use: {
+              ...devices['Desktop Chrome'],
+              viewport,
+              baseURL: 'http://localhost:4175',
+              channel: 'chromium',
+              launchOptions: { args: [...LAVAPIPE_ARGS] },
+            },
+          },
+        ]
+      : []),
   ],
   webServer: [
     {
@@ -139,5 +163,6 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
     },
-  ],
+    // The bench needs only the fake and the probe BFF.
+  ].filter((w) => !BENCH || /fake\.sh|serve\.sh probe/.test(w.command)),
 });

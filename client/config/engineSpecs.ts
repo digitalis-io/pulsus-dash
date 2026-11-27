@@ -15,6 +15,9 @@ export const ENGINE_ONLY_SPECS = [
   'engine-hover.spec.ts',
   'engine-layer.spec.ts',
   'engine-selection.spec.ts',
+  // The frame benches (plan #68 C2d1): the engine config's `bench` project only.
+  'bench-frame-gallery.spec.ts',
+  'bench-frame-line-1e8.spec.ts',
 ] as const;
 
 /** Specs in both suites; their engine legs skip outside the engine projects. */

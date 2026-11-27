@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.15-rc · 2026-11-26 |
+| **Version** | 1.16-rc · 2026-11-26 |
 | **Milestone** | Engine runtime from the engine issue ([12 §2.1](../product/12-roadmap.md#21-delivery-order-2026-11-19)); the TS keymap and URL codec ship with the M-UI1 application |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersedes ADR-0001, ADR-0002, ADR-0004), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md) (CSP and the engine's worker policy), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md) (the engine is the default renderer) |
 | **Source draft** | plans/tech/T03-browser-runtime.md (not tracked) |
@@ -837,7 +837,7 @@ line layout without `cosmic-text`.
 | All present | **Full** | §4.2 | — |
 | No WebGPU adapter / device | **Tier T2** ([T02 §4.9](T02-vis-engine.md#49-capability-tiers-and-the-gallery)) | wgpu GL backend in the render worker; compute on the pool. A WebGPU failure after the canvas holds its context restarts the render worker once on a fresh canvas with T2. | coverage meter shows "WebGL2 tier" where a ceiling binds |
 | Not cross-origin isolated (headers stripped by a proxy, non-isolated embed) | **Single-thread (ST)** | `dash-core-st` in **one** worker (render + data + layout), no pool; input via `postMessage` with transfer, batched per frame, ≤ 1 batch unacknowledged (the worker returns the buffer) | banner "Reduced performance: cross-origin isolation is off (ask your admin)"; ceilings: 10⁷ line points, 10⁶ scatter, 2k Atlas entities; RUM flags it |
-| No OffscreenCanvas | **Main-thread render (MT-R)** | `dash-core-st` on main, time-sliced (≤ 8 ms per slice), data decoded in a worker and transferred. Static until MT-R ships (§11). | banner; only Lens, Alert Lens and workbenches supported; Atlas falls back to the Explorer list ([15](../product/15-estate-navigation.md)) |
+| No OffscreenCanvas | **Main-thread render (MT-R)** | `dash-core-st` on main, time-sliced (≤ 8 ms per slice), data decoded in a worker and transferred. Canvas 2D until MT-R ships (§11). | banner; only Lens, Alert Lens and workbenches supported; Atlas falls back to the Explorer list ([15](../product/15-estate-navigation.md)) |
 | No WebGL2 either | **Static** | shell only; viewports show server-rendered PNGs from the BFF's native renderer ([T02 §4.9](T02-vis-engine.md#49-capability-tiers-and-the-gallery)), refreshed on Context change | "Interactive charts unavailable on this browser"; Alert Lens, ack and silence still work |
 | GPU device lost | recover | render recreates the device and re-uploads from arena chunks (CPU-resident) | ≤ 500 ms with no blank frame: the last frame stays on screen; logged |
 | Worker crash / WASM trap | recover | panic hook records the trace (RUM); `boot.js` respawns the worker; data workers are restartable; a render restart re-reads the Context from the TS application's store, which resends each frame's spec, data and time window | toast "Recovered from an error"; a second crash in 60 s → reload prompt with the replay attached ([T05](T05-testing-and-performance.md)) |
@@ -847,7 +847,10 @@ line layout without `cosmic-text`.
 
 *Part C1 of #68 (as built).* Until `dash-core-st`, the modes without the shared-memory engine
 (not cross-origin isolated, MT-R, Static, and no `Atomics.waitAsync`) draw with the interim Canvas
-2D engine. The engine is the default renderer ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md),
+2D engine. *Accepted for M-UI0 (#68 Part C2d1):* without OffscreenCanvas (MT-R) and on Static,
+frames draw with Canvas 2D, which keeps T03-025 (every mode shows the chrome and the charts).
+MT-R and Static's server-rendered PNGs from the BFF are future work, each with its own issue (filed
+by #68 Part C2d2). ST is as written above until C2d2. The engine is the default renderer ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md),
 #256), not opt-in: `?engine=canvas2d` or a `VITE_ENGINE=canvas2d` build forces Canvas 2D. Engine
 frames are bound per frame by a routing engine that keeps each frame's state on the main thread:
 
@@ -913,7 +916,7 @@ Owned by [T05](T05-testing-and-performance.md). Specific to this doc:
 
 | Milestone | Ships |
 |---|---|
-| M-UI0 | shim (boot, worker, net, input), one `dash-core-mt` (shell features stubbed in core), render + 2 data + pool, control block v1, T1/T2, ST mode with the `-st` artefact, size gate; no OffscreenCanvas → Static |
+| M-UI0 | shim (boot, worker, net, input), one `dash-core-mt` (shell features stubbed in core), render + 2 data + pool, control block v1, T1/T2, ST mode with the `-st` artefact, size gate; no OffscreenCanvas (MT-R) and Static → Canvas 2D (§9.2; MT-R and the server-rendered PNGs follow, each with its issue) |
 | M-UI1 | *Superseded (ADR-0014):* the TS keymap, URL/history and `cam` codec and undo stack ship with the React application; workbench satellites and MT-R mode follow the engine |
 | M-UI2–M-UI3 | layout worker under load (T14 (draft)), local engine in core (T13 (draft)), memory degradation at scale |
 | M-UI5 | `dash-geo`, `sw.js` (T20 (draft)) |
@@ -989,4 +992,5 @@ which forces a reload.
 | 1.13-rc | 2026-11-26 | #68 Part C2c1: §4.2 main → render message `events{id, atMs}` (the event markers' times; a layer input, not a ring record) |
 | 1.14-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md)): §9.2 the Part C1 note: the engine is the default renderer, not opt-in; `?engine=canvas2d` or a `VITE_ENGINE=canvas2d` build forces Canvas 2D; the recovery table adds the boot failure that marks the session (not for a build without the engine) |
 | 1.15-rc | 2026-11-26 | #68 Part C2c2: §4.2 main → render message `selection{id, keys, fromMs, toMs}` (the page selection; a layer input, not a ring record) |
+| 1.16-rc | 2026-11-26 | #68 Part C2d1: §9.2 the MT-R row and the Part C1 note, and the §11 M-UI0 row, reconciled with what is accepted now: without OffscreenCanvas (MT-R) and on Static, frames draw with Canvas 2D (T03-025 holds); MT-R and Static's server-rendered PNGs are future work with their issues (filed by C2d2); ST unchanged until C2d2 |
 | 1.9-rc | 2026-11-25 | #68 Part C1, [ADR-0026](../adr/0026-engine-csp-and-worker-policy.md): T03-022 and §5.7 assets carry COEP `require-corp`, the CSP names the `pulsus-engine` policy; §9.2 the recovery as built (frame fallback, one restart, session flag, kind swap) and Canvas 2D for not isolated, MT-R and Static until `dash-core-st`; §5.4 resize by message until Part C2 |

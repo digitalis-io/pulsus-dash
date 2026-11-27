@@ -18,7 +18,8 @@ crate-type = ["cdylib", "rlib"]
 test-hooks = ["dash-gpu/test-hooks"]
 # The probe build of `e2e:shim-fuzz` (plan #68 C2a1 §3.5): `engine_probe_input` and
 # `engine_probe_ring_start`; never in the release or fault builds (T03-024, `ci:probe-absent`).
-probe = []
+# Plan #68 C2d1 §3.2: `engine_probe_synth` builds F1c (`pulsus-synth`) in the worker.
+probe = ["dep:pulsus-synth"]
 
 [dependencies]
 dash-gpu.workspace = true
@@ -28,6 +29,7 @@ dash-scales.workspace = true
 dash-scene.workspace = true
 dash-tokens.workspace = true
 dash-wire.workspace = true
+pulsus-synth = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

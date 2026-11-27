@@ -88,19 +88,77 @@ describe('ci:probe-absent (T03-024)', () => {
     expect(fault.map((f) => [f.rule, f.subject])).toEqual([
       ['probe-in-release', 'engine_probe_input'],
     ]);
-    // The probe build must carry it.
+    // The probe build must carry it (and, since plan #68 C2d1, engine_probe_synth).
     const missing = checkProbeAbsent(dist({ ...CLEAN, ...sites }), {
       expectFaults: true,
       expectProbe: true,
     });
     expect(missing.map((f) => [f.rule, f.subject])).toEqual([
       ['probe-missing', 'engine_probe_input'],
+      ['probe-missing', 'engine_probe_' + 'synth'],
+      ['probe-missing', 'engine_probe_' + 'chunk'],
+    ]);
+    const both = Buffer.concat([
+      PROBE,
+      Buffer.from('engine_probe_' + 'synth'),
+      Buffer.from('engine_probe_' + 'chunk'),
     ]);
     expect(
-      checkProbeAbsent(dist({ ...CLEAN, ...sites, 'assets/dash-engine-b.wasm': PROBE }), {
+      checkProbeAbsent(dist({ ...CLEAN, ...sites, 'assets/dash-engine-b.wasm': both }), {
         expectFaults: true,
         expectProbe: true,
       }),
     ).toEqual([]);
+  });
+  it('engine_probe_synth is a probe export too: a release tree fails, the probe build needs it (plan #68 C2d1)', () => {
+    const SYNTH = 'engine_probe_' + 'synth';
+    const INPUT = 'engine_probe_' + 'input';
+    const CHUNK = 'engine_probe_' + 'chunk';
+    const release = checkProbeAbsent(
+      dist({
+        ...CLEAN,
+        'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(SYNTH)]),
+      }),
+    );
+    expect(release.map((f) => [f.rule, f.file, f.subject])).toEqual([
+      ['probe-in-release', 'assets/dash-engine-b.wasm', SYNTH],
+    ]);
+    const sites = {
+      'assets/r.js': `x("${SENTINEL}:route")`,
+      'assets/b.js': `x("${SENTINEL}:boot")`,
+      'assets/w/x.js': `x("${SENTINEL}:worker")`,
+    };
+    // The probe build without the synth export misses it.
+    const noSynth = checkProbeAbsent(
+      dist({
+        ...CLEAN,
+        ...sites,
+        'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(INPUT)]),
+      }),
+      { expectFaults: true, expectProbe: true },
+    );
+    expect(noSynth.map((f) => [f.rule, f.subject])).toEqual([
+      ['probe-missing', SYNTH],
+      ['probe-missing', CHUNK],
+    ]);
+    expect(
+      checkProbeAbsent(
+        dist({
+          ...CLEAN,
+          ...sites,
+          'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(INPUT + SYNTH + CHUNK)]),
+        }),
+        { expectFaults: true, expectProbe: true },
+      ),
+    ).toEqual([]);
+  });
+  it('engine_probe_chunk alone in a release tree is a finding (plan #68 C2d1)', () => {
+    const CHUNK = 'engine_probe_' + 'chunk';
+    const r = checkProbeAbsent(
+      dist({ ...CLEAN, 'assets/dash-engine-b.wasm': Buffer.concat([WASM, Buffer.from(CHUNK)]) }),
+    );
+    expect(r.map((f) => [f.rule, f.file, f.subject])).toEqual([
+      ['probe-in-release', 'assets/dash-engine-b.wasm', CHUNK],
+    ]);
   });
 });

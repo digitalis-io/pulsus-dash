@@ -24,6 +24,10 @@
  * | `freeze(n, seq)`, `frozen(n)`, `unfreeze(n)` | the probe build: after its first completed presentation with seq ≥ `seq` the worker presents nothing for the frame; `frozen` resolves with that presentation's `drawn` and seq |
  * | `renew()` | the probe build: every frame's renderer and surface made again, the frames redrawn (plan #68 C2c2 S11, the same-tier restore after a device loss) |
  * | `stats().bad`, `stats().selects` | `INPUT_BAD`; Select records the ring took |
+ * | `synth(n, o, timeoutMs?)` | the probe build (plan #68 C2d1 §3.2): F1c of `o.series` × `o.points` built in the worker as the frame's data (`Frames::set_chunk`); resolves on the worker's acknowledgement `{ok, bytes}`, or `ok: false` with `reason` `alloc` (the worker's allocation failed), `fatal`, `restart` or `timeout` (120 s by default) |
+ * | `synthFault(f)` | the next `synth` only: `alloc` answers `ok: false, reason: 'alloc'` at once, `silent` withholds the answer (it times out), `fatal` answers `reason: 'fatal'`; `null` clears it |
+ * | `chunk(n)` | the probe build: `{series, points, bytes}` of the frame's current chunk (points: series 0's samples), or null |
+ * | `failed(n)`, `trap()` | the frame's `onFail` reasons (`restart`, `trap`, `surface`, …); the probe build: the render worker traps for real (plan #68 C2d1) |
  *
  * A frame's canvas is at (0, `o.top ?? 0`) CSS px.
  *
@@ -46,7 +50,7 @@ import type {
 } from '../engine/api';
 import { Canvas2DEngine } from '../engine/canvas2d/Canvas2DEngine';
 import { ControlledFrame } from '../engine/controlled';
-import type { Backend, EngineProbe, ProbeHost } from '../engine/wasm/engine';
+import type { Backend, ChunkInfo, EngineProbe, ProbeHost, SynthAck } from '../engine/wasm/engine';
 import { WasmFrame } from '../engine/wasm/frame';
 import type { InputRec } from '../engine/wasm/ring';
 
@@ -136,7 +140,26 @@ export interface DashProbe {
   unfreeze(n: number): void;
   /** The probe build (plan #68 C2c2 S11): every frame's renderer made again, as after a loss. */
   renew(): void;
+  /**
+   * The probe build (plan #68 C2d1 §3.2): F1c (`series` × `points` on a grid, key hash = series
+   * index) as the frame's data; `ok: false` on a failed allocation, a timeout, a fatal or a restart.
+   */
+  synth(
+    n: number,
+    o: { readonly series: number; readonly points: number },
+    timeoutMs?: number,
+  ): Promise<SynthAck>;
+  /** The next `synth`'s simulated outcome (plan #68 C2d1 `synth outcomes`); null clears it. */
+  synthFault(f: SynthFault | null): void;
+  /** The probe build: the frame's current chunk, or null. */
+  chunk(n: number): Promise<ChunkInfo | null>;
+  /** The frame's `onFail` reasons, in order. */
+  failed(n: number): string[];
+  /** The probe build: the render worker traps (a real failure). */
+  trap(): void;
 }
+
+export type SynthFault = 'alloc' | 'silent' | 'fatal';
 
 interface Entry {
   /** The controlled frame the calls and DOM events drive, and its engine frame. */
@@ -156,12 +179,15 @@ interface Entry {
   readonly seqs: (DrawnEvent & { seq: number })[];
   /** The seq `freeze` waits for. */
   freezeAt: number | null;
+  /** The frame's `onFail` reasons. */
+  readonly failed: string[];
 }
 
 const SETTLE_POLL_MS = 5;
 const FROZEN_TIMEOUT_MS = 10_000;
 const SETTLE_TIMEOUT_MS = 60_000;
 const KEEP_DRAWN = 100;
+const SYNTH_TIMEOUT_MS = 120_000;
 
 function data(series: readonly ProbeSeries[]): FrameData {
   return {
@@ -221,6 +247,8 @@ export function createProbe(o: {
     return e;
   };
   let enqueued = 0;
+  /** The next `synth`'s simulated outcome (plan #68 C2d1). */
+  let synthFault: SynthFault | null = null;
   // The probe frames' controller timers, holdable (`holdTimers`).
   let held = false;
   let nextTimer = 1;
@@ -268,6 +296,7 @@ export function createProbe(o: {
     document.body.append(canvas);
     const init = { timeZone: 'UTC', keyTarget: canvas, id };
     const inner = b.createFrame(canvas.transferControlToOffscreen(), init, (reason) => {
+      e.failed.push(reason);
       console.warn(`${id} failed: ${reason}`);
     });
     if (!(inner instanceof WasmFrame)) throw new Error('not an engine frame');
@@ -314,6 +343,7 @@ export function createProbe(o: {
     selects: [],
     seqs: [],
     freezeAt: null,
+    failed: [],
   });
   /** A point at canvas-relative CSS px `(x, y)`, as client px. */
   const client = (c: HTMLCanvasElement, x: number, y: number) => {
@@ -519,6 +549,45 @@ export function createProbe(o: {
     },
     renew() {
       o.host()?.renew();
+    },
+    synth(n, s, timeoutMs = SYNTH_TIMEOUT_MS) {
+      const id = entry(n).inner?.id;
+      const h = o.host();
+      // A simulated outcome, once (`synthFault`): the precedence the bench applies.
+      const f = synthFault;
+      synthFault = null;
+      if (f === 'alloc') return Promise.resolve({ ok: false, bytes: 0, reason: 'alloc' });
+      if (f === 'fatal') return Promise.resolve({ ok: false, bytes: 0, reason: 'fatal' });
+      if (f === 'silent')
+        return new Promise<SynthAck>((resolve) => {
+          setTimeout(() => {
+            resolve({ ok: false, bytes: 0, reason: 'timeout' });
+          }, timeoutMs);
+        });
+      if (id === undefined || h === null)
+        return Promise.resolve({ ok: false, bytes: 0, reason: 'timeout' });
+      return new Promise<SynthAck>((resolve) => {
+        const t = setTimeout(() => {
+          resolve({ ok: false, bytes: 0, reason: 'timeout' });
+        }, timeoutMs);
+        void h.synth(id, s.series, s.points).then((a) => {
+          clearTimeout(t);
+          resolve(a);
+        });
+      });
+    },
+    synthFault(f) {
+      synthFault = f;
+    },
+    failed: (n) => [...entry(n).failed],
+    trap() {
+      o.host()?.trap();
+    },
+    chunk(n) {
+      const id = entry(n).inner?.id;
+      const h = o.host();
+      if (id === undefined || h === null) return Promise.resolve(null);
+      return h.chunk(id);
     },
     unfreeze(n) {
       const e = entry(n);

@@ -9,7 +9,8 @@
  * first; `input` (posted by the adapter after a publish while this worker was idle) only wakes
  * the loop. The probe build (`VITE_ENGINE_PROBE=1`, `e2e:shim-fuzz` only) answers `probe-input`
  * with the decoded records and starts the ring's counters at `ringStart`; `probe-freeze` and
- * `probe-unfreeze` hold a frame after one presentation (plan #68 C2b §3.4).
+ * `probe-unfreeze` hold a frame after one presentation (plan #68 C2b §3.4); `probe-synth` builds F1c
+ * as a frame's data and acknowledges it (plan #68 C2d1 §3.2).
  */
 import init, {
   engine_on_wake,
@@ -45,6 +46,10 @@ interface ProbeExports {
   engine_probe_freeze?(id: number, seq: number): void;
   engine_probe_unfreeze?(id: number): void;
   engine_probe_renew?(): void;
+  /** Plan #68 C2d1 §3.2: bytes of values held, 0 = failed. */
+  engine_probe_synth?(id: number, series: number, points: number): number;
+  /** `{series, points, bytes}` JSON of the frame's chunk, or `null`. */
+  engine_probe_chunk?(id: number): string;
 }
 
 interface Faults {
@@ -101,6 +106,20 @@ function apply(m: MainToRender): void {
       return;
     case 'probe-renew':
       if (import.meta.env.VITE_ENGINE_PROBE === '1') void probeRenew();
+      return;
+    case 'probe-synth':
+      if (import.meta.env.VITE_ENGINE_PROBE === '1') void probeSynth(m);
+      return;
+    case 'probe-chunk':
+      if (import.meta.env.VITE_ENGINE_PROBE === '1') void probeChunk(m.id);
+      return;
+    case 'probe-trap':
+      if (import.meta.env.VITE_ENGINE_PROBE === '1') {
+        // Uncaught, as a trap: the worker's error event (plan #68 C2d1, the bench's failure test).
+        setTimeout(() => {
+          throw new Error('probe trap');
+        }, 0);
+      }
       return;
     case 'create':
       if (faults?.failCreate(m.id) === true) {
@@ -174,6 +193,23 @@ async function probeRenew(): Promise<void> {
   const p = (await import('virtual:dash-engine')) as unknown as ProbeExports;
   p.engine_probe_renew?.();
   schedule();
+}
+
+/**
+ * The probe build (plan #68 C2d1 §3.2): F1c built as the frame's data, acknowledged with the bytes
+ * of values it holds (0, `ok: false`: an allocation failed and the frame is unchanged).
+ */
+async function probeSynth(m: Extract<MainToRender, { t: 'probe-synth' }>): Promise<void> {
+  const p = (await import('virtual:dash-engine')) as unknown as ProbeExports;
+  const bytes = p.engine_probe_synth?.(m.id, m.series >>> 0, m.points >>> 0) ?? 0;
+  scope.postMessage({ t: 'probe-synth', id: m.id, ok: bytes > 0, bytes });
+  schedule();
+}
+
+/** The probe build (plan #68 C2d1 §3.2): the frame's chunk described, posted back. */
+async function probeChunk(id: number): Promise<void> {
+  const p = (await import('virtual:dash-engine')) as unknown as ProbeExports;
+  scope.postMessage({ t: 'probe-chunk', id, json: p.engine_probe_chunk?.(id) ?? 'null' });
 }
 
 /** The probe build: the decoded records, posted back. */
