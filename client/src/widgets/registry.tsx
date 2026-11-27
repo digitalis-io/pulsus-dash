@@ -8,6 +8,7 @@
 import { createContext, useContext, type ComponentType } from 'react';
 import type { FieldError, PanelVisKind, WidgetKind, WidgetPanelSpec } from '../api/types';
 import type { MessageId } from '../i18n/t';
+import { BoardListEditorBody } from './boardList/BoardListEditorBody';
 import { TextEditorBody } from './text/TextEditorBody';
 
 /** What a def's editor body gets from `WidgetEditor`. */
@@ -24,6 +25,8 @@ export interface WidgetEditorBodyProps {
   original: WidgetPanelSpec['vis'] | undefined;
   /** The next vis, of the same kind (`updateWidget` refuses another). */
   onVis: (vis: WidgetPanelSpec['vis']) => void;
+  /** Stub (tests first, plan #216 Part 2b §3.1). */
+  onLocalInvalid?: (message: string | null) => void;
 }
 
 export interface WidgetDef {
@@ -51,6 +54,15 @@ export const TEXT_DEF: WidgetDef = {
   size: { w: 6, h: 6 },
   newVis: () => ({ kind: 'text', options: { mode: 'markdown', content: '' } }),
   Editor: TextEditorBody,
+};
+
+export const BOARD_LIST_DEF: WidgetDef = {
+  kind: 'boardList',
+  label: 'widget.kind.boardList',
+  editTitle: 'widget.boardList.editTitle',
+  size: { w: 4, h: 8 },
+  newVis: () => ({ kind: 'boardList' }),
+  Editor: BoardListEditorBody,
 };
 
 export const WIDGETS: WidgetRegistry = { defs: [TEXT_DEF] };

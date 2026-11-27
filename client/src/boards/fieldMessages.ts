@@ -47,3 +47,8 @@ export function geomapUnsupported(spec: BoardSpec, f: FieldError): boolean {
   const panels = m[1] === undefined ? spec.panels : spec.sections[Number(m[1])]?.panels;
   return panels?.[Number(m[2])]?.vis.kind === 'geomap';
 }
+
+/** Stub (tests first, plan #216 Part 2b §3.2). */
+export function tagsUnsupported(_f: FieldError): boolean {
+  return false;
+}

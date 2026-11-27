@@ -9,11 +9,12 @@
 /// <reference types="node" />
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, type BoardSpec } from '../../api/types';
 import { fieldMessage } from '../../boards/fieldMessages';
 import { canonicalJson, checkBoardSpec } from '../../boards/spec';
+import { findS } from '../../widgets/boardList/fixtures';
 import { resetQueryLanguages } from '../../boards/useQueryLanguage';
 import { messages } from '../../i18n/messages.en-GB';
 import { StubApi } from '../../api/StubApi';
@@ -30,7 +31,7 @@ import {
   reqs,
   show,
 } from '../../test/boardPanelKit';
-import { EngineWrapper, panelOf, stubBoard } from '../../test/boardTestKit';
+import { boardWith, EngineWrapper, panel, panelOf, stubBoard } from '../../test/boardTestKit';
 import { renderApp } from '../../test/renderApp';
 import { clockOptions } from '../../widgets/spec';
 import {
@@ -382,7 +383,7 @@ describe('unit:widget-registry-generic', () => {
 });
 
 // Plan #216 Part 2a §5 (`unit:widget-frame` amended): stored board lists draw; Clock is still
-// pending (above); a Board list's menu has Show as table, and no Edit panel until Part 2b.
+// pending (above); a Board list's menu has Edit panel (Part 2b) and Show as table.
 describe('unit:widget-frame (board lists)', () => {
   it('stored board lists draw; only the data panel runs; the menu', async () => {
     const lists = ['Starred', 'Recent', 'Checkout boards', 'Payments team', 'Search'];
@@ -405,6 +406,213 @@ describe('unit:widget-frame (board lists)', () => {
       expect(p.querySelector('[data-chart-frame]'), title).toBeNull();
     }
     expect(panelOf('Requests')).not.toHaveAttribute('data-widget');
-    expect(await menuOf(t, 'Starred')).toEqual(['Show as table', 'Duplicate', 'Remove']);
+    expect(await menuOf(t, 'Starred')).toEqual([
+      'Edit panel',
+      'Show as table',
+      'Duplicate',
+      'Remove',
+    ]);
+  });
+});
+
+// Plan #216 Part 2b §5: Add widget → Board list and its editor on the board.
+
+/** A board whose only panel is the search list "Find" (query `query`). */
+function openFind(query = '') {
+  const lists: BoardSpec = {
+    title: 'Lists',
+    panels: [
+      {
+        id: 'p-1',
+        title: 'Find',
+        grid: { x: 0, y: 0, w: 6, h: 8 },
+        vis: { kind: 'boardList', options: { mode: 'search', query } },
+      },
+    ],
+    sections: [],
+  };
+  const t = openBoard([], { seed: seedWith({ boards: [stubBoard('b-1', lists)] }) });
+  vi.spyOn(t.api, 'listBoards').mockImplementation((_t, _s, f) => Promise.resolve(findS(f ?? {})));
+  return t;
+}
+
+async function editList(t: Board, title: string): Promise<HTMLElement> {
+  await openMenu(t, title);
+  await t.user.click(await screen.findByRole('menuitem', { name: 'Edit panel' }));
+  return screen.findByRole('dialog', { name: 'Edit board list' });
+}
+
+/** Sets an input's value as one change (a paste). */
+function setValue(input: HTMLElement, value: string): void {
+  fireEvent.change(input, { target: { value } });
+}
+
+const modS = (t: Board) => t.user.keyboard('{Control>}s{/Control}');
+const saveStatus = (d: HTMLElement): HTMLElement =>
+  within(d).getByRole('status', { name: 'Save status' });
+const pageStatus = (): HTMLElement | undefined =>
+  screen
+    .getAllByRole('status', { name: 'Save status', hidden: true })
+    .find((el) => el.closest('[role=dialog]') === null);
+const savedOptions = (save: { mock: { calls: unknown[][] } }, n: number) =>
+  (save.mock.calls[n]?.[3] as BoardSpec | undefined)?.panels[0]?.vis.options;
+
+describe('unit:board-list-preview (board)', () => {
+  it('the preview is inert and link-free; the board keeps its Esc step after the editor', async () => {
+    const t = openFind('check');
+    await ready('Find');
+    await waitFor(() => {
+      expect(within(panelOf('Find')).getAllByRole('link')).toHaveLength(2);
+    });
+    const d = await editList(t, 'Find');
+    const preview = within(d).getByRole('group', { name: 'Preview' });
+    expect(preview.querySelector('[inert]')).not.toBeNull();
+    await waitFor(() => {
+      expect(within(preview).getAllByRole('listitem')).toHaveLength(2);
+    });
+    expect(within(preview).queryAllByRole('link')).toHaveLength(0);
+    expect(within(preview).queryAllByRole('textbox')).toHaveLength(0);
+    expect(within(preview).queryAllByRole('button')).toHaveLength(0);
+    await t.user.click(within(d).getByRole('button', { name: 'Done' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+    const field = within(panelOf('Find')).getByRole('textbox', { name: 'Search boards' });
+    await t.user.clear(field);
+    await t.user.type(field, 'x');
+    expect(field).toHaveValue('x');
+    await t.user.keyboard('{Escape}');
+    expect(field).toHaveValue('');
+  });
+});
+
+describe('unit:board-list-editor-invalid', () => {
+  it('an invalid Search text or Rows blocks Done and Save until fixed; Esc drops it', async () => {
+    const t = openFind();
+    const save = vi.spyOn(t.api, 'saveBoard');
+    await ready('Find');
+    let d = await editList(t, 'Find');
+    const text = () => within(d).getByRole('textbox', { name: 'Search text' });
+    const rows = () => within(d).getByRole('textbox', { name: 'Rows' });
+    const done = () => within(d).getByRole('button', { name: 'Done' });
+    const behind = () =>
+      within(panelOf('Find')).getByRole('textbox', { name: 'Search boards', hidden: true });
+
+    setValue(text(), 'a');
+    await waitFor(() => {
+      expect(behind()).toHaveValue('a');
+    });
+    setValue(text(), 'a\tb');
+    expect(text()).toHaveValue('a\tb');
+    expect(text()).toHaveAccessibleDescription(/Search text cannot contain control characters/);
+    expect(done()).toBeDisabled();
+    expect(saveStatus(d)).toHaveTextContent('Search text cannot contain control characters');
+    expect(behind()).toHaveValue('a');
+    await modS(t);
+    await waitFor(() => {
+      expect(pageStatus()).toHaveTextContent('Fix the highlighted field in the panel editor first');
+    });
+    expect(save).not.toHaveBeenCalled();
+
+    setValue(text(), 'ab');
+    setValue(rows(), '0');
+    expect(rows()).toHaveAccessibleDescription(/Use a whole number from 1 to 50\./);
+    expect(done()).toBeDisabled();
+    await modS(t);
+    expect(save).not.toHaveBeenCalled();
+
+    setValue(rows(), '5');
+    expect(done()).toBeEnabled();
+    await t.user.click(done());
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    // Esc with an invalid Rows: the dialog closes, the draft keeps 5, Save goes ahead.
+    d = await editList(t, 'Find');
+    setValue(rows(), '0');
+    expect(done()).toBeDisabled();
+    await t.user.keyboard('{Escape}');
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+    await t.user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(save).toHaveBeenCalledTimes(1);
+    });
+    expect(savedOptions(save, 0)).toEqual({ mode: 'search', query: 'ab', limit: 5 });
+  });
+});
+
+describe('unit:board-list-editor-length', () => {
+  it('Search text counts code points: 100 emoji save, 101 block', async () => {
+    const t = openFind();
+    const save = vi.spyOn(t.api, 'saveBoard');
+    await ready('Find');
+    const d = await editList(t, 'Find');
+    const text = () => within(d).getByRole('textbox', { name: 'Search text' });
+    const done = () => within(d).getByRole('button', { name: 'Done' });
+    const hundred = '\u{1F600}'.repeat(100);
+    setValue(text(), hundred);
+    expect(text()).toHaveValue(hundred);
+    expect(text()).not.toHaveAccessibleDescription(/Use up to 100 characters/);
+    expect(done()).toBeEnabled();
+    await modS(t);
+    await waitFor(() => {
+      expect(save).toHaveBeenCalledTimes(1);
+    });
+    expect(savedOptions(save, 0)).toEqual({ mode: 'search', query: hundred });
+
+    setValue(text(), `${hundred}\u{1F600}`);
+    expect(text()).toHaveAccessibleDescription(
+      /Use up to 100 characters without control characters, in search mode only\./,
+    );
+    expect(done()).toBeDisabled();
+    await modS(t);
+    await waitFor(() => {
+      expect(pageStatus()).toHaveTextContent('Fix the highlighted field in the panel editor first');
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('unit:widget-registry (Board list)', () => {
+  it('Add widget → Board list adds a 4 × 8 list, opens its editor and saves valid', async () => {
+    const t = openBoard([], { seed: boardWith([panel('p-1', 'Requests', 'up')]) });
+    const save = vi.spyOn(t.api, 'saveBoard');
+    await ready('Requests');
+    await t.user.click(screen.getByRole('button', { name: 'Edit board' }));
+    await t.user.click(screen.getByRole('button', { name: 'Add widget' }));
+    const menu = await screen.findByRole('menu', { name: 'Add widget' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((m) => m.textContent),
+    ).toEqual(['Text', 'Board list']);
+    await t.user.click(within(menu).getByRole('menuitem', { name: 'Board list' }));
+    const d = await screen.findByRole('dialog', { name: 'Edit board list' });
+    await t.user.click(within(d).getByRole('button', { name: 'Done' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+    await t.user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => {
+      expect(save).toHaveBeenCalledTimes(1);
+    });
+    const spec = save.mock.calls[0]?.[3];
+    if (spec === undefined) throw new Error('no saved spec');
+    expect(spec.panels[1]).toEqual({
+      id: 'p-2',
+      title: '',
+      grid: { x: 6, y: 0, w: 4, h: 8 },
+      vis: { kind: 'boardList' },
+    });
+    expect(checkBoardSpec(spec)).toEqual([]);
+    expect(await menuOf(t, 'Untitled panel')).toEqual([
+      'Edit panel',
+      'Show as table',
+      'Duplicate',
+      'Remove',
+    ]);
   });
 });

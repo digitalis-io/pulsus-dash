@@ -82,6 +82,7 @@ export type BoardAction =
   | { type: 'layout'; grid: GridRef; items: LayoutItem[] }
   | { type: 'keyOp'; id: string; op: LayoutOp }
   | { type: 'setTime'; time: TimeRangeSpec | null }
+  | { type: 'setTags'; tags: readonly string[] }
   | { type: 'saveStart' }
   | { type: 'saveOk'; board: Board }
   | { type: 'saveFailed' }
@@ -405,6 +406,8 @@ export function boardReducer(s: BoardPageState, a: BoardAction): BoardPageState 
       }
       return edited(s, { ...s.draft, time: a.time });
     }
+    case 'setTags':
+      return s;
     case 'saveStart':
       // Saving again from the conflict dialog closes it.
       return { ...s, conflict: null, save: { status: 'saving', fields: [] } };

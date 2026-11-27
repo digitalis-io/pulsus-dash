@@ -36,6 +36,8 @@ export interface BoardListBodyProps {
   /** The table view is shown (Shift+T, the Panel menu). */
   table: boolean;
   onTable: (on: boolean) => void;
+  /** Stub (tests first, plan #216 Part 2b §4.1). */
+  preview?: boolean;
 }
 
 /**
