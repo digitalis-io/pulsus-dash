@@ -3,19 +3,20 @@
 A widget is board furniture: a panel without a query (T24-002). Board spec v5 (#198 Part 1) adds
 the first two kinds, **Text** (Markdown or code) and **Clock** (the time in up to 12 zones, with an
 optional countdown); board spec v6 (#216 Part 1) adds the **Board list**
-([below](#board-list-in-progress)). This page covers what the client does with them in this version: the panel
+([below](#board-list)). This page covers what the client does with them in this version: the panel
 union, the option defaults, the widget frame and the validation. The spec itself, with every key
 and error, is on [the boards API page](../server/boards-api.md#widgets-text-and-clock-v5); the
 user's view is [Boards](../user/boards.md#widgets).
 
 **Coming later.** This version draws the **Text** widget, adds it from "Add widget" and edits it
-in the widget editor (#198 Part 3a, [below](#text-widget-part-3a)); the other kinds still show
+in the widget editor (#198 Part 3a, [below](#text-widget-part-3a)) and draws a stored **Board
+list** (#216 Part 2a, [below](#board-list)); the Clock still shows
 "This widget isn't available in this version yet." #198 Part 2a added the sanitiser's URL
 classifier, iframe finder and import conversion ([below](#sanitiser-modules-part-2a)) and Part 2b
 the Markdown renderer ([below](#markdown-renderer-part-2b)), which the Text widget now uses. Part
 3b added the widget gallery, the browser tests (the whole XSS corpus in three engines) and the
-render bench ([below](#text-browser-tests-part-3b)). The Clock view follows with A2; the Board list
-view, editor and states with #216 Part 2.
+render bench ([below](#text-browser-tests-part-3b)). The Clock view follows with A2; adding a Board
+list and its editor follow with #216 Part 2b.
 
 | Module | Role |
 |---|---|
@@ -57,7 +58,7 @@ a query is a `badResponse` (the server never sends one).
 ## Option defaults
 
 `textOptions(o)` and `clockOptions(o)` read a panel's `vis.options` with the T24 §5.1 defaults,
-and `boardListOptions(o)` with the T24 §5.5 ones ([below](#board-list-in-progress)); the stored
+and `boardListOptions(o)` with the T24 §5.5 ones ([below](#board-list)); the stored
 spec keeps only the keys that were set. `mode` is shared with the board list: `textOptions` takes it
 only when `isTextMode` (`markdown`, `code`; `DEFAULT_TEXT_MODE` otherwise).
 
@@ -127,13 +128,16 @@ the server's answer on a create or a save, `board.options.zones.invalid` at the 
 and `OPTION_KEYS` (`text`: `mode`, `content`, `language`; `clock`: `zones`, `hourCycle`, `seconds`,
 `date`, `countdown`; `boardList`: `sort`, `mode`, `query`, `tag`, `limit`) equal `api/fixtures/board-spec/option-keys.json`, as the Go tables do.
 
-## Board list (in progress)
+## Board list
 
 A board list lists boards on a board (T24-020): the principal's Starred or Recent boards, a title
-search, or the boards with one tag. Part 1 (#216) ships the spec, the API pages
-([the panel runtime](boards.md#board-list-pages-and-filters-216-part-1)) and every pure module; the
-view, its sources, states, keys, editor and the Shift+T table are Part 2. A stored board list shows
-the widget frame's "not available yet".
+search, or the boards with one tag. Part 1 (#216) shipped the spec, the API pages
+([the panel runtime](boards.md#board-list-pages-and-filters-216-part-1)) and the pure modules below.
+Part 2a draws a stored board list ([the view](#the-board-list-view-part-2a)): its sources, rows,
+Show more, states, keys and focus, announcements, meter, the Shift+T table and CSV, the gallery
+pages, the browser tests and the bench. **Part 2b** adds "Add widget → Board list", its editor body,
+the board tags field and the user page; until then a board list has no Edit panel (its menu is
+Show as table, Duplicate and Remove).
 
 **Options** (`widgets/boardList/options.ts`, the spec on
 [the boards API page](../server/boards-api.md#board-list-boardlist-v6)): `boardListOptions(o)` gives
@@ -185,7 +189,134 @@ used"), the dropped or cut tags and search text, the clamp, "Links keep the time
 `keepTime: false`, and "Option ‹key› not mapped" for every other key, sorted.
 
 **Mixed versions.** A tab of the previous release meets a v6 board as a bad response; a v5 server
-refuses a board list on a write (`board.vis.kind.invalid`). No client writes one before Part 2.
+refuses a board list on a write (`board.vis.kind.invalid`). No client adds one before Part 2b.
+
+### The board list view (Part 2a)
+
+`WidgetBody` draws a `boardList` panel with `BoardListBody` (`widgets/boardList/BoardListBody.tsx`,
+in the board route's chunk; T24 §5.7). The body validates first with the save's rules
+(`widgetVisErrors`): invalid options (a tag list without a tag) show "This list can't be shown:
+‹reason›" and fetch nothing. A search list (`SearchBoardList`) owns the search field; Starred,
+Recent and tag lists (`FixedBoardList`) have none. Both render `BoardListCore`, which reads the model
+and renders `BoardListView`; a mode or validity change swaps the component, so no hook list
+changes in place.
+
+**Sources** (`source.ts`, `useBoardList.ts`, T24-021). Each mode reads one route under one
+react-query key, refetched whenever the tab becomes visible (`refetchOnWindowFocus: 'always'`),
+with the app's `retry` and `staleTime` and no `placeholderData`:
+
+| Mode | Key | Call |
+|---|---|---|
+| starred | `['starred', tenant]` (the sidebar's entry) | `listStarred(tenant, signal)` |
+| recent | `['recent', tenant, 50]` (`RECENT_WIDGET_LIMIT`; the sidebar keeps `['recent', tenant]`) | `listRecent(tenant, signal, 50)` |
+| search | `['boards', tenant, 'find', q, null]` | `listBoards(tenant, signal, q === '' ? {} : {q})` |
+| tag | `['boards', tenant, 'find', null, tag]` | `listBoards(tenant, signal, {tag})` |
+
+The search field (`widgets/lists/useSearchCommit.ts`) starts at the `query` option, holds at most
+100 characters (`SEARCH_MAX`) and commits its trimmed text 250 ms (`SEARCH_COMMIT_MS`) after the
+last change. Text with a control character shows "Search text cannot contain control characters"
+and commits nothing. A new `query` option resets the field. The field is marked
+`data-escape-ladder` (the kit `TextField`'s `escapeLadder`) and registers the T25-007 pre step: on
+a board, the first Esc clears it (committing `''` at once) and keeps focus, the next reaches the
+page's ladder; with no Inspector host the field clears itself.
+
+Only the current key is read: a key change (typing, the tenant, the mode) shows the list pending at
+once, and a late answer of the old key never renders. React-query aborts the old request only when
+no other widget observes the key.
+
+**The model** (`useBoardList`): `phase` `pending` (no data, fetching), `error` (no data;
+`error` `store` for a 503, else `generic`), `ok` or `empty` (no rows, or the old-server tag
+notice). A refetch that fails keeps the rows with `refreshFailed`; the meter's `stale (HH:mm:ss)` is
+the failure time, the notice's time the fetch time. **Shown rows** (T24-023): the key's first answer
+shows `limit`; each later answer clamps the count to the loaded rows (an empty answer starts again
+at `limit`); only Show more grows it, by `limit` up to the loaded rows, and focus moves to the first
+new row.
+
+**Rows** (`BoardListView.tsx`, T24-022, T24-027). A `<ul>` named by the panel's heading and
+described by the summary. Each row is a link to `/t/<tenant>/board/<uid>` with the time Context
+(`contextSearchString`) and `BOARD_LINK_STATE`, as the sidebar's, named `‹display›[, this board]`,
+`aria-current="page"` on the board that holds it, and `aria-setsize` / `aria-posinset`
+(`listSetSize`: −1 when truncated or of unknown coverage). Equal titles show ` · ‹uid›` in mono.
+Search and tag rows show up to 3 tag chips and `+k` (or "tags unknown") and `updated 26 Nov 12:00`
+(`d MMM HH:mm`, h23, the Context's zone). A modified click opens a new tab. Rows are 36 px
+(`--size-list-row`), chips 20 px (`--size-list-chip`), with hairlines, hover `surface-2`, a 2 px
+focus ring and no state colour; rows new on a same-key refresh are `data-new` and fade in over
+150 ms, with no animation under reduced motion.
+
+**States** (T24 §4.5):
+
+| State | List area | Meter |
+|---|---|---|
+| pending | "Loading…" after 300 ms | `loading` |
+| error, no rows | "Couldn't load boards" (503: "The configuration store is unavailable") and Retry | `unavailable` |
+| empty | "No starred boards. Star a board with ☆ in its header", "No recently viewed boards", "No boards match ‘q’" (`''`: "No boards"), "No boards tagged t" | `100 %` or `coverage unknown` |
+| refetch failed | the rows, under "Couldn't refresh: showing boards from HH:mm:ss" and Retry | `… · stale (HH:mm:ss)` |
+| old server, tag | "Filtering by tag needs a newer server", no rows | `coverage unknown` |
+
+The meter is `CoverageMeter` over the snapshot's coverage in the Context's zone; a truncated
+search's popover has Narrow, which closes it and focuses the field. The ranking caption shows for
+`sort: 'incidents'` (`CAPABILITIES` in `app/capabilities.ts`, shared with the Inspector).
+
+**Keys and focus** (`widgets/lists/useListKeys.ts`, T24-025). Tab order: field → list → Show more →
+meter. The list has one roving tab stop: ↑/↓, Home/End and PageUp/PageDown (±10) move it among the
+shown rows; Enter follows the link; a focused row becomes the active one. A new key makes the first
+row active without moving focus. A refresh keeps the active row by key; a gone row hands over to
+the row at its index, announced "‹display› is no longer listed", and focus follows only if it was
+in the list. A list that becomes empty, or fails, moves focus from the list to the empty text or
+Retry.
+
+**Announcements** (`widgets/lists/announce.ts`, T08-018): one polite region per list, at most one
+write per 2 s, the latest pending text wins and a repeat of the last write is dropped. A search the
+user typed announces `‹n› boards`, `1 board` or its empty text once, when its key first answers;
+a refresh announces only the gone row.
+
+**Table and CSV** (T24-026, T22-013). Shift+T on the list (not in a text field) or the Panel menu's
+"Show as table" / "Show list" swaps the list area for the kit `PanelTable` over every loaded row
+(`drawn` = shown), captioned "‹n› boards · ‹d› shown", closed by "Show list (Shift+T)", with no
+row action. With no snapshot it shows the state's text with Export disabled. The field, caption,
+notice and Retry, meter, summary and live region stay. Focus goes to the grid on open and back to
+the active row (else the empty text or Retry) on close. Export writes `listCsv(boardListTable(s))`.
+
+**Summary.** An sr-only paragraph, the list's description: `‹mode›: ‹facts›` (for example
+`Starred: 12 boards (stale)`); empty without a snapshot.
+
+**Mixed servers.** Over an old server (no `applied`) the rows come from `boardSnapshot`'s old-server
+path: `coverage unknown`, Starred and Recent rows as sent, search filtered by title client-side
+with "tags unknown", tag mode the notice. A new server's `tagsStale` makes the meter read
+`tags not yet known for k boards`.
+
+### Board list: gallery, browser tests and bench
+
+**Gallery** (stub and dev builds; `dev/boardListGallery.ts`, which imports types and the fixtures
+only). Three pages of `/t/<tenant>/dev/widgets`, each panel with its own query client (no retry,
+`staleTime` 0) and its own Api (`galleryApi`, the list methods only):
+
+| Page | Panels |
+|---|---|
+| `widget-board-list` | Starred (B); Recent, limit 5 (B, with Show more) |
+| `widget-board-list-search` | Find, search `''` (`findS`: truncated, chips); Payments team, tag `team:payments` |
+| `widget-board-list-states` | Loading (never answers); Stale (B cached from 12:30:00 UTC, the refetch fails); Unknown (B from an old server); Empty (recent, no items) |
+
+`golden:widget-gallery` shoots them in dark, light and greyscale in UTC with the clock fixed at
+2026-11-26T12:31:05Z; it waits for the Loading panel's delayed text and for every other list to be
+settled (`data-board-list-phase` ok or empty, no `data-board-list-fetching`).
+
+**Browser tests** (`e2e/widget-board-list.spec.ts`, Chromium, Firefox and WebKit, on the http-mode
+BFF). The list routes are answered by `page.route` (`e2e/boardListRoutes.ts`) with fixtures B and
+S, so the tests need no seeded boards beyond the one under test. `e2e:widget-board-list`: 10 rows,
+Show more to 12 with row 11 focused; `check` typed 100 ms apart sends one `q=check` request at
+least 250 ms after the last key and none for its prefixes; `2 boards` is announced once; hrefs
+carry the time; a modified click opens a new page. `e2e:widget-lists-a11y`: axe in the held,
+loaded, empty, error, stale, old-server and Edit-mode states, `Payments, this board`, the Tab
+order, `aria-setsize` 12 and −1, focus to the empty text, and no animation on a new row under
+reduced motion.
+
+**Bench** (`e2e/perf-widget-lists.spec.ts`, `bench:widget-lists`, report-only, Chromium, the
+production stub build): a seeded board with one search list on `bulk` (limit 50) over 1 002 stub
+boards, Show more ×19 to 1 000 rows, then 20 `visibilitychange` refetches. `BoardListCore` marks
+each render and measures `boardList:render` per commit in the stub and dev builds; the p50, p95
+and max go to stdout and `test-results/widget-lists.json` (no samples fails the run).
+`LONG_TASK_GATE=enforce` fails a p95 over 16 ms; a miss is the cue to virtualise the rows.
 
 ## Text widget (Part 3a)
 

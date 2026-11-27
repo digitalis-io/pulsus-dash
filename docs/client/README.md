@@ -836,7 +836,7 @@ the StrictMode replay (setup, cleanup, setup) leaves it working. `useBoardPrefs(
   than that) is clamped to its edge, and such views order by the server's transaction start time,
   best effort: a transaction that starts first can commit last. Across browsers or app instances
   the order is best effort, by each one's clock, subject to skew (D-RECENT-window). Success invalidates `['recent']` and tells other tabs; `notFound` is ignored; an
-  ambiguous failure (the timeout, `network`, `unknown`) arms one reconciliation per app at the
+  ambiguous failure (the timeout, `network`, `unknown`, `unavailable` — a 503) arms one reconciliation per app at the
   send + 15 s (`VIEW_TIMEOUT_MS` + `RECONCILE_DELAY_MS`), re-armed to the latest due time when
   several are pending, which invalidates `['recent']` and tells other tabs once.
 - **Other tabs.** `BroadcastChannel('pulsus-dash.board-prefs')` carries `{kind: 'starred' |

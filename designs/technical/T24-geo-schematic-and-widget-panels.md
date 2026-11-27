@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.17-rc · 2026-11-27 |
+| **Version** | 1.18-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -414,7 +414,8 @@ inspect (T24-035).
 - `search`: `listBoards(tenant, signal, {q})` (`''` → no `q`), and `tag`: `listBoards(tenant, signal,
   {tag})`; key `['boards', tenant, 'find', q, tag]`, in `updated` descending order.
 
-`q` is the trimmed search field, committed 250 ms after the last key. There is no `placeholderData`;
+`q` is the trimmed search field, committed 250 ms after the last key; Esc's clear (below) commits
+`''` at once. There is no `placeholderData`;
 the focus refetch is `'always'`. The field holds at most 100 characters and starts at the `query`
 option. A Cc character shows the inline "Search text cannot contain control characters" and commits
 nothing. The field is marked `data-escape-ladder` and registers the
@@ -430,7 +431,9 @@ and tag rows show at most 3 tag chips and `+k`, or a muted "tags unknown" when `
 
 #### T24-023 — Board limit, ranking
 **MUST** — The list shows `limit` rows. "Show more" adds `limit` rows (up to the loaded rows) and moves
-focus to the first new row. A refresh keeps the shown count, clamped to the loaded rows.
+focus to the first new row. A refresh keeps the shown count, clamped to the loaded rows: the clamp is
+kept, so each later answer of the key sets the count to min(count, loaded) (an empty answer starts
+again at `limit`), and only Show more grows it.
 `sort: 'incidents'` while `CAPABILITIES.investigations` is false gives the default order and the
 caption "Ranking by use during incidents is available with investigations (M-UI4)".
 
@@ -458,8 +461,9 @@ one roving tab stop: ↑/↓, Home/End, PageUp/PageDown (±10 rows); Enter follo
 - Accessible names are `‹display›[, this board]`. `aria-setsize` is the loaded count, or −1 when the
   answer is truncated or its coverage is unknown.
 - Polite announcements ([T08-018](T08-dom-component-kit.md#t08-018--announcements-are-rate-limited)):
-  `‹n› boards` or the empty text, once per settled search; on a refresh only "‹display› is no longer
-  listed".
+  `‹n› boards` or the empty text, once per settled search the user committed (not for the `query`
+  option's first answer); on a refresh only "‹display› is no longer listed".
+- A search or tag row's chips and `updated` time are the link's description (`aria-describedby`).
 
 #### T24-026 — Table, CSV, facts
 **MUST** — Shift+T shows the snapshot's rows in the kit table (#173,
@@ -473,7 +477,9 @@ gets a leading `'` first (`csvCell`), unless it is a number: the whole cell matc
 Facts: `current` = `{text: '‹N›[+] boards'` plus
 ` (coverage unknown)`, ` (stale)` or both (` (coverage unknown, stale)`), `series: ‹mode label›}`, and
 the other members are null; `+` when the answer is truncated, and "coverage unknown" whenever the
-coverage has `unknown`. With no snapshot the facts are null.
+coverage has `unknown`. With no snapshot the facts are null. The facts are the list's description:
+an sr-only `‹mode›: ‹text›` the `<ul>` names with `aria-describedby`. The table's caption is
+`‹n› boards · ‹d› shown` (loaded, shown), its way back "Show list (Shift+T)".
 
 #### T24-027 — List states, look
 **MUST** — States and texts follow §4.5. "Loading…" shows after 300 ms (`useDelayedFlag`). Rows are
@@ -1054,7 +1060,7 @@ zone.
 | empty | the empty text (below) | `100 %` or `coverage unknown` | none / header only | `0 boards` |
 | ok | the snapshot | `coverageText` | the snapshot | the snapshot |
 | error, no snapshot for this key | "Couldn't load boards" + Retry (503: "The configuration store is unavailable") | `unavailable` | the error / disabled | null |
-| same-key refetch failed | rows kept, "Couldn't refresh: showing boards from HH:mm:ss" + Retry | `… · stale (HH:mm:ss)` | the snapshot | `… (stale)` |
+| same-key refetch failed | rows kept, "Couldn't refresh: showing boards from HH:mm:ss" (the rows' fetch time) + Retry | `… · stale (HH:mm:ss)` | the snapshot | `… (stale)` |
 | refetch ok | the new snapshot (T24-023, T24-025) | recomputed | new | new |
 
 Empty texts: "No starred boards. Star a board with ☆ in its header" · "No recently viewed boards" ·
@@ -1612,6 +1618,21 @@ export function boardRowName(r: BoardRow): string;   // ‹display›[, this boa
 export function rankingCaption(sort: 'default' | 'incidents', c: { investigations: boolean }): string | null;
 export function boardListTable(s: ListSnapshot<BoardRow>): ListTable;   // title,uid,tags,updated_at
 export function boardListFacts(title: string, mode: BoardListMode, s: ListSnapshot<BoardRow> | null): SummaryFacts | null;
+// Part 2a: the view (widgets/boardList/source.ts, useBoardList.ts, BoardListBody.tsx, BoardListView.tsx)
+export const RECENT_WIDGET_LIMIT = 50;
+export function boardListKey(tenant: string, o: BoardListOptions, q: string): readonly unknown[];   // T24-021
+export function boardListFetch(api: Api, tenant: string, o: BoardListOptions, q: string, signal: AbortSignal): Promise<BoardPage | RefPage>;
+export type BoardListPhase = 'pending' | 'ok' | 'empty' | 'error';
+export function useBoardList(i: { tenant; currentUid; title; options; q }): BoardListModel;
+// { key, mode, q, tag, phase, snapshot (this key's; stale applied), notice, error: 'store' | 'generic' | null,
+//   refreshFailed, shown, caption, facts, retry(), showMore(): first new index }
+// BoardListBody: invalid → the T24-014 state; search → SearchBoardList, else FixedBoardList; both render
+// BoardListCore (model, Shift+T, keys, announcements) → BoardListView. CAPABILITIES: app/capabilities.ts.
+// widgets/lists/ (shared with part B2)
+export function useSearchCommit(initial: string): { text; q; cc; setText(v): void; clear(): void };   // 250 ms, ≤ 100, Cc
+export function useListKeys(i: { keys; listKey; names; fallback(): HTMLElement | null; onGone(name): void }): ListKeys;
+// { activeKey, rowProps(key, index): { tabIndex, ref }, onListKeyDown(e), focusRow(index) }
+export function useListAnnouncer(): { text: string; announce(s: string): void };   // ≤ 1 write per 2 s, latest wins
 // client/src/import/boardList.ts
 export function importBoardList(src: Readonly<Record<string, unknown>>): { options: BoardListOptions; notes: string[] };
 ```
@@ -2995,7 +3016,7 @@ Part B1 implementation issues, filed after this design merges:
 | Issue | Scope | Depends on | Covers |
 |---|---|---|---|
 | I1 — BFF: board tags, `/boards` search, `applied`, `truncated` (#215) | §5.5 tags (Go and the client's validator, at the next free spec version), §5.6, §6, migration 4, the itests, `make itest-old-binary`, `docs/server/boards-api.md`, `docs/server/database.md` | — | T24-021, T24-029 |
-| I2 — Board list widget, list modules, editor tags field (#216) | Part 1 (landed): §5.5 `boardList` kind and options at v6 (Go and TS), the `Api.ts` pages and filters with old-server decoding, the pure §5.7 modules and `import/boardList.ts`; a stored board list shows the "not available yet" frame. Part 2 (after #173 Part 3a's `PanelTable`): the view, sources, states, keys, editor and tags field, adding a Board list, Shift+T, the e2e and golden tests, gallery `widget-board-list`, `widget-board-list-search`, `widget-board-list-states`, `bench:widget-lists`; `docs/client/widgets.md`, `docs/user/boards.md` | I1, #198, #173 | T24-020–028 |
+| I2 — Board list widget, list modules, editor tags field (#216) | Part 1 (landed): §5.5 `boardList` kind and options at v6 (Go and TS), the `Api.ts` pages and filters with old-server decoding, the pure §5.7 modules and `import/boardList.ts`; a stored board list shows the "not available yet" frame. Part 2a (landed): the view (§5.7 Part 2a: sources, the search commit, rows and Show more, states, keys and focus, announcements, the meter, Shift+T through the kit `PanelTable` as a `TableView` and CSV), gallery `widget-board-list`, `widget-board-list-search`, `widget-board-list-states`, `e2e:widget-board-list`, `e2e:widget-lists-a11y`, `golden:widget-gallery`, `bench:widget-lists`; `docs/client/widgets.md`. Part 2b: Add widget → Board list, its editor body, the board tags field and the `/tags` 400 text, the e2e add flow, `docs/user/boards.md`; until then a board list has no Edit panel | I1, #198, #173 | T24-020–028 |
 | I3 — Incident-use ranking (needs design) | SRF-026 "used during incidents" | IA-007 | T24-023 |
 | I4 — Validate `boards_tags_max` (next release) | §6 `VALIDATE CONSTRAINT`, `itest:board-tags-validate` | I1 released | T24-029 |
 
@@ -3129,3 +3150,4 @@ None.
 | 1.15-rc | 2026-11-26 | #231 (part E step 1a, E1): §5.11 the `types.ts` interfaces, `GeoData`, `geoLoader`, the `aliases.ts` exports (`normKey`, `GEO_AUTO_RULES`, `GEO_ALIAS_KEYS`), the decoders in `decode.ts` re-exported by `assets.ts`, the URLs of `urls.ts` and the `geo-assets` build input. §5.12: the assets' keys are in the listed order (`v`, `q`, then the data members), not sorted, as the §10.3 RT bytes already were. §5.13: the shapes of `sources.json` and `manifest.json`, and `--notices`; the cloud list's coverage rule (each provider's published list, azure restricted-access regions included) and the example rows reconciled with the lists of 2026-11-26 (gcp `europe-west1` is St. Ghislain; a country or state location becomes a curated city) |
 | 1.16-rc | 2026-11-27 | #173 Part 3b ([T22](T22-value-categorical-and-table-panels.md) §4.5): T24-099 (§4.1) — the map-sync spec version's `legacyAuto` covers auto-vis rows 8 and 11 together: pre-map-sync panels keep the legacy set, panels saved at map-sync or later get both rows; #237 implements it, and #173 adds no spec version |
 | 1.17-rc | 2026-11-27 | #234 Part 1 (E2): §5.0 the geomap version landed as v7 (before the change-feed version, so the change-feed and map-sync versions take the next free numbers). §5.15: `GeoGroup` gains `memberLabels` (the final labels, parallel to `members`) and `GeoRowSet` `groupBy`; `geoRowSet` takes the result's `source` and the panel's `Thresholds` (lines lack the direction) and `validateGeoRows` takes `Thresholds \| null`; a null and an absent `groupBy` or `view` are one stored value. §5.16: `GeoInspectorTarget` gains `set`. T24-091: the `map-water`, `map-land`, `map-coast` and `map-border` values (the light strokes in the hairline ink) |
+| 1.18-rc | 2026-11-27 | #216 Part 2a (I2): the Board list view. T24-021: Esc's clear commits `''` at once. T24-023: the clamp of the shown count is kept per answer (an empty answer starts again at `limit`). T24-025: the count is announced only for a search the user committed; a row's chips and time are its link's description. T24-026: the facts are the list's description; the table caption `‹n› boards · ‹d› shown` and "Show list (Shift+T)". §4.5: the failed-refresh notice shows the rows' fetch time. §5.7: the Part 2a modules. §11: Part 2a landed, Part 2b next |
