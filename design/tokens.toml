@@ -65,6 +65,10 @@ map-water = "#0E1620"
 map-land = "#1C232C"
 map-coast = "#FFFFFF33"
 map-border = "#FFFFFF1F"
+# Geomap marks (T24-090, #234): pattern strokes over a fill, and the aggregate's fill (T21-003,
+# T22-004).
+pattern-ink = "#0B0D10A6"
+category-other = "#8A919C"
 
 [color.light]
 canvas = "#F5F6F8"
@@ -125,6 +129,10 @@ map-water = "#E6EDF4"
 map-land = "#F8F9FB"
 map-coast = "#0B0D103D"
 map-border = "#0B0D1029"
+# Geomap marks (T24-090, #234): pattern strokes over a fill, and the aggregate's fill (T21-003,
+# T22-004).
+pattern-ink = "#FFFFFFB3"
+category-other = "#6B7280"
 
 # Spacing scale (px).
 [space]

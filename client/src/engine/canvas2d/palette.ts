@@ -35,6 +35,17 @@ export interface ThemeColours {
   ramp: readonly string[];
   /** Threshold lines and labels only: `StateEncoding[s].colour[t]` (T02-004, VL-003). */
   state: Readonly<Record<State, string>>;
+  /** The geomap's basemap (T24-091): water, land, the 1 px coast and the 0.5 px borders. */
+  map: {
+    readonly water: string;
+    readonly land: string;
+    readonly coast: string;
+    readonly border: string;
+  };
+  /** Pattern strokes over a geomap mark's fill (T24-090). */
+  patternInk: string;
+  /** The aggregate "other (n)" fill (T21-003, T22-004). */
+  categoryOther: string;
 }
 
 export function themeColours(t: ThemeName): ThemeColours {
@@ -61,6 +72,14 @@ export function themeColours(t: ThemeName): ThemeColours {
       failing: StateEncoding.failing.colour[t],
       unknown: StateEncoding.unknown.colour[t],
     },
+    map: {
+      water: c['map-water'],
+      land: c['map-land'],
+      coast: c['map-coast'],
+      border: c['map-border'],
+    },
+    patternInk: c['pattern-ink'],
+    categoryOther: c['category-other'],
   };
 }
 

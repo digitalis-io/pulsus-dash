@@ -242,7 +242,10 @@ export class FrameController {
   }
 
   private syncListeners(): void {
-    this.setListening(this.spec !== null && this.spec.kind !== 'stat');
+    // A geomap's input is its scene's (ADR-0027): this time camera does not listen there.
+    this.setListening(
+      this.spec !== null && this.spec.kind !== 'stat' && this.spec.kind !== 'geomap',
+    );
   }
 
   private setListening(on: boolean): void {

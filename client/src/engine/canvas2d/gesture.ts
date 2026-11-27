@@ -7,25 +7,9 @@ import type { FrameSelection, TimeWindow, ValueRange, VisSpec } from '../api';
 import type { Span } from './camera';
 import type { Zone } from './input';
 
+export { listen, type Handler } from '../controller/input';
+
 export type Listener = (ev: never) => void;
-export type Handler = readonly [string, (e: Event) => void, AddEventListenerOptions | undefined];
-
-/** A DOM listener entry; `fn` receives the event type it is registered for. */
-export function listen(
-  type: string,
-  fn: (e: never) => unknown,
-  opts?: AddEventListenerOptions,
-): Handler {
-  const f = fn as (e: Event) => unknown;
-  return [
-    type,
-    (e) => {
-      f(e);
-    },
-    opts,
-  ];
-}
-
 /** The axes a gesture moved; set by its preview steps, never reset during the gesture. */
 export interface Changed {
   x: boolean;
