@@ -18,8 +18,8 @@
   white-space: nowrap;
   cursor: pointer;
   transition:
-    background-color var(--motion-quick) var(--motion-easing-out),
-    color var(--motion-quick) var(--motion-easing-out);
+    background-color var(--motion-hover) var(--motion-easing-out),
+    color var(--motion-hover) var(--motion-easing-out);
 }
 
 .button[data-hovered] {
@@ -62,7 +62,7 @@
 }
 
 .ghost[data-hovered] {
-  background: var(--surface-hover);
+  background: var(--row-hover);
 }
 
 .ghost[data-pressed] {

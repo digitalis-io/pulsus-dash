@@ -508,7 +508,8 @@ export function createProbe(o: {
         deltaY: init.deltaY ?? 0,
         deltaMode: init.deltaMode ?? 0,
         shiftKey: init.shiftKey ?? false,
-        ctrlKey: init.ctrlKey ?? false,
+        // A time chart zooms only with Ctrl/⌘ held: Ctrl unless set (or ⌘ is).
+        ctrlKey: init.ctrlKey ?? init.metaKey !== true,
         metaKey: init.metaKey ?? false,
         bubbles: true,
         cancelable: true,

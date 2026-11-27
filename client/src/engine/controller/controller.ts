@@ -44,7 +44,8 @@ import {
   PAGE_WHEEL_LATCH_MS,
   pressKind,
   WHEEL_IDLE_MS,
-  wheelIntent,
+  hasZoomModifier,
+  timeWheelIntent,
   zoneOf,
   type Zone,
 } from '../canvas2d/input';
@@ -402,6 +403,11 @@ export class FrameController {
     if (s === null) return;
     const p = this.local(e);
     if (zoneOf(p, s.plot, s.spec.kind) !== 'plot') return;
+    // A plain wheel is the page's: untouched, and the chart shows how to zoom (§4.1).
+    if (!hasZoomModifier(e)) {
+      this.deps.emit('wheelHint', null);
+      return;
+    }
     // A page scroll already in progress keeps scrolling over a plot (§4.4, A.10), also while this
     // chart's own wheel gesture is pending (code review r1).
     if (e.timeStamp - this.deps.wheelLatch.lastPageWheel() < PAGE_WHEEL_LATCH_MS) return;
@@ -410,7 +416,7 @@ export class FrameController {
       e.preventDefault();
       return;
     }
-    const intent = wheelIntent(e, s.plot);
+    const intent = timeWheelIntent(e, s.plot);
     if (intent === null) return;
     e.preventDefault();
     const w = this.wheelGesture(p);

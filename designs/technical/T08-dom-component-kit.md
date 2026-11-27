@@ -338,8 +338,10 @@ without `backdrop-filter`, under reduced transparency or forced colours) and rad
 tooltips 6); menu and listbox rows are 28 px, radius `xs`, and the focused row is `accent-fill`
 with `text-on-accent` (forced colours: `Highlight` / `HighlightText`). Modal dialogs are
 `surface-1` sheets with `elevation.3`, radius `lg` (10 px), over an unblurred `backdrop`. Cards
-(and board panels) are `surface-1`, radius `md`, padding 12 px, `elevation.card` (its hairline ring
-is the edge; a transparent 1 px border draws in `CanvasText` under forced colours); empty states
+(and board panels) are `material.card` (a `card-sheen` top sheen fading within 36 px) over
+`surface-1`, radius `md`, padding 12 px, `elevation.card` (its hairline ring is the one edge, with a
+1 px inner top highlight and bottom shade; no border of their own; under reduced transparency plain
+`surface-1`; under forced colours a 1 px `CanvasText` border and plain `surface-1`); empty states
 `surface-2`, radius `md`, padding 16 px, without a dashed border. The Inspector's pivot chips are
 radius `xs`. The state glyph has a `tag` variant (`StateGlyph variant="tag"`): 20 px high, padding
 0 4 px, radius `tag` (3 px), the state colour as a tint at `opacity.tag`; the glyph in the state

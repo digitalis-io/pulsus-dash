@@ -697,6 +697,7 @@ export const messages = {
   'chart.crosshair.value': '{time}: {name} {value}, {index} of {total}',
   'chart.tooltip.range': 'Rows {from}–{to} of {total}',
   'chart.unsupported': 'This browser cannot draw charts.',
+  'chart.wheelHint': 'Hold {key} to zoom',
   'chart.engineRecovered': 'Recovered from an error: this chart uses the basic renderer.',
   'chart.invalid': 'This chart cannot show its data: {reason}',
   'chart.issue.kind': 'the data does not match the chart type',

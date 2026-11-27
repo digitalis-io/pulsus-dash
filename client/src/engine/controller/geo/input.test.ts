@@ -114,7 +114,7 @@ describe('unit:geo-keys-engine', () => {
 
   it('a wheel deltaX 100 pans to lon 54.84247413793099 and commits wheel after 300 ms idle', () => {
     const k = keys();
-    const e = wheel(k.canvas, 512, 256, { deltaX: 100 });
+    const e = wheel(k.canvas, 512, 256, { deltaX: 100, ctrlKey: false });
     expect(e.defaultPrevented).toBe(true);
     expect(k.ctl.view.lon).toBeCloseTo(54.84247413793099, 9);
     expect(k.commits).toEqual([]);
@@ -125,7 +125,7 @@ describe('unit:geo-keys-engine', () => {
   it('a null wheel, modified keys and a keydown from another element change nothing', () => {
     const k = keys();
     const v = k.ctl.view;
-    const e = wheel(k.canvas, 512, 256, {});
+    const e = wheel(k.canvas, 512, 256, { ctrlKey: false });
     expect(e.defaultPrevented).toBe(false);
     const child = document.createElement('button');
     k.keyTarget.append(child);
@@ -140,7 +140,7 @@ describe('unit:geo-keys-engine', () => {
   it('wheelZoom false: the wheel is not taken (the page scrolls)', () => {
     const k = ctlKit({ spec: { motion: 'cut', wheelZoom: false } });
     const v = k.ctl.view;
-    expect(wheel(k.canvas, 512, 256, { deltaY: 100 }).defaultPrevented).toBe(false);
+    expect(wheel(k.canvas, 512, 256, { deltaY: 100, ctrlKey: false }).defaultPrevented).toBe(false);
     expect(k.ctl.view).toEqual(v);
   });
 
@@ -265,7 +265,7 @@ describe('unit:geo-ease-origin', () => {
     k.setSpec({ view: SPEC_VIEW });
     k.run(100);
     const mid = k.ctl.view;
-    wheel(k.canvas, 512, 256, { deltaY: -100 });
+    wheel(k.canvas, 512, 256, { deltaY: -100, ctrlKey: false });
     expect(k.commits).toEqual([]);
     expect(k.ctl.view.zoom).toBeCloseTo(mid.zoom + 0.2885390081777928, 9);
     k.clock.advance(300);

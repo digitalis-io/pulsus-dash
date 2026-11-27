@@ -396,6 +396,8 @@ export interface FrameEvents {
   geoCommit: GeoCommitEvent;
   geoBrush: GeoBrushEvent;
   geoMarks: GeoMarksEvent;
+  /** A plain wheel over a time chart's plot, left to the page: the frame shows the zoom hint. */
+  wheelHint: null;
 }
 
 export interface ChartEngine {

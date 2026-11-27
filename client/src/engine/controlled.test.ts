@@ -441,13 +441,12 @@ describe('ControlledFrame hover, select and batching (plan #68 C2b §4.1)', () =
     run();
     const c0 = inner.cameras.length;
     const o0 = inner.overlays.length;
-    // A Ctrl+wheel zooms both axes: nothing before the flush, then one Camera and one Overlay.
-    wheel(canvas, 320, 108, { deltaY: -100, ctrlKey: true });
+    // A Ctrl+Shift+wheel zooms values: nothing before the flush, then one Camera and one Overlay.
+    wheel(canvas, 320, 108, { deltaY: -100, ctrlKey: true, shiftKey: true });
     expect([inner.cameras.length, inner.overlays.length]).toEqual([c0, o0]);
     run();
     expect([inner.cameras.length, inner.overlays.length]).toEqual([c0 + 1, o0 + 1]);
     const cam = inner.cameras.at(-1);
-    expect(cam?.view).not.toEqual(span(W0));
     expect(cam?.value).not.toBeNull();
     // A forwarding call flushes first: Camera, Overlay, then the call.
     inner.order.length = 0;

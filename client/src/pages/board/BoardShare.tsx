@@ -12,7 +12,7 @@ import styles from './Board.module.css';
 export function BoardShare() {
   return (
     <DialogTrigger>
-      <Button>
+      <Button variant="ghost">
         <Icon name="share-2" />
         {t('board.share')}
       </Button>

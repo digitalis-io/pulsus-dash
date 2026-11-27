@@ -19,6 +19,7 @@ export async function galleryExtremeScenario(page: Page, step: Step): Promise<vo
   const y = Math.round(b.y + plot.y + plot.height / 2);
   await step('gallery near-limit wheel', 0, async () => {
     await page.mouse.move(x, y);
+    await page.keyboard.down('Control');
     for (let i = 0; i < 20; i++) {
       await page.mouse.wheel(0, -100);
       await page.evaluate(
@@ -30,6 +31,7 @@ export async function galleryExtremeScenario(page: Page, step: Step): Promise<vo
           }),
       );
     }
+    await page.keyboard.up('Control');
     await expect(f).toHaveAttribute('data-frame-ready', 'true');
   });
 }

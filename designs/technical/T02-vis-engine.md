@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.20-rc · 2026-11-27 |
+| **Version** | 1.21-rc · 2026-11-27 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md), [ADR-0032](../adr/0032-selection-dims-as-one-layer.md), [ADR-0036](../adr/0036-line-spec-area.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -532,8 +532,9 @@ held label band, commits) is the application's controller, which sets the camera
 
 **Input mapping.** The [03 §4.1](../product/03-interaction-model.md#41-mouse-and-trackpad-primary)
 mouse/trackpad table is implemented by the L4 controller, consuming pointer and wheel records from
-the input ring ([T03 §5.4](T03-browser-runtime.md#54-input-ring-record-format)): wheel zooms X around
-the cursor, `Shift`+wheel zooms Y, `Ctrl`/`⌘`+wheel zooms both; left drag pans with inertia; right
+the input ring ([T03 §5.4](T03-browser-runtime.md#54-input-ring-record-format)): `Ctrl`/`⌘`+wheel
+(and pinch) zooms X around the cursor, `Ctrl`/`⌘`+`Shift`+wheel zooms Y, and a plain wheel is left
+to the page (the chart shows a zoom hint); left drag pans with inertia; right
 drag box-zooms; middle drag pans; `Alt`+left drag brushes time; hover drives crosshair and tooltip;
 click selects; double-click fits (2D) or dives (3D); axis-band gestures are per-axis (§4.3).
 Keyboard actions arrive as commands from the keymap ([T03 §4.5](T03-browser-runtime.md#45-keymap-and-input-contexts)).
@@ -877,4 +878,5 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.17-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md)): §0 line frames are drawn by the engine by default; Canvas 2D draws the other kinds until #69 and every fallback |
 | 1.18-rc | 2026-11-26 | #68 Part C2c2: §4.2 cross-cutting **Emphasis**: the selection on the engine line mark, one decimation drawn in lane passes in Canvas 2D's per-series order (ADR-0025 decision 4), the unmatched series through one dim layer composited once at `dimmed` ([ADR-0032](../adr/0032-selection-dims-as-one-layer.md)); the interval band in the layer overlay |
 | 1.19-rc | 2026-11-27 | #282 Part 2a: §4.8 Stat row: the interim client's stat tile has its value top left, a reserved subline and a full-width sparkline with an `opacity.area` fill (ADR-0022's 104 px kept); Satisfies row PRF-020: `bench:log-scroll` measures the 24 px rows |
-| 1.20-rc | 2026-11-27 | #282 Part 2b ([ADR-0036](../adr/0036-line-spec-area.md)): §4.4 the line area (M2 under M1): the gap and piecewise edge rules, the area pass over the line instances before any stroke, palette slots 8 `chart-grid` and 9 `chart-axis`, the baseline, 4/5 threshold dashes |
+| 1.20-rc | 2026-11-27 | Input mapping: a 2D time chart zooms only with `Ctrl`/`⌘` held; a plain wheel scrolls the page ([03](../product/03-interaction-model.md) §4.1 note, 2026-11-27) |
+| 1.21-rc | 2026-11-27 | #282 Part 2b ([ADR-0036](../adr/0036-line-spec-area.md)): §4.4 the line area (M2 under M1): the gap and piecewise edge rules, the area pass over the line instances before any stroke, palette slots 8 `chart-grid` and 9 `chart-axis`, the baseline, 4/5 threshold dashes |

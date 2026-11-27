@@ -31,7 +31,7 @@ function submitted(e: { preventDefault: () => void }, f: () => void): void {
 
 function Chip({ name, value, label }: { name: string; value: string; label: string }) {
   return (
-    <Button aria-label={label} className={cx(styles['chip'])}>
+    <Button variant="ghost" aria-label={label} className={cx(styles['chip'])}>
       <span className={cx(styles['chipKey'])}>{name}</span>{' '}
       <span className={cx(styles['chipValue'])}>{value}</span>
       <Icon name="chevron-down" />
@@ -231,7 +231,7 @@ export function BoardFilterBar({
         );
       })}
       <DialogTrigger>
-        <Button className={cx(styles['chip'])}>
+        <Button variant="ghost" className={cx(styles['chip'], styles['addFilter'])}>
           <Icon name="plus" />
           {t('filters.add')}
         </Button>

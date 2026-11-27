@@ -10,6 +10,9 @@ export const colour = {
     "border-field": "#6A717C",
     "brush": "#5B9BFF29",
     "canvas": "#0E1014",
+    "card-highlight": "#FFFFFF0F",
+    "card-shade": "#0000001F",
+    "card-sheen": "#FFFFFF09",
     "category-other": "#8A919C",
     "chart-axis": "#FFFFFF24",
     "chart-grid": "#FFFFFF0F",
@@ -47,6 +50,10 @@ export const colour = {
     "ramp-7": "#8DBBEB",
     "ramp-8": "#B1D3F7",
     "ramp-9": "#D8EAFE",
+    "row-hover": "#FFFFFF0D",
+    "row-selected": "#4F6A94",
+    "segment-thumb": "#353A43",
+    "segment-track": "#FFFFFF0A",
     "selection": "#5B9BFF29",
     "series-1": "#7AA2D6",
     "series-2": "#C9A36B",
@@ -59,6 +66,9 @@ export const colour = {
     "shadow-ambient": "#00000066",
     "shadow-key": "#0000008C",
     "sidebar": "#121418",
+    "sidebar-bottom": "#13151A",
+    "sidebar-edge": "#FFFFFF0F",
+    "sidebar-top": "#17191E",
     "surface-1": "#15171C",
     "surface-2": "#1D2026",
     "surface-float": "#15171CF0",
@@ -71,6 +81,7 @@ export const colour = {
     "text": "#E9EBEF",
     "text-muted": "#9AA1AC",
     "text-on-accent": "#F5F8FF",
+    "text-on-row-selected": "#E9EBEF",
     "unknown": "#6B7280",
     "watch": "#D9C84A",
   },
@@ -83,6 +94,9 @@ export const colour = {
     "border-field": "#7D8490",
     "brush": "#2563C929",
     "canvas": "#F2F3F6",
+    "card-highlight": "#FFFFFFB3",
+    "card-shade": "#0000000A",
+    "card-sheen": "#FFFFFF00",
     "category-other": "#6B7280",
     "chart-axis": "#1C223329",
     "chart-grid": "#1C22330F",
@@ -120,6 +134,10 @@ export const colour = {
     "ramp-7": "#3C6995",
     "ramp-8": "#365371",
     "ramp-9": "#313F4D",
+    "row-hover": "#1C22330D",
+    "row-selected": "#5274AD",
+    "segment-thumb": "#FFFFFF",
+    "segment-track": "#1C22330D",
     "selection": "#2563C929",
     "series-1": "#3F6FA8",
     "series-2": "#93703A",
@@ -132,6 +150,9 @@ export const colour = {
     "shadow-ambient": "#141A2414",
     "shadow-key": "#141A2426",
     "sidebar": "#EBEDF1",
+    "sidebar-bottom": "#E4E6EB",
+    "sidebar-edge": "#1C22330F",
+    "sidebar-top": "#E8EAEE",
     "surface-1": "#FFFFFF",
     "surface-2": "#EEF0F3",
     "surface-float": "#FFFFFFF0",
@@ -144,6 +165,7 @@ export const colour = {
     "text": "#1B1E25",
     "text-muted": "#565E6B",
     "text-on-accent": "#FFFFFF",
+    "text-on-row-selected": "#FFFFFF",
     "unknown": "#7A818C",
     "watch": "#8A7A0F",
   },
@@ -166,7 +188,7 @@ export const space = {
 } as const;
 
 export const size = {
-  "avatar": 28,
+  "avatar": 24,
   "board-cols": 12,
   "board-gap": 12,
   "board-legend-table-min": 240,
@@ -220,6 +242,7 @@ export const opacity = {
   "chart-area": 0.18,
   "chip": 0.12,
   "dimmed": 0.35,
+  "icon": 0.85,
   "tag": 0.18,
 } as const;
 
@@ -241,6 +264,7 @@ export const font = {
     "tight": 1.25,
   },
   "size": {
+    "bar-title": 15,
     "display": 32,
     "lg": 16,
     "md": 13,
@@ -266,21 +290,31 @@ export const elevation = {
   "1": "inset 0 1px 0 var(--highlight), 0 1px 2px var(--shadow-ambient)",
   "2": "inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key)",
   "3": "inset 0 1px 0 var(--highlight), 0 4px 12px var(--shadow-ambient), 0 24px 64px var(--shadow-key)",
-  "card": "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)",
-  "state": "inset 0 1px 0 var(--highlight), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow)",
+  "card": "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)",
+  "state": "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow)",
 } as const;
 
 export const material = {
+  "card": "linear-gradient(180deg, var(--card-sheen), transparent var(--size-board-panel-header))",
   "filter": "blur(24px) saturate(180%)",
 } as const;
 
 export const motion = {
   "easing-in": "cubic-bezier(0.4, 0, 1, 1)",
   "easing-out": "cubic-bezier(0.2, 0, 0, 1)",
+  "easing-spring": "cubic-bezier(0.22, 1, 0.36, 1)",
+  "easing-zoom": "cubic-bezier(0.16, 1, 0.3, 1)",
   "fast": 150,
   "float-open": 200,
+  "hover": 120,
+  "pop-close": 120,
+  "pop-open": 180,
   "quick": 100,
+  "sidebar": 240,
+  "slide": 220,
   "standard": 250,
+  "zoom-close": 200,
+  "zoom-open": 400,
 } as const;
 
 export const seriesPalette = {

@@ -475,7 +475,7 @@ describe('unit:geo-marks-emit', () => {
 
   it('(g) a wheel commit at idle, after its last draw: one geoMarks, and a draw follows', async () => {
     const h = await atFit();
-    wheel(h.canvas, 512, 256, { deltaX: 20 });
+    wheel(h.canvas, 512, 256, { deltaX: 20, ctrlKey: false });
     h.flush();
     const drawn = h.drawn.length;
     const marks = h.marks.length;
