@@ -7,6 +7,7 @@ import type { PlotRect, VisKind } from '../api';
 
 export {
   DRAG_MIN_PX,
+  hasZoomModifier,
   isPinch,
   PAGE_WHEEL_LATCH_MS,
   PINCH_ZOOM_PER_PX,
@@ -14,6 +15,7 @@ export {
   WHEEL_LINE_PX,
   WHEEL_MAX_PX,
   WHEEL_ZOOM_PER_PX,
+  timeWheelIntent,
   wheelIntent,
   windowWheelLatch,
   type WheelIntent,

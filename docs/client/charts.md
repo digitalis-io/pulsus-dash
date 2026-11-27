@@ -460,12 +460,12 @@ which drops a running gesture when the stage is withdrawn and restores the commi
 
 | Input (where) | Action | Commit |
 |---|---|---|
-| Wheel (plot) | Zoom time about the pointer | `{ window, gesture: 'wheel' }` after 300 ms idle |
-| Pinch: `Ctrl`+wheel with a fractional `deltaY` (plot) | Zoom time about the pointer | As wheel |
+| Plain wheel, no `Ctrl`/`⌘` (plot) | Not consumed: the page or board scrolls; the frame emits `wheelHint` and shows "Hold Ctrl to zoom" ("Hold ⌘ to zoom" on Apple platforms) | — |
+| `Ctrl`/`⌘`+wheel (plot) | Zoom time about the pointer | `{ window, gesture: 'wheel' }` after 300 ms idle |
+| Pinch: `Ctrl`+wheel with a fractional `deltaY` (plot) | Zoom time about the pointer (pinch rate) | As wheel |
 | Safari `gesturestart` / `gesturechange` / `gestureend` (plot) | Zoom time about the pointer by `lastScale / scale`; `Ctrl` wheels between start and end are ignored | As wheel |
-| `Shift`+wheel (plot) | Zoom values about the pointer (line, bars); heatmap: consumed, no change | `{ value, gesture: 'wheel' }` |
-| `Ctrl`/`⌘`+wheel with whole-number steps, or `⌘` (plot) | Zoom time and values about the pointer (heatmap: time only) | `{ window, value }` |
-| Horizontal two-finger swipe, `|deltaX| > |deltaY|` (plot) | Pan time | `{ window, gesture: 'wheel' }` |
+| `Ctrl`/`⌘`+`Shift`+wheel (plot) | Zoom values about the pointer (line, bars); heatmap: consumed, no change | `{ value, gesture: 'wheel' }` |
+| `Ctrl`/`⌘`+horizontal swipe, `|deltaX| > |deltaY|` (plot) | Pan time | `{ window, gesture: 'wheel' }` |
 | Wheel anywhere else | Not consumed: the page scrolls | — |
 | Left or middle drag of 4 px or more (plot, x-axis band) | Pan time; the content follows the pointer | `{ window, gesture: 'pan' }` (plot) or `'axis'` (band) on release |
 | Left drag of 4 px or more (y-axis band; line, bars) | Pan values, from the auto domain when unpinned | `{ value, gesture: 'axis' }` on release |
@@ -477,9 +477,10 @@ which drops a running gesture when the stage is withdrawn and restores the commi
 | `Escape` on the slider, `pointercancel`, `lostpointercapture` during a press | Cancel: the view and value range are restored, no commit, no box | — |
 | Left press with `Ctrl` and not `⌘` (macOS secondary click), touch pointers | Ignored | — |
 
-The pinch test is a heuristic (owner-delegated decision of 2026-11-21): a mouse that reports
-fractional `Ctrl`+wheel steps zooms time only, and a pinch with whole-number steps zooms both axes.
-Both outcomes are accepted and pinned by `input.test.ts`. Every consumed wheel and handled press
+A time chart zooms only with `Ctrl`/`⌘` held (owner decision 2026-11-27, `timeWheelIntent` in
+`controller/input.ts`), so a plain wheel scrolls the page; the geomap keeps its own wheel
+(`wheelIntent`). The pinch test (fractional `Ctrl`+wheel steps) only picks the pinch zoom rate; both
+zoom time. Every consumed wheel and handled press
 calls `preventDefault()` (no page scroll, browser zoom, text selection or middle-button
 autoscroll); a wheel during a press is consumed and ignored.
 
@@ -491,6 +492,11 @@ autoscroll); a wheel during a press is consumed and ignored.
 | `DRAG_MIN_PX` | 4 px (`size.chart-brush-min`) |
 | `PAGE_WHEEL_LATCH_MS` | 300 ms (the scroll latch) |
 
+The zoom hint (`charts/WheelHint.tsx`) is centred over the chart for `WHEEL_HINT_MS` (1.2 s), at
+most once per `WHEEL_HINT_GAP_MS` (3 s) on the page; it fades with `--motion-standard` (no fade
+under reduced motion), ignores the pointer and is `aria-hidden`. Its text goes to a polite live
+region once per session.
+
 Zones: the **plot** (edges included), the **x-axis band** below the plot within its x range, the
 **y-axis band** left of the plot within its y range (line and bars only). The canvas carries the
 zone under the pointer in `data-zone` and the press in progress in `data-gesture` (`pan`, `box`,
@@ -499,7 +505,7 @@ zone under the pointer in `data-zone` and the press in progress in `data-gesture
 
 ### Wheel and page scroll
 
-A wheel over a plot is consumed unless the page saw an unconsumed wheel in the last 300 ms: then a
+A plain wheel is never consumed (see above). A `Ctrl`/`⌘`+wheel over a plot is consumed unless the page saw an unconsumed wheel in the last 300 ms: then a
 scroll already in progress keeps scrolling as it passes over a chart. This holds while the chart's
 own wheel gesture is still pending too (zoom, scroll the page elsewhere, come back within 300 ms:
 the page keeps scrolling, and the pending zoom commits as usual). One passive `wheel` listener

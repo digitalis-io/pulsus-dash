@@ -397,7 +397,7 @@ async function boardStates(page: Page, check: (state: string) => Promise<void>):
   await check('b-1 view, value axis pinned');
 }
 
-/** b-1 in View mode with `Request rate`'s value axis pinned by `Shift`+wheel (#93). */
+/** b-1 in View mode with `Request rate`'s value axis pinned by `Ctrl`+`Shift`+wheel (#93). */
 async function valueAxisPinned(page: Page): Promise<void> {
   await open(page, '/t/demo/board/b-1');
   // On screen: Request rate and Error ratio; Request latency, below the fold, does not query (T07-012).
@@ -412,9 +412,11 @@ async function valueAxisPinned(page: Page): Promise<void> {
   const box = await f.boundingBox();
   if (box === null) throw new Error('Request rate has no box');
   await page.mouse.move(box.x + x + w / 2, box.y + y + h / 2);
+  await page.keyboard.down('Control');
   await page.keyboard.down('Shift');
   await page.mouse.wheel(0, -200);
   await page.keyboard.up('Shift');
+  await page.keyboard.up('Control');
   await page.getByRole('button', { name: 'Reset Y axis: Request rate' }).waitFor();
 }
 

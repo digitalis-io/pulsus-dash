@@ -37,10 +37,12 @@ export async function chartGestureScenario(page: Page, step: Step): Promise<void
       const c = await centre();
       await page.mouse.move(c.x, c.y);
       const before = page.url();
+      await page.keyboard.down('Control');
       for (let i = 0; i < 10; i++) {
         await page.mouse.wheel(0, d);
         await page.waitForTimeout(16);
       }
+      await page.keyboard.up('Control');
       await commit(before);
     }
   });
@@ -55,9 +57,11 @@ export async function chartGestureScenario(page: Page, step: Step): Promise<void
     await commit(before);
   });
   await step('chart value zoom', 1, async () => {
+    await page.keyboard.down('Control');
     await page.keyboard.down('Shift');
     for (let i = 0; i < 8; i++) await page.mouse.wheel(0, -100);
     await page.keyboard.up('Shift');
+    await page.keyboard.up('Control');
     await reset.waitFor();
   });
   await step('chart reset', 1, async () => {

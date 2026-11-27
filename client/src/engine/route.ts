@@ -64,6 +64,7 @@ const FORWARDED: Readonly<Record<keyof FrameEvents, true>> = {
   geoCommit: true,
   geoBrush: true,
   geoMarks: true,
+  wheelHint: true,
 };
 const EVENTS = Object.keys(FORWARDED) as (keyof FrameEvents)[];
 

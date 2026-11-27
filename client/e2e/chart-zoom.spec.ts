@@ -1,6 +1,7 @@
 /**
  * `e2e:chart-zoom` (plan #93 §5.2, Appendix A §A.9; INT-001, INT-002, INT-006, INT-007, INT-008,
- * INT-025): wheel zoom anchored at the pointer, the page-scroll latch, pinch and `Ctrl`+wheel,
+ * INT-025): `Ctrl`+wheel zoom anchored at the pointer, a plain wheel left to the page with the zoom
+ * hint, the page-scroll latch, pinch,
  * value-axis zoom and its reset, drag to pan, the context menu on the plot, axis drags, a board's
  * shared window, and a plot that does not move under the pointer through a commit and a refetch.
  */
@@ -107,6 +108,13 @@ const wheelLog = (page: Page): Promise<WheelSeen[]> =>
 const wheels = async (page: Page): Promise<boolean[]> =>
   (await wheelLog(page)).map((w) => w.prevented);
 
+/** A wheel with `Control` held: a time chart zooms only with the modifier (§4.1). */
+async function zoomWheel(page: Page, dx: number, dy: number): Promise<void> {
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(dx, dy);
+  await page.keyboard.up('Control');
+}
+
 async function gallery(page: Page, id = 'line-1') {
   await open(page, GALLERY_URL);
   await galleryReady(page);
@@ -135,10 +143,12 @@ test('Z1: wheel zoom keeps the time under the pointer and is one history entry',
   const entries0 = await page.evaluate(() => history.length);
   await page.mouse.move(p.x, p.y);
   const rnd = mulberry32(93);
+  await page.keyboard.down('Control');
   for (let i = 0; i < 10; i++) {
     await page.mouse.wheel(0, Math.round((rnd() * 2 - 1) * 200));
     await page.waitForTimeout(20);
   }
+  await page.keyboard.up('Control');
   await waitUrlChange(page, before);
   // Past the idle commit of the last wheel.
   await page.waitForTimeout(450);
@@ -191,10 +201,34 @@ test('Z2: the wheel scrolls the page off the plot and zooms over it', async ({ p
   box = await boxOf(f);
   const p = point(box, plot, 0.5);
   await page.mouse.move(p.x, p.y);
-  await page.mouse.wheel(0, -300);
+  await zoomWheel(page, 0, -300);
   await waitUrlChange(page, url);
   expect(await scrollY(page)).toBe(y2);
   expect(await wheels(page)).toEqual([false, false, true]);
+});
+
+test('Z2b: a plain wheel over the plot scrolls the page, never zooms, and shows the hint', async ({
+  page,
+}) => {
+  await page.addInitScript(recordWheels);
+  const { f, plot } = await gallery(page);
+  const url = page.url();
+  await centre(f);
+  await settled(page);
+  await page.waitForTimeout(400);
+  const y0 = await scrollY(page);
+  const box = await boxOf(f);
+  const p = point(box, plot, 0.5);
+  await page.mouse.move(p.x, p.y);
+  await page.mouse.wheel(0, 200);
+  await expect.poll(() => scrollY(page)).toBeGreaterThan(y0);
+  await expect(f.locator('[data-wheel-hint]')).toHaveAttribute('data-visible', 'true');
+  await expect(f.locator('[data-wheel-hint]')).toHaveText(/^Hold (Ctrl|⌘) to zoom$/);
+  // Past the wheel-idle commit: no window change.
+  await page.waitForTimeout(450);
+  expect(page.url()).toBe(url);
+  expect(await wheels(page)).toEqual([false]);
+  await expect(f.locator('[data-wheel-hint]')).toHaveAttribute('data-visible', 'false');
 });
 
 test('Z3: a scroll in progress keeps scrolling over a plot', async ({ page }) => {
@@ -234,14 +268,14 @@ test('Z3: a scroll in progress keeps scrolling over a plot', async ({ page }) =>
     const b2 = await boxOf(f);
     const p2 = point(b2, plot, 0.5);
     await page.mouse.move(p2.x, p2.y);
-    await page.mouse.wheel(0, -100);
+    await zoomWheel(page, 0, -100);
     await waitUrlChange(page, url);
     expect(await wheels(page)).toEqual([false, false, true]);
   }
   expect(gap).toBeLessThan(250);
 });
 
-test('Z4: a pinch zooms time; Ctrl+wheel zooms both; the page never zooms', async ({ page }) => {
+test('Z4: a pinch and Ctrl+wheel zoom time; the page never zooms', async ({ page }) => {
   await page.addInitScript(recordWheels);
   const { f, plot, box } = await gallery(page);
   const view = () =>
@@ -256,33 +290,33 @@ test('Z4: a pinch zooms time; Ctrl+wheel zooms both; the page never zooms', asyn
   await waitUrlChange(page, before);
   const w1 = urlWindow(page);
   expect(w1.to - w1.from).toBeLessThan(HOUR);
-  // A pinch arrives with fractional steps and zooms time only. WebKit's test driver delivers the
-  // steps as whole numbers: that is the accepted misclassification, and it zooms both axes.
-  const fractional = (await wheelLog(page)).every((x) => !Number.isInteger(x.deltaY));
-  expect(await pinned(f)).toBe(!fractional);
+  // A pinch arrives with fractional steps and zooms time only (WebKit's whole steps too).
+  expect(await pinned(f)).toBe(false);
   expect(await view()).toEqual({ scale: 1, dpr: v0.dpr });
   before = page.url();
-  await page.keyboard.down('Control');
-  await page.mouse.wheel(0, -100);
-  await page.keyboard.up('Control');
+  await zoomWheel(page, 0, -100);
   await waitUrlChange(page, before);
-  await expect.poll(() => pinned(f)).toBe(true);
+  expect(await pinned(f)).toBe(false);
   expect(await view()).toEqual({ scale: 1, dpr: v0.dpr });
 });
 
-test('Z5: Shift+wheel pins the value axis; Reset Y axis returns it to auto', async ({ page }) => {
+test('Z5: Ctrl+Shift+wheel pins the value axis; Reset Y axis returns it to auto', async ({
+  page,
+}) => {
   const { f, plot, box } = await gallery(page);
   const p = point(box, plot, 0.4);
   await page.mouse.move(p.x, p.y);
   const url = page.url();
+  await page.keyboard.down('Control');
   await page.keyboard.down('Shift');
   await page.mouse.wheel(0, -200);
   await page.keyboard.up('Shift');
+  await page.keyboard.up('Control');
   const reset = f.getByRole('button', { name: /^Reset Y axis: / });
   await expect(reset).toBeVisible();
   expect(page.url()).toBe(url);
   expect(await pinned(f)).toBe(true);
-  await page.mouse.wheel(0, -200);
+  await zoomWheel(page, 0, -200);
   await waitUrlChange(page, url);
   expect(await pinned(f)).toBe(true);
   await expect(reset).toBeVisible();
@@ -402,7 +436,7 @@ test('Z9: on a board every panel follows a commit; the value pin stays on its ch
   const p = point(box, plot, 0.5);
   await page.mouse.move(p.x, p.y);
   let url = page.url();
-  await page.mouse.wheel(0, -200);
+  await zoomWheel(page, 0, -200);
   await waitUrlChange(page, url);
   await expect
     .poll(async () => {
@@ -411,9 +445,11 @@ test('Z9: on a board every panel follows a commit; the value pin stays on its ch
     })
     .toBe(true);
   url = page.url();
+  await page.keyboard.down('Control');
   await page.keyboard.down('Shift');
   await page.mouse.wheel(0, -200);
   await page.keyboard.up('Shift');
+  await page.keyboard.up('Control');
   await expect(p99.getByRole('button', { name: 'Reset Y axis: Request rate' })).toBeVisible();
   expect(await pinned(p99)).toBe(true);
   expect(await pinned(frameOf('Request latency'))).toBe(false);
@@ -435,7 +471,7 @@ test('Z10: the plot keeps its place through the commit and the refetch', async (
     const vmin = Number(await sliderOf.getAttribute('aria-valuemin'));
     const vmax = Number(await sliderOf.getAttribute('aria-valuemax'));
     ta = timeAt(box.x, plot, p.x, vmin, vmax);
-    await page.mouse.wheel(0, -300);
+    await zoomWheel(page, 0, -300);
     await expect.poll(() => sliderOf.getAttribute('aria-valuemin')).not.toBe(String(vmin));
     expect(await rect()).toBe(r0);
   }
