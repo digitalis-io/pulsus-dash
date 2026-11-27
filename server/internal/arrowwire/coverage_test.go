@@ -43,7 +43,8 @@ func TestCoverageFrom(t *testing.T) {
 		}
 	}
 
-	// series_returned reaches the encoded coverage/1 row.
+	// The encoded coverage/1 row carries the series Finish committed (none here), not the
+	// coverage's SeriesReturned (plan #68 D1 §3.3).
 	var buf bytes.Buffer
 	w := NewWriter(&buf)
 	p, err := w.Grid(gridSpec(1, 2, 4), CoverageFrom(clean, PhasePlanned, 0))
@@ -51,7 +52,7 @@ func TestCoverageFrom(t *testing.T) {
 	mustOK(t, p.Finish(CoverageFrom(hit, PhaseFinal, 37)))
 	mustOK(t, w.End())
 	got := readBody(t, buf.Bytes()).Parts[0].Coverage
-	if len(got) != 2 || got[1].SeriesReturned != 37 || got[1].Phase != uint8(PhaseFinal) || *got[1].ReadCache != 0 || *got[1].DataEnd != 5 {
+	if len(got) != 2 || got[1].SeriesReturned != 0 || got[1].Phase != uint8(PhaseFinal) || *got[1].ReadCache != 0 || *got[1].DataEnd != 5 {
 		t.Errorf("encoded coverage %+v", got)
 	}
 	if want := toCoverageJSON(CoverageFrom(clean, PhasePlanned, 0)); len(got) == 0 || !reflect.DeepEqual(got[0], want) {
