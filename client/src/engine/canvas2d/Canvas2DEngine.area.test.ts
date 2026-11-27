@@ -50,7 +50,12 @@ function areaFills(h: Harness): { path: RecordedOp[]; at: number }[] {
   return out;
 }
 
-const AREA: VisSpec = { kind: 'line', title: 'T', unit: { kind: 'none' }, area: true };
+const AREA: Extract<VisSpec, { kind: 'line' }> = {
+  kind: 'line',
+  title: 'T',
+  unit: { kind: 'none' },
+  area: true,
+};
 
 describe('Canvas 2D line area (unit:canvas-area)', () => {
   it('draws one gradient per series at chart-area ÷ shown, clipped, gaps as closed subpaths', () => {

@@ -1034,7 +1034,8 @@ describe('unit:area-allowed (#282 Part 2b §4.3, T08-019)', () => {
       const engine = fakeEngine();
       const spec: VisSpec = { ...LINE7, area: true };
       renderFrame(engine, spec, DATA);
-      const area = (): unknown => (lastFrame(engine).last('setSpec')?.[0] as { area?: boolean }).area;
+      const area = (): unknown =>
+        (lastFrame(engine).last('setSpec')?.[0] as { area?: boolean }).area;
       expect(area()).toBe(false);
       act(() => {
         media.set(FORCED, false);

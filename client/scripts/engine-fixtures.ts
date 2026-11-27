@@ -367,12 +367,24 @@ function refPieces(x0: number, x1: number, va: number, vb: number, min: number, 
   let x = x0;
   let y = ca === 'I' ? yOf(va) : edge(ca);
   for (const c of cuts) {
-    pieces.push({ cls: k, x0: x, x1: c.x, y0: k === 'I' ? y : edge(k), y1: k === 'I' ? c.y : edge(k) });
+    pieces.push({
+      cls: k,
+      x0: x,
+      x1: c.x,
+      y0: k === 'I' ? y : edge(k),
+      y1: k === 'I' ? c.y : edge(k),
+    });
     k = c.next;
     x = c.x;
     y = c.y;
   }
-  pieces.push({ cls: k, x0: x, x1, y0: k === 'I' ? y : edge(k), y1: k === 'I' ? yOf(vb) : edge(k) });
+  pieces.push({
+    cls: k,
+    x0: x,
+    x1,
+    y0: k === 'I' ? y : edge(k),
+    y1: k === 'I' ? yOf(vb) : edge(k),
+  });
   return pieces;
 }
 
@@ -594,6 +606,8 @@ function fakeCtx(s: Sources, labels: string[]): Record<string, unknown> {
     moveTo: nop,
     lineTo: nop,
     arc: nop,
+    closePath: nop,
+    createLinearGradient: () => ({ addColorStop: nop }),
     fill: nop,
     stroke: nop,
     drawImage: nop,

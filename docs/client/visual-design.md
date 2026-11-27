@@ -195,6 +195,23 @@ state at `opacity.tag`; `text` ≥ 4.5:1 on every level tag; `text` and `text-mu
 `watch`, `degraded` and `failing` glyphs ≥ 3:1 on `surface-1` + `series-1…8` at `opacity.chip`; the
 board status glyph (`failing`) ≥ 3:1 on `canvas`.
 
+## Chart grid, baseline and area (Part 2b)
+
+| Token | Dark | Light | Use |
+|---|---|---|---|
+| `chart-grid` | `#FFFFFF0F` | `#1C22330F` | a line chart's value guides (softer than `hairline`) |
+| `chart-axis` | `#FFFFFF24` | `#1C223329` | the plot's 1 px bottom baseline |
+| `size.chart-dash` / `chart-dash-gap` | 4 / 5 px | | threshold dashes |
+| `opacity.chart-area` | 0.18 | | the line area's total tint at the plot's top, split over 1–4 series |
+
+Why 0.18 ([ADR-0036](../../designs/adr/0036-line-spec-area.md)): the area must stay shading, never
+a fill that competes with the strokes over it. At 0.18 total, every series stroke keeps at least
+4.65:1 (dark) and 3.35:1 (light), and the `watch`, `degraded` and `failing` threshold colours at
+least 3.20:1 and 3.37:1, over any stack of 1–4 series tints on `surface-1` (`unit:ui-token-contrast`).
+The stat sparkline's `opacity.area` (0.28) would take threshold lines below 3:1 under four stacked
+areas. The area repeats the series hue and encodes nothing, so it is dropped under forced colours and
+reduced transparency and needs nothing in greyscale.
+
 ## The radius scale (`unit:radius-scale`)
 
 `scripts/radius-scale.test.ts` parses every `src/**/*.css` except the generated `tokens.css` and

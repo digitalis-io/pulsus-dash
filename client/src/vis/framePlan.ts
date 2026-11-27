@@ -102,7 +102,10 @@ export function framePlan(
       ? { kind: 'bars', title, unit, stacking: 'normal', categoryLabel: '', categoryOrder: [] }
       : vis === 'heatmap'
         ? heat
-        : { kind: vis, title, unit };
+        : vis === 'line'
+          ? // ADR-0036: a line chart is shaded (the engines draw it under 1–4 series only).
+            { kind: 'line', title, unit, area: true }
+          : { kind: vis, title, unit };
   if (r.kind === 'scalar') {
     switch (vis) {
       case 'stat':

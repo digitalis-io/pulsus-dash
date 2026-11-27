@@ -21,6 +21,8 @@ export interface Column {
   readonly min: number;
   readonly max: number;
   readonly last: number;
+  /** The first finite sample (the incoming join ends here, #282 Part 2b). */
+  readonly first: number;
   readonly minMs: number;
   readonly maxMs: number;
   readonly lastMs: number;
@@ -30,6 +32,10 @@ export interface Column {
   readonly runs: readonly Run[];
   /** A NaN lies after the previous finite sample (any column) and before `last`. */
   readonly breakBefore: boolean;
+  /** A NaN lies after the previous finite sample (any column) and before `first`: no join in. */
+  readonly gapLead: boolean;
+  /** A NaN lies between `first` and `last`: the line breaks inside the column. */
+  readonly gapInner: boolean;
 }
 
 interface MutableRun {
@@ -42,10 +48,13 @@ interface MutableRun {
 
 interface MutableColumn extends MutableRun {
   x: number;
+  first: number;
   last: number;
   lastMs: number;
   runs: MutableRun[];
   breakBefore: boolean;
+  gapLead: boolean;
+  gapInner: boolean;
 }
 
 /** The plot's whole CSS px columns. */
@@ -90,10 +99,13 @@ export function lineColumns(
         minMs: t,
         maxMs: t,
         count: 1,
+        first: v,
         last: v,
         lastMs: t,
         runs: [run],
         breakBefore: gap,
+        gapLead: gap,
+        gapInner: false,
       };
       out[x] = current;
       gap = false;
@@ -110,7 +122,10 @@ export function lineColumns(
     current.last = v;
     current.lastMs = t;
     current.count += 1;
-    if (gap) current.breakBefore = true;
+    if (gap) {
+      current.breakBefore = true;
+      current.gapInner = true;
+    }
     gap = false;
     if (run === null) {
       run = { min: v, max: v, minMs: t, maxMs: t, count: 1 };

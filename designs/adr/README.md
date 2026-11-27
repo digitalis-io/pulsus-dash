@@ -37,6 +37,7 @@
 | [0033](0033-st-render-worker-script.md) | The `pulsus-engine` policy admits the single-thread render worker (three exact URLs); pages that are not isolated, and browsers without `Atomics.waitAsync`, get the ST engine; amends 0026 | **Accepted** (2026-11-27) |
 | [0034](0034-grid-part-joined-into-one-chunk.md) | A streamed grid part's batch chunks are joined into one chunk on the pool (one more exact-size copy); the MT engine's DSF memory contract; DSF is MT-only until #281; amends T04-015 | **Accepted** (2026-11-27) |
 | [0035](0035-platform-ui-face.md) | The platform UI face on Apple systems (`html[data-platform="apple"]`); Inter and JetBrains Mono stay self-hosted and draw every canvas; amends 0014 §1 | **Accepted** (on merge of #282 Part 1) |
+| [0036](0036-line-spec-area.md) | The line `VisSpec` carries `area`; engines draw a gradient area under 1–4 series along the line's joins (one gap rule, the piecewise edge rule), none under a selection, lanes, forced colours or reduced transparency; amends 0014 §3 | **Accepted** (on merge of #282 Part 2b) |
 | [0037](0037-stat-graph-mode-none.md) | A stat's graph mode `none` draws the value alone, centred, with no sparkline; absent means sparkline; amends 0022 decision 4 | **Accepted** (on merge of the #297 fix) |
 
 Format: context, decision, consequences. An ADR is immutable once Accepted. It can be changed

@@ -7,6 +7,7 @@ describe('unit:engine-fixtures', () => {
   it('committed engine/fixtures equal a fresh run', async () => {
     const files = await fixtures();
     expect(Object.keys(files).sort()).toEqual([
+      'area-pieces.json',
       'columns.json',
       'format.json',
       'hover.json',

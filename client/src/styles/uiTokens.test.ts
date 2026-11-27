@@ -237,10 +237,17 @@ describe('unit:ui-token-contrast', () => {
           for (const c of set) {
             const [r, g, b] = rgba(hexOf(theme, c));
             const t = a / n;
-            under = [r * t + under[0] * (1 - t), g * t + under[1] * (1 - t), b * t + under[2] * (1 - t)];
+            under = [
+              r * t + under[0] * (1 - t),
+              g * t + under[1] * (1 - t),
+              b * t + under[2] * (1 - t),
+            ];
           }
           for (const fg of [...series, 'watch', 'degraded', 'failing']) {
-            expect(onTint(theme, fg, under), `${theme}: ${fg} over ${set.join('+')}`).toBeGreaterThanOrEqual(3);
+            expect(
+              onTint(theme, fg, under),
+              `${theme}: ${fg} over ${set.join('+')}`,
+            ).toBeGreaterThanOrEqual(3);
           }
         }
       }

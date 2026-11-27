@@ -116,7 +116,7 @@ describe('current nav item', () => {
 });
 
 describe('gallery route', () => {
-  it('renders the eighteen gallery charts on stub data', async () => {
+  it('renders the twenty gallery charts on stub data', async () => {
     installResizeObserver();
     const engine = fakeEngine();
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -129,7 +129,7 @@ describe('gallery route', () => {
       await screen.findByRole('heading', { level: 1, name: 'Chart gallery' }),
     ).toBeInTheDocument();
     await waitFor(() => {
-      expect(document.querySelectorAll('[data-gallery-id]')).toHaveLength(18);
+      expect(document.querySelectorAll('[data-gallery-id]')).toHaveLength(20);
     });
     // The five bar charts (#173 Part 2) mount their frames once their cells are measured.
     act(() => {

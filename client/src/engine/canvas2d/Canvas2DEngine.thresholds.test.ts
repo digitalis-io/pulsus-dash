@@ -8,7 +8,7 @@ import type { FrameData, FrameSummary, ThresholdLine, VisSpec } from '../api';
 import { harness, seriesData, seriesFrame, type Harness } from '../../test/engineHarness';
 import type { RecordingContext } from '../../test/recordingContext';
 import { CHAR_WIDTH } from '../../test/recordingContext';
-import { colour, seriesPalette, space } from '../../styles/tokens';
+import { colour, seriesPalette, size, space } from '../../styles/tokens';
 import { Canvas2DEngine } from './Canvas2DEngine';
 import { LABEL_HEIGHT } from './layout';
 
@@ -130,7 +130,7 @@ describe('unit:threshold-mark (#64 Part B §4.2)', () => {
     const h = show(line([{ value: 20, state: 'degraded', label: 'SLO' }]));
     const s = last(h);
     const dashes = h.layer().calls('setLineDash');
-    expect(dashes.map((o) => o.args[0])).toEqual([[5, 4]]);
+    expect(dashes.map((o) => o.args[0])).toEqual([[size['chart-dash'], size['chart-dash-gap']]]);
     const d = dashed(h);
     expect(d).toHaveLength(1);
     const path = d[0];

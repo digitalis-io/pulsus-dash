@@ -43,7 +43,7 @@ function expected(ts: Float64Array, vs: Float64Array, from: number, to: number, 
 }
 
 describe('unit:columns', () => {
-  it('keeps every raw extreme and at most one vertex per column', () => {
+  it('keeps every raw extreme and at most two vertices (first, last) per column', () => {
     const r = mulberry32(60);
     for (let s = 0; s < 100; s++) {
       const n = 1_440;
@@ -78,9 +78,12 @@ describe('unit:columns', () => {
       const vertices = ctx.ops.filter(
         (o) => o.op === 'moveTo' || o.op === 'lineTo' || o.op === 'arc',
       );
+      // #282 Part 2b: a vertex at a column's first and at its last value (the engine's joins).
       const xs = vertices.map((o) => Math.floor(Number(o.args[0])));
-      expect(new Set(xs).size).toBe(xs.length);
-      expect(vertices.length).toBeLessThanOrEqual(cols.filter((c) => c !== null).length);
+      const per = new Map<number, number>();
+      for (const x of xs) per.set(x, (per.get(x) ?? 0) + 1);
+      expect(Math.max(0, ...per.values())).toBeLessThanOrEqual(2);
+      expect(vertices.length).toBeLessThanOrEqual(2 * cols.filter((c) => c !== null).length);
     }
   });
 
@@ -208,7 +211,14 @@ describe('unit:columns', () => {
         expect(top >= y(4) || bottom <= y(6)).toBe(true);
       }
       const path = ctx.ops.filter((o) => ['moveTo', 'lineTo'].includes(o.op));
-      expect(path.map((o) => [o.op, ...o.args])).toEqual([['moveTo', 1.5, y(8)]]);
+      // #282 Part 2b: the NaN lies after column 1's first sample, so column 0 joins it; the line
+      // breaks inside column 1 (a move to its last).
+      expect(path.map((o) => [o.op, ...o.args])).toEqual([
+        ['moveTo', 0.5, y(1)],
+        ['lineTo', 0.5, y(1)],
+        ['lineTo', 1.5, y(2)],
+        ['moveTo', 1.5, y(8)],
+      ]);
     });
   });
 });
@@ -223,7 +233,12 @@ describe('lineColumns join flags (#282 Part 2b §4.2, unit:canvas-joins)', () =>
     const c = cols[200];
     expect([c?.first, c?.last, c?.gapLead, c?.gapInner]).toEqual([60, 40, false, true]);
     expect([cols[300]?.first, cols[300]?.gapLead, cols[300]?.gapInner]).toEqual([50, false, false]);
-    const lead = lineColumns(new Float64Array([10.5, 20.2, 20.6]), new Float64Array([1, NaN, 2]), w, plot);
+    const lead = lineColumns(
+      new Float64Array([10.5, 20.2, 20.6]),
+      new Float64Array([1, NaN, 2]),
+      w,
+      plot,
+    );
     expect([lead[20]?.gapLead, lead[20]?.gapInner]).toEqual([true, false]);
   });
 });
