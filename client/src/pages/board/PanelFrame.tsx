@@ -320,6 +320,7 @@ const PanelChart = memo(function PanelChart({
   const th = view.thresholds;
   const table: SeriesTableProps = {
     caption: t('panel.legend.caption'),
+    captionDisplay: 'hidden',
     columns: ['mean', 'max', 'last'],
     maxRows: LEGEND_ROWS,
     swatches: true,
