@@ -45,6 +45,8 @@ func TestE2ETranscripts(t *testing.T) {
 		"metadata", "metric-names", "parse-error-nopos", "parse-error-position", "runtimeinfo",
 		"scalar", "slow-final-chromium", "slow-final-firefox", "slow-final-webkit", "slow",
 		"too-broad", "truncated",
+		// The panel units set (#290 §5 E1–E2).
+		"units-rx-bytes", "units-uptime",
 	}
 	if !slices.Equal(names, want) {
 		t.Errorf("transcripts %v, want %v", names, want)

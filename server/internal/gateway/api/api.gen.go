@@ -1419,6 +1419,12 @@ type Panel struct {
 	Vis   Vis    `json:"vis"`
 }
 
+// PanelUnit defines model for PanelUnit.
+type PanelUnit struct {
+	Id     string  `json:"id"`
+	Suffix *string `json:"suffix,omitempty"`
+}
+
 // PlannedQuery What the server planned and sent (ADR-0021, T06-029).
 type PlannedQuery struct {
 	Bytes         int                   `json:"bytes"`
@@ -1633,6 +1639,7 @@ type Vis struct {
 	Legend     *Legend     `json:"legend,omitempty"`
 	Options    *VisOptions `json:"options,omitempty"`
 	Thresholds *Thresholds `json:"thresholds,omitempty"`
+	Unit       *PanelUnit  `json:"unit,omitempty"`
 }
 
 // VisKind defines model for Vis.Kind.

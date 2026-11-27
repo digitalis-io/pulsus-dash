@@ -111,8 +111,16 @@ func TestUpcasterAcceptsV1Unchanged(t *testing.T) {
 			if got, want := canon(t, b7), canon(t, raw); !bytes.Equal(got, want) {
 				t.Errorf("DecodeBoard(raw, 7) = %s, want %s", got, want)
 			}
-			if _, err := DecodeBoard(raw, 8); !errors.Is(err, ErrSchemaTooNew) {
-				t.Errorf("DecodeBoard(raw, 8) = %v, want ErrSchemaTooNew", err)
+			// Version 8 adds vis.unit, the units version (#290): the identity again.
+			b8, err := DecodeBoard(raw, 8)
+			if err != nil {
+				t.Fatalf("DecodeBoard(raw, 8): %v", err)
+			}
+			if got, want := canon(t, b8), canon(t, raw); !bytes.Equal(got, want) {
+				t.Errorf("DecodeBoard(raw, 8) = %s, want %s", got, want)
+			}
+			if _, err := DecodeBoard(raw, 9); !errors.Is(err, ErrSchemaTooNew) {
+				t.Errorf("DecodeBoard(raw, 9) = %v, want ErrSchemaTooNew", err)
 			}
 			if _, err := DecodeBoard(raw, 0); !errors.Is(err, ErrSchemaVersion) {
 				t.Errorf("DecodeBoard(raw, 0) = %v, want ErrSchemaVersion", err)

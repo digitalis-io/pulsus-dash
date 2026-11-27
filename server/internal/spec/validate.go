@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -39,6 +40,9 @@ const (
 	maxBoardQueryRunes = 100 // a board list's search text, runes (the gateway's maxSearchRunes)
 	minBoardLimit      = 1   // a board list's rows
 	maxBoardLimit      = 50
+
+	// maxUnitSuffixRunes bounds a custom unit's suffix (board spec v8; the client's MAX_UNIT_SUFFIX).
+	maxUnitSuffixRunes = 16
 )
 
 var (
@@ -54,8 +58,12 @@ var (
 	directions  = []string{"above", "below"}
 	stepStates  = []string{"watch", "degraded", "failing"}
 	legendModes = []string{"table", "hidden"}
-	// unitIDs: stub (tests first, #290).
-	unitIDs = []string{}
+	// unitIDs are the panel unit ids of board spec v8 (#290, T22-016), in catalogue order: they
+	// equal api/fixtures/board-spec/unit-ids.json and the client's UNIT_IDS.
+	unitIDs = []string{"count", "none", "custom", "seconds", "milliseconds", "microseconds",
+		"nanoseconds", "bytes", "bytesSI", "bits", "bitsIEC", "perSecond", "reqPerSecond",
+		"bytesPerSecond", "bytesSIPerSecond", "bitsPerSecond", "bitsIECPerSecond", "percent",
+		"percentUnit"}
 
 	// The option values of board spec v3 (T22 §6.1; client boards/options.ts OPTION_VALUES).
 	// labelPattern is the client's FILTER_LABEL.
@@ -312,6 +320,9 @@ func (v *validator) vis(pointer string, vis Vis) {
 	if l := vis.Legend; l != nil && !widget {
 		v.str(pointer+"/legend/mode", l.Mode, oneOf(legendModes, "board.legend.mode.invalid"))
 	}
+	if vis.Unit != nil {
+		v.unit(pointer+"/unit", *vis.Unit, widget)
+	}
 	if vis.Options != nil && slices.Contains(visKinds, vis.Kind) {
 		v.options(pointer+"/options", vis.Kind, *vis.Options)
 		if vis.Kind == "geomap" {
@@ -319,6 +330,35 @@ func (v *validator) vis(pointer string, vis Vis) {
 		}
 	}
 }
+
+// unit checks a panel's unit (board spec v8, #290 §3.1), after the legend: a widget has none (an
+// unknown key); the id is one of unitIDs; a suffix is present with custom only, of 1 to 16 runes
+// with no White_Space or Cc code point (absent with custom: reported at the unit).
+func (v *validator) unit(pointer string, u PanelUnit, widget bool) {
+	if widget {
+		v.add(pointer, keyUnknownKey)
+		return
+	}
+	v.str(pointer+"/id", u.ID, oneOf(unitIDs, "board.unit.id.invalid"))
+	const bad = "board.unit.suffix.invalid"
+	switch {
+	case u.ID == "custom" && u.Suffix == nil:
+		v.add(pointer, bad)
+	case u.ID != "custom" && u.Suffix != nil:
+		v.add(pointer+"/suffix", bad)
+	case u.Suffix != nil:
+		v.str(pointer+"/suffix", *u.Suffix, func(s string) string {
+			if n := utf8.RuneCountInString(s); n == 0 || n > maxUnitSuffixRunes || strings.ContainsFunc(s, spaceOrControl) {
+				return bad
+			}
+			return ""
+		})
+	}
+}
+
+// spaceOrControl reports a Unicode White_Space or Cc code point (the client's
+// /[\p{White_Space}\p{Cc}]/u).
+func spaceOrControl(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }
 
 // geomapOptions checks a geomap's own keys (board spec v7, T24 §5.15), after the shared ones, in
 // OPTION_ORDER, each with one error at its key: location (validLocation), size (by value or fixed,
