@@ -15,10 +15,10 @@ GOLANGCI_SHA256 := 9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9eb
 SQUAWK_VERSION := 2.72.0
 SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11a
 
-.PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci engine-image engine-test engine-lint \
+.PHONY: client-build client-check assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci engine-image engine-test engine-lint \
 	engine-goldens engine-goldens-update engine-web-image engine-wasm engine-wasm-check engine-e2e \
 	engine-wasm-probe e2e-build-probe e2e-build-release client-dev \
-	engine-gpu-smoke \
+	engine-gpu-smoke engine-bench \
 	go-licenses no-pulsusdb-host geo-test geo-data geo-check dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local itest-old-binary dev-smoke \
 	itest-local-selftest bench-bff cpu-instr cpu-instr-update
 
@@ -46,6 +46,18 @@ ITEST_GOAL ?= itest
 CLIENT_OUT ?= dist
 client-build: engine-wasm
 	VITE_API_MODE=$(API_MODE) VITE_GIT_SHA=$(GIT_SHA) npm --prefix client run build -- --outDir $(CLIENT_OUT) --emptyOutDir
+
+# The client `check` job of T05 §7.1, run locally (#263): every client change runs it before push
+# (docs/development/build-and-ci.md). `npm run audit` needs the network.
+client-check: engine-wasm
+	cd client && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && \
+	  npm run check:lockfile && npm run lint && npm run typecheck && \
+	  npm run tokens -- --check && npm run token-lint && npm test && \
+	  $(MAKE) -C .. geo-test && npm run geo-data && \
+	  npm run build && npm run size && \
+	  VITE_API_MODE=http npx --no-install vite build --outDir dist-http --emptyOutDir && \
+	  ! grep -q '"src/dev/' dist-http/.vite/manifest.json && \
+	  npm run size -- dist-http && npm run origins && npm run audit
 
 # Packs client/dist into the embedded tree with a signed manifest, under a key generated afresh
 # for this build (plan #59 Q3); the private key never leaves build/keys/.
@@ -339,6 +351,28 @@ ifeq ($(ENGINE_IN_IMAGE),1)
 	cd client && node scripts/engine-gpu-smoke.ts
 else
 	$(ENGINE_WEB_RUN) make engine-gpu-smoke
+endif
+
+# The frame benches (plan #68 C2d1; T05 §4.3 bench:frame-gallery, bench:frame-line-1e8), report
+# only: the PulsusDB fake and the probe build (e2e-build-probe, its stub BFF on 4175), then
+# project `bench` of playwright.engine.config.ts (ENGINE_BENCH=1: lavapipe, one worker). The
+# results are client/test-results/bench/*.json: Playwright clears client/test-results/ when the run
+# starts and keeps it after. A PostgreSQL 16 as for engine-e2e. Never part of engine-e2e.
+ENGINE_BENCH_PROJECT ?= pulsus-engine-bench
+ENGINE_BENCH_PG_PORT ?= 57534
+engine-bench:
+ifeq ($(ENGINE_IN_IMAGE),1)
+	cd client && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && \
+	  CGO_ENABLED=0 go -C ../server build -trimpath -o $(CURDIR)/build/e2e-fake/pulsus-fake ./cmd/pulsus-fake && \
+	  $(MAKE) -C .. e2e-build-probe && \
+	  ENGINE_BENCH=1 npx playwright test -c playwright.engine.config.ts --project bench
+else
+	@if [ -n "$${E2E_PG_APP_URL:-}" ]; then $(ENGINE_WEB_RUN) make engine-bench; else \
+	  trap '$(COMPOSE) -f dev/compose.yaml -p $(ENGINE_BENCH_PROJECT) down -v' EXIT; \
+	  DEV_PG16_PORT=$(ENGINE_BENCH_PG_PORT) $(COMPOSE) -f dev/compose.yaml -p $(ENGINE_BENCH_PROJECT) up -d --wait pg16 && \
+	  E2E_PG_APP_URL='postgres://pulsus_app@localhost:$(ENGINE_BENCH_PG_PORT)/pulsus_dash?sslmode=disable' \
+	  E2E_PG_OWNER_URL='postgres://pulsus_owner@localhost:$(ENGINE_BENCH_PG_PORT)/pulsus_dash?sslmode=disable' \
+	  $(ENGINE_WEB_RUN) make engine-bench; fi
 endif
 
 # The engine e2e suite (playwright.engine.config.ts): a PostgreSQL 16 for the e2e BFFs (the

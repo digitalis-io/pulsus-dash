@@ -1178,3 +1178,80 @@ fn frames_selection() {
         "the reused layer keeps the emphasis"
     );
 }
+
+/// Plan #68 C2d1 §5 `probe_synth` (the probe build): `synth_f1c` makes F1c's grid in the frame
+/// (`f1a`'s values, key hashes 0..series), on two frames; an impossible size fails without a
+/// trap and leaves the frame's data as it was; a repeat replaces the chunk with an equal one and
+/// drops the old one.
+#[cfg(feature = "probe")]
+#[test]
+fn probe_synth() {
+    let json = r#"{"kind":"line","title":"F1c","unit":{"kind":"none"}}"#;
+    let mut f = Frames::new();
+    line_frame(&mut f, 1, json);
+    assert!(f.create(2, None));
+    assert!(f.set_spec(2, json).is_ok());
+    let want = match pulsus_synth::reference::f1a(10, 1000) {
+        Ok(r) => r.chunk,
+        Err(e) => panic!("f1a: {e}"),
+    };
+    let same = |got: &Chunk| {
+        assert_eq!(got.time, want.time, "the grid");
+        assert_eq!(got.offsets, want.offsets, "10 series × 1 000");
+        assert_eq!(got.series, want.series, "the series metas");
+        assert_eq!(got.finite, want.finite, "the finite range");
+        assert!(
+            got.values
+                .iter()
+                .zip(&want.values)
+                .all(|(a, b)| a.to_bits() == b.to_bits())
+                && got.values.len() == want.values.len(),
+            "f1a's values"
+        );
+        let keys: Vec<u64> = got.series.iter().map(|s| s.key_hash).collect();
+        assert_eq!(keys, (0..10).collect::<Vec<u64>>(), "key hashes 0..9");
+    };
+    let _ = f.build(1);
+    let builds = f.layer_builds();
+    assert!(f.synth_f1c(1, 10, 1000), "synth on frame 1");
+    let Some(first) = f.chunk(1) else {
+        panic!("frame 1 has no chunk")
+    };
+    same(&first);
+    assert!(f.build(1).is_some());
+    assert_eq!(f.layer_builds(), builds + 1, "the frame is dirty");
+    assert!(f.synth_f1c(2, 10, 1000), "synth on frame 2");
+    match f.chunk(2) {
+        Some(c) => same(&c),
+        None => panic!("frame 2 has no chunk"),
+    }
+    // An impossible size: false, no trap, the data unchanged and the frame not dirtied.
+    let _ = f.build(1);
+    let builds = f.layer_builds();
+    assert!(
+        !f.synth_f1c(1, u32::MAX, u32::MAX),
+        "an impossible size fails"
+    );
+    match f.chunk(1) {
+        Some(c) => assert!(Arc::ptr_eq(&c, &first), "the data unchanged"),
+        None => panic!("frame 1 lost its chunk"),
+    }
+    assert!(f.build(1).is_some());
+    assert_eq!(
+        f.layer_builds(),
+        builds,
+        "a failed synth does not dirty the frame"
+    );
+    // Unknown frame.
+    assert!(!f.synth_f1c(9, 10, 1000), "no frame 9");
+    // Repeated: an equal chunk, and the old one has no other owner.
+    assert!(f.synth_f1c(1, 10, 1000), "synth again");
+    match f.chunk(1) {
+        Some(c) => {
+            same(&c);
+            assert!(!Arc::ptr_eq(&c, &first), "a new chunk");
+        }
+        None => panic!("frame 1 has no chunk"),
+    }
+    assert_eq!(Arc::strong_count(&first), 1, "the old chunk was dropped");
+}

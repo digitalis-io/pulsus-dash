@@ -58,7 +58,10 @@ fn columns(id: u64, series: &[Vec<(u32, Vec<f64>)>]) -> Result<Chunk, ChunkError
     Ok(b.finish())
 }
 
-fn slope(s: usize, k: u32) -> f64 {
+/// Sample `k` of series `s` of F1a (and F1c): a sine of period `37 + 40·s` samples, amplitude
+/// 1 000, offset `10·s`. Public so a builder that reserves its own buffers (the probe build's
+/// `Frames::synth_f1c`, plan #68 C2d1 §3.2) makes the same values as [`f1a`].
+pub fn f1a_value(s: usize, k: u32) -> f64 {
     let p = 37.0 + 40.0 * s as f64;
     1000.0 * (2.0 * std::f64::consts::PI * f64::from(k) / p).sin() + 10.0 * s as f64
 }
@@ -67,7 +70,7 @@ fn slope(s: usize, k: u32) -> f64 {
 pub fn f1a(series: usize, per_series: u32) -> Result<RefFixture, ChunkError> {
     Ok(RefFixture {
         name: "F1a",
-        chunk: grid(0xF1A, series, per_series, slope)?,
+        chunk: grid(0xF1A, series, per_series, f1a_value)?,
         manual: None,
     })
 }
@@ -109,7 +112,7 @@ pub fn f2(series: usize, per_series: u32) -> Result<RefFixture, ChunkError> {
         if gaps[s * per_series as usize + k as usize] {
             f64::NAN
         } else {
-            slope(s, k)
+            f1a_value(s, k)
         }
     })?;
     Ok(RefFixture {

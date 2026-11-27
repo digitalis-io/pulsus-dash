@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import optimizeLocales from '@react-aria/optimize-locales-plugin';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin, type UserConfig } from 'vite';
+import { INITIAL_GROUP } from './config/chunks.ts';
 import { dashEngine } from './config/dashEngine.ts';
 import { devHeaders, productionHeaders } from './config/headers.ts';
 import { moduleGraphPlugins } from './config/moduleGraph.ts';
@@ -71,6 +72,8 @@ export function clientConfig(engine: (root: string) => Plugin): UserConfig {
         // route imports the geo modules (T24-087).
         input: { index: `${root}index.html`, 'geo-assets': `${root}src/vis/geo/urls.ts` },
         output: {
+          // Plan #263: the static closure of `index.html` is one chunk, the entry (PRF-033).
+          codeSplitting: { groups: [INITIAL_GROUP] },
           chunkFileNames: (c) =>
             c.moduleIds.some((id) => EDITOR_MODULE.test(id))
               ? 'assets/editor-[hash].js'

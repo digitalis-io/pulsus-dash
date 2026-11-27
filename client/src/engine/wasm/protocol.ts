@@ -8,7 +8,9 @@
  * an idle worker after a publish to the input ring (the camera and the size travel there,
  * `ring.ts`). Render → main: `status` (after `engine_start`, with the shared memory), `spawn-pool`
  * (one per pool thread) and `events` (one JSON array per animation frame). Main → pool: `pool`.
- * The probe build adds `probe-input` both ways (the worker's decoded records, `e2e:shim-fuzz`).
+ * The probe build adds `probe-input` both ways (the worker's decoded records, `e2e:shim-fuzz`) and
+ * `probe-synth` and `probe-chunk` both ways (plan #68 C2d1 §3.2: F1c built in the worker,
+ * acknowledged; the frame's chunk described).
  */
 import type { DrawnEvent, FrameSummary, HoverEvent, HoverItem, PlotRect, ValueRange } from '../api';
 
@@ -66,7 +68,18 @@ export type MainToRender =
   | { readonly t: 'probe-freeze'; readonly id: number; readonly seq: number }
   | { readonly t: 'probe-unfreeze'; readonly id: number }
   /** The probe build (plan #68 C2c2 S11): drop every renderer and redraw, as after a device loss. */
-  | { readonly t: 'probe-renew' };
+  | { readonly t: 'probe-renew' }
+  /** The probe build (plan #68 C2d1 §3.2): F1c of `series` × `points` as frame `id`'s data. */
+  | {
+      readonly t: 'probe-synth';
+      readonly id: number;
+      readonly series: number;
+      readonly points: number;
+    }
+  /** The probe build (plan #68 C2d1 §3.2): describe frame `id`'s current chunk. */
+  | { readonly t: 'probe-chunk'; readonly id: number }
+  /** The probe build (plan #68 C2d1): the worker throws, a real trap (the bench's failure test). */
+  | { readonly t: 'probe-trap' };
 
 export type RenderToMain =
   | {
@@ -79,7 +92,16 @@ export type RenderToMain =
   | { readonly t: 'spawn-pool'; readonly ptr: number }
   | { readonly t: 'events'; readonly json: string }
   /** The probe build: `engine_probe_input()`, a JSON array of `InputRec`. */
-  | { readonly t: 'probe-input'; readonly json: string };
+  | { readonly t: 'probe-input'; readonly json: string }
+  /** The probe build: `probe-synth`'s acknowledgement; `bytes` of values held (0 when not `ok`). */
+  | {
+      readonly t: 'probe-synth';
+      readonly id: number;
+      readonly ok: boolean;
+      readonly bytes: number;
+    }
+  /** The probe build: `probe-chunk`'s answer, `{series, points, bytes}` JSON or `null`. */
+  | { readonly t: 'probe-chunk'; readonly id: number; readonly json: string };
 
 export interface PoolMessage {
   readonly t: 'pool';

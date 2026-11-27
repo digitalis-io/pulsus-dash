@@ -8,16 +8,27 @@
  * `assets/{basemap,gazetteer}-<hash>.json` and one row (`geo-basemap`, `geo-gazetteer`) inside the
  * total; the `geo-assets` entry chunk that names them is a lazy chunk.
  *
+ * Build-output boundaries (plan #263): no `required.lazyModules` entry is in the initial JS
+ * (`lazy-in-initial`), and the `geo-assets` entry stays its own lazy entry (`geo-entry-merged`).
+ * Initial JS less than `NEAR_BUDGET_BYTES` below its budget is a `near-budget:initialJs` warning.
+ *
  * Usage: node scripts/bundle-size.ts [dist] [budgets]
- * Exit: 0 no findings, 1 findings, 2 `dist/` or its manifest unreadable.
+ * Exit: 0 no findings or only warnings, 1 errors, 2 `dist/` or its manifest unreadable.
  */
 import { brotliCompressSync, constants } from 'node:zlib';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readJson, record, report, type Finding } from './lib/report.ts';
+import { isError, readJson, record, report, type Finding } from './lib/report.ts';
 
 const CLIENT_ROOT = fileURLToPath(new URL('..', import.meta.url));
+
+/**
+ * Plan #263: initial JS within this many bytes below its budget is a report-only
+ * `near-budget:initialJs` warning (exit code unchanged), so a chunking or budget decision is made
+ * before the budget is crossed.
+ */
+export const NEAR_BUDGET_BYTES = 3000;
 
 export interface Budgets {
   initialRouteModules: string[];
@@ -136,6 +147,10 @@ const EDITOR_FILE = /^assets\/editor-[^/]+\.js$/;
 
 /** Every engine file (`vite.config.ts`: chunks, workers and the wasm are `dash-engine-*`). */
 const ENGINE_FILE = /^assets\/dash-engine-[^/]+\.(js|wasm)$/;
+
+/** The `geo-assets` entry (`vite.config.ts` `input`) and its file (plan #231 §3.2, plan #263). */
+const GEO_ENTRY_KEY = 'src/vis/geo/urls.ts';
+const GEO_ENTRY_FILE = /^assets\/geo-assets-[^/]+\.js$/;
 
 /** The geo assets (`src/vis/geo/urls.ts`, plan #231 §3.3): class, file pattern, row and name. */
 const GEO_ASSETS = [
@@ -288,17 +303,58 @@ export function checkBundle(dist: string, budgetsJson: unknown): BundleResult {
   const initialJsFiles = [...initial]
     .map((k) => manifest.get(k)?.file ?? '')
     .filter((f) => f !== '');
-  over(
-    'initialJs',
-    'initial JS',
-    [...new Set(initialJsFiles)].reduce((a, f) => a + size(f), 0),
-  );
+  const initialJs = [...new Set(initialJsFiles)].reduce((a, f) => a + size(f), 0);
+  over('initialJs', 'initial JS', initialJs);
+  const headroom = budgets.budgets.initialJs - initialJs;
+  if (headroom >= 0 && headroom < NEAR_BUDGET_BYTES) {
+    findings.push({
+      rule: 'near-budget:initialJs',
+      file: 'initial JS',
+      subject: 'initialJs',
+      severity: 'warning',
+      message: `${String(initialJs)} bytes brotli, ${String(headroom)} below the budget ${String(budgets.budgets.initialJs)}: a chunking or budget decision is due (#253)`,
+    });
+  }
   over(
     'initialCss',
     'initial CSS',
     [...initialCss].reduce((a, f) => a + size(f), 0),
   );
   const initialFileSet = new Set(initialJsFiles);
+  for (const m of budgets.required.lazyModules) {
+    const f = manifest.get(m)?.file;
+    if (f !== undefined && initialFileSet.has(f)) {
+      findings.push({
+        rule: 'lazy-in-initial',
+        file: f,
+        subject: m,
+        message: `${m} (${f}) is in the initial JS; it must load lazily`,
+      });
+    }
+  }
+  if (budgets.required.geoAssets) {
+    const geo = manifest.get(GEO_ENTRY_KEY);
+    const why =
+      geo === undefined
+        ? 'has no manifest entry'
+        : geo.isEntry !== true
+          ? 'is not an entry'
+          : !GEO_ENTRY_FILE.test(geo.file)
+            ? `is ${geo.file}, not assets/geo-assets-*.js`
+            : (geo.imports ?? []).length > 0
+              ? `has static imports (${(geo.imports ?? []).join(', ')})`
+              : initialFileSet.has(geo.file)
+                ? `is in the initial JS (${geo.file})`
+                : undefined;
+    if (why !== undefined) {
+      findings.push({
+        rule: 'geo-entry-merged',
+        file: geo?.file ?? 'dist',
+        subject: GEO_ENTRY_KEY,
+        message: `the geo-assets entry ${GEO_ENTRY_KEY} ${why}; it must stay its own lazy entry`,
+      });
+    }
+  }
   const editor = editorClosure(manifest, budgets.editorModules);
   for (const f of [...editor].sort()) {
     if (initialFileSet.has(f)) {
@@ -386,7 +442,7 @@ export function checkBundle(dist: string, budgetsJson: unknown): BundleResult {
     allFiles.filter((f) => !engineSet.has(f)).reduce((a, f) => a + size(f), 0),
   );
 
-  return { findings, rows, exitCode: findings.length > 0 ? 1 : 0 };
+  return { findings, rows, exitCode: findings.some(isError) ? 1 : 0 };
 }
 
 export function main(argv: readonly string[]): number {

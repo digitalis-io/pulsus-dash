@@ -8,7 +8,15 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { compareBaseline, isBrowserCspReport, readBaseline } from '../e2e/loadWatch.ts';
+import { HTTP_BFF } from '../e2e/bff.ts';
+import {
+  compareBaseline,
+  isBrowserCspReport,
+  isExempt,
+  isPermittedImage,
+  readBaseline,
+  requestKey,
+} from '../e2e/loadWatch.ts';
 import { compareCases, E2E_CASES_FILE, readCommittedCases } from '../e2e/xssCases.ts';
 import type { CorpusCase } from '../src/security/sanitise/xssCorpus.ts';
 import {
@@ -128,5 +136,45 @@ describe('loadWatch: the CSP report exemption', () => {
         reports,
       ),
     ).toBe(false);
+  });
+});
+
+describe('unit:load-baseline-keys (#263)', () => {
+  const foreign = (path: string): URL => {
+    const u = new URL(path, HTTP_BFF);
+    u.port = '4175';
+    return u;
+  };
+  const same = (path: string): URL => new URL(path, HTTP_BFF);
+
+  it('(a) the key of a foreign request carries its origin; a same-origin key does not', () => {
+    const u = foreign('/assets/x-AbCdEfGh.js');
+    expect(requestKey('GET', 'script', u)).toBe(`GET script ${u.origin}/assets/x-{hash}.js`);
+    expect(requestKey('GET', 'script', same('/assets/x-AbCdEfGh.js'))).toBe(
+      'GET script /assets/x-{hash}.js',
+    );
+  });
+
+  it('(b) every committed key is a same-origin path; every asset key names a chunk', () => {
+    for (const project of ['chromium', 'firefox', 'webkit']) {
+      const keys = Object.keys(readBaseline(project));
+      expect(keys.length, project).toBeGreaterThan(0);
+      for (const k of keys) {
+        expect(k, `${project}: ${k}`).toMatch(/^(GET|PUT|POST) [a-z]+ \//);
+        if (/^[A-Z]+ [a-z]+ \/assets\//.test(k))
+          expect(k, `${project}: ${k}`).toContain('-{hash}.');
+      }
+    }
+  });
+
+  it('(c) the favicon exemption is same-origin only', () => {
+    expect(isExempt('GET', foreign('/favicon.ico'))).toBe(false);
+    expect(isExempt('GET', same('/favicon.ico'))).toBe(true);
+  });
+
+  it('(d) a permitted image is same-origin only', () => {
+    const images = new Set(['/a.svg']);
+    expect(isPermittedImage('image', foreign('/a.svg'), images)).toBe(false);
+    expect(isPermittedImage('image', same('/a.svg'), images)).toBe(true);
   });
 });

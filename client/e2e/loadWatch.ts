@@ -10,20 +10,22 @@
  *
  * - **idle** (before `begin` or `record`): it continues, unjudged.
  * - **recording** (`record` … `stopRecording`): it continues and counts against its key.
- * - **judged** (`begin(baseline, images)`): an `image` request whose path is in `images` is
- *   fulfilled once with a 1×1 PNG (`Cache-Control: no-store`); a second request of that path is a
+ * - **judged** (`begin(baseline, images)`): a same-origin `image` request whose path is in `images`
+ *   (`isPermittedImage`) is fulfilled once with a 1×1 PNG (`Cache-Control: no-store`); a second request of that path is a
  *   finding and is aborted. Any other request continues while its key's count stays within
  *   `baseline[key]`; past it, it is a finding and is aborted. `settle()` adds an `imageMissing`
  *   finding for every image path not requested by then.
  *
- * Not judged: `/favicon.ico`, and a browser's own CSP violation report (`isBrowserCspReport`) of a
- * violation that the init script has already recorded as a `csp` finding (Firefox and WebKit send
- * it at once, as `fetch` and `ping`). Any other request to the report path is judged.
+ * Not judged (`isExempt`): the app origin's `/favicon.ico`, and a browser's own CSP violation report
+ * (`isBrowserCspReport`) of a violation that the init script has already recorded as a `csp`
+ * finding (Firefox and WebKit send it at once, as `fetch` and `ping`). Any other request to the
+ * report path, and any request to another origin, is judged.
  *
  * A key is `${method} ${resourceType} ${path}`: the path with its query, except a document's (no
  * query); a board uid after `board/`, `boards/` or `recent-boards/` becomes `{uid}`, and a built
  * asset's content hash (`/assets/index-BAs-TIQJ.js`) becomes `{hash}`, so a baseline names chunks,
- * not builds.
+ * not builds. A request to another origin than the app's keeps that origin before its path
+ * (plan #263), so it never matches a committed key, which is always a same-origin path.
  *
  * This module imports no runtime code from `@playwright/test`, so the unit tests load it too.
  */
@@ -142,17 +144,20 @@ export function requestPath(url: URL): string {
   return url.pathname + url.search;
 }
 
+/** The origin every watched context loads (`openWatched`: the http-mode BFF). */
+const APP_ORIGIN = new URL(HTTP_BFF).origin;
+
 export function requestKey(method: string, resourceType: string, url: URL): RequestKey {
   const segs = url.pathname.split('/');
   const path = segs
     .map((s, i) => (i > 0 && UID_PARENTS.has(segs[i - 1] ?? '') && BOARD_UID.test(s) ? '{uid}' : s))
     .join('/')
     .replace(ASSET_HASH, '$1-{hash}$2');
-  return `${method} ${resourceType} ${resourceType === 'document' ? path : path + url.search}`;
+  const full = resourceType === 'document' ? path : path + url.search;
+  return `${method} ${resourceType} ${url.origin === APP_ORIGIN ? full : url.origin + full}`;
 }
 
 const CSP_REPORT_PATH = '/api/dash/v1/csp-report';
-const APP_ORIGIN = new URL(HTTP_BFF).origin;
 
 const isObject = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -190,11 +195,33 @@ export function isBrowserCspReport(
   return false;
 }
 
-function ignored(req: Request, url: URL): boolean {
+/**
+ * True for a request the watch never judges: the app origin's `/favicon.ico`, or a browser's CSP
+ * violation report (`isBrowserCspReport`). Plan #263: another origin's favicon is judged.
+ */
+export function isExempt(
+  method: string,
+  url: URL,
+  contentType?: string,
+  body: string | null = null,
+): boolean {
   return (
-    url.pathname === '/favicon.ico' ||
-    isBrowserCspReport(req.method(), url, req.headers()['content-type'], req.postData())
+    (url.origin === APP_ORIGIN && url.pathname === '/favicon.ico') ||
+    isBrowserCspReport(method, url, contentType, body)
   );
+}
+
+/**
+ * True for one of the case's image requests, which the watch fulfils once: an `image` from the app
+ * origin whose path is in `images`. Plan #263: another origin's image of that path is judged
+ * against the baseline, where it has no key.
+ */
+export function isPermittedImage(type: string, url: URL, images: ReadonlySet<string>): boolean {
+  return type === 'image' && url.origin === APP_ORIGIN && images.has(requestPath(url));
+}
+
+function ignored(req: Request, url: URL): boolean {
+  return isExempt(req.method(), url, req.headers()['content-type'], req.postData());
 }
 
 const sleep = (ms: number) =>
@@ -320,7 +347,7 @@ class Watch implements LoadWatch {
         return;
       }
       const key = requestKey(method, type, url);
-      if (this.mode === 'judged' && type === 'image' && this.images.has(requestPath(url))) {
+      if (this.mode === 'judged' && isPermittedImage(type, url, this.images)) {
         const path = requestPath(url);
         if (this.served.has(path)) {
           this.add({ kind: 'request', key });

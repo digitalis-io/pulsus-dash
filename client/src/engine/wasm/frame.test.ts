@@ -204,6 +204,33 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
     expect(onFail).not.toHaveBeenCalled();
   });
 
+  it('present mark: one chart-present mark per drawn, with the frame id; none without (plan #68 C2d1 §1)', () => {
+    const { f, got } = frame();
+    const ring = new FakeRing();
+    const mark = vi.spyOn(performance, 'mark');
+    const presents = () => mark.mock.calls.filter((c) => c[0] === 'chart-present');
+    f.created(ring);
+    f.resize(300, 150, 1);
+    f.resize(300, 150, 2);
+    // A presentation of an older Resize: no drawn, no mark.
+    f.handle(drawn({ w: 300, dpr: 1, seq: 1, rseq: 1 }));
+    expect(got).not.toHaveBeenCalled();
+    expect(presents()).toHaveLength(0);
+    f.handle(drawn({ w: 300, dpr: 2, seq: 2, rseq: 2 }));
+    expect(got).toHaveBeenCalledTimes(1);
+    expect(presents().map((c) => c[1])).toEqual([{ detail: { frame: 'f1' } }]);
+    f.handle(drawn({ w: 300, dpr: 2, seq: 2, rseq: 2 }));
+    expect(got).toHaveBeenCalledTimes(2);
+    expect(presents()).toHaveLength(2);
+    // A zero size and a disposed frame emit no drawn, so no mark.
+    f.resize(0, 150, 1);
+    f.handle(drawn({ w: 0, seq: 3, rseq: 3 }));
+    f.dispose();
+    f.handle(drawn({ w: 300, dpr: 2, seq: 2, rseq: 2 }));
+    expect(got).toHaveBeenCalledTimes(2);
+    expect(presents()).toHaveLength(2);
+  });
+
   it('reports drawn only for the latest resize, with the caller’s values', () => {
     const { f, got } = frame();
     const ring = new FakeRing();

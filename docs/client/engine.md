@@ -1066,7 +1066,10 @@ Without storage the flag lasts for the page only; a reload tries the engine agai
   frame's canvas at canvas px, built as `test/engineHarness.ts` builds them; `commits(n)` and
   `brushes(n)` return its events; `fresh(o)` makes a frame, resolves with its first summary and
   disposes it (the engine's own layout for given inputs); `id(n)` is its engine id and
-  `stats().enqueued` counts the Camera records probe frames enqueued.
+  `stats().enqueued` counts the Camera records probe frames enqueued. In the probe build,
+  `synth(n, {series, points})` makes F1c the frame's data in the worker, and resolves with
+  `{ok, bytes, reason?}`; `chunk(n)` describes the frame's chunk
+  ([measuring frames](#measuring-frames-part-c2d1)).
 
 ### Building
 
@@ -1089,12 +1092,14 @@ equal to the generated one, and `layout.gen.ts` equal to `cargo xtask gen-layout
 The probe build is for `e2e:shim-fuzz` and `e2e:engine-hover` H1b only: `make engine-wasm-probe`
 (`cargo xtask build-wasm --probe`) builds the engine with the `probe` feature
 (`engine_probe_input`, the decoded records as JSON, at most 20 000; `engine_probe_ring_start`;
-`engine_probe_freeze` and `engine_probe_unfreeze`, Part C2b) into the git-ignored
+`engine_probe_freeze` and `engine_probe_unfreeze`, Part C2b; `engine_probe_synth`, Part C2d1)
+into the git-ignored
 `client/src/engine/wasm/gen-probe/`, and `make e2e-build-probe` builds the client with
 `VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1` (Vite then resolves `virtual:dash-engine` to
 `gen-probe/`) into `client/dist-probe` and its stub BFF into `build/e2e-probe/pulsus-dash`.
-`ci:probe-absent` requires `engine_probe_input` in that tree's wasm (`--expect-probe`) and fails
-every other tree, the fault build included, that holds it.
+`ci:probe-absent` requires `engine_probe_input`, `engine_probe_synth` and `engine_probe_chunk` in that tree's wasm
+(`--expect-probe`) and fails every other tree, the fault build included, that holds either. The
+probe build is also the one `make engine-bench` serves ([measuring frames](#measuring-frames-part-c2d1)).
 
 ### Tests in the browser
 
@@ -1190,6 +1195,72 @@ manifest (4177) and the dev server (5175), in two Chromium projects of the engin
 - `make engine-gpu-smoke` prints the adapter each project sees and whether it renders.
 
 Real-GPU WebGPU runs on a hardware runner later (follow-up).
+
+### Measuring frames (Part C2d1)
+
+Both renderers time their frames with User Timing:
+- **`chart-draw`** is a measure from the start to the end of one draw. Its `detail` is `{kind,
+  series, frame}`, where `frame` is `FrameInit.id` (ADR-0019). The engine's start and end are the
+  worker's times on the main thread's clock.
+- **`chart-present`** is a mark made exactly where the frame emits `drawn`: the visible canvas is
+  complete at the caller's size. Its `detail` is `{frame}`. The engine marks it when the `drawn`
+  event reaches the main thread (`wasm/frame.ts`); Canvas 2D marks it after the visible draw
+  (`Canvas2DEngine.ts`). Neither is made at a zero size or after `dispose`.
+
+Both are cleared from the buffer at once, so only a `PerformanceObserver` sees them. Filter them
+by `detail.frame`, since every frame on the page marks.
+
+**The harness** (`client/e2e/bench/frameBench.ts`) has these parts:
+- **`drive(page, canvas, frameId, steps, boxMs)`** runs a script in the page, one step per
+  animation frame: a wheel at the plot's centre, a drag from it, or a hover at a fraction of the
+  plot. The plot comes from `data-plot` on the canvas or its frame. After the script it waits two
+  frames and 500 ms, then keeps collecting until the frame has presented twice
+  (`collectUntil`, run in the page from its source). If `boxMs` passes first it stops and sets
+  `timedOut`. It returns the frame's `chart-present` times, its `chart-draw` spans, the span, the
+  steps dispatched and `timedOut`.
+- **`open(page, url)`** loads a page without Playwright's fake clock, which hides User Timing
+  entries, and waits for a frame's first `a11y`.
+- **`SCRIPT`** is 40 zoom-ins, a 40-step pan of −20 px per step, and 40 zoom-outs. **`HOVER`** is
+  120 hover steps across the plot and back.
+- **`report(info, results)`** appends to `test-results/bench/<gate>.json` and annotates.
+
+`summarise` (`client/scripts/lib/benchStats.ts`) turns a drive into a `BenchResult`. The interval
+between marks inside the span is the frame time, and the measures are the draw time; each reports
+p50, p95, p99 and max by nearest rank (NaN, `null` in the JSON, when empty). `coalescing` is
+steps per presented frame. `budgets` marks PRF-001 and PRF-002 `ok`, `over` or `n/a`. The gates and the JSON fields are in
+[build and CI](../development/build-and-ci.md#frame-benches).
+
+**10⁸ points without `setData`.** A `setData` of 10⁸ points would be 1.6 GB on the main thread
+and a structured clone. Instead, the probe build's `synth(n, {series, points})` posts
+`probe-synth{id, series, points}`. The worker's `engine_probe_synth` then calls
+`Frames::synth_f1c`, which works as follows:
+- It builds `pulsus-synth`'s F1c grid: `f1a_value(s, k)`, key hash `s`, label `s`, a step of
+  `10⁶ / points` ms from 0.
+- Values, offsets, series metas and each series' label strings are reserved with
+  `try_reserve_exact`. The one infallible allocation left is each series' small shared label slice
+  (`Arc<[_]>`, which has no fallible constructor on stable Rust), made after the large buffers. More than 2³¹
+  samples, `points` of 0 or above 10⁶, an unknown frame or a failed reservation return `false`
+  before the frame changes.
+- On success the frame's previous chunk goes, with the cached layer and pick that read it. The
+  new chunk goes in through `Frames::set_chunk` (the Part D seam), with a local chunk id, and the
+  frame is dirty.
+
+The worker answers `{t: 'probe-synth', id, ok, bytes}`, where `bytes` is the values' bytes, 0 when
+not `ok`. The probe resolves with `{ok, bytes, reason?}`. When not `ok`, `reason` is one of:
+- `alloc`: the worker's answer;
+- `fatal` or `restart`: the engine went first;
+- `timeout`: no answer in 120 s, or the third argument's milliseconds.
+
+`synthFault('alloc' | 'silent' | 'fatal')` simulates one of these outcomes for the next `synth`
+only, for the bench's outcome test. `failed(n)` lists the frame's `onFail` reasons, and `trap()`
+(the probe build, message `probe-trap`) makes the render worker throw for real. `chunk(n)` asks the worker (`engine_probe_chunk`) for
+`{series, points, bytes}` of the frame's chunk (points are series 0's samples), or null.
+
+`bench:frame-line-1e8` treats `alloc` at 10⁸ as a host without the memory. It records each case
+`skipped: 'memory'`, reloads the page for a fresh worker, and runs the cases at 10⁷ (1 000 ×
+10⁴) as `1e7-…`. A `fatal` fails the run. A timeout or a restart records the case `timedOut` and
+goes on after a reload. The wasm memory's ceiling is 2 GiB, and 10⁸ f64 values are 800 MB. On
+the lavapipe gate host a 10⁸ synthesis takes about 4 s and each presentation about 3 s.
 
 ## Limits
 

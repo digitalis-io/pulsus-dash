@@ -464,6 +464,13 @@ class Canvas2DFrame implements ChartFrame {
     }
     this.drawVisible(hover);
     // The visible canvas is complete at this size (ADR-0019); never at a zero size or disposed.
+    // The frame benches time presented frames by this mark (plan #68 C2d1 §1).
+    try {
+      performance.mark('chart-present', { detail: { frame: this.init.id ?? null } });
+      performance.clearMarks('chart-present');
+    } catch {
+      // The User Timing API is optional: drawing does not depend on it.
+    }
     this.emit('drawn', { cssWidth: this.cssW, cssHeight: this.cssH, dpr: this.dpr });
   }
 
