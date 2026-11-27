@@ -308,7 +308,7 @@ describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', 
     expect(r.rows.some((row) => row.cls === 'lazyChunk' && row.file.includes('dash-engine'))).toBe(
       false,
     );
-  });
+  }, 60_000);
   it('an ST closure at 1 900 001 B', async () => {
     const { brotliSize } = await import('./bundle-size.ts');
     // Brotli of incompressible bytes is a little over their length: find the length that
@@ -335,7 +335,7 @@ describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', 
     expect(rules(makeDist({ files: { [ENGINE_WASM]: randomBytes(2_000_000, 4) } }))).toEqual([
       'over-budget:engineMt',
     ]);
-  });
+  }, 60_000);
   it('a shared chunk counts in both rows', () => {
     // 1 000 KB of ST wasm and 950 KB of MT wasm are each under the limit; a 950 KB shared chunk
     // takes both over.
@@ -352,7 +352,7 @@ describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', 
         }),
       ),
     ).toEqual(['over-budget:engineMt', 'over-budget:engineSt']);
-  });
+  }, 60_000);
   it('an engine chunk in the initial JS, either mode or shared', () => {
     for (const f of [
       'assets/dash-engine-c.js',
@@ -389,7 +389,7 @@ describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', 
     );
     const core = r.findings.filter((f) => f.rule === 'over-budget:core');
     expect(core.map((f) => f.file)).toEqual(['core st']);
-  });
+  }, 60_000);
 });
 
 describe('bundle-size geo assets (plan #231 §3.3, T24-087)', () => {

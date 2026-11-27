@@ -148,7 +148,7 @@ fn run(
 }
 
 fn main() {
-    let mut r = Rng(0x68C2_D2);
+    let mut r = Rng(0x0068_C2D2);
     let mut out = Vec::new();
     let mut cases: Vec<Series> = (0..40).map(|_| random(&mut r)).collect();
     cases.extend((0..4).map(|_| overflow(&mut r)));
