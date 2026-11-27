@@ -10,11 +10,16 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Plan #68 C2d2: decimation P1 and P5 on rayon (T03-021). Without it the same loops run
+# sequentially with the same output (`dash-core-st`). No default features.
+parallel = ["dep:rayon"]
+
 [dependencies]
 bytemuck.workspace = true
 dash-units.workspace = true
 dash-wire.workspace = true
-rayon.workspace = true
+rayon = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest.workspace = true

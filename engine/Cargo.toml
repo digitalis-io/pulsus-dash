@@ -30,7 +30,8 @@ web-sys = "=0.3.107"
 dash-tokens = { path = "crates/dash-tokens" }
 dash-units = { path = "crates/dash-units" }
 dash-colour = { path = "crates/dash-colour" }
-dash-scales = { path = "crates/dash-scales" }
+# Plan #68 C2d2: no default features, so no dependent turns `parallel` on implicitly.
+dash-scales = { path = "crates/dash-scales", default-features = false }
 dash-axes = { path = "crates/dash-axes" }
 dash-wire = { path = "crates/dash-wire" }
 dash-scene = { path = "crates/dash-scene" }

@@ -53,8 +53,14 @@ const E3 = 'assets/editor-e3.js';
 const E4 = 'assets/editor-e4.js';
 const S = 'assets/editor-s.js';
 const R = 'assets/MetricsPage-r.js';
-const ENGINE_WASM = 'assets/dash-engine-a.wasm';
-const ENGINE_WORKER = 'assets/dash-engine-render-a.js';
+/** The engine per mode (plan #68 C2d2 §3.4): wasm and worker (with its glue) of MT and ST. */
+const ENGINE_WASM = 'assets/dash-engine-mt-a.wasm';
+const ENGINE_WORKER = 'assets/dash-engine-mt-render.worker-a.js';
+const ST_WASM = 'assets/dash-engine-st-b.wasm';
+const ST_WORKER = 'assets/dash-engine-st-render-st.worker-b.js';
+/** Each mode's glue chunk, named by the manifest for its virtual module. */
+const MT_GLUE = 'assets/dash-engine-mt-g.js';
+const ST_GLUE = 'assets/dash-engine-st-g.js';
 /** The geo assets (plan #231 §3.3) and the `geo-assets` entry that names them. */
 const GEO_BASEMAP = 'assets/basemap-a1.json';
 const GEO_GAZETTEER = 'assets/gazetteer-b2.json';
@@ -100,6 +106,8 @@ function makeDist(o: Overrides = {}): string {
     'src/editor/lang/logql/logql.ts': { file: E3, isDynamicEntry: true, imports: ['_editor-s.js'] },
     'src/editor/logqlEditor.ts': { file: E4, isDynamicEntry: true, imports: ['_editor-s.js'] },
     '_editor-s.js': { file: S, imports: ['index.html'] },
+    'virtual:dash-engine': { file: MT_GLUE, isDynamicEntry: true },
+    'virtual:dash-engine-st': { file: ST_GLUE, isDynamicEntry: true },
     'src/vis/geo/urls.ts': {
       file: GEO_ENTRY,
       src: 'src/vis/geo/urls.ts',
@@ -142,6 +150,10 @@ function makeDist(o: Overrides = {}): string {
     // The engine (plan #68 C1): its wasm and a worker entry.
     [ENGINE_WASM]: Buffer.from('wasm'),
     [ENGINE_WORKER]: Buffer.from('export {}'),
+    [ST_WASM]: Buffer.from('wasm-st'),
+    [ST_WORKER]: Buffer.from('export {s}'),
+    [MT_GLUE]: Buffer.from('export {g}'),
+    [ST_GLUE]: Buffer.from('export {h}'),
     [GEO_BASEMAP]: Buffer.from('{"v":1}'),
     [GEO_GAZETTEER]: Buffer.from('{"v":1}'),
     [GEO_ENTRY]: Buffer.from('const a="/assets/basemap-a1.json";export{a}'),
@@ -254,45 +266,163 @@ describe('bundle-size editor closure (PRF-009)', () => {
   });
 });
 
-describe('bundle-size engine row (PRF-009, plan #68 C1)', () => {
-  it('the engine files are one row, outside the total', async () => {
+describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', () => {
+  const SHARED = 'assets/dash-engine-c.js';
+  /** A lazy shared adapter chunk (in both closures). */
+  const shared = (b: Buffer): Overrides => ({
+    manifest: { 'src/engine/wasm/engine.ts': { file: SHARED, isDynamicEntry: true } },
+    files: { [SHARED]: b },
+  });
+  const rowsOf = (r: ReturnType<typeof checkBundle>, cls: string) =>
+    r.rows.filter((row) => (row.cls as string) === cls);
+
+  it('engine-mt and engine-st each count their files and the shared chunk, outside the total', async () => {
     const { brotliSize } = await import('./bundle-size.ts');
     const wasm = randomBytes(1_000_000, 3);
+    const stWasm = randomBytes(900_000, 5);
     const worker = Buffer.from('export const w = 1;'.repeat(50));
+    const big = randomBytes(300_000, 6);
+    const o = shared(big);
     const r = checkBundle(
-      makeDist({ files: { [ENGINE_WASM]: wasm, [ENGINE_WORKER]: worker } }),
+      makeDist({
+        ...o,
+        files: { ...o.files, [ENGINE_WASM]: wasm, [ENGINE_WORKER]: worker, [ST_WASM]: stWasm },
+      }),
       budgets,
     );
     expect(r.findings).toEqual([]);
     expect(r.exitCode).toBe(0);
-    const engine = r.rows.filter((row) => (row.cls as string) === 'engine');
-    expect(engine).toHaveLength(1);
-    expect(engine[0]?.bytes).toBe(brotliSize(wasm) + brotliSize(worker));
-    expect(engine[0]?.budget).toBe(1_900_000);
+    const mt = rowsOf(r, 'engineMt');
+    const st = rowsOf(r, 'engineSt');
+    expect([mt.length, st.length]).toEqual([1, 1]);
+    expect(mt[0]?.bytes).toBe(
+      brotliSize(wasm) +
+        brotliSize(worker) +
+        brotliSize(Buffer.from('export {g}')) +
+        brotliSize(big),
+    );
+    expect(st[0]?.bytes).toBe(
+      brotliSize(stWasm) +
+        brotliSize(Buffer.from('export {s}')) +
+        brotliSize(Buffer.from('export {h}')) +
+        brotliSize(big),
+    );
+    expect([mt[0]?.budget, st[0]?.budget]).toEqual([1_900_000, 1_900_000]);
+    // PRF-009 per mode: initial JS + initial CSS + that mode's row.
+    const core = rowsOf(r, 'core');
+    expect(core.map((c) => c.file)).toEqual(['core mt', 'core st']);
+    const init = (rowsOf(r, 'initialJs')[0]?.bytes ?? 0) + (rowsOf(r, 'initialCss')[0]?.bytes ?? 0);
+    expect(core.map((c) => c.bytes)).toEqual([
+      init + (mt[0]?.bytes ?? 0),
+      init + (st[0]?.bytes ?? 0),
+    ]);
+    expect(core[0]?.budget).toBe(2_999_999);
+    expect(rowsOf(r, 'engine')).toEqual([]);
     const total = r.rows.find((row) => row.cls === 'totalExceptEngine');
     expect(total?.bytes).toBeLessThan(100_000);
     expect(r.rows.some((row) => row.cls === 'lazyChunk' && row.file.includes('dash-engine'))).toBe(
       false,
     );
-  });
-  it('an engine over 1.9 MB', () => {
+  }, 60_000);
+  it('an ST closure at 1 900 001 B', async () => {
+    const { brotliSize } = await import('./bundle-size.ts');
+    // Brotli of incompressible bytes is a little over their length: find the length that
+    // compresses to exactly the budget plus one with the worker's bytes.
+    const rest = brotliSize(Buffer.from('export {s}')) + brotliSize(Buffer.from('export {h}'));
+    let n = 1_900_001 - rest - 10;
+    let b = randomBytes(n, 9);
+    for (let i = 0; i < 40 && brotliSize(b) + rest !== 1_900_001; i++) {
+      n += 1_900_001 - (brotliSize(b) + rest);
+      b = randomBytes(n, 9);
+    }
+    expect(brotliSize(b) + rest).toBe(1_900_001);
+    expect(rules(makeDist({ files: { [ST_WASM]: b } }))).toEqual(['over-budget:engineSt']);
+    // One byte less is within the row.
+    let m = n - 1;
+    let c = randomBytes(m, 9);
+    for (let i = 0; i < 40 && brotliSize(c) + rest !== 1_900_000; i++) {
+      m += 1_900_000 - (brotliSize(c) + rest);
+      c = randomBytes(m, 9);
+    }
+    expect(rules(makeDist({ files: { [ST_WASM]: c } }))).toEqual([]);
+  }, 120_000);
+  it('an MT engine over 1.9 MB', () => {
     expect(rules(makeDist({ files: { [ENGINE_WASM]: randomBytes(2_000_000, 4) } }))).toEqual([
-      'over-budget:engine',
+      'over-budget:engineMt',
     ]);
+  }, 60_000);
+  it('a shared chunk counts in both rows', () => {
+    // 1 000 KB of ST wasm and 950 KB of MT wasm are each under the limit; a 950 KB shared chunk
+    // takes both over.
+    const o = shared(randomBytes(950_000, 7));
+    expect(
+      rules(
+        makeDist({
+          ...o,
+          files: {
+            ...o.files,
+            [ENGINE_WASM]: randomBytes(950_000, 8),
+            [ST_WASM]: randomBytes(1_000_000, 10),
+          },
+        }),
+      ),
+    ).toEqual(['over-budget:engineMt', 'over-budget:engineSt']);
+  }, 60_000);
+  it('an engine chunk in the initial JS, either mode or shared', () => {
+    for (const f of [
+      'assets/dash-engine-c.js',
+      'assets/dash-engine-st-c.js',
+      'assets/dash-engine-mt-c.js',
+    ]) {
+      const dist = makeDist({
+        entryImports: ['_e.js'],
+        manifest: { '_e.js': { file: f } },
+        files: { [f]: Buffer.from('export const c = 1') },
+      });
+      expect(rules(dist), f).toEqual(['engine-in-initial']);
+    }
   });
-  it('an engine chunk in the initial JS', () => {
-    const dist = makeDist({
-      entryImports: ['_dash-engine-c.js'],
-      manifest: { '_dash-engine-c.js': { file: 'assets/dash-engine-c.js' } },
-      files: { 'assets/dash-engine-c.js': Buffer.from('export const c = 1') },
-    });
-    expect(rules(dist)).toEqual(['engine-in-initial']);
+  it.each([
+    ['no MT wasm', { [ENGINE_WASM]: null }, ['missing-artefact:engine-mt-wasm']],
+    [
+      'no MT glue file, its workers kept',
+      { [MT_GLUE]: null },
+      [`missing-artefact:${MT_GLUE}`, 'missing-artefact:engine-mt-js'],
+    ],
+    ['no ST wasm', { [ST_WASM]: null }, ['missing-artefact:engine-st-wasm']],
+    [
+      'no ST glue file, its worker kept',
+      { [ST_GLUE]: null },
+      [`missing-artefact:${ST_GLUE}`, 'missing-artefact:engine-st-js'],
+    ],
+  ])('%s', (_name, files, want) => {
+    expect(rules(makeDist({ files }))).toEqual(want);
   });
-  it('no engine wasm', () => {
-    expect(rules(makeDist({ files: { [ENGINE_WASM]: null, [ENGINE_WORKER]: null } }))).toEqual([
-      'missing-artefact:engine',
+  it('a glue chunk the manifest does not name, or of another mode, is missing', () => {
+    expect(rules(makeDist({ dropKeys: ['virtual:dash-engine-st'] }))).toEqual([
+      'missing-artefact:engine-st-js',
     ]);
+    expect(
+      rules(
+        makeDist({ manifest: { 'virtual:dash-engine': { file: ST_GLUE, isDynamicEntry: true } } }),
+      ),
+    ).toEqual(['missing-artefact:engine-mt-js']);
   });
+  it('each mode core total against 3 MB', () => {
+    // 1.8 MB of ST is under its row but, with a 1.25 MB initial JS, over 3 MB in all (the
+    // initial JS and the total fail too: their budgets make 3 MB unreachable otherwise).
+    const r = checkBundle(
+      makeDist({
+        files: {
+          [ST_WASM]: randomBytes(1_800_000, 11),
+          'assets/index-x.js': randomBytes(1_250_000, 12),
+        },
+      }),
+      budgets,
+    );
+    const core = r.findings.filter((f) => f.rule === 'over-budget:core');
+    expect(core.map((f) => f.file)).toEqual(['core st']);
+  }, 60_000);
 });
 
 describe('bundle-size geo assets (plan #231 §3.3, T24-087)', () => {

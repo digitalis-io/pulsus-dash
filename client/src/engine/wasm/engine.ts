@@ -13,6 +13,11 @@
  * before any queued `create` is posted; a frame's camera and size reach the ring only after the
  * worker reports it `created`. Frame ids count up from 1 per worker and are never reused.
  *
+ * Plan #68 C2d2 (§3.3): with `mode: 'st'` it compiles the single-thread engine
+ * (`virtual:dash-engine-st`, integrity-checked by the same manifest), spawns only the ST render
+ * worker, and each status gets a `BatchRing` (input by batches, `input-ack` routed to it) in place
+ * of the shared-memory `InputRing`. Restart, fallback and the session flag are as in MT.
+ *
  * The session flag is injected (`markFailed`): this directory imports only `../api` (T03-001).
  */
 import type { FrameInit } from '../api';
@@ -35,8 +40,8 @@ import {
   OFF_INPUT_TAIL,
 } from './layout.gen';
 import type { MainToRender, RenderEvent } from './protocol';
-import { InputRing, type InputRec } from './ring';
-import { spawnPool, spawnRender } from './workers';
+import { BatchRing, InputRing, type FrameRing, type InputRec } from './ring';
+import { spawnPool, spawnRender, spawnRenderSt } from './workers';
 
 export type { WorkerLike } from './boot';
 
@@ -44,8 +49,10 @@ export interface EngineOptions {
   readonly forceT2: boolean;
   /** `markSessionFailed` (failFlag.ts). */
   readonly markFailed: () => void;
+  /** Plan #68 C2d2: the shared-memory engine (default) or the single-thread one. */
+  readonly mode?: 'mt' | 'st';
   /** Tests: the module, worker factories and the boot timeout. */
-  readonly compile?: () => Promise<WebAssembly.Module>;
+  readonly compile?: (mode: 'mt' | 'st') => Promise<WebAssembly.Module>;
   readonly spawnRender?: () => WorkerLike;
   readonly spawnPool?: () => WorkerLike;
   readonly timeoutMs?: number;
@@ -63,7 +70,10 @@ export interface EngineProbe {
 
 /** What `__dashProbe` reads of the running engine (fault builds only; plan #68 C2a1 §3.4). */
 export interface ProbeHost {
-  readonly ring: InputRing;
+  /** The running engine's sink: the input ring (MT) or the batch ring (ST). */
+  readonly ring: FrameRing;
+  /** ST (plan #68 C2d2): batches posted and the most in flight; zeros in MT. */
+  batches(): { batches: number; inFlightMax: number };
   counters(): { head: number; tail: number };
   overflow(): number;
   idle(): boolean;
@@ -113,8 +123,9 @@ export interface Backend {
 }
 
 /** Fetches (with integrity) and compiles the engine; never instantiates it here. */
-async function compileEngine(): Promise<WebAssembly.Module> {
-  const { wasmUrl } = await import('virtual:dash-engine');
+async function compileEngine(mode: 'mt' | 'st'): Promise<WebAssembly.Module> {
+  const { wasmUrl } =
+    mode === 'st' ? await import('virtual:dash-engine-st') : await import('virtual:dash-engine');
   if (wasmUrl === null) {
     // Not a boot failure: `markOnFailure` leaves the session unmarked (plan #256 §3.2).
     throw Object.assign(new Error('the engine is not in this build'), { name: 'EngineAbsent' });
@@ -127,11 +138,11 @@ async function compileEngine(): Promise<WebAssembly.Module> {
   return WebAssembly.compileStreaming(r.response);
 }
 
-function showStatus(s: number, adapter?: string): void {
+function showStatus(s: number, mode: 'mt' | 'st', adapter?: string): void {
   if (typeof document === 'undefined') return;
   const d = document.documentElement.dataset;
   d['dashStatus'] = String(s);
-  d['dashMode'] = 'mt';
+  d['dashMode'] = mode;
   if (adapter !== undefined) d['dashAdapter'] = adapter;
 }
 
@@ -152,8 +163,13 @@ class EngineHost implements Backend {
   private state: 'booting' | 'ready' | 'restarting' | 'dead' = 'booting';
   private readonly queue: [MainToRender, Transferable[]][] = [];
   private faultOf: (restart: boolean) => string | undefined = () => undefined;
-  /** The input ring of the current worker's memory (from its status on). */
-  private ring: InputRing | null = null;
+  /** The current worker's sink (from its status on): its input ring (MT) or batch ring (ST). */
+  private ring: FrameRing | null = null;
+  /** ST: the batch ring, for the worker's `input-ack`. */
+  private batch: BatchRing | null = null;
+  /** ST: the worker's last reported `INPUT_BAD`. */
+  private bad = 0;
+  private readonly mode: 'mt' | 'st';
   /** The probe build: `inputLog()` calls waiting for the worker's reply. */
   private readonly probeWaits: ((json: string) => void)[] = [];
   /** The probe build: `synth()` calls waiting for their acknowledgement, in order. */
@@ -171,14 +187,18 @@ class EngineHost implements Backend {
   constructor(
     private readonly o: EngineOptions,
     private readonly module: WebAssembly.Module,
-  ) {}
+  ) {
+    this.mode = o.mode ?? 'mt';
+  }
 
   private start(fault: string | undefined): RenderHandle {
+    const st = this.mode === 'st';
     return startRender({
       module: this.module,
       forceT2: this.o.forceT2,
+      mode: this.mode,
       fault,
-      spawnRender: this.o.spawnRender ?? spawnRender,
+      spawnRender: this.o.spawnRender ?? (st ? spawnRenderSt : spawnRender),
       spawnPool: this.o.spawnPool ?? spawnPool,
       timeoutMs: this.o.timeoutMs ?? BOOT_TIMEOUT_MS,
       onEvents: (json) => {
@@ -186,6 +206,10 @@ class EngineHost implements Backend {
       },
       onError: () => {
         this.trap();
+      },
+      onInputAck: (m) => {
+        this.bad = m.bad;
+        this.batch?.acked(m.buf, m.depth);
       },
       ...(this.o.probe?.ringStart === undefined ? {} : { ringStart: this.o.probe.ringStart }),
       onProbeInput: (json) => {
@@ -207,14 +231,14 @@ class EngineHost implements Backend {
   }
 
   async boot(): Promise<void> {
-    showStatus(0);
+    showStatus(0, this.mode);
     this.faultOf = await bootFaults();
     this.render = this.start(this.faultOf(false));
     const s = await this.render.status;
     if (s === null || !ready(s)) {
       this.render.terminate();
       this.state = 'dead';
-      showStatus(4);
+      showStatus(4, this.mode);
       throw new Error(`engine status ${s === null ? 'timeout' : String(s.status)}`);
     }
     this.up(s);
@@ -222,20 +246,32 @@ class EngineHost implements Backend {
 
   private up(s: Status): void {
     this.tier = s.status === 1 ? 't1' : 't2';
-    showStatus(s.status, s.adapter);
+    showStatus(s.status, this.mode, s.adapter);
     this.state = 'ready';
-    // A new ring on this worker's memory before any `create` is posted.
+    // A new sink for this worker before any `create` is posted.
     this.ring?.close();
+    this.batch = null;
+    this.bad = 0;
     const worker = this.render?.worker;
     const probe = import.meta.env.VITE_ENGINE_FAULTS === '1' ? this.o.probe : undefined;
-    const ring = new InputRing(
-      s.memory,
-      s.cb,
-      () => {
-        worker?.postMessage({ t: 'input' } satisfies MainToRender);
-      },
-      probe === undefined ? {} : { log: true },
-    );
+    const log = probe === undefined ? {} : { log: true };
+    let ring: FrameRing;
+    if (this.mode === 'st' || s.memory === undefined) {
+      const batch = new BatchRing((buf, len) => {
+        worker?.postMessage({ t: 'input-batch', buf, len } satisfies MainToRender, [buf]);
+      }, log);
+      this.batch = batch;
+      ring = batch;
+    } else {
+      ring = new InputRing(
+        s.memory,
+        s.cb,
+        () => {
+          worker?.postMessage({ t: 'input' } satisfies MainToRender);
+        },
+        log,
+      );
+    }
     this.ring = ring;
     if (probe !== undefined && worker !== undefined) probe.onHost(this.probeHost(ring, worker, s));
     for (const [msg, transfer] of this.queue.splice(0))
@@ -243,15 +279,22 @@ class EngineHost implements Backend {
   }
 
   /** What the probe reads of this engine (fault builds only). */
-  private probeHost(ring: InputRing, worker: WorkerLike, s: Status): ProbeHost {
-    const i32 = new Int32Array(s.memory.buffer, s.cb, CB_BYTES / 4);
-    const word = (off: number): number => Atomics.load(i32, off / 4) >>> 0;
+  private probeHost(ring: FrameRing, worker: WorkerLike, s: Status): ProbeHost {
+    // MT reads the control block in the shared memory; ST has none to read (its counters are
+    // the batch ring's, its `INPUT_BAD` comes with each `input-ack`).
+    const i32 = s.memory === undefined ? null : new Int32Array(s.memory.buffer, s.cb, CB_BYTES / 4);
+    const word = (off: number): number => (i32 === null ? 0 : Atomics.load(i32, off / 4) >>> 0);
+    const batch = this.batch;
     return {
       ring,
+      batches: () => ({
+        batches: batch?.stats.batches ?? 0,
+        inFlightMax: batch?.stats.batchesInFlightMax ?? 0,
+      }),
       counters: () => ({ head: word(OFF_INPUT_HEAD), tail: word(OFF_INPUT_TAIL) }),
-      overflow: () => word(OFF_INPUT_OVERFLOW),
+      overflow: () => (batch === null ? word(OFF_INPUT_OVERFLOW) : batch.stats.overflow),
       idle: () => word(OFF_INPUT_IDLE) === 1,
-      bad: () => word(OFF_INPUT_BAD),
+      bad: () => (batch === null ? word(OFF_INPUT_BAD) : this.bad),
       freeze: (id, seq) => {
         worker.postMessage({ t: 'probe-freeze', id, seq } satisfies MainToRender);
       },
@@ -315,7 +358,7 @@ class EngineHost implements Backend {
       if (ev.t === 'tier') {
         // Later frames bind on the new tier; the old ones fall back (`failed{tier}`).
         this.tier = ev.tier;
-        showStatus(ev.status, ev.adapter);
+        showStatus(ev.status, this.mode, ev.adapter);
         continue;
       }
       if (ev.t === 'drawn') this.drawn = true;
@@ -352,6 +395,7 @@ class EngineHost implements Backend {
     this.render?.terminate();
     this.ring?.close();
     this.ring = null;
+    this.batch = null;
     const old = [...this.frames.values()];
     this.frames.clear();
     for (const e of old) e.frame.detach();
@@ -380,7 +424,8 @@ class EngineHost implements Backend {
     this.render?.terminate();
     this.ring?.close();
     this.ring = null;
-    showStatus(4);
+    this.batch = null;
+    showStatus(4, this.mode);
     this.o.markFailed();
     const all = [...this.frames.values()];
     this.frames.clear();
@@ -389,7 +434,7 @@ class EngineHost implements Backend {
 }
 
 export async function loadBackend(o: EngineOptions): Promise<Backend> {
-  const module = await (o.compile ?? compileEngine)();
+  const module = await (o.compile ?? compileEngine)(o.mode ?? 'mt');
   const host = new EngineHost(o, module);
   await host.boot();
   return host;

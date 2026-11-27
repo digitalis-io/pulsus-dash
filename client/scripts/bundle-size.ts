@@ -2,8 +2,12 @@
  * `ci:bundle-size` (PRF-033, ADR-0014 §8): brotli (quality 11) sizes of `dist/` per chunk class
  * against `bundle-budgets.json` (1 KB = 1 000 bytes), after checking that every required M-UI1
  * artefact exists, so a build that drops a route, the CSS or a font cannot pass by being smaller.
- * The engine (PRF-009, plan #68 C1) is one row: every `assets/dash-engine-*` file (its wasm, glue,
- * adapter and workers), required, lazy (never in the initial JS) and outside `totalExceptEngine`.
+ * The engine (PRF-009, plan #68 C1, C2d2 §3.4) is one row per mode: `engine-mt`
+ * (`assets/dash-engine-mt-*`: its wasm, glue, render and pool workers) and `engine-st`
+ * (`assets/dash-engine-st-*`: wasm, glue, ST render worker), each with every shared
+ * `assets/dash-engine-*` chunk (adapter, frames, ring). Each mode's wasm and glue are required;
+ * every engine file is lazy (never in the initial JS) and outside `totalExceptEngine`; PRF-009's
+ * core total (initial JS + initial CSS + that mode's row) is checked per mode (`core mt`, `core st`).
  * With `required.geoAssets` (plan #231 §3.3) the geo basemap and gazetteer are each exactly one
  * `assets/{basemap,gazetteer}-<hash>.json` and one row (`geo-basemap`, `geo-gazetteer`) inside the
  * total; the `geo-assets` entry chunk that names them is a lazy chunk.
@@ -50,7 +54,9 @@ export type BudgetClass =
   | 'editorChunk'
   | 'fonts'
   | 'totalExceptEngine'
-  | 'engine'
+  | 'engineMt'
+  | 'engineSt'
+  | 'core'
   | 'geoBasemap'
   | 'geoGazetteer';
 
@@ -130,7 +136,9 @@ export function parseBudgets(v: unknown): Budgets {
       editorChunk: num('editorChunk'),
       fonts: num('fonts'),
       totalExceptEngine: num('totalExceptEngine'),
-      engine: num('engine'),
+      engineMt: num('engineMt'),
+      engineSt: num('engineSt'),
+      core: num('core'),
       geoBasemap: num('geoBasemap'),
       geoGazetteer: num('geoGazetteer'),
     },
@@ -147,6 +155,20 @@ const EDITOR_FILE = /^assets\/editor-[^/]+\.js$/;
 
 /** Every engine file (`vite.config.ts`: chunks, workers and the wasm are `dash-engine-*`). */
 const ENGINE_FILE = /^assets\/dash-engine-[^/]+\.(js|wasm)$/;
+/**
+ * The engine modes (`vite.config.ts` `enginePrefix`), their budget classes and the manifest key of
+ * their glue chunk (plan #68 C2d2).
+ */
+const ENGINE_MODES = [
+  ['mt', 'engineMt', 'virtual:dash-engine'],
+  ['st', 'engineSt', 'virtual:dash-engine-st'],
+] as const;
+const modeOf = (f: string): 'mt' | 'st' | null =>
+  f.startsWith('assets/dash-engine-mt-')
+    ? 'mt'
+    : f.startsWith('assets/dash-engine-st-')
+      ? 'st'
+      : null;
 
 /** The `geo-assets` entry (`vite.config.ts` `input`) and its file (plan #231 §3.2, plan #263). */
 const GEO_ENTRY_KEY = 'src/vis/geo/urls.ts';
@@ -315,11 +337,8 @@ export function checkBundle(dist: string, budgetsJson: unknown): BundleResult {
       message: `${String(initialJs)} bytes brotli, ${String(headroom)} below the budget ${String(budgets.budgets.initialJs)}: a chunking or budget decision is due (#253)`,
     });
   }
-  over(
-    'initialCss',
-    'initial CSS',
-    [...initialCss].reduce((a, f) => a + size(f), 0),
-  );
+  const initialCssBytes = [...initialCss].reduce((a, f) => a + size(f), 0);
+  over('initialCss', 'initial CSS', initialCssBytes);
   const initialFileSet = new Set(initialJsFiles);
   for (const m of budgets.required.lazyModules) {
     const f = manifest.get(m)?.file;
@@ -382,11 +401,6 @@ export function checkBundle(dist: string, budgetsJson: unknown): BundleResult {
     });
   }
   const engine = allFiles.filter((f) => ENGINE_FILE.test(f)).sort();
-  if (!engine.some((f) => f.endsWith('.wasm'))) {
-    findings.push(
-      missing('engine', 'no assets/dash-engine-*.wasm: build the engine (make engine-wasm)'),
-    );
-  }
   for (const f of engine.filter((x) => initialFileSet.has(x))) {
     findings.push({
       rule: 'engine-in-initial',
@@ -396,12 +410,32 @@ export function checkBundle(dist: string, budgetsJson: unknown): BundleResult {
     });
   }
   const engineSet = new Set(engine);
-  if (engine.length > 0) {
-    over(
-      'engine',
-      `engine (${String(engine.length)} files)`,
-      engine.reduce((a, f) => a + size(f), 0),
-    );
+  const shared = engine.filter((f) => modeOf(f) === null);
+  for (const [mode, cls, glueKey] of ENGINE_MODES) {
+    const own = engine.filter((f) => modeOf(f) === mode);
+    if (!own.some((f) => f.endsWith('.wasm'))) {
+      findings.push(
+        missing(
+          `engine-${mode}-wasm`,
+          `no assets/dash-engine-${mode}-*.wasm: build the engine (make engine-wasm)`,
+        ),
+      );
+    }
+    // The mode's glue: the chunk the manifest names for its virtual module, a file of that mode.
+    const glue = manifest.get(glueKey)?.file;
+    if (glue === undefined || !own.includes(glue)) {
+      findings.push(
+        missing(
+          `engine-${mode}-js`,
+          `no glue chunk of ${glueKey} (assets/dash-engine-${mode}-*.js): build the engine (make engine-wasm)`,
+        ),
+      );
+    }
+    if (own.length === 0) continue;
+    const files = [...own, ...shared];
+    const bytes = files.reduce((a, f) => a + size(f), 0);
+    over(cls, `engine-${mode} (${String(files.length)} files)`, bytes);
+    over('core', `core ${mode}`, initialJs + initialCssBytes + bytes);
   }
   if (budgets.required.geoAssets) {
     for (const [cls, re, row, what] of GEO_ASSETS) {

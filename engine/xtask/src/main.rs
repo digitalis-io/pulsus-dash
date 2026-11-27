@@ -3,8 +3,8 @@
 //!
 //! - `spec-lint [--root <engine dir>]`;
 //! - `gen-layout [--check] [--root <engine dir>]`: `client/src/engine/wasm/layout.gen.ts`;
-//! - `build-wasm [--probe] [--out DIR]`: the threaded engine (`xtask::wasm`); `--probe` the probe
-//!   build's engine (plan #68 C2a1).
+//! - `build-wasm [--st] [--probe] [--out DIR]`: the threaded engine (`xtask::wasm`); `--st` the
+//!   single-thread engine (plan #68 C2d2); `--probe` the probe build's engine (plan #68 C2a1).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -46,12 +46,17 @@ fn gen_layout(root: &std::path::Path, check: bool) -> ExitCode {
     }
 }
 
-fn build_wasm(root: &std::path::Path, out: Option<PathBuf>, probe: bool) -> ExitCode {
-    let out = out.unwrap_or_else(|| xtask::wasm::default_out(root, probe));
+fn build_wasm(root: &std::path::Path, out: Option<PathBuf>, st: bool, probe: bool) -> ExitCode {
+    let out = out.unwrap_or_else(|| xtask::wasm::default_out(root, st, probe));
     let target = std::env::var_os("CARGO_TARGET_DIR")
         .map_or_else(|| root.join("target"), PathBuf::from)
-        .join(if probe { "wasm-mt-probe" } else { "wasm-mt" });
-    match xtask::wasm::build(root, &out, &target, probe) {
+        .join(match (st, probe) {
+            (false, false) => "wasm-mt",
+            (false, true) => "wasm-mt-probe",
+            (true, false) => "wasm-st",
+            (true, true) => "wasm-st-probe",
+        });
+    match xtask::wasm::build(root, &out, &target, st, probe) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error[build-wasm] {e}");
@@ -73,12 +78,15 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         Some("spec-lint") => spec_lint(&root),
         Some("gen-layout") => gen_layout(&root, args.iter().any(|a| a == "--check")),
-        Some("build-wasm") => {
-            build_wasm(&root, value("--out"), args.iter().any(|a| a == "--probe"))
-        }
+        Some("build-wasm") => build_wasm(
+            &root,
+            value("--out"),
+            args.iter().any(|a| a == "--st"),
+            args.iter().any(|a| a == "--probe"),
+        ),
         _ => {
             eprintln!(
-                "usage: cargo xtask spec-lint | gen-layout [--check] | build-wasm [--probe] [--out DIR] [--root <engine dir>]"
+                "usage: cargo xtask spec-lint | gen-layout [--check] | build-wasm [--st] [--probe] [--out DIR] [--root <engine dir>]"
             );
             ExitCode::from(2)
         }

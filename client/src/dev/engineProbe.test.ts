@@ -59,6 +59,7 @@ function setup() {
   };
   const host: ProbeHost = {
     ring,
+    batches: () => ({ batches: 0, inFlightMax: 0 }),
     counters: () => ({ head: view.head(), tail: view.tail() }),
     overflow: () => view.overflow(),
     idle: () => view.idle() === 1,

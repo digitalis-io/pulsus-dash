@@ -1,0 +1,9 @@
+/* The ST engine banner (plan #68 C2d2 §4.4): one quiet line under the header, token colours only. */
+.banner {
+  margin: 0;
+  padding: var(--space-1) var(--size-page-padding);
+  border-bottom: var(--border-hairline) solid var(--hairline);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}

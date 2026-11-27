@@ -36,6 +36,8 @@ import { GALLERY_URL } from './helpers.ts';
 
 const GATE = 'bench:frame-line-1e8' as const;
 const PROBE_URL = `${GALLERY_URL}&engine=wasm&mode=t2&probe=1`;
+/** Plan #68 C2d2 §4.3: the single-thread engine (its 10⁷-point ceiling, measured). */
+const PROBE_ST_URL = `${GALLERY_URL}&engine=wasm&mode=st&probe=1`;
 const LINE: VisSpec = { kind: 'line', title: 'F1c', unit: { kind: 'none' } };
 /** `pulsus_synth::reference::WINDOW`: the grid's extent. */
 const EXTENT = { fromMs: 0, toMs: 1_000_000 };
@@ -75,12 +77,12 @@ const key = (s: number): string => s.toString(16).padStart(16, '0');
 const SEED = [{ key: '00000000000000aa', t: [EXTENT.fromMs, EXTENT.toMs], v: [0, 1] }];
 
 /** A probe page (no fake clock); the failed-frame warnings it logs. */
-async function probePage(page: Page): Promise<string[]> {
+async function probePage(page: Page, st = false): Promise<string[]> {
   const failures: string[] = [];
   page.on('console', (m) => {
     if (/probe-\d+ failed:/.test(m.text())) failures.push(m.text());
   });
-  await open(page, PROBE_URL);
+  await open(page, st ? PROBE_ST_URL : PROBE_URL);
   return failures;
 }
 
@@ -271,12 +273,14 @@ async function runGate(
     trapAfterAck?: boolean;
     /** Reload after every case (so each case synthesises again). */
     reloadEachCase?: boolean;
+    /** Plan #68 C2d2: the single-thread engine (`&mode=st`, leg `wasm-webgl2-st`). */
+    st?: boolean;
   },
 ): Promise<{ results: BenchResult[]; checked: Checked[] }> {
   const results: BenchResult[] = [];
   const checked: Checked[] = [];
   let page = await ctx.newPage();
-  let failures = await probePage(page);
+  let failures = await probePage(page, o.st === true);
   let synths = 0;
   let sc = o.scales[0];
   let ready = false;
@@ -311,20 +315,20 @@ async function runGate(
         await page.close();
         await new Promise((r) => setTimeout(r, BOOT_PAUSE_MS));
         page = await ctx.newPage();
-        failures = await probePage(page);
+        failures = await probePage(page, o.st === true);
       }
     }
   };
   const reload = async (): Promise<void> => {
     await page.close();
     page = await ctx.newPage();
-    failures = await probePage(page);
+    failures = await probePage(page, o.st === true);
     ready = false;
   };
   const base = (c: Case, s: Scale) => ({
     gate: GATE,
     case: `${s.tag}${c.name}`,
-    leg: 'wasm-webgl2' as const,
+    leg: o.st === true ? ('wasm-webgl2-st' as const) : ('wasm-webgl2' as const),
     points: s.series * s.points,
     series: s.series,
   });
@@ -615,6 +619,34 @@ test.describe(GATE, () => {
     await report(info, results);
     for (const c of checked) sanity(c);
     const want = expectedCases(results, [{ tag: '1e8' }, { tag: '1e7' }], CASES);
+    expect(reportGaps(readResults(GATE), want), 'the report').toEqual([]);
+  });
+
+  test('bench:frame-line-1e8 ST: 10⁷ points on the single-thread engine, plain and hover (report only)', async ({
+    context,
+  }, info: TestInfo) => {
+    test.setTimeout(30 * 60_000);
+    const cases: Case[] = [
+      { name: '-st', keys: null, steps: SCRIPT },
+      { name: '-st-hover', keys: null, steps: HOVER },
+    ];
+    const { results, checked } = await runGate(context, {
+      scales: [
+        { tag: '1e7', series: 1000, points: 10_000 },
+        { tag: '1e6', series: 1000, points: 1000 },
+      ],
+      cases,
+      boxMs: LINE_1E8_BOX_MS,
+      synthTimeoutMs: SYNTH_TIMEOUT_MS,
+      st: true,
+    });
+    await report(info, results);
+    for (const c of checked) sanity(c);
+    expect(results.every((r) => r.leg === 'wasm-webgl2-st')).toBe(true);
+    const want = expectedCases(results, [{ tag: '1e7' }, { tag: '1e6' }], cases).map((w) => ({
+      ...w,
+      leg: 'wasm-webgl2-st',
+    }));
     expect(reportGaps(readResults(GATE), want), 'the report').toEqual([]);
   });
 });

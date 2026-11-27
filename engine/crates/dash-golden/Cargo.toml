@@ -14,7 +14,7 @@ workspace = true
 dash-axes.workspace = true
 dash-gpu.workspace = true
 dash-marks = { workspace = true, features = ["gpu"] }
-dash-scales.workspace = true
+dash-scales = { workspace = true, features = ["parallel"] }
 dash-scene.workspace = true
 dash-tokens.workspace = true
 dash-units.workspace = true

@@ -17,7 +17,7 @@ SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11
 
 .PHONY: client-build client-check assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci engine-image engine-test engine-lint \
 	engine-goldens engine-goldens-update engine-web-image engine-wasm engine-wasm-check engine-e2e \
-	engine-wasm-probe e2e-build-probe e2e-build-release client-dev \
+	engine-wasm-st engine-wasm-probe e2e-build-probe e2e-build-release client-dev \
 	engine-gpu-smoke engine-bench \
 	go-licenses no-pulsusdb-host geo-test geo-data geo-check dev-env dev-db dev-migrate dev-up dev-down dev-reset itest-local itest-old-binary dev-smoke \
 	itest-local-selftest bench-bff cpu-instr cpu-instr-update
@@ -311,26 +311,37 @@ ENGINE_E2E_PG_PORT ?= 57532
 engine-web-image:
 	$(DOCKER) build -f engine/ci/web.Dockerfile --build-arg BASE=$(ENGINE_IMAGE) -t $(ENGINE_WEB_IMAGE) engine/ci
 
-# client/src/engine/wasm/gen/ (git-ignored): `cargo xtask build-wasm`. `make build` needs it.
+# client/src/engine/wasm/gen/ and gen-st/ (git-ignored): `cargo xtask build-wasm` and, plan #68
+# C2d2, the single-thread engine (`build-wasm --st`). `make build` needs both.
 engine-wasm:
 ifeq ($(ENGINE_IN_IMAGE),1)
-	cd engine && cargo xtask build-wasm
+	cd engine && cargo xtask build-wasm && cargo xtask build-wasm --st
 else
 	$(ENGINE_WEB_RUN) make engine-wasm
 endif
 
-# client/src/engine/wasm/gen-probe/ (git-ignored): the engine with the `probe` feature, for the probe
-# build only (`cargo xtask build-wasm --probe`).
+# client/src/engine/wasm/gen-st/ only (plan #68 C2d2): `cargo xtask build-wasm --st`.
+engine-wasm-st:
+ifeq ($(ENGINE_IN_IMAGE),1)
+	cd engine && cargo xtask build-wasm --st
+else
+	$(ENGINE_WEB_RUN) make engine-wasm-st
+endif
+
+# client/src/engine/wasm/gen-probe/ and gen-st-probe/ (git-ignored): both engines with the `probe`
+# feature, for the probe build only (`cargo xtask build-wasm [--st] --probe`).
 engine-wasm-probe:
 ifeq ($(ENGINE_IN_IMAGE),1)
-	cd engine && cargo xtask build-wasm --probe
+	cd engine && cargo xtask build-wasm --probe && cargo xtask build-wasm --st --probe
 else
 	$(ENGINE_WEB_RUN) make engine-wasm-probe
 endif
 
-# ci:engine-gen: two builds from separate target directories are byte-equal, and their .d.ts and
-# the generated layout equal the committed files.
+# ci:engine-gen: two builds of each engine (MT and, plan #68 C2d2, ST) from separate target
+# directories are byte-equal, their .d.ts and the generated layout equal the committed files, and
+# the ST module has its own non-shared memory and no atomic instruction (xtask `st_module`).
 ENGINE_GEN_FILES := dash_core_mt.js dash_core_mt.d.ts dash_core_mt_bg.wasm dash_core_mt_bg.wasm.d.ts
+ENGINE_GEN_ST_FILES := dash_core_st.js dash_core_st.d.ts dash_core_st_bg.wasm dash_core_st_bg.wasm.d.ts
 engine-wasm-check:
 ifeq ($(ENGINE_IN_IMAGE),1)
 	cd engine && \
@@ -340,6 +351,13 @@ ifeq ($(ENGINE_IN_IMAGE),1)
 	    cmp target/engine-gen/a/$$f target/engine-gen/b/$$f || { echo "ci:engine-gen: $$f differs between builds"; exit 1; }; done && \
 	  { cmp target/engine-gen/a/dash_core_mt.d.ts ../client/src/engine/wasm/dash_core_mt.d.ts || \
 	    { echo "ci:engine-gen: client/src/engine/wasm/dash_core_mt.d.ts is stale"; exit 1; }; } && \
+	  CARGO_TARGET_DIR=$${CARGO_TARGET_DIR:-target}/gen-a cargo xtask build-wasm --st --out target/engine-gen/st-a && \
+	  CARGO_TARGET_DIR=$${CARGO_TARGET_DIR:-target}/gen-b cargo xtask build-wasm --st --out target/engine-gen/st-b && \
+	  for f in $(ENGINE_GEN_ST_FILES); do \
+	    cmp target/engine-gen/st-a/$$f target/engine-gen/st-b/$$f || { echo "ci:engine-gen: $$f differs between builds"; exit 1; }; done && \
+	  { cmp target/engine-gen/st-a/dash_core_st.d.ts ../client/src/engine/wasm/dash_core_st.d.ts || \
+	    { echo "ci:engine-gen: client/src/engine/wasm/dash_core_st.d.ts is stale"; exit 1; }; } && \
+	  ST_GEN_DIR=$(CURDIR)/engine/target/engine-gen/st-a cargo test --locked -p xtask --test wasm -- --ignored st_module && \
 	  cargo xtask gen-layout --check && echo "ci:engine-gen: ok"
 else
 	$(ENGINE_WEB_RUN) make engine-wasm-check

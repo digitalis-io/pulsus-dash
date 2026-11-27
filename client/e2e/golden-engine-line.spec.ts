@@ -65,6 +65,7 @@ async function versusNative(
     const html = page.locator('html');
     await expect(html).toHaveAttribute('data-dash-status', tier.status);
     await expect(html).toHaveAttribute('data-dash-adapter', tier.adapter);
+    await expect(html).toHaveAttribute('data-dash-mode', tier.mode);
     await liveCanvas(page, o.id).scrollIntoViewIfNeeded();
     const box = await liveCanvas(page, o.id).boundingBox();
     if (box === null) throw new Error(`${o.id}: no box`);

@@ -38,6 +38,13 @@ export const SWIFTSHADER_ARGS = [
   '--use-webgpu-adapter=swiftshader',
 ] as const;
 
+/**
+ * The cases of project `lavapipe-st` (plan #68 C2d2 §5): E1, E7, H1, H3, L1, L2, S1, S3, the
+ * `golden:engine-line` pages and the 10⁴-op `e2e:shim-fuzz`.
+ */
+export const ST_LEGS =
+  /e2e:engine-camera E[17] |e2e:engine-hover H[13] |e2e:engine-layer L[12] |e2e:engine-selection S[13] |golden:engine-line|e2e:shim-fuzz 10⁴ ops/;
+
 /** `make engine-bench` (plan #68 C2d1 §2): only project `bench`, report-only. */
 const BENCH = process.env['ENGINE_BENCH'] === '1';
 
@@ -78,6 +85,28 @@ export default defineConfig({
         viewport,
         channel: 'chromium',
         launchOptions: { args: [...SWIFTSHADER_ARGS] },
+      },
+    },
+    // The single-thread engine (plan #68 C2d2 §5 ST legs): lavapipe with `&mode=st` from the
+    // project metadata (`e2e/engine.ts` tierOf), on the listed cases; `e2e:shim-fuzz` runs against
+    // the probe BFF's absolute URL.
+    {
+      name: 'lavapipe-st',
+      metadata: { tier: 'lavapipe', engineMode: 'st' },
+      testMatch: [
+        'engine-camera.spec.ts',
+        'engine-hover.spec.ts',
+        'engine-layer.spec.ts',
+        'engine-selection.spec.ts',
+        'golden-engine-line.spec.ts',
+        'engine-shim-fuzz.spec.ts',
+      ],
+      grep: ST_LEGS,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport,
+        channel: 'chromium',
+        launchOptions: { args: [...LAVAPIPE_ARGS] },
       },
     },
     // The probe build (plan #68 C2a1 §3.5): `e2e:shim-fuzz` and `e2e:engine-hover` H1b, on the

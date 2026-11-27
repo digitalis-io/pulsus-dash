@@ -4,6 +4,7 @@ node_modules
 package-lock.json
 src/styles/tokens.*
 test-results
+test-results-*
 playwright-report
 src/assets
 src/icons
@@ -14,8 +15,12 @@ src/api/gen
 e2e/transcripts
 src/engine/wasm/gen
 src/engine/wasm/gen-probe
+src/engine/wasm/gen-st
+src/engine/wasm/gen-st-probe
+src/engine/wasm/dash_core_st.d.ts
 src/engine/wasm/dash_core_mt.d.ts
 src/engine/wasm/layout.gen.ts
+dist-release
 dist-release-stub
 dist-release-http
 dist-probe
