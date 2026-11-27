@@ -15,7 +15,7 @@ GOLANGCI_SHA256 := 9b7fe6a6bf6334b98decf8d86b11415ea7889afdabdd1959fdce23af2a9eb
 SQUAWK_VERSION := 2.72.0
 SQUAWK_SHA256 := a61661808119a82515565503111099b070c869f73698f61cb1785de5d0c8b11a
 
-.PHONY: client-build assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci engine-image engine-test engine-lint \
+.PHONY: client-build client-check assets-pack build e2e-build e2e server-build api-gen api-gen-check go-mod go-lint go-test govulncheck migrations-lint itest tools-ci ci engine-image engine-test engine-lint \
 	engine-goldens engine-goldens-update engine-web-image engine-wasm engine-wasm-check engine-e2e \
 	engine-wasm-probe e2e-build-probe e2e-build-release client-dev \
 	engine-gpu-smoke engine-bench \
@@ -46,6 +46,18 @@ ITEST_GOAL ?= itest
 CLIENT_OUT ?= dist
 client-build: engine-wasm
 	VITE_API_MODE=$(API_MODE) VITE_GIT_SHA=$(GIT_SHA) npm --prefix client run build -- --outDir $(CLIENT_OUT) --emptyOutDir
+
+# The client `check` job of T05 §7.1, run locally (#263): every client change runs it before push
+# (docs/development/build-and-ci.md). `npm run audit` needs the network.
+client-check: engine-wasm
+	cd client && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && \
+	  npm run check:lockfile && npm run lint && npm run typecheck && \
+	  npm run tokens -- --check && npm run token-lint && npm test && \
+	  $(MAKE) -C .. geo-test && npm run geo-data && \
+	  npm run build && npm run size && \
+	  VITE_API_MODE=http npx --no-install vite build --outDir dist-http --emptyOutDir && \
+	  ! grep -q '"src/dev/' dist-http/.vite/manifest.json && \
+	  npm run size -- dist-http && npm run origins && npm run audit
 
 # Packs client/dist into the embedded tree with a signed manifest, under a key generated afresh
 # for this build (plan #59 Q3); the private key never leaves build/keys/.

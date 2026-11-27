@@ -21,6 +21,7 @@
  * the bench then starts only the fake and the probe BFF.
  */
 import { defineConfig, devices } from '@playwright/test';
+import { ENGINE_ONLY_SPECS, ENGINE_SHARED_SPECS } from './config/engineSpecs.ts';
 
 const viewport = { width: 1440, height: 900 };
 
@@ -42,18 +43,8 @@ const BENCH = process.env['ENGINE_BENCH'] === '1';
 
 export default defineConfig({
   testDir: 'e2e',
-  testMatch: [
-    'engine-mode-matrix.spec.ts',
-    'golden-engine-line.spec.ts',
-    'engine-recovery.spec.ts',
-    'csp-violations.spec.ts',
-    'engine-shim-fuzz.spec.ts',
-    'engine-camera.spec.ts',
-    'engine-hover.spec.ts',
-    'engine-layer.spec.ts',
-    'engine-selection.spec.ts',
-    'inspector.spec.ts',
-  ],
+  // config/engineSpecs.ts (plan #263): the engine-only specs and the shared ones.
+  testMatch: [...ENGINE_ONLY_SPECS, ...ENGINE_SHARED_SPECS],
   grep: /mode-matrix|line presence|engine-line|engine-recovery|csp-violations \(engine\)|e2e:shim-fuzz|bench:shim-input-cost|e2e:engine-camera|e2e:engine-hover|e2e:engine-layer|e2e:engine-selection|selection-sources \(engine\)/,
   retries: 0,
   workers: 2,
