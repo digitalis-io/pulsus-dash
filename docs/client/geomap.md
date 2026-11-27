@@ -7,7 +7,10 @@ validated and loaded, and what they cover. It implements
 [VIZ-045](../../designs/product/05-visualisation-catalogue.md) and the bundled offline data of
 VIZ-046, by the rules T24-080 to T24-087. The map frame that draws them comes in E2 (#234): its
 first part adds the rows, the table, the CSV, the facts and the Inspector targets
-([below](#the-map-frames-rows-234-part-1)); PulsusIX does not draw a map yet.
+([below](#the-map-frames-rows-234-part-1)); its second part draws them in the Canvas 2D engine, with
+the camera, the input and the marks ([below](#the-map-in-the-canvas-2d-engine-234-part-2)). Boards
+show the map from Part 3 (the host); until then PulsusIX lists a stored map panel as not available
+yet.
 
 The modules live in `client/src/vis/geo/`. The data layer (step 1a: `aliases.ts` to `assets.ts`)
 imports nothing outside the directory except types. The map frame's modules (#234 Part 1) do:
@@ -375,6 +378,115 @@ of an aggregate's entry (`group:` + the id as JSON, built from that target's sna
 Every target carries the row set it came from (`set`). `geoPlace(row)` is the gazetteer's name,
 else `lat, lon` to 4 places, else `''`.
 
+## The map in the Canvas 2D engine (#234 Part 2)
+
+The Canvas 2D engine draws a `geomap` spec ([ADR-0027](../../designs/adr/0027-geomap-frame-seam.md),
+T24-090, T24-091). The work splits by what depends on the renderer, so the GPU engine can take the
+kind later by reusing the first half and replacing the painter
+([ADR-0031](../../designs/adr/0031-gpu-engine-default-renderer.md)):
+
+| Module | What it holds |
+|---|---|
+| `engine/controller/inertia.ts` | `spring`, `releaseVelocity`: the T02-022 spring, shared |
+| `engine/controller/geo/project.ts` | `normLon`, `uOf`, `vOf`, `lonOf`, `latOf`, `worldPx`: one Web Mercator world |
+| `engine/controller/geo/camera.ts` | `zoomRange`, `insetOf`, `contain`, `fitView`, `fitBox`, `zoomAbout`, `panPx`, `boundsOf`, `toPx`, `fromPx` |
+| `engine/controller/geo/marks.ts` | `radiiOf`, `levelMarks` (clusters), `drawOrder`, `keyboardOrder`, `placeLabels` |
+| `engine/controller/geo/pick.ts` | `placeMarks`, `pickMark`, `marksInBox` |
+| `engine/controller/geo/controller.ts` | `GeoController`: the listeners, gestures, wheel, keys, eases, inertia, ownership and commits |
+| `engine/canvas2d/geo/basemap.ts`, `paint.ts`, `patterns.ts` | the painter: basemap, marks, patterns, glyphs, labels, rings, bands |
+| `engine/canvas2d/geo/scene.ts` | `createGeoScene`, the dynamic entry: the controller and the painter, the geo events and the summary |
+
+The `controller/geo/` modules import no renderer. Nothing geo is in the board route's static
+closure: `Canvas2DFrame` imports `geo/scene.ts` on its first `geomap` spec (`loadGeoModule`), and
+the scene's chunk holds the rest. How the frame loads, guards and replays the scene is in
+[the engine page](engine.md#the-geomap-on-canvas-2d-234-part-2).
+
+### The camera
+
+A view is `{lat, lon, zoom}` (`GeoView`). The engine owns it; the host only persists what the
+engine commits.
+
+- **One world.** A longitude is normalised to [−180, 180); u = (lon + 180)/360 and v = ½ −
+  ln((1 + sin φ)/(1 − sin φ))/(4π). The world is 256·2^z CSS px square; the plot is the whole canvas.
+  The map never repeats across ±180°, and the bounds never wrap.
+- **Zoom range.** zMin = log2(max(W, H)/256), clamped to [0, 14]; zMax = 14. A view below zMin is
+  raised to it, so the world always fills the plot's longer side.
+- **Containment.** Per axis: a world at least as large as the plot keeps its edges outside the
+  plot; a smaller one is centred and letterboxed (`surface-1` around `map-water`). Every move ends
+  contained, so a pan stops at the world's edge: at fixture G's fit the east edge is 135.84 px
+  from the centre, so Shift+→ moves only that far.
+- **Fit** (the view is null): the box of the `shown` rows with the inset p = min(48, 10 % of the
+  shorter side), z the smaller of the two axes' fits, clamped to [zMin, max(6, zMin)]. With no
+  shown row the view is (20, 0, zMin). G on 1024 × 512 fits at (33.3885, 31.9970, 2.6219).
+- **Wheel** (`wheelZoom: true`): a vertical wheel zooms by Δz = −log2(factor) about the pointer,
+  which stays on the same place unless containment shifts the view; a horizontal wheel pans by its
+  fraction of the width. With `wheelZoom: false` the page scrolls. A wheel commits `wheel` after
+  300 ms idle; a page scroll already in progress keeps scrolling.
+- **Drag** pans with the pointer. A release faster than 0.3 px/ms (the displacement over the last
+  80 ms) continues on the T02-022 spring with the release velocity: it lands 2v/ω px further (103
+  px at 1 px/ms), never overshoots, and settles at about 267 ms, then commits `pan` once. A slower
+  release commits at once.
+- **Right drag** draws the box band and fits the box exactly on release (`box`); the browser menu
+  is suppressed. **Alt+drag** draws the brush band and sends `geoBrush` with the sorted keys of the
+  marks whose centres it holds.
+- **Click** sends `select` with the mark under the pointer, or null. **Hover** sends a geo hover
+  with the mark and its centre, or null once. **Double-click** on a cluster fits its members; else
+  it zooms ×2 about the pointer (`dblclick`).
+- **Keys** on the key target only (not from its children, no Ctrl, ⌘ or Alt): `+`/`=` zoom in, `-`
+  out, about the focus mark (`setFocusMark`) when its centre is in view, else the centre; `0` fits;
+  Shift+arrows pan 25 % of the plot. They are prevented and still propagate. `cameraKey(k)` does
+  the same for the mark list. Each key commits once (`keys`, or `fit` for `0`), at the end of its
+  ease.
+- **Eases and reduced motion.** Keys, fit, box, double-click and a changed `spec.view` ease 200 ms
+  (ease-out cubic; a zoom re-anchors every frame). With `motion: 'cut'` (set by the host under
+  reduced motion) they land at once, and a fling lands at its end offset at once. A new
+  pointer-down, wheel or camera key first stops a running ease or fling where it is: a stopped
+  fling or user ease commits what moved; a stopped `spec.view` ease commits nothing.
+- **Ownership.** Only a `spec.view` that changed by more than 1e−9 and differs from the camera
+  moves it (an ease, no commit). A view set back to null refits at once. While the view is null and
+  nothing was committed, new data and resizes refit. A title, colour or size change keeps the
+  camera; a resize raises the zoom to zMin and contains it.
+
+The summary's `geo` is the committed view and its bounds, the level, and the mark and cluster
+counts. Events: `geoCommit {view, bounds, gesture}` once per moving gesture.
+
+### Marks
+
+- **Sizes** (T24-090). With two or more groups (patterned) a marker is at least 8 px:
+  min′ = max(min, 8), max′ = max(max, min′); one group keeps min and max. With `size.by: 'value'`
+  r = max(min′, max′·√(|v|/M)), M the largest |v| shown (M = 0 → min′); `fixed` → max′. G's
+  default sizes run from 20 (k07, 300 ms) down to 8.
+- **Clusters and levels.** The level is Z = ⌊zoom⌋. Seeds in seed order (worst state, then the
+  larger |v|, then the key) take the unassigned shown rows within 40 world px at Z; two or more
+  make a cluster `cluster:‹seed key›` at the seed, a `surface-2` disc of r 14, 16, 18 or 20 (fewer
+  than 10, 100, 1 000 rows, more) with its count and, when its worst state is watch or worse, that
+  state's chip. `cluster: false` joins only rows at the same position. The marks of a level are
+  cached under the level, the data, `size`, `cluster` and the group count; G at fit (Z 2) has
+  `cluster:k03` (5 rows), `cluster:k07` (2), k05, k14 and k06.
+- **Orders** (T24 §4.11). Drawn bottom to top by (−r, rank, |v|, id), a cluster taking its
+  members' worst rank and largest |v|; the mark list's keyboard order is (y, x, id) of the centres.
+  rank is failing 4, degraded 3, watch 2, else 0; strings compare by UTF-16 code units.
+- **Pick.** The last mark in draw order whose disc of radius max(r + 4, 12) holds the pointer.
+- **Crossfade.** A level change fades the old marks out and the new in over 150 ms; only the new
+  marks are pickable. `motion: 'cut'` draws none.
+- **Labels.** With `labels: 'auto'` and at most 50 marks, marker names go right of their marks,
+  greedily in seed order, skipping any that would overlap another or leave the plot.
+- **Fill and state.** A marker is a circle, square, triangle or diamond of the same area. Its fill
+  is its group's colour (`series-‹n›`; aggregate members `category-other`), with its group's
+  pattern over it in `pattern-ink` when patterned. With thresholds, `colour: 'group'` adds a 2 px
+  outline in the state colour and the state glyph; `colour: 'state'` fills with the state colour,
+  the pattern over it and the glyph. The glyph sits inside at r ≥ 8 and on a `surface-2` chip at
+  the upper right below that, so state is never colour alone.
+- **Selection** (T24-092). When a selected key is among the loaded rows (shown or not), the shown
+  marks without one are drawn at `dimmed` and the marks with one get a 2 px `focus` ring; only
+  foreign keys dim nothing. The focus mark has its own 2 px ring 3 px outside the mark.
+- **`geoMarks`** `{level, marks}`: every mark of the level in keyboard order with its id, kind,
+  keys and whether its centre is in the plot. It goes out on the first draw, after each commit, on
+  new data and on a level change, and after any other draw only when that payload changed.
+
+**Limits.** At most 5 000 drawn rows (the cap above); no wrap across ±180° (a Pacific view ends at
+the world's edge); no spiderfying of a cluster at zoom 14.
+
 ## Tests
 
 | Gate | Where | What |
@@ -390,6 +502,14 @@ else `lat, lon` to 4 places, else `''`.
 | `unit:geo-coverage` | `src/vis/reduce.test.ts` | G's meter line; the Cap selection and "showing 5,000 of 5,003; kept min, max" |
 | `unit:geo-table-csv`, `unit:geo-facts` | `src/vis/geo/rows.test.ts` | CSV G and CSV X byte for byte, the unguarded table cells; the facts block |
 | `unit:geo-targets` (builder rows) | `src/vis/geo/targets.test.ts` | the marker, cluster, O2 aggregate and `e8` group targets; `geoPlace` |
+| `unit:geo-radius-project`, `unit:geo-marks-options` | `src/engine/controller/geo/marks.test.ts` | G's radii, the min 2 / max 4 sets, the projection block; a live scene's size and cluster changes |
+| `unit:geo-camera`, `unit:geo-ownership` | `src/engine/controller/geo/camera.test.ts` | the zoom range, inset, fit, containment, persisted views, the anchored wheels and their drift; who owns the camera |
+| `unit:geo-keys-engine`, `unit:geo-inertia`, `unit:geo-ease-origin` | `src/engine/controller/geo/input.test.ts` | the camera keys and the wheel pan; the spring and a fling, interrupted; what a stopped ease commits |
+| `unit:geo-marks` | `src/engine/controller/geo/pick.test.ts` | G's marks at fit and Z3–Z6, `cluster: false`, the orders, picks, the tie, the crossfade, the UTF-16 order line |
+| `unit:geo-basemap-draw` | `src/engine/canvas2d/geo/basemap.test.ts` | RT's fill paths and winding, the coast and border strokes; ANT's clamped edges never stroked |
+| `unit:geo-state-glyph` | `src/engine/canvas2d/geo/paint.test.ts` | the state fill, pattern and glyph; the chip below r 8; the group fill with the state outline |
+| `unit:geo-scene`, `unit:geo-scene-lifecycle`, `unit:geo-marks-emit` | `src/engine/canvas2d/Canvas2DEngine.geo.test.ts` | the lazy scene, its summary and events; the generation guard and the retry after a rejected import; when `geoMarks` goes out |
+| `unit:selection-draw` (geomap rows) | `src/engine/canvas2d/Canvas2DEngine.selection.test.ts` | G with [k03], [k10] and [zz]: the ring and the dimming |
 
 The client build fixtures under `src/vis/geo/fixtures/build/` are written by `build.py --fixtures`
 from `tools/geo/fixtures/basemap-cases.json`; `unit:geo-build` checks they are current.
