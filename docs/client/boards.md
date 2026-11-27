@@ -549,7 +549,10 @@ Focus returns to the chip.
 
 **The stub** plans structured values with the same contexts and regex position rules
 (`api/stub/vars.ts`) and answers `variableValues` from its label values; the server's probe guard
-is not mirrored (the fixture's `server_only` cases).
+is not mirrored (the fixture's `server_only` cases). `StubApi` imports the planner mirror on
+demand (`api/stub/planners.ts`, started when a `StubApi` is made) and the variables mirror only
+for a request with a structured value (`api/stub/varsCore.ts` `loadMirror`), so neither is in the
+initial chunk.
 
 Gates: `unit:board-params-multi`, `unit:resolve-variables`, `unit:variable-lists`,
 `unit:variable-too-many`, `unit:board-variables-run`, `unit:variable-picker`, `unit:variable-query`,
