@@ -53,11 +53,7 @@ export function dashEngine(o: DashEngineOptions): Plugin {
     exists(`${genSt}dash_core_st.js`) && exists(`${genSt}dash_core_st_bg.wasm`);
   /** The refusal for the first engine that is missing, or null. */
   const missing = (): string | null =>
-    !builtMt()
-      ? engineAbsentMessage(probe)
-      : !builtSt()
-        ? engineAbsentMessage(probe, true)
-        : null;
+    !builtMt() ? engineAbsentMessage(probe) : !builtSt() ? engineAbsentMessage(probe, true) : null;
   let command: 'build' | 'serve' = 'serve';
   return {
     name: 'dash-engine',

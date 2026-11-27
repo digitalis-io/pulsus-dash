@@ -24,6 +24,7 @@
  * | `freeze(n, seq)`, `frozen(n)`, `unfreeze(n)` | the probe build: after its first completed presentation with seq ≥ `seq` the worker presents nothing for the frame; `frozen` resolves with that presentation's `drawn` and seq |
  * | `renew()` | the probe build: every frame's renderer and surface made again, the frames redrawn (plan #68 C2c2 S11, the same-tier restore after a device loss) |
  * | `stats().bad`, `stats().selects` | `INPUT_BAD`; Select records the ring took |
+ * | `stats().batches`, `stats().batchesInFlightMax` | ST (plan #68 C2d2): batches posted and the most in flight end to end; `overflow` is then the batch ring's dropped Selects and `bad` the worker's last reported `INPUT_BAD` |
  * | `synth(n, o, timeoutMs?)` | the probe build (plan #68 C2d1 §3.2): F1c of `o.series` × `o.points` built in the worker as the frame's data (`Frames::set_chunk`); resolves on the worker's acknowledgement `{ok, bytes}`, or `ok: false` with `reason` `alloc` (the worker's allocation failed), `fatal`, `restart` or `timeout` (120 s by default) |
  * | `synthFault(f)` | the next `synth` only: `alloc` answers `ok: false, reason: 'alloc'` at once, `silent` withholds the answer (it times out), `fatal` answers `reason: 'fatal'`; `null` clears it |
  * | `chunk(n)` | the probe build: `{series, points, bytes}` of the frame's current chunk (points: series 0's samples), or null |
@@ -111,6 +112,9 @@ export interface DashProbe {
     enqueued: number;
     bad: number;
     selects: number;
+    /** ST (plan #68 C2d2): batches posted, and the most in flight end to end (0 in MT). */
+    batches: number;
+    batchesInFlightMax: number;
   };
   /** The engine's id of probe frame `n` (the ring records' `frame`); 0 before it exists. */
   id(n: number): number;
@@ -452,6 +456,8 @@ export function createProbe(o: {
         enqueued,
         bad: h?.bad() ?? 0,
         selects: h?.ring.stats.selects ?? 0,
+        batches: h?.batches().batches ?? 0,
+        batchesInFlightMax: h?.batches().inFlightMax ?? 0,
       };
     },
     counters: () => o.host()?.counters() ?? { head: 0, tail: 0 },

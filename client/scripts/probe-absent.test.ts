@@ -111,10 +111,13 @@ describe('ci:probe-absent (T03-024)', () => {
       Buffer.from('engine_probe_' + 'chunk'),
     ]);
     expect(
-      checkProbeAbsent(dist({ ...CLEAN, ...sites, ...ST_PROBE, 'assets/dash-engine-b.wasm': both }), {
-        expectFaults: true,
-        expectProbe: true,
-      }),
+      checkProbeAbsent(
+        dist({ ...CLEAN, ...sites, ...ST_PROBE, 'assets/dash-engine-b.wasm': both }),
+        {
+          expectFaults: true,
+          expectProbe: true,
+        },
+      ),
     ).toEqual([]);
   });
   it('engine_probe_synth is a probe export too: a release tree fails, the probe build needs it (plan #68 C2d1)', () => {

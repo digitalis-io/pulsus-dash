@@ -105,39 +105,56 @@ interface Rec {
 
 const nul = (v: number): number | null => (Number.isNaN(v) ? null : v);
 
-export class InputRing {
-  /** `selects`: Select records taken (published, pending or dropped by the cap; plan #68 C2b). */
-  readonly stats = { coalesced: 0, publishedBytes: 0, selects: 0 };
+/** The ST input batch (plan #68 C2d2 §3.2): 64 KiB, as the ring. */
+export const BATCH_BYTES = RING_BYTES;
+
+/** What a frame and the engine host need of either sink (plan #68 C2d2 §3.2). */
+export interface FrameRing {
+  camera(frame: number, c: CameraState): void;
+  resize(frame: number, cssW: number, cssH: number, dpr: number): void;
+  overlay(frame: number, o: OverlayState): void;
+  select(frame: number, x: number, y: number): void;
+  onPublish(frame: number, cb: (kind: number, seq: number) => void): void;
+  unpublished(frame: number): number;
+  drop(frame: number): void;
+  flush(): void;
+  close(): void;
+  readonly stats: RingStats;
+  readonly produced: InputRec[] | null;
+}
+
+/** `selects`: Select records taken (published, pending or dropped by the cap; plan #68 C2b). */
+export interface RingStats {
+  coalesced: number;
+  publishedBytes: number;
+  selects: number;
+}
+
+/**
+ * The record queue shared by both sinks (plan #68 C2d2 §3.2): the record builders, the pending map
+ * (coalescing per `kind:frame`, Selects unique and capped at 8 per frame), the per-frame seqs
+ * assigned at publish, the listeners and the probe log. The sink decides when a record goes out.
+ */
+abstract class RecordQueue {
+  readonly stats: RingStats = { coalesced: 0, publishedBytes: 0, selects: 0 };
   /** Every published record, in order (`log` only). */
   produced: InputRec[] | null;
-  private readonly i32: Int32Array;
-  private readonly data: DataView;
-  private head: number;
-  private readonly pending = new Map<string, Rec>();
+  protected readonly pending = new Map<string, Rec>();
   private readonly seqs = new Map<number, number>();
   private readonly listeners = new Map<number, (kind: number, seq: number) => void>();
   private readonly now: () => number;
   private readonly firstSeq: number;
-  private readonly wake: () => void;
   /** Select keys are unique: `select:frame:n`. */
   private nextSelect = 0;
   /** Frames already warned about a dropped Select. */
   private readonly warned = new Set<number>();
   private scheduled = false;
-  private closed = false;
+  protected closed = false;
 
-  constructor(memory: WebAssembly.Memory, cb: number, wake: () => void, o: RingOptions = {}) {
-    this.wake = wake;
-    this.i32 = new Int32Array(memory.buffer, cb, CB_BYTES / 4);
-    this.data = new DataView(memory.buffer, cb + OFF_INPUT_DATA, RING_BYTES);
-    this.head = this.load(OFF_INPUT_HEAD);
+  constructor(o: RingOptions) {
     this.now = o.now ?? (() => performance.now());
     this.firstSeq = o.firstSeq ?? 1;
     this.produced = o.log === true ? [] : null;
-  }
-
-  private load(off: number): number {
-    return Atomics.load(this.i32, off / 4) >>> 0;
   }
 
   camera(frame: number, c: CameraState): void {
@@ -258,21 +275,106 @@ export class InputRing {
     this.listeners.delete(frame);
   }
 
-  /** Publishes up to 256 pending records (each animation frame while any are pending). */
-  flush(): void {
-    this.scheduled = false;
-    this.publishPending(PER_FLUSH);
-    this.schedule();
-  }
-
-  /** The engine this ring writes to is gone (a restart, a fatal failure): nothing more. */
+  /** The engine this sink writes to is gone (a restart, a fatal failure): nothing more. */
   close(): void {
     this.closed = true;
     this.pending.clear();
     this.listeners.clear();
   }
 
-  private enqueue(r: Rec, key = `${String(r.kind)}:${String(r.frame)}`): void {
+  /** Publishes what the sink can (each animation frame while any are pending). */
+  abstract flush(): void;
+
+  protected abstract enqueue(r: Rec, key?: string): void;
+
+  /** One Select of `frame` dropped by the cap (`INPUT_OVERFLOW`, or `stats.overflow` in ST). */
+  protected abstract countOverflow(): void;
+
+  /** Room for one more waiting Select of `frame`: past 8 the oldest goes, counted and warned. */
+  protected capSelects(frame: number): void {
+    let n = 0;
+    let oldest: string | null = null;
+    for (const [k, r] of this.pending) {
+      if (r.kind !== REC_SELECT || r.frame !== frame) continue;
+      oldest ??= k;
+      n++;
+    }
+    if (n < MAX_SELECTS || oldest === null) return;
+    this.pending.delete(oldest);
+    this.countOverflow();
+    if (!this.warned.has(frame)) {
+      this.warned.add(frame);
+      console.warn(`pulsus engine: frame ${String(frame)} dropped a click (ring full)`);
+    }
+  }
+
+  /** Writes `r`'s header and payload at `at` with the frame's next seq; returns that seq (`P`). */
+  protected write(d: DataView, at: number, r: Rec): number {
+    let p = (this.seqs.get(r.frame) ?? this.firstSeq - 1) + 1;
+    if (p % 2 ** 32 === 0) p += 1;
+    this.seqs.set(r.frame, p);
+    d.setUint8(at, r.kind);
+    d.setUint8(at + 1, 0);
+    d.setUint16(at + 2, r.size, true);
+    d.setUint32(at + 4, p >>> 0, true);
+    d.setFloat64(at + 8, r.tMs, true);
+    r.write(d, at);
+    return p;
+  }
+
+  /** After a record of `bytes` is out: the stats, the probe log and the frame's listener. */
+  protected published(r: Rec, p: number, bytes: number): void {
+    this.stats.publishedBytes += bytes;
+    if (this.produced !== null && this.produced.length < MAX_LOG) {
+      this.produced.push({ seq: p >>> 0, kind: r.kind, frame: r.frame, tMs: r.tMs, f: r.f });
+    }
+    this.listeners.get(r.frame)?.(r.kind, p);
+  }
+
+  protected schedule(raf = defaultRaf): void {
+    if (this.scheduled || this.closed || this.pending.size === 0) return;
+    this.scheduled = true;
+    raf(() => {
+      this.scheduled = false;
+      this.flush();
+    });
+  }
+}
+
+/** The page's animation frame, or 16 ms without one. */
+function defaultRaf(cb: () => void): void {
+  const raf = (globalThis as { requestAnimationFrame?: (cb: () => void) => number })
+    .requestAnimationFrame;
+  if (typeof raf === 'function') raf.call(globalThis, cb);
+  else setTimeout(cb, 16);
+}
+
+/** The shared-memory sink (MT): records go straight into the control block's ring. */
+export class InputRing extends RecordQueue implements FrameRing {
+  private readonly i32: Int32Array;
+  private readonly data: DataView;
+  private head: number;
+  private readonly wake: () => void;
+
+  constructor(memory: WebAssembly.Memory, cb: number, wake: () => void, o: RingOptions = {}) {
+    super(o);
+    this.wake = wake;
+    this.i32 = new Int32Array(memory.buffer, cb, CB_BYTES / 4);
+    this.data = new DataView(memory.buffer, cb + OFF_INPUT_DATA, RING_BYTES);
+    this.head = this.load(OFF_INPUT_HEAD);
+  }
+
+  private load(off: number): number {
+    return Atomics.load(this.i32, off / 4) >>> 0;
+  }
+
+  /** Publishes up to 256 pending records (each animation frame while any are pending). */
+  flush(): void {
+    this.publishPending(PER_FLUSH);
+    this.schedule();
+  }
+
+  protected enqueue(r: Rec, key = `${String(r.kind)}:${String(r.frame)}`): void {
     if (this.closed) return;
     if (r.discrete !== true && this.pending.delete(key)) {
       this.stats.coalesced += 1;
@@ -287,22 +389,8 @@ export class InputRing {
     this.schedule();
   }
 
-  /** Room for one more waiting Select of `frame`: past 8 the oldest goes, counted and warned. */
-  private capSelects(frame: number): void {
-    let n = 0;
-    let oldest: string | null = null;
-    for (const [k, r] of this.pending) {
-      if (r.kind !== REC_SELECT || r.frame !== frame) continue;
-      oldest ??= k;
-      n++;
-    }
-    if (n < MAX_SELECTS || oldest === null) return;
-    this.pending.delete(oldest);
+  protected countOverflow(): void {
     Atomics.add(this.i32, OFF_INPUT_OVERFLOW / 4, 1);
-    if (!this.warned.has(frame)) {
-      this.warned.add(frame);
-      console.warn(`pulsus engine: frame ${String(frame)} dropped a click (ring full)`);
-    }
   }
 
   private publishPending(max: number): void {
@@ -312,18 +400,6 @@ export class InputRing {
       this.pending.delete(k);
       n++;
     }
-  }
-
-  private schedule(): void {
-    if (this.scheduled || this.closed || this.pending.size === 0) return;
-    this.scheduled = true;
-    const raf = (globalThis as { requestAnimationFrame?: (cb: () => void) => number })
-      .requestAnimationFrame;
-    const run = (): void => {
-      this.flush();
-    };
-    if (typeof raf === 'function') raf.call(globalThis, run);
-    else setTimeout(run, 16);
   }
 
   /** Writes `r` and publishes it; false when it does not fit. */
@@ -340,31 +416,40 @@ export class InputRing {
       d.setUint16(at + 2, gap, true);
       at = 0;
     }
-    let p = (this.seqs.get(r.frame) ?? this.firstSeq - 1) + 1;
-    if (p % 2 ** 32 === 0) p += 1;
-    this.seqs.set(r.frame, p);
-    const seq = p >>> 0;
-    d.setUint8(at, r.kind);
-    d.setUint8(at + 1, 0);
-    d.setUint16(at + 2, r.size, true);
-    d.setUint32(at + 4, seq, true);
-    d.setFloat64(at + 8, r.tMs, true);
-    r.write(d, at);
+    const p = this.write(d, at, r);
     this.head = (this.head + gap + r.size) >>> 0;
     Atomics.store(this.i32, OFF_INPUT_HEAD / 4, this.head | 0);
-    this.stats.publishedBytes += gap + r.size;
-    if (this.produced !== null && this.produced.length < MAX_LOG) {
-      this.produced.push({ seq, kind: r.kind, frame: r.frame, tMs: r.tMs, f: r.f });
-    }
-    this.listeners.get(r.frame)?.(r.kind, p);
+    this.published(r, p, gap + r.size);
     if (Atomics.compareExchange(this.i32, OFF_INPUT_IDLE / 4, 1, 0) === 1) this.wake();
     return true;
   }
 }
 
-/** Stub (plan #68 C2d2 §3.2). */
-export class BatchRing {
-  readonly stats = {
+export interface BatchOptions extends RingOptions {
+  /** The animation frame (tests); the page's `requestAnimationFrame`. */
+  readonly raf?: (cb: () => void) => void;
+}
+
+/** `BatchRing.stats` (plan #68 C2d2 §3.2, the probe's `stats()`). */
+export interface BatchStats extends RingStats {
+  /** Selects dropped by the per-frame cap (`INPUT_OVERFLOW` in MT). */
+  overflow: number;
+  /** Batches posted. */
+  batches: number;
+  /** The most batches in flight at once, end to end (main's count, or a worker's `depth`). */
+  batchesInFlightMax: number;
+}
+
+/**
+ * The single-thread sink (plan #68 C2d2 §3.2): ST has no shared memory, so every call goes to
+ * pending, and on main's animation frame, if no batch is in flight, up to 64 KiB of pending records
+ * are copied in order into a transferable batch (each gets its seq there and `onPublish` fires),
+ * which is posted. Two buffers alternate, and exactly one batch may be in flight: the next is
+ * posted only after the worker's `input-ack` returns the buffer (`acked`), which it sends after the
+ * tick that applied the batch. The record bytes are `InputRing`'s.
+ */
+export class BatchRing extends RecordQueue implements FrameRing {
+  override readonly stats: BatchStats = {
     coalesced: 0,
     publishedBytes: 0,
     selects: 0,
@@ -372,21 +457,68 @@ export class BatchRing {
     batches: 0,
     batchesInFlightMax: 0,
   };
-  produced: InputRec[] | null = null;
-  constructor(
-    _post: (buf: ArrayBuffer, len: number) => void,
-    _o: RingOptions & { readonly raf?: (cb: () => void) => void } = {},
-  ) {}
-  camera(_f: number, _c: CameraState): void {}
-  resize(_f: number, _w: number, _h: number, _d: number): void {}
-  overlay(_f: number, _o: OverlayState): void {}
-  select(_f: number, _x: number, _y: number): void {}
-  onPublish(_f: number, _cb: (kind: number, seq: number) => void): void {}
-  unpublished(_f: number): number {
-    return 0;
+  private readonly post: (buf: ArrayBuffer, len: number) => void;
+  private readonly raf: (cb: () => void) => void;
+  private readonly free: ArrayBuffer[] = [
+    new ArrayBuffer(BATCH_BYTES),
+    new ArrayBuffer(BATCH_BYTES),
+  ];
+  private inFlight = 0;
+
+  constructor(post: (buf: ArrayBuffer, len: number) => void, o: BatchOptions = {}) {
+    super(o);
+    this.post = post;
+    this.raf = o.raf ?? defaultRaf;
   }
-  drop(_f: number): void {}
-  flush(): void {}
-  close(): void {}
-  acked(_buf: ArrayBuffer, _depth = 1): void {}
+
+  /** On the animation frame: one batch of pending records, unless one is in flight. */
+  flush(): void {
+    if (this.closed || this.inFlight > 0) return;
+    const buf = this.free.shift();
+    if (buf === undefined) return;
+    const d = new DataView(buf);
+    let len = 0;
+    for (const [k, r] of this.pending) {
+      if (len + r.size > BATCH_BYTES) break;
+      const p = this.write(d, len, r);
+      len += r.size;
+      this.pending.delete(k);
+      this.published(r, p, r.size);
+    }
+    if (len === 0) {
+      this.free.push(buf);
+      return;
+    }
+    this.inFlight += 1;
+    this.stats.batches += 1;
+    this.stats.batchesInFlightMax = Math.max(this.stats.batchesInFlightMax, this.inFlight);
+    this.post(buf, len);
+  }
+
+  /**
+   * The worker's `input-ack`: the buffer comes back and the next batch may go. `depth` is the
+   * number of batches the worker held unapplied when this one arrived, this one included (1).
+   */
+  acked(buf: ArrayBuffer, depth = 1): void {
+    this.stats.batchesInFlightMax = Math.max(this.stats.batchesInFlightMax, depth);
+    if (this.closed) return;
+    this.inFlight = Math.max(0, this.inFlight - 1);
+    if (buf.byteLength === BATCH_BYTES && this.free.length < 2) this.free.push(buf);
+    this.schedule(this.raf);
+  }
+
+  protected enqueue(r: Rec, key = `${String(r.kind)}:${String(r.frame)}`): void {
+    if (this.closed) return;
+    if (r.discrete !== true && this.pending.delete(key)) {
+      this.stats.coalesced += 1;
+    } else if (r.discrete === true) {
+      this.capSelects(r.frame);
+    }
+    this.pending.set(key, r);
+    this.schedule(this.raf);
+  }
+
+  protected countOverflow(): void {
+    this.stats.overflow += 1;
+  }
 }

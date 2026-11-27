@@ -11,6 +11,11 @@
  * The probe build adds `probe-input` both ways (the worker's decoded records, `e2e:shim-fuzz`) and
  * `probe-synth` and `probe-chunk` both ways (plan #68 C2d1 §3.2: F1c built in the worker,
  * acknowledged; the frame's chunk described).
+ *
+ * Plan #68 C2d2 (§3.2): `boot` carries `mode`. The ST engine (`mode: 'st'`) has no pool and its own
+ * memory: its `status` has no `memory`, and input goes as `input-batch` (main → render, the buffer
+ * transferred) answered by `input-ack` (render → main, the buffer transferred back after the tick
+ * that applied it). At most one batch is unacknowledged.
  */
 import type { DrawnEvent, FrameSummary, HoverEvent, HoverItem, PlotRect, ValueRange } from '../api';
 
@@ -26,12 +31,14 @@ export interface BootMessage {
   readonly t: 'boot';
   readonly module: WebAssembly.Module;
   readonly forceT2: boolean;
+  /** Plan #68 C2d2: the shared-memory engine or the single-thread one. */
+  readonly mode: 'mt' | 'st';
   /** T03 §9.1 capability bits (`layout.gen.ts` `CAP_*`). */
   readonly caps: number;
   /** `performance.timeOrigin` of the main thread: worker times are reported on it. */
   readonly mainTimeOrigin: number;
-  /** Pool threads. */
-  readonly pool: number;
+  /** Pool threads (MT only). */
+  readonly pool?: number;
   /** Fault builds only: the fault's name (`engine/faults.ts`). */
   readonly fault?: string;
   /** The probe build only: the input ring's counters start here (`engine_probe_ring_start`). */
@@ -62,6 +69,8 @@ export type MainToRender =
   | { readonly t: 'dispose'; readonly id: number }
   /** A record was published while the worker was idle (T03-004 revised). */
   | { readonly t: 'input' }
+  /** ST (plan #68 C2d2 §3.2): records `[0, len)` of `buf` (transferred), in the ring's format. */
+  | { readonly t: 'input-batch'; readonly buf: ArrayBuffer; readonly len: number }
   /** The probe build: post the decoded input records back. */
   | { readonly t: 'probe-input' }
   /** The probe build (plan #68 C2b §3.4): hold the frame after its presentation of `seq`. */
@@ -87,7 +96,18 @@ export type RenderToMain =
       readonly status: number;
       readonly adapter: string;
       readonly cb: number;
-      readonly memory: WebAssembly.Memory;
+      /** The shared memory (MT); the ST engine's memory is its own. */
+      readonly memory?: WebAssembly.Memory;
+    }
+  /**
+   * ST (plan #68 C2d2 §3.2): a batch's buffer back after the tick that applied it; `depth` is the
+   * number of batches the worker held unapplied at once (1), `bad` its `INPUT_BAD` count.
+   */
+  | {
+      readonly t: 'input-ack';
+      readonly buf: ArrayBuffer;
+      readonly depth: number;
+      readonly bad: number;
     }
   | { readonly t: 'spawn-pool'; readonly ptr: number }
   | { readonly t: 'events'; readonly json: string }

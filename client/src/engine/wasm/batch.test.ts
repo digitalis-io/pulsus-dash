@@ -59,13 +59,15 @@ function records(
     const kind = d.getUint8(at);
     const size = d.getUint16(at + 2, true);
     const frame = d.getUint32(at + (kind === KIND_RESIZE ? 36 : 16), true);
-    // The payload's first value: Camera view lo, Resize CSS width, Overlay key.
+    // The payload's first value: Camera view lo, Resize CSS width, Overlay key, Select x.
     const v =
       kind === KIND_CAMERA
         ? d.getFloat64(at + 24, true)
         : kind === KIND_RESIZE
           ? d.getFloat32(at + 16, true)
-          : d.getUint32(at + 40, true);
+          : kind === 0x24
+            ? d.getUint32(at + 40, true)
+            : d.getFloat64(at + 24, true);
     out.push({ kind, size, seq: d.getUint32(at + 4, true), frame, v });
     if (size < 16) break;
     at += size;

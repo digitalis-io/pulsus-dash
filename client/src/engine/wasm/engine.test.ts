@@ -430,7 +430,7 @@ function batchRecords(m: Msg | undefined): [number, number][] {
   if (m === undefined) return [];
   const d = new DataView(m['buf'] as ArrayBuffer, 0, m['len'] as number);
   const out: [number, number][] = [];
-  for (let at = 0; at < d.byteLength; ) {
+  for (let at = 0; at < d.byteLength;) {
     const kind = d.getUint8(at);
     out.push([kind, d.getUint32(at + (kind === KIND_RESIZE ? 36 : 16), true)]);
     at += d.getUint16(at + 2, true);

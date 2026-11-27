@@ -1,14 +1,17 @@
 /**
  * The application shell (D9, ADR-0014 §10): skip link, collapsible sidebar, page header and the
- * scrolling page body. Owns the window keys and auto-refresh, which act on the URL time Context.
+ * scrolling page body; under the header, the ST engine's banner (plan #68 C2d2). Owns the window
+ * keys and auto-refresh, which act on the URL time Context.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Outlet } from 'react-router';
 import { useShellFocusRequest } from '../app/providers';
+import { engineMode, onEngineMode } from '../engine';
 import { useAutoRefresh } from '../state/useAutoRefresh';
 import { useTimeContext } from '../state/useTimeContext';
 import { useWindowKeys } from '../state/useWindowKeys';
 import { safeStorage } from '../theme/theme';
+import { EngineModeBanner } from './EngineModeBanner';
 import { Header } from './Header';
 import { PageTitleProvider } from './PageTitle';
 import { Sidebar } from './Sidebar';
@@ -22,6 +25,8 @@ export function AppShell() {
   const focusRequest = useShellFocusRequest();
   const mainRef = useRef<HTMLElement>(null);
   const [sidebar, setSidebar] = useState<SidebarState>(() => readSidebarState(safeStorage()));
+  // Plan #68 C2d2 §4.4: the ST engine's banner, once per page.
+  const mode = useSyncExternalStore(onEngineMode, engineMode);
   useWindowKeys(time.dispatch);
   useAutoRefresh(time.search.refresh, time.refreshNow);
 
@@ -44,6 +49,7 @@ export function AppShell() {
         <Sidebar state={sidebar} onToggle={toggle} />
         <div className={cx(styles['column'])}>
           <Header />
+          <EngineModeBanner mode={mode} />
           <main id="main" ref={mainRef} tabIndex={-1} className={cx(styles['main'])}>
             <Outlet />
           </main>

@@ -297,7 +297,10 @@ describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', 
     const core = rowsOf(r, 'core');
     expect(core.map((c) => c.file)).toEqual(['core mt', 'core st']);
     const init = (rowsOf(r, 'initialJs')[0]?.bytes ?? 0) + (rowsOf(r, 'initialCss')[0]?.bytes ?? 0);
-    expect(core.map((c) => c.bytes)).toEqual([init + (mt[0]?.bytes ?? 0), init + (st[0]?.bytes ?? 0)]);
+    expect(core.map((c) => c.bytes)).toEqual([
+      init + (mt[0]?.bytes ?? 0),
+      init + (st[0]?.bytes ?? 0),
+    ]);
     expect(core[0]?.budget).toBe(2_999_999);
     expect(rowsOf(r, 'engine')).toEqual([]);
     const total = r.rows.find((row) => row.cls === 'totalExceptEngine');
@@ -319,7 +322,15 @@ describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', 
     }
     expect(brotliSize(b) + rest).toBe(1_900_001);
     expect(rules(makeDist({ files: { [ST_WASM]: b } }))).toEqual(['over-budget:engineSt']);
-  });
+    // One byte less is within the row.
+    let m = n - 1;
+    let c = randomBytes(m, 9);
+    for (let i = 0; i < 40 && brotliSize(c) + rest !== 1_900_000; i++) {
+      m += 1_900_000 - (brotliSize(c) + rest);
+      c = randomBytes(m, 9);
+    }
+    expect(rules(makeDist({ files: { [ST_WASM]: c } }))).toEqual([]);
+  }, 120_000);
   it('an MT engine over 1.9 MB', () => {
     expect(rules(makeDist({ files: { [ENGINE_WASM]: randomBytes(2_000_000, 4) } }))).toEqual([
       'over-budget:engineMt',
@@ -333,13 +344,21 @@ describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', 
       rules(
         makeDist({
           ...o,
-          files: { ...o.files, [ENGINE_WASM]: randomBytes(950_000, 8), [ST_WASM]: randomBytes(1_000_000, 10) },
+          files: {
+            ...o.files,
+            [ENGINE_WASM]: randomBytes(950_000, 8),
+            [ST_WASM]: randomBytes(1_000_000, 10),
+          },
         }),
       ),
     ).toEqual(['over-budget:engineMt', 'over-budget:engineSt']);
   });
   it('an engine chunk in the initial JS, either mode or shared', () => {
-    for (const f of ['assets/dash-engine-c.js', 'assets/dash-engine-st-c.js', 'assets/dash-engine-mt-c.js']) {
+    for (const f of [
+      'assets/dash-engine-c.js',
+      'assets/dash-engine-st-c.js',
+      'assets/dash-engine-mt-c.js',
+    ]) {
       const dist = makeDist({
         entryImports: ['_e.js'],
         manifest: { '_e.js': { file: f } },
@@ -361,7 +380,10 @@ describe('bundle-size engine rows per mode (PRF-009, plan #68 C1, C2d2 §3.4)', 
     // initial JS and the total fail too: their budgets make 3 MB unreachable otherwise).
     const r = checkBundle(
       makeDist({
-        files: { [ST_WASM]: randomBytes(1_800_000, 11), 'assets/index-x.js': randomBytes(1_250_000, 12) },
+        files: {
+          [ST_WASM]: randomBytes(1_800_000, 11),
+          'assets/index-x.js': randomBytes(1_250_000, 12),
+        },
       }),
       budgets,
     );

@@ -196,7 +196,9 @@ test.describe('e2e:csp-violations (engine)', () => {
     const html = page.locator('html');
     await expect(html).toHaveAttribute('data-dash-status', '2');
     await expect(html).toHaveAttribute('data-dash-mode', 'st');
-    for (const c of await page.locator('[data-gallery-id^="line-"] canvas:not([data-retired])').all())
+    for (const c of await page
+      .locator('[data-gallery-id^="line-"] canvas:not([data-retired])')
+      .all())
       await expect(c).toHaveAttribute('data-engine', 'wasm-webgl2');
     expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
     expect(await page.evaluate(() => window.__cspViolations), 'ST gallery').toEqual([]);
@@ -211,9 +213,11 @@ test.describe('e2e:csp-violations (engine)', () => {
         out.push(`string: ${(e as Error).name}`);
       }
       try {
-        const tt = (globalThis as unknown as {
-          trustedTypes: { createPolicy(n: string, r: unknown): unknown };
-        }).trustedTypes;
+        const tt = (
+          globalThis as unknown as {
+            trustedTypes: { createPolicy(n: string, r: unknown): unknown };
+          }
+        ).trustedTypes;
         tt.createPolicy('pulsus-engine', { createScriptURL: (u: string) => u });
         out.push('policy: made');
       } catch (e) {
