@@ -835,7 +835,7 @@ FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 | `stat-sparkline` | p99 latency with a sparkline, 1 series × 120 points (ms) |
 | `line-extreme` | Values near the largest finite number, 1 series × 1 440 points mapped onto [−MAX, MAX] (#97) |
 | `line-events` | Request rate with deploy and change markers, 1 series × 1 440 points (`rps`): a deploy at 30 % of the window, and a config and a feature flag change 30 s apart at 70 %, gathered into a `+2` chip (#64 Part C) |
-| `line-bytes-rate` | Network receive rate, 1 series × 1 440 points around 2.5 ± 0.8 MiB/s (bytes per second, IEC ticks; #290) |
+| `line-bytes-rate` | Network receive rate, 1 series × 1 440 points in bytes per second (synthetic base 2.5 MiB/s, amplitude 0.8 MiB/s, both scaled by the series' seeded factor), on IEC ticks: `0 B/s`, `512 KiB/s`, `1 MiB/s` … (#290) |
 | `stat-uptime` | Uptime, 671 000 s → `7.77 d` (#290) |
 
 and five bar charts (#173 Part 2, `src/dev/galleryBars.ts`), each a `barchartModel` in
