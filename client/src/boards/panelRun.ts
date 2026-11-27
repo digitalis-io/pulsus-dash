@@ -52,6 +52,8 @@ export interface PanelOutcome {
   readonly rank?: 0 | 1;
   /** A line frame fades from the rank 0 fill it replaces (Part B §4.3, ADR-0039). */
   readonly transition?: 'crossfade';
+  /** Store-backed: the visible part's identity (`Assembled.vsig`). */
+  readonly vsig?: string;
 }
 
 /** A LogQL stream panel's pager and its unsaved controls (plan #67 §3.1). */

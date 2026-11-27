@@ -47,6 +47,7 @@ export function outcomeOf(
     result: fromRange(a.visible),
     held: fromRange(a.held),
     fit: a.fit,
+    vsig: a.vsig,
     ...(transition === undefined ? {} : { transition }),
   };
   byFade.set(fk, o);
@@ -134,6 +135,10 @@ export function useStoreRun(
       if (q === undefined || q.state.status === 'error' || !fromStore(data)) return;
       const a = store.peek(view);
       if (a === null || a.rank !== 1) return;
+      // Only when the visible part changed (a refetch landed): flanks alone wait for the next
+      // view, so a frame's crosshair and hover are not reset by a prefetch landing (they feed
+      // every pan and zoom from its first frame).
+      if (data?.vsig === a.vsig) return;
       qc.setQueryData(key, outcomeOf(key, a, view.id.scope));
     });
   }, [store, view, bypassed, qc, key]);

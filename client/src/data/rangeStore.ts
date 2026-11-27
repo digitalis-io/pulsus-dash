@@ -71,6 +71,8 @@ export interface Assembled {
   readonly stale: readonly TimeWindow[];
   /** 1: every visible bucket at the view's step; 0: a fill from other steps (Part B). */
   readonly rank: 0 | 1;
+  /** The visible part's identity (its segments and stale spans): equal when only flanks changed. */
+  readonly vsig: string;
 }
 
 /** Admission refused (§4.2): the panel uses today's single request. */
@@ -807,6 +809,7 @@ export function createRangeStore(d: StoreDeps): RangeStore {
       fit: { fromMs: v.grid.startMs, toMs: v.grid.endMs },
       stale,
       rank: 1,
+      vsig: `${visibleParts.map((p) => `${String(p.seg.seq)}:${String(p.k0)}-${String(p.k1)}`).join(',')}|${JSON.stringify(stale.filter((w) => w.toMs >= v.grid.startMs && w.fromMs <= v.grid.endMs))}`,
     };
     if (cached !== undefined) assemblyBytes -= cached.bytes;
     assemblies.set(ak, { sig, a, bytes: size });
@@ -901,6 +904,7 @@ export function createRangeStore(d: StoreDeps): RangeStore {
       fit: { fromMs: v.grid.startMs, toMs: v.grid.endMs },
       stale: [],
       rank: f.rank,
+      vsig: `fill|${sig}`,
     };
     fills.set(vk, { sig, a });
     if (fills.size > 256) {
