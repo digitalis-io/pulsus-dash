@@ -149,7 +149,7 @@ func TestPromqlRangeItest(t *testing.T) {
 				t.Fatalf("range %d %s", code, b)
 			}
 			r := decodeRange(t, b)
-			if r.Step != 5000 || r.Start != 1767225600000 || r.End != 1767229200000 || len(r.Frames) != 2 {
+			if r.Step != 15000 || r.Start != 1767225600000 || r.End != 1767229200000 || len(r.Frames) != 2 {
 				t.Fatalf("step %d start %d end %d frames %d", r.Step, r.Start, r.End, len(r.Frames))
 			}
 			var body struct {
@@ -177,7 +177,7 @@ func TestPromqlRangeItest(t *testing.T) {
 						t.Errorf("frame %d label %s = %q, want %q", i, k, f.Labels[k], v)
 					}
 				}
-				if len(f.Timestamps) != 721 || len(f.Values) != 721 {
+				if len(f.Timestamps) != 241 || len(f.Values) != 241 {
 					t.Fatalf("frame %d: %d timestamps %d values", i, len(f.Timestamps), len(f.Values))
 				}
 				given := map[int64]string{}
@@ -185,7 +185,7 @@ func TestPromqlRangeItest(t *testing.T) {
 					given[int64(p[0].(float64))*1000] = p[1].(string)
 				}
 				for j, ts := range f.Timestamps {
-					if ts != 1767225600000+int64(j)*5000 {
+					if ts != 1767225600000+int64(j)*15000 {
 						t.Fatalf("frame %d timestamp %d = %d", i, j, ts)
 					}
 					v, present := frameValue(t, f.Values[j])
@@ -207,7 +207,7 @@ func TestPromqlRangeItest(t *testing.T) {
 				t.Fatalf("%d upstream requests", len(reqs))
 			}
 			f := reqs[0].Form
-			if f.Get("start") != "1767225600" || f.Get("end") != "1767229200" || f.Get("step") != "5" || f.Get("query") != counterQuery {
+			if f.Get("start") != "1767225600" || f.Get("end") != "1767229200" || f.Get("step") != "15" || f.Get("query") != counterQuery {
 				t.Errorf("upstream form %v", f)
 			}
 			if m := regexp.MustCompile(`^([0-9]+)ms$`).FindStringSubmatch(f.Get("timeout")); m == nil {
