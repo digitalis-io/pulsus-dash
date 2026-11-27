@@ -110,7 +110,10 @@ test.describe('e2e:board-overscan (fake)', () => {
         await expect.poll(() => frameWindow(page, 'Wave')).toEqual([w, w + HOUR]);
         expect(await label(page, 'Wave')).toMatch(/max 7\.9/);
         await page.waitForTimeout(1_000);
-        const after = (await records(request, 'overscan-wave', t0)).slice(before.length);
+        // The view's step (the Part B ladder runs at its own, coarser step and is not this pan's).
+        const after = (await records(request, 'overscan-wave', t0))
+          .slice(before.length)
+          .filter((r) => r.step === '15');
         for (const r of after) {
           // Only the next flank (or the ladder's), wholly outside the new window.
           expect(meets(r, w, w + HOUR), `${r.start}..${r.end} meets the window`).toBe(false);

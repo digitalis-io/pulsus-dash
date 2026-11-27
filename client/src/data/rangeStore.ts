@@ -94,6 +94,8 @@ export interface RangeStore {
   peekFilled(v: RangeView): Assembled | null;
   /** JSON of `stale` (for `useSyncExternalStore`). */
   staleSpans(v: RangeView): string;
+  /** Every visible bucket is held and fresh for `v` (a load would issue no request). */
+  fresh(v: RangeView): boolean;
   bypassed(idKey: string): boolean;
   scopeOf(tenant: string): string;
   /** A cached read is allowed: the current epoch was confirmed less than 5 min ago. */
@@ -1094,6 +1096,15 @@ export function createRangeStore(d: StoreDeps): RangeStore {
       if (i === undefined || !allHeld(v, i)) return '[]';
       const s = staleOf(v, i, heldRun(v, i));
       return s.length === 0 ? '[]' : JSON.stringify(s);
+    },
+    fresh(v) {
+      if (!readable(v)) return false;
+      const i = idents.get(v.idKey);
+      if (i === undefined) return false;
+      return bucketsOf(v.visible).every((k) => {
+        const s = i.buckets.get(k);
+        return s !== undefined && fresh(k, s, v);
+      });
     },
     bypassed: (idKey) => idents.get(idKey)?.bypassed === true,
     scopeOf,

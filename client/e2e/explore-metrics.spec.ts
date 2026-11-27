@@ -291,9 +291,13 @@ test.describe('e2e:explore-picker-inert', () => {
   test.use({ baseURL: HTTP_BFF });
 
   test('the page is inert while the metric list is open', async ({ page }) => {
+    // The runs of the window: requests that cover it (flank and ladder requests of the range
+    // store, #304, lie outside it).
     const ranges: string[] = [];
     page.on('request', (r) => {
-      if (r.url().includes('/api/dash/v1/query/promql/range')) ranges.push(r.url());
+      if (!r.url().includes('/api/dash/v1/query/promql/range')) return;
+      const b = r.postDataJSON() as { from?: number; to?: number } | null;
+      if ((b?.from ?? Infinity) <= W0 && (b?.to ?? -Infinity) >= W0 + HOUR) ranges.push(r.url());
     });
     await open(page, exploreUrl('http_requests_total'));
     // The fake's counter-rate transcript: two series.

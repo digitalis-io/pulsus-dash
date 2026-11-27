@@ -353,6 +353,12 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   useEffect(() => {
     if (leased && enabled && !isFetching) void refetch();
   }, [leased, enabled, isFetching, refetch]);
+  // A same-key view that the held data no longer satisfies (Refresh now under an absolute
+  // window: a new refresh epoch; the shell's refetch ran before this render's view): load again.
+  const behind = view !== null && data !== null && fromStore(data) && !store.fresh(view);
+  useEffect(() => {
+    if (behind && enabled && !isFetching) void refetch({ cancelRefetch: true });
+  }, [behind, view, enabled, isFetching, refetch]);
 
   const rejection = query.isError && !isAbort(query.error) ? query.error : null;
   const serverMissing = useMemo(() => missingOf(rejection), [rejection]);

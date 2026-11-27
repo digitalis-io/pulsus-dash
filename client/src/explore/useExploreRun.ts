@@ -161,7 +161,9 @@ export function useExploreRun(a: RunInput): ExploreRun {
   );
   const widthPx = a.widthPx;
   const anchorMs = a.anchorMs ?? toMs;
-  const epoch = a.epoch ?? 0;
+  // Run (rerun) asks again even when the store holds the window: a local epoch on top of the page's.
+  const [runSeq, setRunSeq] = useState(0);
+  const epoch = (a.epoch ?? 0) + runSeq;
   const planned = useMemo(
     () =>
       store.enabled &&
@@ -260,8 +262,19 @@ export function useExploreRun(a: RunInput): ExploreRun {
 
   const refetch = query.refetch;
   const rerun = useCallback(() => {
+    setRunSeq((n) => n + 1);
     void queryClient.cancelQueries({ queryKey: key, exact: true }).then(() => refetch());
   }, [queryClient, key, refetch]);
+  // A same-key view the held data no longer satisfies (Run, Refresh now): load again.
+  const behind =
+    view !== null &&
+    query.data !== undefined &&
+    query.data.scope !== undefined &&
+    !store.fresh(view);
+  const fetchingNow = query.isFetching;
+  useEffect(() => {
+    if (behind && !fetchingNow) void refetch({ cancelRefetch: true });
+  }, [behind, view, fetchingNow, refetch]);
 
   const [last, setLast] = useState<Last | null>(null);
   const data = query.data;
