@@ -79,7 +79,10 @@ describe('unit:board-tags-toolbar', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Board tags' })).toBeNull();
     });
-    expect(within(toolbar()).getByRole('button', { name: 'Tags (1)' })).toHaveFocus();
+    // The popover restores focus once it has closed.
+    await waitFor(() => {
+      expect(within(toolbar()).getByRole('button', { name: 'Tags (1)' })).toHaveFocus();
+    });
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
   });
 
