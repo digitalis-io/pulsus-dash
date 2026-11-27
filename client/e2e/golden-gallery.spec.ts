@@ -86,3 +86,28 @@ for (const [page, ids] of Object.entries(GEO_PAGES)) {
     });
   }
 }
+
+/**
+ * The whole map host of `geomap-groups` (H) per theme (review r1): the surface, the legend and the
+ * coverage meter, so their look is covered as well as the canvas.
+ */
+for (const theme of ['dark', 'light', 'greyscale'] as const) {
+  test(`golden:gallery geomap-groups-panel ${theme}`, async ({ page: p }) => {
+    await p.addInitScript((t) => {
+      localStorage.setItem('pulsus-dash.theme', t === 'light' ? 'light' : 'dark');
+    }, theme);
+    await open(p, '/t/demo/dev/geo?page=geomap-groups');
+    await expect(
+      p.locator('[data-geo-gallery] [data-chart-frame][data-frame-ready="true"]'),
+    ).toHaveCount(1);
+    await expect(p.locator('[data-geo-legend] button')).toHaveCount(8);
+    if (theme === 'greyscale') {
+      await p.evaluate(() => {
+        for (const c of document.querySelectorAll('canvas')) c.style.filter = 'grayscale(1)';
+      });
+    }
+    await expect
+      .soft(p.locator('[data-geo-gallery="geomap-groups"] [data-geomap]'))
+      .toHaveScreenshot(`geomap-groups-panel-${theme}.png`);
+  });
+}

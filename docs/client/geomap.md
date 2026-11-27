@@ -633,7 +633,12 @@ draw status. Export CSV downloads the CSV. "Show table" focuses the first toggle
 
 Every state but `ok` has a `role="status"` region (`tabIndex=-1`) from its first render. Focus
 moves to the new state's target, and the announcement follows, only when focus was inside the
-panel; focus in the board header or the Inspector stays there. When loading ends within 300 ms the
+panel at the moment of the move; focus in the board header or the Inspector stays there. That
+holds for the delayed move to the first list item too: if focus leaves the panel before the engine
+sends its marks, nothing moves and nothing is announced. The table follows the same rule: an
+explicit open (Shift+T, Show table) focuses its first toggle and an explicit close returns focus to
+Show table, else the map; a table that goes away or comes back with a state change (a new window)
+moves no focus. When loading ends within 300 ms the
 map comes back without an announcement. A state change never changes the selection or closes the
 Inspector. The meter reads `loading` while loading and `unavailable` for an error or invalid data.
 
@@ -693,7 +698,8 @@ The development and stub builds serve `/t/‹tenant›/dev/geo?page=` with `geom
 `geomap-groups` (H), `geomap-states` (G against thresholds, coloured by group and by state),
 `geomap-offline` (no rows at Dublin, zoom 6) and `geomap-bench` (Cap: 5 000 drawn), each map
 1024 × 512 on the bundled basemap with gazetteer T. `golden:gallery` compares the first three in
-dark, light and greyscale; `bench:geomap-markers` pans and zooms the last for 10 s.
+dark, light and greyscale (the map surface), and the whole `geomap-groups` host with its legend
+and coverage meter in the three themes; `bench:geomap-markers` pans and zooms the last for 10 s.
 
 ## Tests
 
