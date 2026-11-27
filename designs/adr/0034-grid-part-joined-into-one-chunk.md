@@ -40,7 +40,7 @@ thread would need to be resumable and time-sliced to keep frames on time (#281).
    | Memory | Bound |
    |---|---|
    | In flight | per decode, the B3 wire limits the decoder enforces (`wire/schemas/limits.json`: a frame payload of at most 64 MiB, a grid of at most 2²² points, the body and value budgets), × at most 2 decodes in flight per worker. A body over a limit fails the decode and is retried once as JSON |
-   | Completed | the worker's chunks that no frame holds, capped at 256 MiB with least-recently-used eviction; plus the main thread's arrays of each result, held by the query cache |
+   | Completed | the worker's chunks that no frame holds, capped at 256 MiB with least-recently-used eviction, enforced whenever a chunk is added or a frame lets one go; plus the main thread's arrays of each result, held by the query cache. A result no array will hold (refused on main, or arriving for an aborted request) is released at once |
 
    The main thread pauses reading a body while 8 MiB or more of it is posted and not yet consumed;
    this is a pause threshold, not a cap. It never posts a read over B3's `max_chunk` (128 MiB): it

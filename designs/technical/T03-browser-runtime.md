@@ -748,8 +748,9 @@ render worker holds the DSF decode service and the **chunk table**: decoded chun
 from 1, increasing and never reused within the worker's life (a restart starts a new table under a
 new epoch; at `u32::MAX` a decode fails with `ids` and is retried as JSON). A chunk is held while a
 frame keeps it; the chunks held by no frame are capped at 256 MiB, evicted least recently used
-first. A decoded result's series array is registered on main by identity; its collection releases
-the entry. At most 2 decodes are in flight per worker; each is bounded by the B3 wire limits the
+first, whenever a chunk is added or a frame lets one go. A decoded result's series array is
+registered on main by identity; its collection releases the entry, and a result no array will hold
+(refused on main, or arriving for an aborted request) is released at once. At most 2 decodes are in flight per worker; each is bounded by the B3 wire limits the
 decoder enforces. The render worker never decodes: it copies each read into slabs and posts the
 results at tick start; the pool feeds the decoder and joins the grid part's batch chunks.
 
