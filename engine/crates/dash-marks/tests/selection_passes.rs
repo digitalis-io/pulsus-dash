@@ -35,8 +35,9 @@ const T1: f64 = T0 + 3_600_000.0;
 const A1: &str = "00000000000000a1";
 const A2: &str = "00000000000000a2";
 const LINE: &str = r#"{"kind":"line","title":"T","unit":{"kind":"none"}}"#;
-/// FNV-1a of the C2c1 render of `S3` at 800×240, dark, no selection (T1, T2), on the pinned Mesa.
-const C2C1_S3: [u64; 2] = [0xeda4_0b2a_9be2_63dd, 0xeda4_0b2a_9be2_63dd];
+/// FNV-1a of the C2c1 render of `S3` at 800×240, dark, no selection (T1, T2), on the pinned Mesa;
+/// #282 Part 2b: the `chart-grid` guides and the `chart-axis` baseline.
+const C2C1_S3: [u64; 2] = [0x31d1_6088_e372_1374, 0x31d1_6088_e372_1374];
 
 struct Image {
     w: u32,

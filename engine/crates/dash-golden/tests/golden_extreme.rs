@@ -69,7 +69,7 @@ fn golden_extreme_range() {
         };
         list.items.retain(|i| matches!(i, MarkItem::Line { .. }));
         assert_eq!(list.items.len(), 1, "{name}: no line item");
-        list.palette = [WHITE; 9];
+        list.palette = [WHITE; 10];
         list.clear = BLACK;
         let a = render_list(
             &t1,

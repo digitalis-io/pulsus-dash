@@ -107,6 +107,8 @@ export type VisSpec =
       readonly valueRange?: ValueRange;
       /** Absent = none; at most 8 are drawn, in order (ADR-0022). */
       readonly thresholds?: readonly ThresholdLine[];
+      /** A gradient area under 1–4 series (ADR-0036); absent or false = none. */
+      readonly area?: boolean;
     }
   | {
       readonly kind: 'bars';

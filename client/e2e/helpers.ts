@@ -91,6 +91,8 @@ export const GALLERY_IDS = [
   'line-events',
   'line-bytes-rate',
   'stat-uptime',
+  'line-area',
+  'line-area-manual',
   'barchart',
   'barchart-thresholds',
   'barchart-dupes',

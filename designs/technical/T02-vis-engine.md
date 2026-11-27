@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.21-rc · 2026-11-27 |
+| **Version** | 1.22-rc · 2026-11-27 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
-| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md), [ADR-0032](../adr/0032-selection-dims-as-one-layer.md) |
+| **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md), [ADR-0032](../adr/0032-selection-dims-as-one-layer.md), [ADR-0036](../adr/0036-line-spec-area.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
 
 ## 0. Applicability under ADR-0014 (2026-11-19)
@@ -422,6 +422,24 @@ T1; on T2, and for a line whose data lies beyond the clip box of its encoding (a
 tier), `dash-scales::decimate` runs them on the CPU with the same bits and clips far segments in
 f64 before encoding. Values are compared as order-preserving integer keys of their f32 bits, so
 both paths give identical instances (T02-029).
+
+**Line area (M2 under M1, #282 Part 2b, [ADR-0036](../adr/0036-line-spec-area.md)).** A line
+spec with `area: true` is shaded under 1–4 shown series (none under any selection, lanes, forced
+colours or reduced transparency): each series' area is a vertical gradient of its hue from
+`opacity.chart-area` ÷ shown at the plot's top to 0 at its bottom, under the line's joins only. One
+gap rule holds in both engines: a NaN breaks only the join from the last finite sample before it to
+the first finite sample after it, and columns without samples are joined. **The piecewise edge
+rule:** a join's span splits where the line crosses the plot's top and bottom rows; above the plot
+the area fills from the top, inside from the line, below not at all. On the GPU the area is a second
+instanced draw over the line's own instances (`area.wgsl`, `common.wgsl` shared with `line.wgsl`):
+each SEGMENT becomes one quad over the join's x-span and the plot's height, clipped ends are rebuilt
+from the cut parameter and side the instance already carries, and every area of an item (all
+batches, deferred T1 included) is drawn before its first line pass, with the guides under it.
+Canvas 2D builds the same polygons in value space and projects only in-range values, fraction
+first. Piece boundaries agree within ±1 device px (`engine/fixtures/area-pieces.json`). The draw
+list's palette has ten slots: 0–7 series, 8 `chart-grid` (the value guides), 9 `chart-axis` (a 1 px
+baseline at `round(plot.y + plot.h) − 1`). Threshold dashes are 4 on, 5 off (`chart-dash`,
+`chart-dash-gap`).
 
 **Gaps.** A null in the validity bitmap breaks M1 and M2 strips. The default null handling is
 "gaps": absent samples are drawn as gaps and never interpolated. "Connect under a threshold" and
@@ -871,4 +889,5 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.18-rc | 2026-11-26 | #68 Part C2c2: §4.2 cross-cutting **Emphasis**: the selection on the engine line mark, one decimation drawn in lane passes in Canvas 2D's per-series order (ADR-0025 decision 4), the unmatched series through one dim layer composited once at `dimmed` ([ADR-0032](../adr/0032-selection-dims-as-one-layer.md)); the interval band in the layer overlay |
 | 1.19-rc | 2026-11-27 | #282 Part 2a: §4.8 Stat row: the interim client's stat tile has its value top left, a reserved subline and a full-width sparkline with an `opacity.area` fill (ADR-0022's 104 px kept); Satisfies row PRF-020: `bench:log-scroll` measures the 24 px rows |
 | 1.20-rc | 2026-11-27 | Input mapping: a 2D time chart zooms only with `Ctrl`/`⌘` held; a plain wheel scrolls the page ([03](../product/03-interaction-model.md) §4.1 note, 2026-11-27) |
-| 1.21-rc | 2026-11-27 | #304 (numbered after #282 Part 2a's 1.19-rc and the input mapping's 1.20-rc) ([ADR-0038](../adr/0038-page-range-store-and-scope-lease.md), [ADR-0039](../adr/0039-data-crossfade-on-the-seam.md)): §4.3 v1 note (the line's auto-fit over `fit`); T02-007 v1 (the data crossfade as `transition: 'crossfade'` in both engines, reduced motion cuts) |
+| 1.21-rc | 2026-11-27 | #282 Part 2b ([ADR-0036](../adr/0036-line-spec-area.md)): §4.4 the line area (M2 under M1): the gap and piecewise edge rules, the area pass over the line instances before any stroke, palette slots 8 `chart-grid` and 9 `chart-axis`, the baseline, 4/5 threshold dashes |
+| 1.22-rc | 2026-11-27 | #304 (numbered after #282 Part 2a's 1.19-rc, the input mapping's 1.20-rc and #282 Part 2b's 1.21-rc) ([ADR-0038](../adr/0038-page-range-store-and-scope-lease.md), [ADR-0039](../adr/0039-data-crossfade-on-the-seam.md)): §4.3 v1 note (the line's auto-fit over `fit`); T02-007 v1 (the data crossfade as `transition: 'crossfade'` in both engines, reduced motion cuts) |

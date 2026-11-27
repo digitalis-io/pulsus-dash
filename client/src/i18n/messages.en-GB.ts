@@ -674,6 +674,8 @@ export const messages = {
   'gallery.lineExtreme': 'Values near the largest finite number',
   'gallery.lineEvents': 'Request rate with deploy and change markers',
   'gallery.lineBytesRate': 'Network receive rate',
+  'gallery.lineArea': 'Shaded series with a partial span and a gap',
+  'gallery.lineAreaManual': 'Shaded series on a pinned axis',
   'gallery.statUptime': 'Uptime',
   'gallery.barchart': 'Requests by version',
   'gallery.barchartThresholds': 'Errors by version with thresholds',

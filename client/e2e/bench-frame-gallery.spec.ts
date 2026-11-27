@@ -44,6 +44,8 @@ const PAGES: readonly { id: string; series: number; points: number }[] = [
   { id: 'line-thresholds', series: 3, points: 3 * 1_440 },
   { id: 'line-extreme', series: 1, points: 1_440 },
   { id: 'line-events', series: 1, points: 1_440 },
+  // #282 Part 2b: the shaded page (report-only fps until the lab, T05 §4.3).
+  { id: 'line-area', series: 3, points: 1_440 + 865 + 1_440 },
 ];
 
 const LEGS: readonly { leg: BenchLeg; query: string }[] = [

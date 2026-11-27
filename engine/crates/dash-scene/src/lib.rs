@@ -1,6 +1,7 @@
 //! The scene model (T02-020): viewports, cameras, specs, frame summaries and the frame build
 //! (plan #68 §3.8). No GPU dependency: `dash-marks` is used for its descriptions only.
 
+pub mod area;
 mod build;
 pub mod camera;
 pub mod hover;
@@ -9,6 +10,7 @@ pub mod selection;
 mod spec;
 mod summary;
 
+pub use area::{AreaPiece, PieceClass, area_pieces, join_ends};
 pub use build::{Built, StageInfo, build, build_frame};
 pub use camera::{Camera, PlotCamera, YRange};
 pub use selection::{SelectionIn, emphasis, matched, selection_band};

@@ -15,8 +15,8 @@ pub struct DrawList {
     pub dpr: f32,
     /// Reduced from the camera's f64 `DMat4` (column-major).
     pub view_proj: [[f32; 4]; 4],
-    /// Slots 0–7 series, 8 grid.
-    pub palette: [Rgba8; 9],
+    /// Slots 0–7 series, 8 `chart-grid`, 9 `chart-axis` (the baseline).
+    pub palette: [Rgba8; 10],
     /// Plot rect in CSS px; manual axis only.
     pub clip: Option<[f32; 4]>,
     pub items: Vec<MarkItem>,
@@ -31,6 +31,8 @@ pub enum MarkItem {
         lines: Vec<f32>,
         /// x, y, w, h CSS px.
         plot: [f32; 4],
+        /// The plot's bottom baseline, y CSS px: `round(plot.y + plot.h) − 1` (#282 Part 2b).
+        baseline: f32,
     },
     /// A line over the series `series` of `chunk`.
     Line {
@@ -53,6 +55,8 @@ pub enum MarkItem {
         emphasis: Option<Emphasis>,
         /// A.3.3: CPU decimation with f64 segment clipping, on T1 and T2.
         far: bool,
+        /// The gradient area under the line's joins (ADR-0036); None = no area.
+        area: Option<Area>,
     },
     /// The overlay (plan #68 C2b §3.2): crosshair, hover dots and box band, drawn last, unclipped,
     /// in CSS px.
@@ -70,6 +74,14 @@ pub struct Emphasis {
     pub focus: Rgba8,
     /// The underlay is this much wider than the line, CSS px.
     pub underlay_extra_css: f32,
+}
+
+/// A Line item's area (ADR-0036): a vertical gradient under each join, `alpha_top` at the plot's
+/// top edge to 0 at its bottom, drawn before any stroke of the layer.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Area {
+    /// `opacity.chart-area` ÷ the series shown (1–4).
+    pub alpha_top: f32,
 }
 
 /// One overlay shape, CSS px.

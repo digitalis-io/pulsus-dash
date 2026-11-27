@@ -40,6 +40,7 @@ import type {
   VisSpec,
 } from '../api';
 import { drawBarchart, type BarPick } from './barchart';
+import { drawAreas } from './area';
 import { bucketScale, type BucketScale } from './bucketScale';
 import { bucketEnd, columnCount, lineColumns, mergeBuckets, type Column } from './columns';
 import type { Ctx2D } from './ctx';
@@ -404,8 +405,11 @@ function clipped(i: LayerInput, plot: PlotRect, marks: () => void): void {
 }
 
 /**
- * One line series: one vertex per non-null column at its last value (a new subpath after a gap),
- * one 1-px span per NaN-free run of a dense column, and a dot for a lone sample between gaps.
+ * One line series: per drawn column a vertex at its first and at its last value, one 1-px span per
+ * NaN-free run of a dense column, and a dot for a lone sample no join reaches. The join from the
+ * previous drawn column's last to this one's first breaks only where a NaN lies between them
+ * (`gapLead`), and the line breaks inside a column only at a NaN between its first and last
+ * (`gapInner`): the engine's rule (#282 Part 2b §4.2, A.15.2).
  */
 export function drawLineSeries(
   ctx: Ctx2D,
@@ -428,17 +432,21 @@ export function drawLineSeries(
   ctx.lineJoin = 'round';
   ctx.beginPath();
   const dots: Column[] = [];
-  // Columns without a sample are skipped: the path joins the nearest drawn columns and breaks only
-  // where a NaN lies between them (`breakBefore`).
+  // Columns without a sample are skipped: the path joins the nearest drawn columns.
   const drawn = cols.filter((c): c is Column => c !== null);
   drawn.forEach((c, k) => {
     const next = drawn[k + 1];
-    const starts = k === 0 || c.breakBefore;
-    const continued = next !== undefined && !next.breakBefore;
+    const joinIn = k > 0 && !c.gapLead;
+    const joinOut = next !== undefined && !next.gapLead;
     const vx = plot.x + c.x + 0.5;
-    if (!starts) ctx.lineTo(vx, y(c.last));
-    else if (!continued && c.count === 1) dots.push(c);
-    else ctx.moveTo(vx, y(c.last));
+    if (!joinIn && !joinOut && c.count === 1) {
+      dots.push(c);
+      return;
+    }
+    if (joinIn) ctx.lineTo(vx, y(c.first));
+    else ctx.moveTo(vx, y(c.first));
+    if (c.gapInner) ctx.moveTo(vx, y(c.last));
+    else ctx.lineTo(vx, y(c.last));
   });
   ctx.stroke();
   for (const c of dots) {
@@ -533,12 +541,16 @@ function drawLine(i: LayerInput, series: readonly SeriesFrame[]): LayerModel {
     return model(base);
   }
   drawAxes(i, plot, labels, true);
+  // The plot's bottom baseline over the guides (#282 Part 2b §4.2).
+  i.ctx.fillStyle = i.colours.axis;
+  i.ctx.fillRect(plot.x, Math.round(plot.y + plot.height) - 1, plot.width, 1);
   const matched = matchedKeys(
     i.selection,
     shown.map((s) => s.key),
   );
   if (matched === null) releaseScratch(i.scratch);
   const colourOf = (s: SeriesFrame): string => i.colours.series[seriesColourIndex(s)] ?? '';
+  drawAreas(i.ctx, i.spec, i.selection, shown, i.window, plot, axis.domain, colourOf);
   const sc = i.scratch;
   if (matched !== null && sc !== null && sc !== undefined) {
     // ADR-0032: the others dimmed together, one layer composited once at `dimmed`.
@@ -705,6 +717,9 @@ function drawBars(
   });
   if (isPlotEmpty(plot)) return model(base);
   drawAxes(i, plot, labels, true);
+  // The plot's bottom baseline over the guides (#282 Part 2b §4.2).
+  i.ctx.fillStyle = i.colours.axis;
+  i.ctx.fillRect(plot.x, Math.round(plot.y + plot.height) - 1, plot.width, 1);
   const matched = matchedKeys(
     i.selection,
     shown.map((s) => s.key),

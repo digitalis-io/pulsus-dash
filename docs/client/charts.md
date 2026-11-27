@@ -268,10 +268,29 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
 ## Marks
 
 - **Line.** The first 500 series in input order. Each series is reduced to one column per CSS px
-  (ADR-0014 §4): the polyline has one vertex per column (at its last value), and a column with several
-  samples also gets a 1-px span from min to max for each NaN-free run, so every raw extreme is
-  visible and no span crosses a gap. A NaN breaks the path (even inside a column); columns with no
-  sample are joined over. A lone sample between gaps is a dot. Line width 1.5 px, round joins.
+  (ADR-0014 §4): the polyline has a vertex at each column's first and last value, and a column with
+  several samples also gets a 1-px span from min to max for each NaN-free run, so every raw extreme
+  is visible and no span crosses a gap. The join from one drawn column's last value to the next
+  one's first breaks only where a NaN lies between them (`gapLead`); a NaN between a column's first
+  and last breaks the line inside it (`gapInner`); columns with no sample are joined over. This is
+  the engine's rule (#282 Part 2b). A sample no join reaches is a dot. Line width 1.5 px, round
+  joins. The value guides are 1 px `chart-grid` lines, and a 1 px `chart-axis` baseline runs along
+  the plot's bottom at `round(plot.y + plot.height) − 1`.
+- **Line area** (#282 Part 2b, [ADR-0036](../../designs/adr/0036-line-spec-area.md)). A line spec
+  with `area: true` (every line chart in Explore and on boards: `vis/framePlan.ts`) is shaded under
+  each series when 1 to 4 series are shown and there is no selection (keys or an interval, matched
+  or not). Each series' area is a vertical gradient of its colour from `opacity.chart-area` ÷ shown
+  (0.18, 0.09, 0.06, 0.045) at the plot's top to clear at its bottom, so stacked tints never exceed
+  0.18. It lies under the line's joins only: it starts at the first drawn point, ends at the last,
+  closes straight down at each and breaks where the line breaks. **Edges.** A join's span is split
+  where the line crosses the plot's top and bottom (`canvas2d/area.ts` `areaPieces`): above the plot
+  the area fills from the top, inside it from the line, below it not at all. The ends are classed in
+  value space against the axis, the crossings are cut parameters on the original line, and only
+  in-range values and crossing points are projected (fraction first, `tickY`), so a pinned axis far
+  inside the data still gives finite coordinates. Every area is filled under a plot clip before any
+  stroke. `ChartFrame` sends `area: false` under `(forced-colors: active)` or
+  `(prefers-reduced-transparency: reduce)` (`charts/useAreaAllowed.ts`). Bars, heatmaps and stats
+  are not shaded this way. The gallery's `line-area` and `line-area-manual` pages show it.
 - **Stacked bars.** Categories (`labels[categoryLabel]`) stack in `categoryOrder`, then the unlisted
   ones by name; the first 500 are drawn. Bucket *i* spans from its start to the next bucket's start
   (the last one by the previous step); bars are 1 px narrower than their span. When there are more
@@ -308,7 +327,7 @@ On line and bars, after the series and before the value-label chips (`engine/can
 | Step | Rule |
 |---|---|
 | Domain | The auto value domain is `withThresholds(min, max, thresholds)`: the data's (line) or the post-merge stacked totals' (bars, with 0) min and max, widened to every finite threshold; the axis still includes 0. A pinned `valueRange` is used unchanged. `FrameSummary` min, max and last stay data-only |
-| Line | For the first 8 thresholds with a finite value inside the plot: dashed (`size.chart-dash` 5 px, `size.chart-dash-gap` 4 px), 1 px (`border.hairline`), in `colours.state[state]`, at `Math.round(y) + 0.5` across the plot. A threshold outside a pinned axis draws no line |
+| Line | For the first 8 thresholds with a finite value inside the plot: dashed (`size.chart-dash` 4 px, `size.chart-dash-gap` 5 px, #282 Part 2b), 1 px (`border.hairline`), in `colours.state[state]`, at `Math.round(y) + 0.5` across the plot. A threshold outside a pinned axis draws no line |
 | Label text | `${glyph} ${label}` for every finite threshold, drawn or not, in `AXIS_FONT` and the state colour, on a `colours.chip` box `LABEL_HEIGHT` tall with `space.1` padding, from `plot.x + space.2` |
 | Place | Above its line (`y − 4 − H`), or below it when that would leave the plot; at the plot's top or bottom edge for a line off a pinned axis |
 | Width | At most `maxW = max(0, min(plot.width − 16, round(plot.width / 2)))`: a longer text keeps its longest code-point prefix that fits with `…` (or the glyph alone), and is `clipped` |

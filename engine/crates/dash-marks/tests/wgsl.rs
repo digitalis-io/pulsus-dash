@@ -10,9 +10,14 @@ fn shaders_validate() {
         "link.wgsl",
         "scan.wgsl",
         "line.wgsl",
+        "area.wgsl",
         "dim.wgsl",
     ] {
-        let src = std::fs::read_to_string(dir.join(name)).unwrap_or_default();
+        let src = match name {
+            "line.wgsl" => dash_marks::line::LINE_WGSL.to_owned(),
+            "area.wgsl" => dash_marks::line::AREA_WGSL.to_owned(),
+            _ => std::fs::read_to_string(dir.join(name)).unwrap_or_default(),
+        };
         assert!(!src.is_empty(), "{name} missing");
         let module = match naga::front::wgsl::parse_str(&src) {
             Ok(m) => m,
@@ -22,13 +27,19 @@ fn shaders_validate() {
         assert!(v.is_ok(), "{name}: {v:?}");
         seen += 1;
     }
-    assert_eq!(seen, 5);
+    assert_eq!(seen, 6);
 }
 
 /// T2 draws with `line.wgsl` on WebGL2: it must translate to GLSL ES 3.00 (plan #68 C1 §5).
 #[test]
 fn line_wgsl_translates_to_glsl_es_300() {
-    translates_to_glsl_es_300("src/line/line.wgsl");
+    translates_src_to_glsl_es_300("line.wgsl", dash_marks::line::LINE_WGSL);
+}
+
+/// The area is drawn on T2 too (#282 Part 2b §4.1).
+#[test]
+fn area_wgsl_translates_to_glsl_es_300() {
+    translates_src_to_glsl_es_300("area.wgsl", dash_marks::line::AREA_WGSL);
 }
 
 /// The dim layer's composite is drawn on T2 too (plan #68 C2c2 §3.3).
@@ -44,9 +55,14 @@ fn overlay_wgsl_translates_to_glsl_es_300() {
 }
 
 fn translates_to_glsl_es_300(rel: &str) {
-    use naga::back::glsl;
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(rel);
     let src = std::fs::read_to_string(path).unwrap_or_default();
+    translates_src_to_glsl_es_300(rel, &src);
+}
+
+fn translates_src_to_glsl_es_300(rel: &str, src: &str) {
+    use naga::back::glsl;
+    let src = src.to_owned();
     assert!(!src.is_empty(), "{rel} missing");
     let module = match naga::front::wgsl::parse_str(&src) {
         Ok(m) => m,

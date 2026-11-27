@@ -2,7 +2,7 @@
 //! ADR-0023): the engine's threshold and event lines are the Canvas 2D strokes of the same layer
 //! (`engine/fixtures/layer.json`, recorded from `drawLayer`'s own stroke calls): the plot and the
 //! value domain equal by f64 bits; each threshold is one rect per dash run of its recorded stroke
-//! (`y0` = the stroke's y − 0.5, from its `moveTo` x to its `lineTo` x, pattern 5/4 at offset 0) in
+//! (`y0` = the stroke's y − 0.5, from its `moveTo` x to its `lineTo` x, pattern 4/5 at offset 0 (#282 Part 2b)) in
 //! its state colour; each event is one `text-muted` rect at the stroke's x − 0.5. At the plot's
 //! right edge: under a pinned axis (the stroke clipped) it is cut there and dropped; on an auto
 //! axis, where Canvas 2D strokes it one column right of the plot, the engine draws it in the plot's
@@ -153,8 +153,13 @@ fn layer_parity() {
             );
             let mut want = Vec::new();
             for t in f["thresholds"].as_array().into_iter().flatten() {
-                // The recorded stroke: a 5/4 dash from offset 0, at a pixel centre.
-                assert_eq!(fixture::nums(&t["dash"]), [5.0, 4.0], "{what}: pattern");
+                // The recorded stroke: the token dash (4/5, #282 Part 2b) from offset 0, at a
+                // pixel centre.
+                let (d, g) = (
+                    f64::from(dash_tokens::size::CHART_DASH),
+                    f64::from(dash_tokens::size::CHART_DASH_GAP),
+                );
+                assert_eq!(fixture::nums(&t["dash"]), [d, g], "{what}: pattern");
                 assert_eq!(fixture::num(&t["offset"]), 0.0, "{what}: offset");
                 let y0 = fixture::num(&t["y"]) - 0.5;
                 let (x0, x1) = (fixture::num(&t["x0"]), fixture::num(&t["x1"]));
@@ -177,7 +182,7 @@ fn layer_parity() {
                 // The last dash starts before the `lineTo` x and ends by it.
                 let end = runs.last().map_or((f64::NAN, f64::NAN), |r| (r[0], r[1]));
                 assert!(
-                    end.0 < x1 && end.0 + 9.0 >= x1 && end.1 == (end.0 + 5.0).min(x1),
+                    end.0 < x1 && end.0 + d + g >= x1 && end.1 == (end.0 + d).min(x1),
                     "{what}: to lineTo x {x1}: {end:?}"
                 );
                 for run in runs {
