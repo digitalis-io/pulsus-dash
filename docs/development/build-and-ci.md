@@ -880,10 +880,11 @@ repository at `/w`, git's common directory mounted where a worktree's `.git` fil
 | `make engine-web-image` | builds `pulsus-engine-web:local` (after `make engine-image`) | — |
 | `make engine-wasm` | `cargo xtask build-wasm` into the git-ignored `client/src/engine/wasm/gen/`; `make build` (so `make e2e-build`) needs it | — |
 | `make engine-wasm-check` | two builds from separate target directories, byte-equal; the generated `dash_core_mt.d.ts` equal to the committed one; `cargo xtask gen-layout --check` | `ci:engine-gen` |
-| `make engine-wasm-probe` | `cargo xtask build-wasm --probe`: the engine with the `probe` feature (`engine_probe_input`, `engine_probe_ring_start`; `engine_probe_freeze` and `engine_probe_unfreeze`, plan #68 C2b) into the git-ignored `client/src/engine/wasm/gen-probe/` (plan #68 C2a1) | — |
+| `make engine-wasm-probe` | `cargo xtask build-wasm --probe`: the engine with the `probe` feature (`engine_probe_input`, `engine_probe_ring_start`; `engine_probe_freeze` and `engine_probe_unfreeze`, plan #68 C2b; `engine_probe_synth`, plan #68 C2d1) into the git-ignored `client/src/engine/wasm/gen-probe/` (plan #68 C2a1) | — |
 | `make e2e-build-release` | `make build API_MODE=stub VERSION=0.1.0-e2e CLIENT_OUT=dist-release` with no `VITE_ENGINE` and no faults into `client/dist-release` and `build/e2e-release/pulsus-dash` (served by `tools/e2e/serve.sh release PORT`), then `probe-absent.ts client/dist-release`: the unflagged signed-asset build of the default legs (plan #256) | `ci:probe-absent` |
 | `make e2e-build-probe` | after `make engine-wasm-probe`: `VITE_ENGINE_FAULTS=1 VITE_ENGINE_PROBE=1 make build API_MODE=stub CLIENT_OUT=dist-probe` (Vite resolves `virtual:dash-engine` to `gen-probe/`) into `client/dist-probe` and `build/e2e-probe/pulsus-dash`, then `probe-absent.ts --expect-faults --expect-probe client/dist-probe` | `ci:probe-absent` (probe tree) |
 | `make engine-gpu-smoke` | per engine e2e project, the adapter headless Chromium sees and whether it renders | — |
+| `make engine-bench` | the frame benches (plan #68 C2d1), report-only: a PostgreSQL 16 as for `make engine-e2e` (compose project `pulsus-engine-bench`, port 57534; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the PulsusDB fake, `make e2e-build-probe` and `ENGINE_BENCH=1 playwright test -c playwright.engine.config.ts --project bench`; results in `client/test-results/bench/` ([below](#frame-benches)) | `bench:frame-gallery`, `bench:frame-line-1e8` (report-only) |
 | `make engine-e2e` | a PostgreSQL 16 (the compose `pg16` service in project `pulsus-engine-e2e`, port 57532, taken down on exit; `E2E_PG_APP_URL` and `E2E_PG_OWNER_URL` set by the caller skip it), then in the image: the fault build for the e2e BFFs (`VITE_ENGINE_FAULTS=1 make e2e-build`) and `probe-absent.ts --expect-faults dist`; clean `dist-release-stub` and `dist-release-http` builds, `npm run size` on each, `check-bundle-modules.ts` on both, and `probe-absent.ts` on each; `make e2e-build-probe`; `make e2e-build-release`; `dash-golden` built; `playwright test -c playwright.engine.config.ts` | `ci:probe-absent`, `ci:bundle-size` (engine row), `e2e:mode-matrix`, `golden:engine-line`, `canvas2d parity`, `e2e:engine-recovery`, `e2e:csp-violations` (engine), `e2e:shim-fuzz`, `e2e:engine-camera`, `e2e:engine-hover`, `e2e:engine-layer`, `e2e:engine-selection`, `e2e:selection-sources` (engine leg), `bench:shim-input-cost` (report-only) |
 
 **Projects.** `lavapipe` (gated): `--use-angle=vulkan --enable-features=Vulkan --use-vulkan=native
@@ -945,8 +946,69 @@ renderers anti-alias differently by design.
 scans every file of the tree, recursively: `__dashProbe` or `__pulsus_engine_fault__` in a release
 tree is `probe-in-release`; with `--expect-faults` each of the three fault sites
 (`__pulsus_engine_fault__:route|boot|worker`) missing is `fault-site-missing`. The probe engine's
-export `engine_probe_input` in any `.wasm` is `probe-in-release` in every tree (the fault build's
-included) unless `--expect-probe`, which requires it instead (`probe-missing`).
+exports `engine_probe_input` and `engine_probe_synth` (plan #68 C2d1) in any `.wasm` are one
+`probe-in-release` each in every tree (the fault build's included) unless `--expect-probe`, which
+requires each instead (`probe-missing`).
+
+#### Frame benches
+
+`bench:frame-gallery` and `bench:frame-line-1e8` (plan #68 C2d1, T05 §4.3) measure presented
+frames during scripted interaction. They are report-only until the reference lab exists: no budget
+fails a run. They run in project `bench` of `client/playwright.engine.config.ts`, which exists only
+with `ENGINE_BENCH=1`, so `make engine-e2e` never runs them. With `ENGINE_BENCH=1` the config
+starts only the fake (4190) and the probe BFF (4175). The project uses the lavapipe flags, the
+probe build and one worker. `make engine-bench` takes about 10 minutes plus the builds.
+
+- **`bench:frame-gallery`** (`e2e/bench-frame-gallery.spec.ts`) covers every gallery page the
+  engine draws: `line-1`, `line-50`, `line-gaps`, `line-600`, `line-thresholds`, `line-extreme`
+  and `line-events`. It runs three legs:
+  - `wasm-webgl2`: `&engine=wasm&mode=t2`;
+  - `wasm-webgpu`: a SwiftShader Chromium. It is recorded `skipped: 'leg-unavailable'` while
+    `e2e/engine-legs.json` makes that leg report-only, or when the frame is not on WebGPU;
+  - `canvas2d`: `&engine=canvas2d`, the baseline on the same host.
+
+  Each page runs the zoom-pan-zoom script as case `<page>` and the hover sweep as `<page>-hover`.
+  Each case opens a fresh page.
+- **`bench:frame-line-1e8`** (`e2e/bench-frame-line-1e8.spec.ts`) uses a 1118×240 probe frame.
+  The probe's `synth` gives it F1c: 1 000 series × 10⁵ grid points over 0–10⁶ ms, built in the
+  worker. Its cases are:
+  - `1e8`: the script;
+  - `1e8-selected`: series 7 selected (m = 1);
+  - `1e8-selected-500`: 500 keys (m = 500, #264);
+  - `1e8-hover`: the hover sweep.
+
+  If the 10⁸ synthesis fails, each case is recorded `skipped: 'memory'` and the page reloads. The
+  cases then run at 10⁷ (1 000 × 10⁴) as `1e7-…`. A second, small probe frame redraws every
+  100 ms throughout: a drive of the idle bench frame must collect no frame while it draws (the
+  frame-id filter). B3 checks `synth`'s acknowledgements: two equal ones, then `ok: false` for an
+  impossible size, after which the frame still shows its chunk.
+
+**Fields.** Each result in `client/test-results/bench/bench-frame-gallery.json` and
+`bench-frame-line-1e8.json` (JSON arrays, appended per test) is a `BenchResult`
+(`client/scripts/lib/benchStats.ts`):
+
+| Field | What |
+|---|---|
+| `gate`, `case`, `leg` | the gate, the case and `wasm-webgl2`, `wasm-webgpu` or `canvas2d` |
+| `points`, `series` | the frame's volume |
+| `frames` | `chart-present` marks inside the script's span |
+| `intervalMs` | `{p50, p95, p99, max}` (nearest rank) of the intervals between consecutive marks: the frame time |
+| `drawMs` | the same of the `chart-draw` measures ending in the span: the draw time |
+| `over1`, `over2` | intervals over 16.7 ms and over 33.4 ms (one and two missed frames) |
+| `skipped` | `memory` or `leg-unavailable`; then `frames` is 0 and the percentiles `null` |
+
+Each result is also a test annotation and a console line, with PRF-001 (p50 interval ≤ 16.7 ms)
+and PRF-002 (p99 ≤ 22.2 ms) marked `ok` or `over`.
+
+**Failures.** Only sanity checks fail the run:
+- a case that is not skipped has fewer than 100 frames;
+- a script case ends at the window of its first `a11y` (nothing moved);
+- a hover case has hovers on fewer than 90 % of its 120 steps;
+- a frame fails, the engine reaches status 4, or a frame leaves its leg;
+- the JSON lacks a case or a field.
+
+The numbers are lavapipe and synthetic input, not the reference device and trusted input
+(T05 §7.1).
 
 ### Engine CI
 
