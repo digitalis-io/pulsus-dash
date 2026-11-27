@@ -1,0 +1,1 @@
+{"status":504,"retry_after":null,"body":{"error":{"code":"unavailable","hint":{"action":"narrow","reason":"upstream_timeout"},"message":"the query timed out","planned":{"bytes":26,"expanded":"x_total{job=\"a\"}","histogram":false,"query":"rate(x_total{job=\"a\"}[4m])","rate_applied":true,"rate_candidate":true,"rate_window_ms":240000,"step_ms":60000,"value_type":"vector"}}}}

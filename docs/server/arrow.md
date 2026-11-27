@@ -6,12 +6,15 @@ them. This is the committed path; it needs nothing from PulsusDB
 ([ADR-0005](../../designs/adr/0005-arrow-wire-format.md)). The browser's chart engine reads the
 result with its own Arrow IPC reader ([Reader](#reader), #68 Part B2).
 
-No route uses the writer yet. Part D of #68 serves it on the query routes when the request's
-`Accept` is `application/vnd.pulsus.dash-stream;v=1` (`arrowwire.ContentType`). Until then the
-routes answer with JSON frames ([the PulsusDB page](pulsusdb.md)).
+The PromQL range route (`POST /api/dash/v1/query/promql/range`) writes its 200 body with it
+when the request's `Accept` lists `application/vnd.pulsus.dash-stream;v=1`
+(`arrowwire.ContentType`; #68 Part D1, [The range route](#the-range-route)). Every other route,
+and the range route without that `Accept`, answers with JSON frames
+([the PulsusDB page](pulsusdb.md)).
 
 Design: [T04 §4.2–§5.3](../../designs/technical/T04-wire-format-and-data-plane.md) (schemas, DSF,
-coverage), [ADR-0015](../../designs/adr/0015-go-bff.md) (arrow-go, `wire/schemas`,
+coverage), [T06-011](../../designs/technical/T06-bff-architecture.md) (the range route's formats),
+[ADR-0015](../../designs/adr/0015-go-bff.md) (arrow-go, `wire/schemas`,
 `unit:codec-roundtrip`). It implements T04-001 (the writer side), T04-003, T04-004, T04-005,
 T04-006 and T04-009, and the T04-012 subset that maps PulsusDB's completeness into `coverage/1`.
 
@@ -307,6 +310,110 @@ together with a reader change:
 The committed fixtures pass every rule. `unit:codec-roundtrip` (Rust) decodes all five fixtures
 to their `.expect.json`, so a writer change that breaks a rule fails on both sides.
 
+## The range route
+
+`gateway.serveRange` runs every step before the first byte as for JSON: the tenant, the body, the
+grid, the plan, the upstream call and the first series read. Only then does `wantsArrow` choose
+the format, so the tenant, scope, plan and upstream request are the same for both
+([T06-029](../../designs/technical/T06-bff-architecture.md), ENT-006).
+
+### Negotiation
+
+| Request `Accept` | Response |
+|---|---|
+| absent, `application/json`, `*/*`, `application/*`, anything without the DSF type | JSON frames, byte for byte as before |
+| lists `application/vnd.pulsus.dash-stream` (case-insensitive) with `q` > 0 and `v=1` or no `v` | `200`, `Content-Type: application/vnd.pulsus.dash-stream;v=1`, a DSF body |
+| lists the DSF type only with another `v` (or `q=0`) | JSON frames |
+| any error before the body (400, 404, 413, 422, 429, 502, 503, 504) | the JSON error envelope, whatever `Accept` says |
+
+Every response of the route carries `Vary: Accept`, so a cache never serves one format for the
+other; `Cache-Control: no-store` is unchanged.
+
+### The body
+
+One part pair: labels part 1 and data part 2, with `dash.result` `metric`, `dash.source`
+`pulsusdb`, `dash.grid.requested_start_ms` the request's `from`, and `dash.planned` the planned
+object's JSON bytes, the same bytes as the JSON body's `planned` member. The planned coverage
+comes from the response headers' completeness (and the PromQL types warning).
+
+- The first series is added and flushed alone, so the first batch reaches the browser while
+  PulsusDB still sends the rest ([T04-006](../../designs/technical/T04-wire-format-and-data-plane.md)).
+- Each later series is added as it is decoded; the writer's batch policy decides when a batch is
+  written. One `flush()` (the 32 KiB `bufio.Writer`, then the response controller) runs after
+  every add, so a committed batch never waits in the buffer.
+- At the end, `Finish` writes the pending series and the final coverage: the completeness with
+  the types warning first, `series_returned` the series written. With no series the part
+  finishes empty (a 0-row labels batch, `series_returned` 0). Then END.
+
+The coverage's `data_end` is the newest sample; the JSON body's `data_age_ms` (server time minus
+it) is not carried. The client derives the age from `data_end` and the receipt time.
+
+### Failures in band
+
+A PulsusDB failure after the header ([T04-012](../../designs/technical/T04-wire-format-and-data-plane.md))
+does not reset the connection, as the JSON path does. The part is closed with `Fail`: a partial
+coverage from the completeness read so far (with the types warning), `series_returned` the series
+already written (pending ones are dropped), and an `error/1` row. The error's position is mapped
+to the raw text first (`mapPosition`, the same mapping as the envelope's; none inside a
+rewrite). The server logs `msg=promql_stream_failed` with the kind; then END.
+
+`apierr.Classify` is the one mapping of a data-call failure: `upstreamError` builds the envelope
+from it and `arrowwire.ErrorFrom` the row, so a mid-stream row and the envelope of the same error
+before the header agree:
+
+| Failure | Envelope | `error/1` code, `http_status` | Row extras |
+|---|---|---|---|
+| PulsusDB rejected the query | 400 `invalid` | 0 `bad_query`, 400 | `position` (mapped) |
+| reserved selector | 400 `virtual_unsupported` | 0 `bad_query`, 400 | |
+| too broad | 422 `too_broad` | 1 `too_broad`, 422 | `suggestion` `narrow` |
+| data scope | 403 `scope_denied` | 3 `forbidden_scope`, 403 | |
+| rate limited, no tenant slot | 429 `budget_exhausted` | 7 `rate_limited`, 429 | `retry_after_ms` (`Retry-After` × 1 000; 1 000 for the tenant slot) |
+| timeout, deadline | 504 `unavailable` | 5 `timeout`, 504 | `suggestion` `narrow` |
+| unreachable, unavailable, credentials refused, protocol | 502 `unavailable` | 4 `upstream_unavailable`, 502 | |
+| datasource misconfigured | 503 `unavailable` | 4 `upstream_unavailable`, 503 | |
+| anything else | 500 `internal` | 8 `internal`, 500, `internal error` | |
+
+The row's message is the envelope's. A cancel (code 6) is never written: the browser is gone.
+
+### Writer outcomes
+
+The handler checks `Writer.Err()` (the sticky I/O error) after every writer call, then:
+
+| Outcome | Already in the body | Handler |
+|---|---|---|
+| `Grid` refused (`ErrLimit`, `ErrShape`, `ErrFrameTooLarge`) | the stream-level ERROR | END, flush; the body decodes through END |
+| `Add`/`Flush` `ErrLimit` | the part's auto-close coverage (`wire_limit`, `wire_budget`) | stops reading PulsusDB; END, flush |
+| `Add`/`Flush` `ErrShape`, `ErrFrameTooLarge` | the part's close (`writer refused: …`) | stops reading; END, flush; logs `promql_stream_refused` |
+| `ErrOrder` (a bug) | | END, flush; logs `promql_stream_order` at error |
+| sticky I/O error, or a failed flush | unknown | stops; no END, no flush; logs `promql_stream_write_failed` |
+| the browser went away | | stops; nothing more is written; the deferred close ends the upstream request |
+
+Memory per response is the writer's pending batch (bounded by `limits.json`) and the 32 KiB
+buffer. `Finish` and `Fail` set `series_returned` themselves from the series they commit; the
+caller's value is ignored.
+
+### Route fixtures and parity
+
+[`wire/fixtures/route/`](../../wire/fixtures/route/) holds what the real handler writes over a
+`pulsusfake` upstream with the clock at 2026-11-19T13:00Z (`TestRouteFixtures`, regenerate with
+`go test ./internal/gateway -run TestRouteFixtures -args -update`):
+
+| Case | Files | What it holds |
+|---|---|---|
+| `two-series`, `gaps`, `empty`, `types-warning`, `read-cache`, `future-sample`, `many` | `.dsf` and `.json` | two 61-point series; NaN, ±Inf, −0 and absent points; no series; a failed metric-types lookup (the warning in both); a read-cache hit; a sample after the clock (age 0); 600 series across the batch policy |
+| `mid-failure-<class>` | `.dsf` | a failure of the class after the first series (`query-invalid`, `too-broad`, `rate-limited`, `timeout`, `unavailable`, `internal`) |
+| `err-<class>` | `.json` | the same failure before the header: `{"status", "retry_after", "body"}`, the body the envelope the handler wrote |
+| `limits-many`, `refused-open-parts` | `.dsf` | `many` under `limits-test.json` (auto-close `wire_limit`), and a `Grid` refused with `open_parts` 0 |
+
+There is no `mid-failure-*.json`: the JSON path resets the connection on that failure.
+`route_parity` (`engine/crates/dash-wire/tests/route_parity.rs`) decodes each `.dsf` with
+`dash-wire` and compares it with its `.json` field by field: `planned` byte for byte; `start`,
+`step` and `end` from the grid; series order, key, labels, absent ↔ null, values bit for bit
+(NaN by class); `truncated`, `warnings`, `infos`, `query_id`, `read_cache`,
+`read_cache_through_ms`; `series_returned` = the series decoded; and `data_age_ms` =
+max(0, clock − `data_end`), omitted when `data_end` is null. For each class it checks the row
+against the envelope by the table above.
+
 ## Golden fixtures
 
 [`wire/fixtures/arrow/`](../../wire/fixtures/arrow/) holds DSF bodies (`*.dsf`, marked binary
@@ -365,7 +472,11 @@ change that B2's reader must accept too.
 | `unit:dsf-writer-order` (failure paths) | `TestFailOversized`, `TestStickyWriteError`, `TestLabelsAtPayloadLimit`, `TestCutUTF8` | an oversized `Fail` still closes its part with a bounded META and the upstream code (with limits above the defaults); write errors and short writes are sticky and stop all writing |
 | `unit:limits-json` (Go) | `TestLimitsJSON` | `DefaultLimits`, `MaxGridLen`, `MaxPayload` and the costs = `limits.json`; both files' reserves follow their formula |
 | `unit:wire-limits` | `TestWireLimits`, the limits fixtures in `TestFixtures` | labels batches split between series; a too-long series refused; error and coverage cuts; `distinct_parts` with `Error`; the derived budget boundaries and the writer's `used` |
-| `unit:coverage-complete` (Go) | `TestCoverageFrom` | the `CoverageFrom` mapping, and `series_returned` in the encoded row |
+| `unit:coverage-complete` (Go) | `TestCoverageFrom` | the `CoverageFrom` mapping, and the committed `series_returned` in the encoded row |
+| range route (gateway) | `TestRangeNegotiation`, `TestRangeArrowBody`, `TestRangeArrowEmpty`, `TestRangeArrowFailure`, `TestRangeArrowFinishPending`, `TestRangeArrowPosition`, `TestRangeArrowOutcomes`, `TestRangeArrowCancel`, `TestRangeArrowLimits`, `TestRangeJSONMidFailure`, `TestRangeDSFScopeDenied` | negotiation and `Vary`; a restricted, empty or unset data scope denied with DSF as with JSON, no upstream query; the first batch before the rest; failures in band; the counts; the outcome table; cancel and limits; the JSON reset unchanged |
+| error classes | `TestClassify` (`internal/apierr`) | every row of the mapping, envelope and `error/1` |
+| route parity | `TestRouteFixtures`, `route_parity` (Rust) | the committed route fixtures = the handler's output; the DSF bodies carry what the JSON bodies carry |
+| `bench:json-to-arrow` (report-only) | `BenchmarkRangeBody` | the `many` body as JSON and as DSF |
 | `ci:go-lint` (depguard `arrow-only`) | `check-depguard-fixture.sh` | arrow-go is imported only in `internal/arrowwire` |
 
 ## Dependencies

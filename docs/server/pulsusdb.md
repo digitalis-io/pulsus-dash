@@ -22,7 +22,7 @@ proves the rule fires ([build and CI](../development/build-and-ci.md#make-target
 
 | Route | Body or parameters | 200 body | Deadline |
 |---|---|---|---|
-| `POST /api/dash/v1/query/promql/range?tenant=<slug>` | `{"query", "from", "to", "width_px", "timeout_ms"?, "vars"?, "rate"?}` (ms since the epoch; `query` is the raw text) | `PromRangeResponse`, streamed, `planned` first | `timeout_ms`: 200 to 120 000, default 30 000 |
+| `POST /api/dash/v1/query/promql/range?tenant=<slug>` | `{"query", "from", "to", "width_px", "timeout_ms"?, "vars"?, "rate"?}` (ms since the epoch; `query` is the raw text) | `PromRangeResponse`, streamed, `planned` first; a DSF body when `Accept` asks for it ([Formats](#formats)) | `timeout_ms`: 200 to 120 000, default 30 000 |
 | `POST /api/dash/v1/query/promql/instant?tenant=<slug>` | `{"query", "at", "timeout_ms"?, "vars"?, "step_ms"?}` | `PromInstantResponse`, `planned` first | as above |
 | `GET /api/dash/v1/prom/labels` | `tenant`, `from`, `to`, `match` (repeatable), `limit` (1 to 10 000, default 1 000) | `PromValuesResponse` | 10 s |
 | `GET /api/dash/v1/prom/label/{name}/values` | `name` (1 to 256 bytes), as above | `PromValuesResponse` | 10 s |
@@ -680,6 +680,16 @@ If decoding fails after the first frame was written (PulsusDB closed the connect
 point, the body limit), the server logs `msg=promql_stream_aborted` and resets the connection, so
 the browser gets a network error rather than a truncated body that looks complete. If the browser
 went away, nothing is logged.
+
+### Formats
+
+The range route answers JSON frames unless the request's `Accept` lists
+`application/vnd.pulsus.dash-stream;v=1` (`q` > 0; `v=1` or no `v`; case-insensitive): then
+the 200 body is a DSF body with the same planned query, grid, series and coverage, and a failure
+after the header is written in band instead of a reset ([the Arrow page](arrow.md#the-range-route),
+#68 Part D1). The format is chosen after the upstream call, so both send the same request. Errors
+before the body are JSON envelopes whatever `Accept` says, and every response of the route
+carries `Vary: Accept`. The instant and LogQL routes answer JSON only.
 
 ### JSON frames ([T04 §0](../../designs/technical/T04-wire-format-and-data-plane.md), ADR-0014 §5)
 

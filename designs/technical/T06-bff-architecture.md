@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.12-rc · 2026-11-25 |
+| **Version** | 1.13-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (OIDC auth, multi-tenant quotas UI, audit export) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
@@ -398,6 +398,17 @@ upstream matrix has been read to its end.
 The 10 ms first-batch bound still applies to every other result the converter streams: range
 results, and a LogQL metric result whose `resultType` precedes `result`, which the converter
 streams unchanged.
+*(2026-11-27, #68 Part D1.)* **The PromQL range route serialises Arrow on request.** When the
+request's `Accept` lists `application/vnd.pulsus.dash-stream;v=1` ([T04](T04-wire-format-and-data-plane.md)
+§5), `POST /api/dash/v1/query/promql/range` writes its 200 body as DSF (`internal/arrowwire`):
+one `labels/1` + `metric_matrix.grid/1` part pair with `dash.planned` the planned object's JSON
+bytes, the first series as its own batch, `coverage/1` from the completeness, and a failure after
+the header in band (`error/1`, a partial coverage) instead of a reset. Otherwise it answers JSON
+frames, byte for byte as before; the JSON exception of 2026-11-19 ends for this route only when
+DSF is asked for. The format is chosen after the upstream call returns, so the scope, plan and
+upstream request are the same for both (T06-029). Every response of the route carries
+`Vary: Accept`; errors before the body are JSON envelopes. The error class of a failure is one
+mapping (`internal/apierr`) shared by the envelope and the `error/1` row.
 
 **Completeness (R10 fallback).** Each typed method extracts what its endpoint offers into one struct:
 
@@ -794,7 +805,7 @@ token's data scope applies.
 | `GET /api/dash/v1/version` | JSON | The server's version and commit | `api/openapi.yaml` (`Version`) |
 | `GET /api/dash/v1/bootstrap` | JSON | The client's first call: principal (the fixed local principal until M-UI6, D12), organisation, tenant slugs with their data-source check state (never a datasource URL, database, scope or credentials reference, T06-024), the server version and `can_sign_out` | `api/openapi.yaml` (`Bootstrap`) |
 | `POST /api/dash/v1/csp-report` | `application/reports+json` or `application/csp-report` | CSP violation reports ([T18](T18-security.md) T18-003): rate-limited, 64 KiB, read deadline, logged as allowlisted values only | `api/openapi.yaml` (hand-written handler) |
-| `POST /api/dash/v1/query/promql/range`, `…/instant` (`?tenant=`) | JSON request → JSON frames, the range body streamed series by series | Direct PromQL queries on the BFF's grid (M-UI1, #62): `PromRangeRequest` → `PromRangeResponse` (frames and completeness), `PromInstantRequest` → `PromInstantResponse`; `x-permission: query.read` | `api/openapi.yaml`; frames: [T04](T04-wire-format-and-data-plane.md) §0 |
+| `POST /api/dash/v1/query/promql/range`, `…/instant` (`?tenant=`) | JSON request → JSON frames, the range body streamed series by series; the range route answers a DSF body (T04 §5) when `Accept` lists `application/vnd.pulsus.dash-stream;v=1` (#68 Part D1), with `Vary: Accept` | Direct PromQL queries on the BFF's grid (M-UI1, #62): `PromRangeRequest` → `PromRangeResponse` (frames and completeness), `PromInstantRequest` → `PromInstantResponse`; `x-permission: query.read` | `api/openapi.yaml`; frames: [T04](T04-wire-format-and-data-plane.md) §0 |
 | `GET /api/dash/v1/prom/{labels,label/{name}/values,series,metadata}` (`?tenant=`) | JSON | Editor completion metadata for M-UI1 (#62): label names and values, series and metric metadata with completeness. `/suggest` stays T09's ranked, cached design | `api/openapi.yaml` |
 | `POST /api/dash/v1/query/logql/range` (`?tenant=`) | JSON request → JSON | LogQL queries (M-UI1, #65, #116): `LogqlRangeRequest` (the raw text and `vars`, planned by `logs.Plan`; `limit` 1 to 5 000, `direction`, `cursor`) → `LogqlRangeResponse`, either a log page (`kind: streams`, the `log_lines/1` JSON image of [T04](T04-wire-format-and-data-plane.md) §4.3, written after the page's last upstream response, with an opaque unsigned cursor bound to the hash of the planned text, direction, `from` and `to`) or a LogQL metric result (`kind: series`, frames streamed series by series); both carry `planned` (`LogqlPlannedQuery`) after `kind`; `x-permission: query.read` | `api/openapi.yaml` |
 | `POST /api/dash/v1/query/logql/volume` (`?tenant=`) | JSON request → JSON frames | Log volume per level on the grid (#65, #116): `LogqlVolumeRequest` (the raw text and `vars`; `logs.Plan` applies the volume template) → `LogqlVolumeResponse` (`planned` first, then the range frame) with frames labelled exactly `{level}`, written after the whole upstream matrix was read (T06-011 case 3) | `api/openapi.yaml` |
@@ -990,3 +1001,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.10-rc | 2026-11-22 | #65 Part B: §5.1 adds `POST /api/dash/v1/query/logql/{range,volume}` and `GET /api/dash/v1/logs/{labels,label/{name}/values,series}`; the log routes' time range ends at `maxLogTimeMs`; T06-029 note: `planned` is PromQL-only until `logs.Plan` (#116), so the LogQL bodies carry none |
 | 1.11-rc | 2026-11-22 | #116: T06-029 covers the LogQL range and volume routes (the #65 note is removed); §5.1 rows: the LogQL bodies carry `planned` (`LogqlPlannedQuery`) and the volume route answers `LogqlVolumeResponse`; T06-028 enforced by `depguard` (`logs-isolation`, `prom-isolation`, `modules-from-callers`) |
 | 1.12-rc | 2026-11-25 | #68 Part B (owner direction: PulsusDB is JSON-only, the BFF converts): T06-011 "Until R1, the converter MUST stream" → "The converter MUST stream"; §4.3 the JSON→Arrow conversion is permanent (`internal/arrowwire`) and pass-through applies only with R1; the goal on conversion cost drops "until R1" |
+| 1.13-rc | 2026-11-27 | #68 Part D1: T06-011 dated amendment, the PromQL range route serialises Arrow (DSF) when the request asks for it and JSON otherwise, failures after the header in band, `Vary: Accept`, one error mapping for the envelope and `error/1`; §5.1 routes table: the range route's formats |

@@ -241,7 +241,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description PromQL range query on the aligned grid, as JSON frames streamed series by series (T06-011). Hand-written handler; excluded from server generation. */
+        /** @description PromQL range query on the aligned grid, streamed series by series (T06-011). JSON frames by default; a DSF body (T04 §5) when Accept lists application/vnd.pulsus.dash-stream;v=1. Every response carries Vary Accept; errors before the body are JSON envelopes whatever Accept says. Hand-written handler; excluded from server generation. */
         post: operations["postPromqlRange"];
         delete?: never;
         options?: never;
@@ -1910,13 +1910,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Frames and completeness */
+            /** @description Frames and completeness (JSON), or the same as a DSF body (labels/1 and metric_matrix.grid/1 parts with coverage/1, failures in band as error/1) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["PromRangeResponse"];
+                    "application/vnd.pulsus.dash-stream;v=1": string;
                 };
             };
             /** @description Error (400 */

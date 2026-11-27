@@ -1,9 +1,12 @@
 package arrowwire
 
 import (
+	"math"
+
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/digitalis-io/pulsus-dash/server/internal/apierr"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 )
 
@@ -170,4 +173,32 @@ func coverageRecord(c Coverage) arrow.RecordBatch {
 	b.Field(20).(*array.Uint32Builder).Append(c.UpstreamMs)
 	b.Field(21).(*array.Uint32Builder).Append(c.ConvertMs)
 	return b.NewRecordBatch()
+}
+
+// wireCodes are the error/1 codes of the failure classes (plan #68 D1 §3.4).
+var wireCodes = map[apierr.Kind]uint8{
+	apierr.BadQuery: 0, apierr.Virtual: 0, apierr.TooBroad: 1, apierr.ScopeDenied: 3, apierr.Unavailable: 4, apierr.Config: 4,
+	apierr.Timeout: 5, apierr.Cancelled: 6, apierr.RateLimited: 7, apierr.Busy: 7, apierr.Internal: 8,
+}
+
+// ErrorFrom is the error/1 row of a classified failure (plan #68 D1 §3.4): the class's code,
+// status and message; the position of a bad query; the retry delay in ms; the suggestion.
+func ErrorFrom(c apierr.Class) ErrorRow {
+	code, ok := wireCodes[c.Kind]
+	if !ok {
+		code = 8
+	}
+	e := ErrorRow{Code: code, HTTPStatus: uint16(min(max(c.Status, 0), math.MaxUint16)), Message: c.Message} // #nosec G115 -- clamped to uint16
+	if c.Position != nil && *c.Position >= 0 && int64(*c.Position) <= math.MaxUint32 {
+		p := uint32(*c.Position) // #nosec G115 -- 0 ≤ offset ≤ MaxUint32, checked above
+		e.Position = &p
+	}
+	if ms, ok := c.RetryAfterMs(); ok {
+		e.RetryAfterMs = &ms
+	}
+	if c.Suggestion != "" {
+		sg := string(c.Suggestion)
+		e.Suggestion = &sg
+	}
+	return e
 }

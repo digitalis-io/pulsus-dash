@@ -143,23 +143,30 @@ func appendPlanned(b []byte, w promplan.PlannedWire) []byte {
 }
 
 // failurePlanned is the response of an error after planning (plan #112 §4.6): PulsusDB's
-// position is mapped from the sent text to the raw text (none inside a rewrite), then the
-// unchanged mapping of failure, with the plan.
+// position is mapped from the sent text to the raw text (mapPosition), then the unchanged mapping
+// of failure, with the plan.
 func (q *dataRoutes) failurePlanned(ctx context.Context, err error, p promplan.Planned) *reqError {
-	var pe *pulsusdb.Error
-	if errors.As(err, &pe) && pe.Position != nil {
-		mapped := *pe
-		mapped.Position = nil
-		if raw, ok := p.ToSource(pe.Position.Offset); ok {
-			mapped.Position = &pulsusdb.Position{Offset: raw}
-		}
-		err = &mapped
-	}
-	f := q.failure(ctx, err)
+	f := q.failure(ctx, mapPosition(err, p))
 	if f != errCancelled {
 		f.body.Planned = promErrorPlanned(p.Wire())
 	}
 	return f
+}
+
+// mapPosition maps PulsusDB's position from the sent text to the raw text (none inside a
+// rewrite); an error without a position is returned as it is. The JSON envelope and the DSF
+// error/1 row both report the mapped offset (plan #68 D1 §3.2 step 5).
+func mapPosition(err error, p promplan.Planned) error {
+	var pe *pulsusdb.Error
+	if !errors.As(err, &pe) || pe.Position == nil {
+		return err
+	}
+	mapped := *pe
+	mapped.Position = nil
+	if raw, ok := p.ToSource(pe.Position.Offset); ok {
+		mapped.Position = &pulsusdb.Position{Offset: raw}
+	}
+	return &mapped
 }
 
 // failPlanned writes failurePlanned's response; a cancel by the browser writes nothing.
