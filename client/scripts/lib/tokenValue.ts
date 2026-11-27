@@ -2,7 +2,8 @@
  * The one classifier behind `ci:token-lint` (T01-010, T02-004, VL-021). It inspects a CSS value
  * string with `postcss-value-parser` and walks every node, so `var()` fallbacks, nested `var()`,
  * `calc()` and `image-set()` arguments are all visited. Used by the CSS pass of `token-lint.ts` and
- * by the ESLint rules in `eslint/tokens-plugin.ts`.
+ * by the ESLint rules in `eslint/tokens-plugin.ts`. `breaksShadowToken` is the CSS pass's
+ * `shadow-token` rule (VL-004 as amended, #282).
  */
 import valueParser from 'postcss-value-parser';
 import { CSS_NAMED_COLOURS } from './cssNamedColours.ts';
@@ -99,3 +100,29 @@ export const TOKEN_MESSAGES: Readonly<Record<TokenRule, string>> = {
   'size-literal': 'size literal: use a space or size token (T01-010)',
   'duration-literal': 'duration literal: use a motion token (T01-010)',
 };
+
+/** The only drop shadows the DOM chrome may use (VL-004 as amended, #282). */
+const ELEVATION = /^var\(\s*--elevation-[123]\s*\)$/;
+
+export const SHADOW_MESSAGE = 'drop shadows come only from the elevation tokens (VL-004)';
+
+/**
+ * Whether a `box-shadow` value breaks `shadow-token`: it is split on top-level commas, and a
+ * shadow is a drop shadow when it has no `inset` keyword and its third component is not the
+ * literal `0` (so inset bars and spread-only rings pass). A drop shadow is allowed only as the
+ * whole value `var(--elevation-1|2|3)`; `none` passes.
+ */
+export function breaksShadowToken(value: string): boolean {
+  const v = value.trim();
+  if (v.toLowerCase() === 'none' || ELEVATION.test(v)) return false;
+  const shadows: string[][] = [[]];
+  for (const node of valueParser(v).nodes) {
+    if (node.type === 'div' && node.value === ',') shadows.push([]);
+    else if (node.type !== 'space' && node.type !== 'comment')
+      shadows[shadows.length - 1]?.push(valueParser.stringify(node));
+  }
+  return shadows.some((parts) => {
+    if (parts.some((p) => p.toLowerCase() === 'inset')) return false;
+    return parts[2] !== '0';
+  });
+}
