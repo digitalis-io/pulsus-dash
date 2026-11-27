@@ -167,6 +167,8 @@ pub mod size {
     pub const INSPECTOR: f32 = 360.0;
     pub const INSPECTOR_INSET: f32 = 12.0;
     pub const INSPECTOR_TAB: f32 = 40.0;
+    pub const LIST_CHIP: f32 = 20.0;
+    pub const LIST_ROW: f32 = 36.0;
     pub const LOG_LEVEL_BAR: f32 = 3.0;
     pub const LOG_ROW: f32 = 20.0;
     pub const LOG_SENTINEL: f32 = 40.0;

@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installResizeObserver } from '../test/fakeResizeObserver';
 import { many } from '../test/categoryFixtures';
 import { capMarks, panelCsv, panelRows, type PanelRows } from '../vis/reduce';
-import { PanelTable } from './PanelTable';
+import { PanelTable, type TableView } from './PanelTable';
 
 const VIEW_H = 280;
 let restoreLayout: () => void = () => undefined;
@@ -207,5 +207,66 @@ describe('unit:panel-table-button', () => {
     expect(t.onRow).toHaveBeenCalledTimes(2);
     expect(t.onRow).toHaveBeenLastCalledWith(key7, 'keyboard', button);
     expect(t.active()).toMatch(/-r3$/);
+  });
+});
+
+// Plan #216 Part 2a §3.3 (T22-013 amended): a `TableView` without marks, null rows and the texts.
+describe('unit:panel-table (TableView)', () => {
+  const view: TableView = {
+    columns: ['title', 'uid'],
+    rows: [
+      { key: 'a', drawn: true, cells: ['Alpha', 'a'] },
+      { key: 'b', drawn: false, cells: ['Beta', 'b'] },
+    ],
+  };
+
+  it('null rows: the empty text as a status, Export disabled, no grid', () => {
+    render(
+      <PanelTable
+        rows={null}
+        title="Boards"
+        selected={new Set<string>()}
+        emptyText="Loading…"
+        closeLabel="Show list (Shift+T)"
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('Loading…');
+    expect(screen.getByRole('button', { name: 'Export CSV' })).toBeDisabled();
+    expect(screen.queryByRole('grid')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Show list (Shift+T)' })).toBeInTheDocument();
+  });
+
+  it('a TableView with its caption, close label and CSV', async () => {
+    const onClose = vi.fn();
+    render(
+      <PanelTable
+        rows={view}
+        title="Boards"
+        selected={new Set<string>()}
+        caption="2 boards · 1 shown"
+        closeLabel="Show list (Shift+T)"
+        onClose={onClose}
+      />,
+    );
+    expect(screen.getByText('2 boards · 1 shown')).toBeInTheDocument();
+    const grid = screen.getByRole('grid', { name: 'Boards' });
+    expect(grid).toHaveAttribute('aria-rowcount', '3');
+    const rows = within(grid)
+      .getAllByRole('row')
+      .filter((r) => r.getAttribute('aria-rowindex') !== '1');
+    expect(rows.map((r) => [r.getAttribute('data-row-key'), r.getAttribute('data-drawn')])).toEqual(
+      [
+        ['a', 'yes'],
+        ['b', 'no'],
+      ],
+    );
+    expect(panelCsv(view)).toBe('title,uid\r\nAlpha,a\r\nBeta,b\r\n');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Show list (Shift+T)' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('bar rows carry their mark key', () => {
+    for (const r of rows().rows) expect(r.key).toBe(r.mark.key);
   });
 });

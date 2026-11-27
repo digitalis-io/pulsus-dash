@@ -806,3 +806,6 @@ function BoardEditor({
 export { BoardRunContext } from '../../boards/boardRunContext';
 export { WIDGETS } from '../../widgets/registry';
 export { WidgetBody } from '../../widgets/WidgetBody';
+// The widget gallery's Board list pages prime a panel's cache under its key (plan #216 Part 2a).
+export { boardListKey } from '../../widgets/boardList/source';
+export { boardListOptions } from '../../widgets/boardList/options';

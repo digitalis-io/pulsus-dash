@@ -2,7 +2,8 @@
  * The coverage meter under a categorical chart (VIZ-027, T22-006; plan #173 Part 2 §4.4): one line
  * of `coverageText`. When the run or the baseline run is truncated or warned, the line is a ghost
  * button whose popover holds each such run's completeness notice (its warnings, and Narrow when
- * truncated); otherwise it is a status line.
+ * truncated and `onNarrow` is given: a list without a field to narrow has none, plan #216 Part 2a);
+ * otherwise it is a status line. Narrow closes the popover after it acts. The stale time is in `timeZone` (default the browser's).
  */
 import type { JSX } from 'react';
 import { DialogTrigger } from 'react-aria-components';
@@ -23,11 +24,13 @@ const warned = (c: Completeness | null): c is Completeness =>
 export function CoverageMeter({
   coverage,
   onNarrow,
+  timeZone,
 }: {
   coverage: Coverage;
-  onNarrow: () => void;
+  onNarrow?: () => void;
+  timeZone?: string;
 }): JSX.Element {
-  const text = coverageText(coverage);
+  const text = timeZone === undefined ? coverageText(coverage) : coverageText(coverage, timeZone);
   const query = warned(coverage.query) ? coverage.query : null;
   const baseline = warned(coverage.baseline) ? coverage.baseline : null;
   if (query === null && baseline === null) {
@@ -48,18 +51,34 @@ export function CoverageMeter({
         </Button>
         <Popover placement="bottom start">
           <Dialog aria-label={label} className={cx(styles['meterPopover'])}>
-            {query !== null && (
-              <section>
-                <h4 className={cx(styles['meterHeading'])}>{t('meter.query')}</h4>
-                <CompletenessNotice completeness={query} onNarrow={onNarrow} />
-              </section>
-            )}
-            {baseline !== null && (
-              <section>
-                <h4 className={cx(styles['meterHeading'])}>{t('meter.baseline')}</h4>
-                <CompletenessNotice completeness={baseline} onNarrow={onNarrow} />
-              </section>
-            )}
+            {({ close }) => {
+              // Narrow acts, then the popover closes (its focus stays where Narrow put it).
+              const narrow =
+                onNarrow === undefined
+                  ? {}
+                  : {
+                      onNarrow: () => {
+                        onNarrow();
+                        close();
+                      },
+                    };
+              return (
+                <>
+                  {query !== null && (
+                    <section>
+                      <h4 className={cx(styles['meterHeading'])}>{t('meter.query')}</h4>
+                      <CompletenessNotice completeness={query} {...narrow} />
+                    </section>
+                  )}
+                  {baseline !== null && (
+                    <section>
+                      <h4 className={cx(styles['meterHeading'])}>{t('meter.baseline')}</h4>
+                      <CompletenessNotice completeness={baseline} {...narrow} />
+                    </section>
+                  )}
+                </>
+              );
+            }}
           </Dialog>
         </Popover>
       </DialogTrigger>

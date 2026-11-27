@@ -14,7 +14,7 @@ import { TimeZoneContext } from '../state/timeZone';
 import { ClockContext } from '../state/useTimeContext';
 import { sessionQuery, type RouterDeps } from './router';
 
-const ApiContext = createContext<Api>(new StubApi());
+export const ApiContext = createContext<Api>(new StubApi());
 
 export function useApi(): Api {
   return useContext(ApiContext);

@@ -215,12 +215,20 @@ describe('view recorder', () => {
       prefs.dispose();
     }
 
-    // network and unknown (503): one reconciliation 15 s after the send.
-    for (const e of [new ApiError('network', 'x'), new ApiError('unknown', 'HTTP 503')]) {
+    // network, unknown and unavailable (503): one reconciliation 15 s after the send, posted to
+    // the other endpoints of the channel.
+    for (const e of [
+      new ApiError('network', 'x'),
+      new ApiError('unknown', 'HTTP 500'),
+      new ApiError('unavailable', 'HTTP 503'),
+    ]) {
       const start = Date.now();
       const qc = new QueryClient();
       const spy = vi.spyOn(qc, 'invalidateQueries');
-      const prefs = createBoardPrefs(api, qc, () => null);
+      const bus = channelBus();
+      const other = bus.opener()();
+      const prefs = createBoardPrefs(api, qc, bus.opener());
+      const close = prefs.connect();
       outcome.next = () => Promise.reject(e);
       prefs.recordView('demo', 'A');
       await vi.advanceTimersByTimeAsync(14_999);
@@ -228,6 +236,9 @@ describe('view recorder', () => {
       await vi.advanceTimersByTimeAsync(1);
       expect(Date.now() - start).toBe(15_000);
       expect(recentCalls(spy), e.kind).toBe(1);
+      expect(bus.endpoints[0]?.received, e.kind).toEqual([{ kind: 'recent' }]);
+      close();
+      other.close();
       prefs.dispose();
     }
 

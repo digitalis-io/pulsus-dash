@@ -23,6 +23,7 @@ import { formatHourMinute, formatValue } from '../i18n/format';
 import { t } from '../i18n/t';
 import { useSelection } from '../inspector/host';
 import { cx } from '../kit/cx';
+import { inTextField } from '../kit/inTextField';
 import { useTimeZone } from '../state/timeZone';
 import { useTimeContext } from '../state/useTimeContext';
 import { font } from '../styles/tokens';
@@ -119,13 +120,6 @@ export function markLines(
   );
   if (o.anomaly && row.anomaly === null) out.push(t('bar.noAnomaly'));
   return out;
-}
-
-/** True for a key typed into a text field, where Shift+T is a capital T. */
-function inTextField(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-  if (target.closest('input, textarea, select') !== null) return true;
-  return target.closest('[contenteditable]:not([contenteditable="false"])') !== null;
 }
 
 export function CategoryChart({

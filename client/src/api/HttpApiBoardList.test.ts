@@ -9,6 +9,7 @@ import { B, findS, NOW_MS, oldServer, S, wireOf } from '../widgets/boardList/fix
 import { boardSnapshot } from '../widgets/boardList/rows';
 import { listSetSize } from '../widgets/lists/snapshot';
 import type { Api } from './Api';
+import { isApiError } from './types';
 import type { paths } from './gen/schema';
 import { HttpApi } from './HttpApi';
 
@@ -112,5 +113,18 @@ describe('unit:board-list-source (API)', () => {
       'GET /api/dash/v1/me/recent-boards?limit=50',
       'GET /api/dash/v1/me/recent-boards?limit=5',
     ]);
+  });
+});
+
+describe('unit:http-api (board lists, 503)', () => {
+  it('a 503 is unavailable', async () => {
+    const down = api(() =>
+      Promise.resolve(json(503, { error: { code: 'unavailable', message: 'store down' } })),
+    );
+    const e: unknown = await down.api.listStarred('demo').then(
+      () => null,
+      (x: unknown) => x,
+    );
+    expect(isApiError(e, 'unavailable')).toBe(true);
   });
 });
