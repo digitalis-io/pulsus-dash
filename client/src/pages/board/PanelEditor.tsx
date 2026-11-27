@@ -107,13 +107,14 @@ const KINDS: readonly { id: DataVisKind; label: MessageId }[] = [
   { id: 'heatmap', label: 'editor.vis.heatmap' },
   { id: 'stat', label: 'editor.vis.stat' },
   { id: 'barchart', label: 'editor.vis.barchart' },
+  // The map with its option defaults (plan #234 Part 3 §2): no options fieldset yet.
+  { id: 'geomap', label: 'editor.vis.geomap' },
   { id: 'logs', label: 'editor.vis.logs' },
 ];
 
 /** The labels of the kinds not drawn yet (`PENDING_KINDS`): shown, disabled, only when stored. */
 const PENDING_LABELS: Readonly<Partial<Record<DataVisKind, MessageId>>> = {
   pie: 'editor.vis.pie',
-  geomap: 'editor.vis.geomap',
 };
 
 /**
@@ -155,7 +156,7 @@ const VisExtras = memo(function VisExtras({
           readOnly={readOnly}
         />
       </div>
-      {vis.kind === 'barchart' ? (
+      {vis.kind === 'geomap' ? null : vis.kind === 'barchart' ? (
         <div className={cx(styles['editorWide'])}>
           <BarchartOptionsField
             options={vis.options}

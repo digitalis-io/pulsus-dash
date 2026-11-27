@@ -14,7 +14,7 @@ import { Button } from '../../kit/Button';
 import { cx } from '../../kit/cx';
 import { ModalDialog } from '../../kit/Dialog';
 import styles from './Board.module.css';
-import { PanelBody, type PanelCategory } from './PanelFrame';
+import { PanelBody, type PanelCategory, type PanelGeo } from './PanelFrame';
 
 export function PanelFullScreen({
   isOpen,
@@ -22,6 +22,7 @@ export function PanelFullScreen({
   view,
   onNarrow,
   category,
+  geo,
   onClose,
 }: {
   isOpen: boolean;
@@ -30,6 +31,8 @@ export function PanelFullScreen({
   onNarrow: () => void;
   /** A bar chart's state and actions, shared with the panel (plan #173 Part 3b §4.3). */
   category?: PanelCategory;
+  /** A geomap panel's options, run and unit (plan #234 Part 3 §4.7). */
+  geo?: PanelGeo;
   onClose: () => void;
 }) {
   // Its own size memo, kept across close and reopen (#90).
@@ -51,6 +54,7 @@ export function PanelFullScreen({
             sizeMemo={frameSize}
             onNarrow={onNarrow}
             {...(category === undefined ? {} : { category })}
+            {...(geo === undefined ? {} : { geo })}
           />
         )}
       </div>

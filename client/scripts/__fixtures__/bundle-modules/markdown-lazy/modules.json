@@ -14,5 +14,23 @@
   ],
   "assets/md-shared-s1.js": [
     "/repo/client/node_modules/mdurl/index.mjs"
+  ],
+  "assets/BoardsPage-l1.js": [
+    "/repo/client/src/pages/boards/BoardsPage.tsx"
+  ],
+  "assets/ChartFrame-c1.js": [
+    "/repo/client/src/charts/ChartFrame.tsx",
+    "/repo/client/src/vis/geo/targets.ts",
+    "/repo/client/src/inspector/geoModel.ts"
+  ],
+  "assets/GeoMapFrame-g1.js": [
+    "/repo/client/src/charts/GeoMapFrame.tsx",
+    "/repo/client/src/charts/geo/GeoMarkList.tsx",
+    "/repo/client/src/vis/geo/frame.ts",
+    "/repo/client/src/vis/geo/plan.ts"
+  ],
+  "assets/scene-s1.js": [
+    "/repo/client/src/engine/canvas2d/geo/scene.ts",
+    "/repo/client/src/engine/controller/geo/camera.ts"
   ]
 }

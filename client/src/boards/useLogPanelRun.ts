@@ -43,6 +43,7 @@ import { panelVars, referencedVariables } from './variableRefs';
 
 const NO_DIAGNOSTICS: readonly Diagnostic[] = Object.freeze([]);
 const NO_NAMES: readonly string[] = Object.freeze([]);
+const NO_RETRY = (): void => undefined;
 
 export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const api = useApi();
@@ -217,6 +218,8 @@ export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       stepMs: runStep,
       expanded,
       stream,
+      placeholder: false,
+      retry: NO_RETRY,
     }),
     [
       text,

@@ -108,6 +108,40 @@ carry under each chip:
 A plain click or Shift-click on a chip opens the page in place (Back returns to the board); ⌘-click,
 Ctrl-click or a middle click opens it in a new tab.
 
+### Inspect a map
+
+A **Map** panel places each series on a world map by its labels: a cloud region, a country, an
+airport code, a geohash or `lat`/`lon` coordinates. Add one in the panel editor: choose **Map** as
+the visualisation. Its options keep their defaults for now (each series sized by its value, one
+colour per series, close marks gathered into clusters); you can set thresholds.
+
+- **Marks.** A marker is one series; a grey disc with a number is a **cluster** of series that sit
+  close together at this zoom. With thresholds, each marker shows its state with a coloured ring
+  and a glyph, and a cluster shows its worst state.
+- **Move the map.** Scroll to zoom about the pointer, drag to pan (it glides to a stop), drag with
+  the right button to zoom to a box, and double-click to zoom in, or into a cluster. **Alt**-drag
+  selects the series in a box.
+- **Inspect.** Click a marker or a cluster: the Inspector shows the series (its value, place,
+  where its location came from and whether it is drawn) or the cluster (its series and their
+  spread). Click empty map to clear the selection.
+- **Legend.** With several groups, the legend under the map lists them; choose one to select its
+  series, or the **other (n)** entry to inspect the groups gathered there.
+- **Keyboard.** Tab to the map and use **+**, **-**, **0** (fit) and **Shift**+arrows to zoom and
+  pan. Tab again to reach the list of marks in view: move with the arrows, Home, End, Page Up and
+  Page Down, and press **Enter** to inspect one. "No marks in view · Fit" means the map shows none:
+  press Enter to fit the map to the marks. Then Tab reaches the legend and the coverage line.
+- **Table and CSV.** Press **Shift+T**, or **Show table** when the map cannot be drawn, for every
+  series in a table: its value, state, location, where it came from and whether it is on the map.
+  The round toggle before a name selects the series; **Inspect** opens it in the Inspector, drawn or
+  not. **Export CSV** downloads the table.
+- **Statuses.** The line under the map counts what could not be shown: series not placed (no
+  location label, or one PulsusIX does not know), ambiguous places, series outside the map and
+  series without a usable value. The map also tells you when there is nothing in the window, when
+  no series could be placed, when the panel is too small, when the map data could not load and when
+  a refresh failed (the map stays, marked stale).
+- **If the map cannot load,** the panel says "Map couldn't load" with **Retry**. If it fails
+  again, choose **Reload** to reload the page. The other panels keep working.
+
 ### Zoom and pan a chart
 
 Point at a chart's plot (the area with the lines or bars) and:

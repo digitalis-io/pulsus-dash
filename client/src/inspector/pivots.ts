@@ -32,7 +32,15 @@ function identity(t: InspectorTarget): BoardFilter[] {
     return Object.entries(t.labels).map(([key, value]) => ({ key, value }));
   }
   if (t.type === 'bucket') return [];
-  const labels = t.type === 'mark' ? t.target.mark.labels : t.labels;
+  // A geo marker's labels (T25 §4.3); a cluster, group or the aggregate has no pivots.
+  const labels =
+    t.type === 'mark'
+      ? t.target.mark.labels
+      : t.type === 'geo'
+        ? t.target.kind === 'marker'
+          ? (t.target.rows[0]?.labels ?? {})
+          : {}
+        : t.labels;
   const service = labels['service_name'];
   if (service !== undefined) return [{ key: 'service_name', value: service }];
   const job = labels['job'];
@@ -88,7 +96,8 @@ export function pivotInstant(t: InspectorTarget): number | null {
     case 'bucket':
       return t.tMs;
     case 'mark':
-      // A bar is reduced over the window: the pivot keeps the origin window.
+    case 'geo':
+      // A bar is reduced over the window, a map shows one: the pivot keeps the origin window.
       return null;
   }
 }

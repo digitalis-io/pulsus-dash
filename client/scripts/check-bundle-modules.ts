@@ -5,7 +5,9 @@
  * `minimist`, a Node built-in or `SAXParser` (`scripts/lib/bundleModules.ts`). Then (plan #198
  * Part 3a §3.4) it reads `<outDir>/.vite/manifest.json` and applies the Markdown rules: no Markdown
  * module in the static closure of `index.html` or the board route, and the Markdown entry its own
- * dynamic chunk; a closure it cannot follow is a finding.
+ * dynamic chunk; a closure it cannot follow is a finding. Then the geo rule (plan #234 Part 3 §4.8):
+ * nothing geo in the initial closure, only the targets and the Inspector's model in the board route,
+ * and the geomap host and scene as dynamic entries.
  *
  * Usage: node scripts/check-bundle-modules.ts [--cache <dir>] <outDir>…
  * Exit: 0 no findings, 1 findings, 2 a graph or manifest is missing or unreadable (the build was not
@@ -15,9 +17,11 @@ import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   forbiddenModules,
+  geoInRoute,
   markdownInRoute,
   parseGraph,
   parseManifest,
+  type GeoFinding,
   type MarkdownFinding,
   type ModuleFinding,
 } from './lib/bundleModules.ts';
@@ -29,9 +33,9 @@ export const DEFAULT_CACHE = join(CLIENT_ROOT, 'node_modules', '.cache', 'dash-b
 export function checkBundleModules(
   cache: string,
   outDirs: readonly string[],
-): (ModuleFinding | MarkdownFinding)[] {
+): (ModuleFinding | MarkdownFinding | GeoFinding)[] {
   if (outDirs.length === 0) throw new InputError('name at least one output directory');
-  const out: (ModuleFinding | MarkdownFinding)[] = [];
+  const out: (ModuleFinding | MarkdownFinding | GeoFinding)[] = [];
   for (const dir of outDirs) {
     const name = basename(dir);
     const file = join(cache, name, 'modules.json');
@@ -42,6 +46,7 @@ export function checkBundleModules(
     const manifest = parseManifest(readJson(manifestFile));
     if (manifest === null) throw new InputError(`${manifestFile} is not a Vite manifest`);
     out.push(...markdownInRoute(manifest, graph, `${name}/.vite/manifest.json`));
+    out.push(...geoInRoute(manifest, graph, `${name}/.vite/manifest.json`));
   }
   return out;
 }

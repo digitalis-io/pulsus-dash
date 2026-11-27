@@ -736,7 +736,14 @@ delegates the kind to a scene in its own chunk
 - **Lazy load.** The first `geomap` spec calls `loadGeoModule()`: one shared promise for the page,
   kept once it resolves; a rejection clears it, so the next `geomap` spec, on this frame or another,
   imports again. The frame logs the failure once (`pulsus map renderer unavailable: …`) and stays
-  blank with no `drawn`; Part 3's host shows the status. `Canvas2DOptions.loadGeo` replaces the
+  blank with no `drawn`.
+- **Failure summary (#234 Part 3 §4.4a).** When the scene import rejects and the load's generation
+  still matches, the frame is not disposed and its kind is still `geomap`, the frame emits exactly
+  one `a11y` summary `{kind: 'geomap', geo: null, …}` (zero counts, the plot, no labels) and no
+  `drawn`; otherwise it emits nothing. The summary type is unchanged: `geo: null` on a geomap
+  summary means "the renderer could not load". `ChartFrameProps.onSummary` hands every summary to
+  the caller after the frame's own state; the map host reads this one and shows its load-failure
+  state with Retry, then Reload ([geomap](geomap.md#load-failure-geomapbody)). `Canvas2DOptions.loadGeo` replaces the
   loader in tests (`geoModuleLoader(imp)` builds one over any import).
 - **Generation guard.** Each load takes `geoGen + 1`; leaving `geomap` and `dispose` bump `geoGen`.
   A module that resolves for an old generation, a disposed frame or another kind is kept (cached)
@@ -748,8 +755,7 @@ delegates the kind to a scene in its own chunk
   `setEvents` are stored and draw nothing. Until the scene exists the frame paints `map-water` and emits no `drawn`, so the host's
   pending state stays.
 - **Drawing.** No layer cache: each frame the scene paints the visible canvas, the frame emits the
-  `chart-draw` measure (`kind: 'geomap'`, `series` = the marks; `bench:geomap-markers` reads it in
-  Part 3), `a11y` when the summary's JSON changed, `chart-present` and `drawn`, and schedules
+  `chart-draw` measure (`kind: 'geomap'`, `series` = the marks; `bench:geomap-markers` reads it), `a11y` when the summary's JSON changed, `chart-present` and `drawn`, and schedules
   another frame while an ease, a fling or a crossfade runs.
 - **Input.** The scene's `GeoController` listens on the canvas (pointer, wheel, double-click,
   context menu) and on the key target (keydown); the shared time `FrameController` does not listen

@@ -6,6 +6,10 @@ import { DEFAULT_CONTEXT } from '../state/contextSearch';
 import { K1, P_LABELS, P_ORIGIN, P_TARGET, P_T, pEnv, pRequest } from '../test/inspectorKit';
 import { selectionOf } from '../charts/inspectTarget';
 import { fkey } from '../test/categoryFixtures';
+import { frameOf } from '../test/geoKit';
+import { G, M12, O2, TH } from '../vis/geo/fixtures/series';
+import type { GeoFrame } from '../vis/geo/frame';
+import { geoTarget, resolveGeoMembers, type GeoInspectorTarget } from '../vis/geo/targets';
 import { inspectorModel } from './model';
 import { pivotInstant, pivotWindow } from './pivots';
 import type { InspectorTarget, Pivot } from './types';
@@ -338,5 +342,113 @@ describe('unit:inspector-model (mark)', () => {
     expect(m.primary).toBe('no data');
     expect(m.primaryState).toBeNull();
     expect(m.facts.map((f) => f.label)).toEqual(['Raw', 'Series key', 'Reduced over']);
+  });
+});
+
+describe('unit:geo-inspect (T24 §4.13, T25 §4.9; plan #234 Part 3 §4.5)', () => {
+  const ORIGIN = { ...P_ORIGIN, title: 'Latency map', unit: { kind: 'time', base: 'ms' } as const };
+  const g = frameOf(G(), { th: TH });
+  const geo = (t: GeoInspectorTarget): InspectorTarget => ({ type: 'geo', target: t });
+  const req = (t: GeoInspectorTarget) =>
+    pRequest({ origin: ORIGIN, target: geo(t), selection: selectionOf(geo(t)) });
+  const marker = (key: string, f: GeoFrame = g) =>
+    geoTarget(f, f.seq, { kind: 'marker', id: key, keys: [key] });
+
+  it('cluster:k03: Cluster of 5 near Mons, worst degraded, the five rows, values 75 ms – 210 ms', () => {
+    const t = geoTarget(g, g.seq, {
+      kind: 'cluster',
+      id: 'cluster:k03',
+      keys: ['k01', 'k02', 'k03', 'k04', 'k08'],
+    });
+    const m = inspectorModel(req(t), pEnv());
+    expect(m.heading).toBe('Cluster of 5');
+    expect(m.subheading).toBe('near Mons');
+    expect(fact(m, 'Worst state')).toBe('Degraded');
+    expect(fact(m, 'Values')).toBe('75 ms – 210 ms');
+    expect(m.members?.texts.count).toBe(5);
+    expect(m.members?.texts.shown).toEqual(t.rows.map((r) => r.name));
+    expect(m.members?.texts.labels).toEqual(t.rows.map((r) => r.labels));
+    expect(m.members?.runs).toBeNull();
+    expect(m.members?.resolve).toBeNull();
+    expect(m.pivots).toEqual([]);
+    expect(m.announce).toBe('Inspector: Cluster of 5, near Mons, worst degraded');
+  });
+
+  it('a marker: k01 with its place, value, facts and the mark pivots (f=env=prod)', () => {
+    const m = inspectorModel(req(marker('k01')), pEnv([{ key: 'env', value: 'prod' }]));
+    expect(m.heading).toBe('{cloud_region="eu-west-1"}');
+    expect(m.subheading).toBe('Dublin');
+    expect(m.primary).toBe('120 ms');
+    expect(m.primaryState).toBeNull();
+    expect(fact(m, 'Value status')).toBe('OK');
+    expect(fact(m, 'Location')).toBe('53.3400, -6.2500');
+    expect(fact(m, 'Source')).toBe('cloud_region eu-west-1 (aws)');
+    expect(fact(m, 'Group')).toBe('{cloud_region="eu-west-1"}');
+    expect(fact(m, 'Draw')).toBe('On the map');
+    expect(m.members).toBeNull();
+    expect(pivot(m.pivots, 'explore')?.href).not.toBeNull();
+    expect(pivot(m.pivots, 'explore')?.context).toContain(
+      'Filters not applied in Explore yet: env',
+    );
+    // T25-010: the selector is the identity AND the filters, so f=env=prod alone enables Logs.
+    expect(logsQ(m.pivots)).toBe('{env="prod"}');
+    // With no filter, k01 has no log stream label: Logs is off.
+    const bare = inspectorModel(req(marker('k01')), pEnv());
+    expect(pivot(bare.pivots, 'logs')?.href).toBeNull();
+    expect(pivot(bare.pivots, 'logs')?.reason).toBe(
+      'No log stream label on this series (needs service_name or job)',
+    );
+    expect(m.announce).toBe('Inspector: {cloud_region="eu-west-1"}, 120 ms, ok');
+    expect(m.copyValue).toBe('120');
+    expect(pivotWindow(geo(marker('k01')), ORIGIN.window)).toEqual(ORIGIN.window);
+  });
+
+  it('the table k10: No value, invalid: coords lat, Not placed; k03 in other; k07 failing', () => {
+    const k10 = inspectorModel(req(marker('k10')), pEnv());
+    const values = k10.facts.map((f) => f.value);
+    expect(values).toEqual(
+      expect.arrayContaining(['No value', 'invalid: coords lat', 'Not placed']),
+    );
+    expect(k10.subheading).toBe('invalid');
+    expect(fact(k10, 'Group')).toBe('{lat="91", lon="0"} (in other (11))');
+    const k07 = inspectorModel(req(marker('k07')), pEnv());
+    expect(k07.primary).toBe('300 ms');
+    expect(k07.primaryState).toBe('failing');
+    expect(k07.announce).toBe('Inspector: {lat="40.7128", lon="-74.0060"}, 300 ms, failing');
+    expect(fact(k07, 'Source')).toBe('lat 40.7128, -74.006');
+  });
+
+  it('the aggregate and a group of O2; M12 resolves past 8', () => {
+    const o2 = frameOf(O2(), { opts: { groupBy: 'env' } });
+    const agg = geoTarget(o2, o2.seq, { kind: 'aggregate' });
+    const a = inspectorModel(req(agg), pEnv());
+    expect(a.heading).toBe('other (3)');
+    expect(a.subheading).toBe('3 groups, 4 series');
+    expect(a.facts).toEqual([]);
+    expect(a.members?.texts.shown).toEqual(['"other (2)"', 'e8', 'e9']);
+    expect(a.members?.texts.labels).toEqual([{ env: 'other (2)' }, { env: 'e8' }, { env: 'e9' }]);
+    expect(a.pivots).toEqual([]);
+    expect(a.announce).toBe('Inspector: other (3), 3 groups, 4 series');
+    const grp = geoTarget(o2, o2.seq, { kind: 'group', from: agg, entry: 1 });
+    const gm = inspectorModel(req(grp), pEnv());
+    expect(gm.heading).toBe('e8');
+    expect(gm.subheading).toBe('2 series');
+    expect(fact(gm, 'Values')).toBe('9 ms – 11 ms');
+    expect(gm.members?.texts.count).toBe(2);
+    expect(gm.announce).toBe('Inspector: e8, 2 series');
+    const m12 = frameOf(M12());
+    const c = geoTarget(m12, m12.seq, {
+      kind: 'cluster',
+      id: 'cluster:m12',
+      keys: m12.rows.map((r) => r.key),
+    });
+    const cm = inspectorModel(req(c), pEnv());
+    expect(cm.members?.texts.shown).toHaveLength(8);
+    expect(cm.members?.texts.labels).toHaveLength(8);
+    expect(cm.members?.texts.count).toBe(12);
+    expect(cm.members?.resolve).toEqual({ panelId: 'p1', runId: 'geo:cluster:m12' });
+    expect(cm.announce).toBe('Inspector: Cluster of 12, near 10.0000, 10.0000');
+    expect(resolveGeoMembers(c, 'geo:cluster:m12')?.texts).toHaveLength(12);
+    expect(resolveGeoMembers(c, 'geo:cluster:m11')).toBeNull();
   });
 });

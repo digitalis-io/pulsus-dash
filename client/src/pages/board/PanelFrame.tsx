@@ -45,6 +45,7 @@ import {
 } from '../../boards/panelRun';
 import { useLegendLayout } from '../../boards/useLegendLayout';
 import { PANEL_PREFETCH_ROWS, streamMeta } from '../../boards/logPanel';
+import { geomapOptions } from '../../boards/options';
 import { usePanelRun, type PanelRun } from '../../boards/usePanelRun';
 import { useInViewport } from '../../boards/visibility';
 import { CategoryChart } from '../../charts/CategoryChart';
@@ -86,6 +87,8 @@ import { LegendCompact } from './LegendCompact';
 import { PanelFullScreen } from './PanelFullScreen';
 import { PanelNotices } from './PanelNotices';
 import { WidgetFrame } from './WidgetFrame';
+import { GeoMapBody } from './GeoMapBody';
+import type { GeomapOptions } from '../../vis/geo/frame';
 import { isWidgetPanel } from '../../widgets/spec';
 
 /** The shimmer's delay (VL-015). */
@@ -132,14 +135,43 @@ export function keyOp(e: {
   return ops === undefined ? null : ops[e.shiftKey ? 1 : 0];
 }
 
-/** `data-panel-state`: the view kind, or the message's state; a bar chart is a `frame`. */
+/** `data-panel-state`: the view kind, or the message's state; a bar chart and a map are a `frame`. */
 function stateOf(v: PanelView): string {
-  return v.kind === 'message' ? v.state : v.kind === 'category' ? 'frame' : v.kind;
+  if (v.kind === 'message') return v.state;
+  return v.kind === 'category' || v.kind === 'geomap' ? 'frame' : v.kind;
 }
 
 /** `data-panel-vis`: the drawn kind of a frame or a bar chart; none for the other views. */
 function visOf(v: PanelView): string | undefined {
+  if (v.kind === 'geomap') return 'geomap';
   return v.kind === 'frame' ? v.vis : v.kind === 'category' ? 'barchart' : undefined;
+}
+
+/** What a geomap body needs of its panel (plan #234 Part 3 §4.7). */
+export interface PanelGeo {
+  readonly panelId: string;
+  readonly options: GeomapOptions;
+  readonly thresholds: Thresholds | null;
+  readonly run: PanelRun;
+  readonly unit: Unit;
+  /** False in the editor preview (§4.1). */
+  readonly inspectorSource?: boolean;
+}
+
+/** A geomap panel's body props: its options with their defaults, thresholds, run and unit. */
+export function panelGeo(panel: DataPanelSpec, run: PanelRun, inspectorSource = true): PanelGeo {
+  return {
+    panelId: panel.id,
+    options: geomapOptions(panel.vis.options),
+    thresholds: panel.vis.thresholds ?? null,
+    run,
+    // A board panel's unit is its plan's (T22 §4.2): `/s` after the rate rewrite, else none.
+    unit:
+      run.outcome?.planned.rateApplied === true
+        ? { kind: 'suffix', suffix: '/s' }
+        : { kind: 'none' },
+    inspectorSource,
+  };
 }
 
 /** The host's last non-empty size, held above `ChartFrame` across its unmounts (#90). */
@@ -407,9 +439,12 @@ export function PanelBody({
   inspect,
   selectPanelId,
   category,
+  geo,
 }: {
   /** A category view's state and actions; absent: all off, no pick. */
   category?: PanelCategory;
+  /** A geomap panel's options, run and unit; absent: a geomap view shows nothing. */
+  geo?: PanelGeo;
   title: string;
   view: PanelView;
   /** Kept by the caller (board panel, full screen, preview), above the chart (#90). */
@@ -460,6 +495,16 @@ export function PanelBody({
           sizeMemo={sizeMemo}
           onNarrow={onNarrow}
           category={category}
+        />
+      );
+    case 'geomap':
+      return geo === undefined ? null : (
+        <GeoMapBody
+          {...geo}
+          title={title}
+          fill
+          {...(sizeMemo === undefined ? {} : { sizeMemo })}
+          {...(inspect?.onInspect === undefined ? {} : { onInspect: inspect.onInspect })}
         />
       );
     case 'loading':
@@ -573,6 +618,7 @@ export function PanelPreview({
             sizeMemo={frameSize}
             onNarrow={onNarrow}
             category={category}
+            geo={panelGeo(panel, run, false)}
           />
         </div>
       </div>
@@ -711,6 +757,7 @@ const DataPanelFrame = forwardRef<
   });
   const title = panelTitle(panel);
   const view = useMemo(() => panelView(run, panel.vis, title), [run, panel.vis, title]);
+  const geo = useMemo(() => panelGeo(panel, run), [panel, run]);
   const shimmer = useDelayedFlag(run.fetching, SHIMMER_MS);
   const notices = noticesOf(run, view);
   // The body's size, across message states and remounts of its chart (#90); full screen holds its own.
@@ -721,7 +768,8 @@ const DataPanelFrame = forwardRef<
   // The Inspector's origin (T25 §5), memoised on its fields so the chart's props stay stable.
   const lang = panel.query.lang;
   const expanded = run.expanded;
-  const originUnit = view.kind === 'frame' ? view.spec.unit : null;
+  const originUnit =
+    view.kind === 'frame' ? view.spec.unit : view.kind === 'geomap' ? geo.unit : null;
   const origin = useMemo<Omit<InspectOrigin, 'window'>>(
     () => ({
       surface: 'board',
@@ -968,6 +1016,7 @@ const DataPanelFrame = forwardRef<
           inspect={inspect}
           selectPanelId={panel.id}
           category={bodyCategory}
+          geo={geo}
         />
       </div>
       <PanelFullScreen
@@ -976,6 +1025,7 @@ const DataPanelFrame = forwardRef<
         view={view}
         onNarrow={view.kind === 'category' ? onCategoryNarrow : onNarrow}
         category={fullCategory}
+        geo={geo}
         onClose={() => {
           setFull(false);
         }}

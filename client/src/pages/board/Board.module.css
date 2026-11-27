@@ -383,6 +383,15 @@
   min-height: 0;
 }
 
+/* A geomap panel's body (plan #234 Part 3 §4.10): the lazy map fills it. */
+.geoBody {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  min-height: 0;
+}
+
 .fullBody {
   display: grid;
   flex: 1 1 auto;

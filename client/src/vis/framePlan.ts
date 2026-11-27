@@ -15,7 +15,9 @@ export type FramePlan =
   | { readonly spec: VisSpec; readonly data: FrameData; readonly notice: null }
   | { readonly spec: VisSpec; readonly data: null; readonly notice: 'noBuckets' }
   | { readonly spec: VisSpec; readonly data: null; readonly notice: 'tooManyTimestamps' }
-  | { readonly spec: null; readonly data: null; readonly notice: 'string' };
+  | { readonly spec: null; readonly data: null; readonly notice: 'string' }
+  /** A geomap is planned by `vis/geo/plan.ts` (T24-088; #234 Part 3 §4.7). */
+  | { readonly spec: null; readonly data: null; readonly notice: 'geomap' };
 
 /**
  * The most values `commonGrid` allocates (series × distinct timestamps): every drawable series on
@@ -77,11 +79,12 @@ export function canIsolate(vis: VisKind | null, r: ExploreResult): boolean {
 }
 
 export function framePlan(
-  // A geomap is planned by `vis/geo/` (T24-088; #234 Part 3), never here.
-  vis: Exclude<VisKind, 'geomap'>,
+  vis: VisKind,
   r: ExploreResult,
   o: { readonly isolatedKey: string | null; readonly title: string; readonly rateApplied: boolean },
 ): FramePlan {
+  // A geomap is planned by `vis/geo/plan.ts` (T24-088), never here.
+  if (vis === 'geomap') return { spec: null, data: null, notice: 'geomap' };
   if (r.kind === 'string') return { spec: null, data: null, notice: 'string' };
   // A bar chart is planned by `vis/barchart.ts` (ADR-0028): Explore draws it from its model, and
   // this line plan only carries the unit of the Inspector's origin.
