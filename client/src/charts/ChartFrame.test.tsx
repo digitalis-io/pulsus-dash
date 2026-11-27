@@ -998,3 +998,56 @@ describe('component camera commit (#93)', () => {
     );
   });
 });
+
+describe('unit:area-allowed (#282 Part 2b §4.3, T08-019)', () => {
+  /** A controllable `matchMedia`: each query's `matches`, and its `change` listeners. */
+  function fakeMedia(state: Record<string, boolean>) {
+    const listeners = new Map<string, Set<() => void>>();
+    const mm = (q: string) => ({
+      media: q,
+      get matches() {
+        return state[q] ?? false;
+      },
+      addEventListener: (_: string, cb: () => void) => {
+        const s = listeners.get(q) ?? new Set();
+        s.add(cb);
+        listeners.set(q, s);
+      },
+      removeEventListener: (_: string, cb: () => void) => listeners.get(q)?.delete(cb),
+      addListener: () => undefined,
+      removeListener: () => undefined,
+    });
+    const set = (q: string, v: boolean): void => {
+      state[q] = v;
+      for (const cb of listeners.get(q) ?? []) cb();
+    };
+    return { mm, set };
+  }
+
+  it('sends area false under forced colours or reduced transparency, true otherwise', () => {
+    const FORCED = '(forced-colors: active)';
+    const REDUCED = '(prefers-reduced-transparency: reduce)';
+    const media = fakeMedia({ [FORCED]: true });
+    const saved = globalThis.matchMedia;
+    globalThis.matchMedia = media.mm as unknown as typeof globalThis.matchMedia;
+    try {
+      const engine = fakeEngine();
+      const spec: VisSpec = { ...LINE7, area: true };
+      renderFrame(engine, spec, DATA);
+      const area = (): unknown =>
+        (lastFrame(engine).last('setSpec')?.[0] as { area?: boolean }).area;
+      expect(area()).toBe(false);
+      act(() => {
+        media.set(FORCED, false);
+        media.set(REDUCED, true);
+      });
+      expect(area()).toBe(false);
+      act(() => {
+        media.set(REDUCED, false);
+      });
+      expect(area()).toBe(true);
+    } finally {
+      globalThis.matchMedia = saved;
+    }
+  });
+});

@@ -6,7 +6,7 @@
 //! C2c2: the selection tags the Line item with its emphasis and puts its band first in that item.
 
 use dash_axes::{PlotRect, VisKind, event_band, value_axis};
-use dash_marks::desc::{DrawList, MarkItem};
+use dash_marks::desc::{Area, DrawList, MarkItem};
 use dash_scales::Range64;
 use dash_scales::encode::{axis_map, choose_encoding, is_far};
 use dash_tokens::{ColourRole, colour, series_palette};
@@ -46,6 +46,27 @@ fn line_stats(chunk: &Chunk, shown: usize) -> (Option<f64>, Option<f64>, Option<
     )
 }
 
+/// The most series a line area is drawn under (ADR-0036).
+const MAX_AREA_SERIES: usize = 4;
+
+/// ADR-0036: the area of a Line item: asked for by the spec, 1–4 series shown, no selection at
+/// all (keys or an interval, matched or not) and 2D (no lanes); `opacity.chart-area` ÷ shown, so
+/// the stacked tint stays within it.
+fn area_of(
+    spec: &crate::spec::LineSpec,
+    shown: usize,
+    selection: &crate::selection::SelectionIn,
+    lanes: &Option<Vec<u16>>,
+) -> Option<Area> {
+    let selected =
+        !selection.keys.is_empty() || selection.from_ms.is_some() || selection.to_ms.is_some();
+    (spec.area && (1..=MAX_AREA_SERIES).contains(&shown) && !selected && lanes.is_none()).then(
+        || Area {
+            alpha_top: dash_tokens::opacity::CHART_AREA / shown as f32,
+        },
+    )
+}
+
 fn rect(p: &PlotRect) -> [f32; 4] {
     [p.x as f32, p.y as f32, p.width as f32, p.height as f32]
 }
@@ -82,8 +103,9 @@ pub fn build(v: &Viewport) -> (DrawList, Option<FrameSummary>) {
 /// the measured one) and pick count) and its pick snapshot; both None exactly when there is no
 /// summary (no data, no window, an unsupported kind or an empty plot).
 pub fn build_frame(v: &Viewport) -> Built {
-    let mut palette = [colour(v.theme, ColourRole::Hairline); 9];
+    let mut palette = [colour(v.theme, ColourRole::ChartGrid); 10];
     palette[..8].copy_from_slice(&series_palette(v.theme));
+    palette[9] = colour(v.theme, ColourRole::ChartAxis);
     let Camera::Plot2D(cam) = v.camera;
     let view_proj = v.camera.view_proj(Size64 {
         w: v.css.w,
@@ -162,6 +184,7 @@ pub fn build_frame(v: &Viewport) -> Built {
     list.items.push(MarkItem::Guides {
         lines,
         plot: rect(&plot),
+        baseline: (js_round(plot.y + plot.height) - 1.0) as f32,
     });
     let dpr = f64::from(v.dpr);
     if let Some(enc) = choose_encoding(
@@ -174,6 +197,8 @@ pub fn build_frame(v: &Viewport) -> Built {
             .iter()
             .map(|s| dash_colour::series_colour_index(s.key_hash, &s.labels))
             .collect();
+        let lanes = None;
+        let area = area_of(spec, shown, &v.selection, &lanes);
         list.items.push(MarkItem::Line {
             chunk: chunk.clone(),
             series: 0..shown as u32,
@@ -183,10 +208,11 @@ pub fn build_frame(v: &Viewport) -> Built {
             encoding: enc,
             axis: (m.ku as f32, m.ou as f32),
             colour_slots,
-            lanes: None,
+            lanes,
             emphasis: matched(chunk, shown, &v.selection).map(|m| emphasis(m, v.theme)),
             width_css: dash_tokens::size::CHART_LINE,
             far: is_far(&enc, chunk.finite),
+            area,
         });
     }
     // The layer marks (plan #68 C2c1 §4.2, C2c2 §4.2): the selection band, thresholds, then events

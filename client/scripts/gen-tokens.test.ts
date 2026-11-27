@@ -88,6 +88,22 @@ describe('tokens generate', () => {
     expect(light).toContain('--failing-glow: #B8285C1A;');
   });
 
+  // #282 Part 2b (ADR-0036): the chart grid and baseline colours, the 4/5 dash and the area tint.
+  it('emits the Part 2b chart grid, axis, dash and area tokens', () => {
+    const { css, rs } = generate(toml);
+    const dark = /:root,\n:root\[data-theme="dark"\] \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(dark).toContain('--chart-grid: #FFFFFF0F;');
+    expect(dark).toContain('--chart-axis: #FFFFFF24;');
+    const light = /:root\[data-theme="light"\] \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(light).toContain('--chart-grid: #1C22330F;');
+    expect(light).toContain('--chart-axis: #1C223329;');
+    expect(css).toContain('--size-chart-dash: 4px;');
+    expect(css).toContain('--size-chart-dash-gap: 5px;');
+    expect(css).toContain('--opacity-chart-area: 0.18;');
+    expect(rs).toContain('pub const CHART_AREA: f32 = 0.18;');
+    expect(rs).toContain('pub const CHART_DASH: f32 = 4.0;');
+  });
+
   it('rejects a tracking value outside ±0.05 and an unsafe string, naming the key', () => {
     expect(() => generate(toml.replace('lg = -0.011', 'lg = 0.2'))).toThrow(/font\.tracking\.lg/);
     expect(() =>

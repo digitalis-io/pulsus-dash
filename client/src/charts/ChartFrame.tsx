@@ -87,6 +87,7 @@ import {
   valueUnit,
 } from './chartText';
 import { geoTooltip, hoverItemOf, statTarget, targetOf } from './inspectTarget';
+import { useAreaAllowed } from './useAreaAllowed';
 
 /** The geomap tooltip's offset from the pointer, CSS px. */
 const GEO_TIP_GAP = 12;
@@ -294,13 +295,17 @@ export function ChartFrame({
   const [pin, setPin] = useState<Pin | null>(null);
   if (pin !== null && pin.key !== pinKey) setPin(null);
   const valueRange = pin !== null && pin.key === pinKey ? pin.range : null;
-  const engineSpec = useMemo<VisSpec>(
-    () =>
+  // ADR-0036 (§4.3): no area under forced colours or reduced transparency.
+  const areaAllowed = useAreaAllowed();
+  const engineSpec = useMemo<VisSpec>(() => {
+    const pinned =
       valueRange !== null && (spec.kind === 'line' || spec.kind === 'bars')
         ? { ...spec, valueRange }
-        : spec,
-    [spec, valueRange],
-  );
+        : spec;
+    return pinned.kind === 'line' && pinned.area === true && !areaAllowed
+      ? { ...pinned, area: false }
+      : pinned;
+  }, [spec, valueRange, areaAllowed]);
 
   const hostRef = useRef<HTMLDivElement>(null);
   const sliderRef = useRef<HTMLDivElement>(null);

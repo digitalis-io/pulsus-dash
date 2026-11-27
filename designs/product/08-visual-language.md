@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.7-rc · 2026-11-27 |
+| **Version** | 1.8-rc · 2026-11-27 |
 | **Requirement area** | `VL` |
 | **Source draft** | plans/08-visual-language.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [T02](../technical/T02-vis-engine.md), [T08](../technical/T08-dom-component-kit.md) |
@@ -59,6 +59,7 @@ character: one light, fog, hairline grid, no decoration ([05](05-visualisation-c
 | `degraded` | `#E8923A` (amber) | `failing` | `#E0457B` (red-magenta) |
 | `unknown` | `#6B7280` + hatch (hatched grey) | `surface-float` | `#15171CF0` (geomap overlay) |
 | `failing-glow` | `#E0457B26` (a failing board panel's glow; state use only) | | |
+| `chart-grid` | `#FFFFFF0F` (a line chart's value guides) | `chart-axis` | `#FFFFFF24` (the plot's bottom baseline) |
 | `series-1`…`series-8` | `#7AA2D6` `#C9A36B` `#8FBF8F` `#B48FC9` `#6FB8B8` `#C98F8F` `#A8A8D9` `#BFB07A` | | |
 
 #### VL-001 — Dark-first themes, both designed
@@ -127,7 +128,10 @@ ring for cards, and neutral shadows), and only to show stacking order (controls,
 board panels, then popovers and menus, then dialogs), and `elevation.state`, which only a failing
 board panel takes: a ring and a glow in its state colour (`failing-glow`) that encode health
 together with the panel's state tag and its glyph (VL-007), never decoration. The depth cues of §10 (lighting, fog, ground grid, contact shadows) are shading
-in 3D scenes, not effects; they MUST NOT add hue or glow.
+in 3D scenes, not effects; they MUST NOT add hue or glow. A line chart's area fill
+([ADR-0036](../adr/0036-line-spec-area.md)) is shading in the series' own hue, a gradient to
+transparent at `opacity.chart-area` (0.18) shared by the series shown, not glow: it adds no hue,
+encodes nothing and is dropped under forced colours and reduced transparency.
 
 *Acceptance:* Two entities with anomaly scores 0.4 and 0.8 render glows whose measured intensity
 ratio is 1 : 2 (±10%), in 2D and in 3D scenes; an entity with score 0 has no glow; no other bloom
@@ -326,6 +330,7 @@ ring, which is shown as a static double ring.
 | Corner radius | 3 / 4 / 6 / 8 / 10 px, no capsules (tags / menu items, segments, chips, checkbox / buttons, segmented track, fields, tooltips, header controls / cards, board panels, popovers, menus, Inspector / dialogs) |
 | Control insets | 2 px |
 | Hairline border | 1 px at 8% contrast (`hairline`) |
+| Threshold dash | 4 px on, 5 px off (`chart-dash`, `chart-dash-gap`) |
 
 #### VL-017 — Application layout dimensions
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC
@@ -590,3 +595,4 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
 | 1.5-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): §6 motion row for floating panels (open / close / content change 200 / 150 / 150 ms, ease-out; reduced motion instant); VL-014's acceptance adds floating panels |
 | 1.6-rc | 2026-11-27 | #282 Part 1, resolution 11: §3.1 to the refreshed chrome tokens; VL-001 acceptance `#0E1014` / `#15171C` / `#1D2026`; VL-004 allows the three elevation tokens in DOM chrome; VL-009 field boundaries ≥ 3:1; VL-010 platform UI face on Apple systems; VL-011 canvas text Inter everywhere; §6 and VL-014 popover, tooltip, dialog and control motion; VL-016 popovers and dialogs; VL-017 `material-bar` header, opaque `sidebar`; §7 and VL-019 radius scale and 2 px control insets |
 | 1.7-rc | 2026-11-27 | #282 Part 2a, resolution 12: §3.1 adds `failing-glow`; VL-004 four hue-free elevation tokens (1, card, 2, 3) and `elevation.state` for a failing board panel only; VL-017 212 px sidebar, 12/20/20 px content padding, 12 px panel gaps, 22 px bold title, "boards stay dense", acceptance to match; VL-019 radii 3/4/6/8/10 px, no capsules, 12 px panel gaps; §5 sizes add 22; §7 table |
+| 1.8-rc | 2026-11-27 | #282 Part 2b ([ADR-0036](../adr/0036-line-spec-area.md)): §3.1 `chart-grid` and `chart-axis`; VL-004 note: a line chart's area fill is shading in the series hue, not glow; §7 threshold dash 4/5 |

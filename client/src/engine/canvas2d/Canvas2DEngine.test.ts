@@ -92,7 +92,18 @@ describe('engine', () => {
       .layer()
       .ops.filter((o) => ['moveTo', 'lineTo', 'arc'].includes(o.op))
       .map((o) => o.op);
-    expect(ops).toEqual(['moveTo', 'lineTo', 'moveTo', 'lineTo', 'arc']);
+    // #282 Part 2b: a vertex at each column's first and last value.
+    expect(ops).toEqual([
+      'moveTo',
+      'lineTo',
+      'lineTo',
+      'lineTo',
+      'moveTo',
+      'lineTo',
+      'lineTo',
+      'lineTo',
+      'arc',
+    ]);
   });
 
   it('DPR: sizes the backing store and scales every draw', () => {

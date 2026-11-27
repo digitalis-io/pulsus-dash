@@ -148,7 +148,12 @@ describe('unit:logs-run', () => {
   it('metricPlan: a line of the series', () => {
     const s = series(2);
     const p = metricPlan(s);
-    expect(p.spec).toEqual({ kind: 'line', title: 'Query result', unit: { kind: 'none' } });
+    expect(p.spec).toEqual({
+      kind: 'line',
+      area: true,
+      title: 'Query result',
+      unit: { kind: 'none' },
+    });
     expect(p.data).toEqual({ kind: 'series', series: s.series });
   });
 

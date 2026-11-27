@@ -1,6 +1,8 @@
 //! The line mark's pipelines: P1–P5 compute (`decimate.wgsl`, `link.wgsl`, `scan.wgsl`; T1 only)
 //! and the capsule render pipeline (`line.wgsl`): triangle list, 6 vertices per instance, `LineInstance` as
-//! an instance vertex buffer, `src-alpha, one-minus-src-alpha` blending, no depth, no MSAA.
+//! an instance vertex buffer, `src-alpha, one-minus-src-alpha` blending, no depth, no MSAA. The
+//! area pipeline (`area.wgsl`, #282 Part 2b) draws the same instances with the same layout and
+//! blend. Both render modules are `common.wgsl` followed by their own source.
 
 use dash_gpu::GpuContext;
 
@@ -10,10 +12,17 @@ use super::gpu::INSTANCE_BYTES;
 pub(super) struct Pipelines {
     pub(super) view_bgl: wgpu::BindGroupLayout,
     pub(super) line: wgpu::RenderPipeline,
+    /// The area under the joins (ADR-0036), onto the frame.
+    pub(super) area: wgpu::RenderPipeline,
     /// The line into the dim layer (plan #68 C2c2 §3.3): `Rgba8Unorm`, premultiplied (colour
     /// `SrcAlpha, OneMinusSrcAlpha`; alpha `One, OneMinusSrcAlpha`).
     pub(super) line_dim: wgpu::RenderPipeline,
 }
+
+/// `line.wgsl` after the shared view and mapping (`common.wgsl`).
+pub const LINE_WGSL: &str = concat!(include_str!("common.wgsl"), include_str!("line.wgsl"));
+/// `area.wgsl` after the shared view and mapping (`common.wgsl`).
+pub const AREA_WGSL: &str = concat!(include_str!("common.wgsl"), include_str!("area.wgsl"));
 
 /// The dim layer's format (plan #68 C2c2 §3.3).
 pub(super) const DIM_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -116,7 +125,8 @@ pub(super) fn compute_pipelines(ctx: &GpuContext) -> ComputePipelines {
 /// The capsule render pipeline (both tiers).
 pub(super) fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipelines {
     let d = &ctx.device;
-    let line_m = module(ctx, "line.wgsl", include_str!("line.wgsl"));
+    let line_m = module(ctx, "line.wgsl", LINE_WGSL);
+    let area_m = module(ctx, "area.wgsl", AREA_WGSL);
     let view_bgl = d.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("view"),
         entries: &[uniform_entry(
@@ -129,12 +139,15 @@ pub(super) fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipeli
         immediate_size: 0,
     });
     let attributes = wgpu::vertex_attr_array![0 => Uint32, 1 => Float32, 2 => Float32, 3 => Uint32];
-    let make = |label: &str, format: wgpu::TextureFormat, blend: wgpu::BlendState| {
+    let make = |label: &str,
+                m: &wgpu::ShaderModule,
+                format: wgpu::TextureFormat,
+                blend: wgpu::BlendState| {
         d.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(label),
             layout: Some(&render_layout),
             vertex: wgpu::VertexState {
-                module: &line_m,
+                module: m,
                 entry_point: Some("vs"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
@@ -147,7 +160,7 @@ pub(super) fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipeli
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
-                module: &line_m,
+                module: m,
                 entry_point: Some("fs"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
@@ -160,7 +173,8 @@ pub(super) fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipeli
             cache: None,
         })
     };
-    let line = make("line", format, wgpu::BlendState::ALPHA_BLENDING);
+    let line = make("line", &line_m, format, wgpu::BlendState::ALPHA_BLENDING);
+    let area = make("area", &area_m, format, wgpu::BlendState::ALPHA_BLENDING);
     let premultiplied = wgpu::BlendState {
         color: wgpu::BlendComponent {
             src_factor: wgpu::BlendFactor::SrcAlpha,
@@ -173,9 +187,10 @@ pub(super) fn pipelines(ctx: &GpuContext, format: wgpu::TextureFormat) -> Pipeli
             operation: wgpu::BlendOperation::Add,
         },
     };
-    let line_dim = make("line dim", DIM_FORMAT, premultiplied);
+    let line_dim = make("line dim", &line_m, DIM_FORMAT, premultiplied);
     Pipelines {
         line,
+        area,
         line_dim,
         view_bgl,
     }

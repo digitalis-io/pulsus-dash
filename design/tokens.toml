@@ -12,6 +12,9 @@ surface-1 = "#15171C"
 surface-2 = "#1D2026"
 surface-hover = "#262A31"
 hairline = "#FFFFFF14"
+# The line chart's value guides and the plot's bottom baseline (#282 Part 2b, VL-004).
+chart-grid = "#FFFFFF0F"
+chart-axis = "#FFFFFF24"
 text = "#E9EBEF"
 text-muted = "#9AA1AC"
 text-on-accent = "#F5F8FF"
@@ -115,6 +118,9 @@ surface-1 = "#FFFFFF"
 surface-2 = "#EEF0F3"
 surface-hover = "#E5E8ED"
 hairline = "#1C223314"
+# The line chart's value guides and the plot's bottom baseline (#282 Part 2b).
+chart-grid = "#1C22330F"
+chart-axis = "#1C223329"
 text = "#1B1E25"
 text-muted = "#565E6B"
 text-on-accent = "#FFFFFF"
@@ -244,8 +250,8 @@ chart-line = 1.5
 chart-brush-min = 4
 # Threshold lines and stat tiles (#64 Part B, ADR-0022): the stat sparkline height and the dash pattern.
 chart-sparkline = 32
-chart-dash = 5
-chart-dash-gap = 4
+chart-dash = 4
+chart-dash-gap = 5
 # Boards (plan #61 Part B): 12 columns of 40 px rows; the panel header (the drag handle in Edit).
 board-cols = 12
 board-row = 40
@@ -292,6 +298,8 @@ icon = 0.85
 tag = 0.18
 chip = 0.12
 area = 0.28
+# The line chart's total area tint at the plot top (#282 Part 2b, ADR-0036): split over 1–4 series.
+chart-area = 0.18
 
 [border]
 hairline = 1

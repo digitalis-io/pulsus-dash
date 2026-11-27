@@ -376,7 +376,7 @@ test.describe('e2e:mode-matrix ST integrity', () => {
 /** The five line pages of `canvas2d parity`. */
 const PARITY_PAGES = ['line-1', 'line-50', 'line-gaps', 'line-600', 'line-extreme'] as const;
 /** Plan #68 C2c1: the layer pages, with threshold lines and event lines. */
-const LAYER_PAGES = ['line-thresholds', 'line-events'] as const;
+const LAYER_PAGES = ['line-thresholds', 'line-events', 'line-area', 'line-area-manual'] as const;
 
 interface Box {
   x: number;

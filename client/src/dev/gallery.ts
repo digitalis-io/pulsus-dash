@@ -17,7 +17,9 @@ export type GalleryId =
   | 'line-extreme'
   | 'line-events'
   | 'line-bytes-rate'
-  | 'stat-uptime';
+  | 'stat-uptime'
+  | 'line-area'
+  | 'line-area-manual';
 export interface GalleryEntry {
   readonly id: GalleryId;
   readonly spec: VisSpec;
@@ -62,11 +64,76 @@ function galleryEvents(w: TimeWindow): EventMarker[] {
 }
 
 /**
- * The thirteen entries in table order; entry `i` uses seed `(seed ?? GALLERY_SEED) + i`. Entries 7
+ * `line-area` (#282 Part 2b, ADR-0036): series 1 over the whole window, series 2 at 20–80 % of
+ * it, series 3 with a NaN run at 45–55 %.
+ */
+function areaSeries(w: TimeWindow, seed: number): FrameData {
+  const [a, b, c] = synthLines({
+    seed,
+    series: 3,
+    points: 1_440,
+    ...w,
+    name: 'checkout_latency_ms',
+    base: 120,
+    amp: 40,
+  });
+  if (a === undefined || b === undefined || c === undefined) return { kind: 'series', series: [] };
+  const span = w.toMs - w.fromMs;
+  const at = (t: number): number => (t - w.fromMs) / span;
+  const keep = b.timestamps.map((t) => (at(t) >= 0.2 && at(t) <= 0.8 ? 1 : 0));
+  const middle = {
+    ...b,
+    timestamps: b.timestamps.filter((_, k) => keep[k] === 1),
+    values: b.values.filter((_, k) => keep[k] === 1),
+  };
+  const gap = {
+    ...c,
+    values: c.values.map((v, k) => {
+      const f = at(c.timestamps[k] ?? w.fromMs);
+      return f >= 0.45 && f <= 0.55 ? NaN : v;
+    }),
+  };
+  return { kind: 'series', series: [a, middle, gap] };
+}
+
+/**
+ * `line-area-manual` (#282 Part 2b): a pinned axis [40, 80]; series 1 swings from below it to
+ * above it (joins crossing the plot's bottom and top), series 2 has samples at 20 %, 80 % and a
+ * finite, NaN, finite triple within 2 ms at 50 % (one column, the line breaking inside it).
+ */
+function areaManualSeries(w: TimeWindow): FrameData {
+  const span = w.toMs - w.fromMs;
+  const n = 120;
+  const ts = Float64Array.from({ length: n + 1 }, (_, k) => w.fromMs + Math.round((k * span) / n));
+  const swing = ts.map((_, k) => 60 + 45 * Math.sin((k / n) * 4 * Math.PI));
+  const at = (f: number): number => w.fromMs + Math.round(f * span);
+  const mid = at(0.5);
+  return {
+    kind: 'series',
+    series: [
+      {
+        key: '00000000000a7e01',
+        labels: { __name__: 'swing' },
+        timestamps: ts,
+        values: swing,
+      },
+      {
+        key: '00000000000a7e02',
+        labels: { __name__: 'inner_gap' },
+        timestamps: new Float64Array([at(0.2), mid - 1, mid, mid + 1, at(0.8)]),
+        values: new Float64Array([50, 70, NaN, 45, 55]),
+      },
+    ],
+  };
+}
+
+/**
+ * The fifteen entries in table order; entry `i` uses seed `(seed ?? GALLERY_SEED) + i`. Entries 7
  * and 8 show threshold lines and a stat sparkline (#64 Part B, ADR-0022); entry 9 spans values near
  * the largest finite number (#97); entry 10 has three event markers, two of them gathered into a
- * `+2` chip (#64 Part C, ADR-0023); the last two are in the panel units of #290 (bytes per second
- * on IEC ticks, and an uptime in days). None after the first four is a parity entry.
+ * `+2` chip (#64 Part C, ADR-0023); entries 11 and 12 are in the panel units of #290 (bytes per second
+ * on IEC ticks, and an uptime in days); the last two are shaded (#282 Part 2b, ADR-0036). None
+ * after the first four is a parity entry.
  */
 export function galleryEntries(w: TimeWindow, seed?: number): GalleryEntry[] {
   const s0 = seed ?? GALLERY_SEED;
@@ -183,6 +250,22 @@ export function galleryEntries(w: TimeWindow, seed?: number): GalleryEntry[] {
       id: 'stat-uptime',
       spec: { kind: 'stat', title: t('gallery.statUptime'), unit: { kind: 'time', base: 's' } },
       data: { kind: 'scalar', scalar: { value: 671000, timestampMs: w.toMs } },
+    },
+    {
+      id: 'line-area',
+      spec: { kind: 'line', title: t('gallery.lineArea'), unit: { kind: 'none' }, area: true },
+      data: areaSeries(win, s0 + 13),
+    },
+    {
+      id: 'line-area-manual',
+      spec: {
+        kind: 'line',
+        title: t('gallery.lineAreaManual'),
+        unit: { kind: 'none' },
+        valueRange: { min: 40, max: 80 },
+        area: true,
+      },
+      data: areaManualSeries(win),
     },
   ];
 }
