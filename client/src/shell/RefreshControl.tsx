@@ -26,7 +26,7 @@ export function RefreshControl() {
         onPress={refreshNow}
         className={cx(styles['now'])}
       />
-      <span className={cx(styles['divider'])} aria-hidden="true" />
+
       <MenuTrigger>
         <Button aria-label={t('refresh.interval', { label })} className={cx(styles['interval'])}>
           {!off && <span className={cx(styles['live'])} aria-hidden="true" />}

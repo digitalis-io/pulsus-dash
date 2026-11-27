@@ -27,6 +27,18 @@ backdrop = "#05060899"
 # the 1 px top highlight and the two shadow layers of the elevation tokens, the accent as a fill
 # (buttons, the current row, the segmented thumb, the focused menu row) and the two materials.
 sidebar = "#121418"
+# The sidebar and header material (#282 follow-up): a gradient a shade lighter than the canvas,
+# its soft 6 % inner edge, the row hover (5 %), the current row (at least 3:1 from both gradient
+# stops, `text` at least 4.5:1 on it) and the solid current row while the sidebar has focus.
+sidebar-top = "#17191E"
+sidebar-bottom = "#13151A"
+sidebar-edge = "#FFFFFF0F"
+row-hover = "#FFFFFF0D"
+row-selected = "#4F6A94"
+text-on-row-selected = "#E9EBEF"
+# The quiet header controls: one track for the time and refresh group, its raised thumb.
+segment-track = "#FFFFFF0A"
+segment-thumb = "#353A43"
 control = "#23272E"
 control-hover = "#2A2F37"
 control-pressed = "#31363F"
@@ -116,6 +128,15 @@ unknown = "#7A818C"
 backdrop = "#1B1E2540"
 # The visual refresh (#282, VL-001 as amended): see color.dark.
 sidebar = "#EBEDF1"
+# The sidebar and header material: see color.dark.
+sidebar-top = "#E8EAEE"
+sidebar-bottom = "#E4E6EB"
+sidebar-edge = "#1C22330F"
+row-hover = "#1C22330D"
+row-selected = "#5274AD"
+text-on-row-selected = "#FFFFFF"
+segment-track = "#1C22330D"
+segment-thumb = "#FFFFFF"
 control = "#FFFFFF"
 control-hover = "#F6F7F9"
 control-pressed = "#ECEEF1"
@@ -211,7 +232,7 @@ header = 56
 control = 28
 target-min = 24
 icon = 16
-avatar = 28
+avatar = 24
 page-padding = 20
 # The content's top padding and the board's panel gap (#282 Part 2a, VL-017 as amended).
 page-padding-top = 12
@@ -266,6 +287,8 @@ tag = 3
 # chips and the stat sparkline's area at its top (#282 Part 2a).
 [opacity]
 dimmed = 0.35
+# The sidebar's row icons in the accent.
+icon = 0.85
 tag = 0.18
 chip = 0.12
 area = 0.28
@@ -286,8 +309,9 @@ sm = 12
 md = 13
 lg = 16
 xl = 20
-# The page title (#282 Part 2a).
+# The page title (#282 Part 2a), the header bar's title.
 title = 22
+bar-title = 15
 display = 32
 
 [font.weight]
@@ -341,8 +365,17 @@ standard = 250
 # The Inspector opening (T25 §4.4).
 float-open = 200
 # A modal dialog zooming open from its origin, and closing back to it (#282).
-zoom-open = 320
+zoom-open = 400
 zoom-close = 200
+# The shared selection indicators sliding between rows and segments, hover fills, the sidebar
+# collapsing and expanding, and popovers and menus opening from their trigger. The spring is an
+# ease-out without overshoot: nothing bounces (VL-014).
+slide = 220
+hover = 120
+sidebar = 240
+pop-open = 180
+pop-close = 120
+easing-spring = "cubic-bezier(0.22, 1, 0.36, 1)"
 easing-zoom = "cubic-bezier(0.16, 1, 0.3, 1)"
 easing-out = "cubic-bezier(0.2, 0, 0, 1)"
 easing-in = "cubic-bezier(0.4, 0, 1, 1)"

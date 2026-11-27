@@ -4,6 +4,8 @@
   display: grid;
   grid-template-columns: var(--size-sidebar) minmax(0, 1fr);
   min-height: 100vh;
+  /* The sidebar collapses and expands over 240 ms (none under reduced motion). */
+  transition: grid-template-columns var(--motion-sidebar) var(--motion-easing-out);
 }
 
 .shell[data-sidebar='collapsed'] {

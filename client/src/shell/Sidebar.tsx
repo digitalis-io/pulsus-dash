@@ -4,6 +4,7 @@
  * status line (expanded only) and the collapse control. Collapsed, it is a 56 px icon rail with
  * tooltips.
  */
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Focusable } from 'react-aria-components';
 import { Link } from 'react-router';
 import { preloadRoute, type RouteModuleId } from '../app/routeModules';
@@ -14,6 +15,7 @@ import { Icon, type IconName } from '../kit/Icon';
 import { Tooltip } from '../kit/Tooltip';
 import { contextSearchString } from '../state/contextSearch';
 import { useTimeContext } from '../state/useTimeContext';
+import { motion } from '../styles/tokens';
 import type { SidebarState } from './sidebarState';
 import { DataSourceStatus } from './DataSourceStatus';
 import { SidebarBoards } from './SidebarBoards';
@@ -63,11 +65,12 @@ const ADMIN: NavItem = {
 function NavLink({
   item,
   collapsed,
-  nested = false,
+  showLabel,
 }: {
   item: NavItem;
   collapsed: boolean;
-  nested?: boolean;
+  /** The visible label: kept while the labels fade out on collapse. */
+  showLabel: boolean;
 }) {
   const { routeId, tenant } = useShellRoute();
   const { search } = useTimeContext();
@@ -79,14 +82,14 @@ function NavLink({
   const link = (
     <Link
       to={{ pathname: `/t/${tenant}/${item.path}`, search: contextSearchString(search) }}
-      className={cx(styles['link'], nested && !collapsed ? styles['nested'] : undefined)}
+      className={cx(styles['link'])}
       aria-current={current ? 'page' : undefined}
       aria-label={collapsed ? label : undefined}
       onPointerEnter={preload}
       onFocus={preload}
     >
       <Icon name={item.icon} />
-      {!collapsed && <span className={cx(styles['label'])}>{label}</span>}
+      {showLabel && <span className={cx(styles['label'])}>{label}</span>}
     </Link>
   );
   return (
@@ -98,6 +101,73 @@ function NavLink({
   );
 }
 
+/**
+ * The visible state: expanding shows the labels at once (they fade in as the column widens);
+ * collapsing keeps them for the width transition so they fade out, then drops them.
+ */
+function useShownState(state: SidebarState): SidebarState {
+  const [shown, setShown] = useState(state);
+  const [prev, setPrev] = useState(state);
+  if (state !== prev) {
+    setPrev(state);
+    if (state === 'expanded') setShown('expanded');
+  }
+  useEffect(() => {
+    if (state !== 'collapsed' || shown === 'collapsed') return undefined;
+    const id = window.setTimeout(() => {
+      setShown('collapsed');
+    }, motion.sidebar);
+    return () => {
+      window.clearTimeout(id);
+    };
+  }, [state, shown]);
+  return state === 'expanded' ? 'expanded' : shown;
+}
+
+/**
+ * The one current-row indicator: it slides (transform only, through `--indicator-y` in px) to the
+ * `aria-current` row of the nav. Until it is placed (and in tests, where nothing has a layout), the
+ * row draws its own fill.
+ */
+function useSelectionIndicator(key: string) {
+  const nav = useRef<HTMLElement>(null);
+  const indicator = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const root = nav.current;
+    const mark = indicator.current;
+    if (root === null || mark === null) return undefined;
+    const scroller = root.querySelector<HTMLElement>('[data-sidebar-groups]');
+    let frame = 0;
+    const place = (): void => {
+      const row = root.querySelector<HTMLElement>('a[aria-current="page"]');
+      if (row === null || row.offsetHeight === 0) {
+        delete root.dataset['indicator'];
+        return;
+      }
+      const top = row.getBoundingClientRect().top - root.getBoundingClientRect().top;
+      mark.style.setProperty('--indicator-y', String(top));
+      if (root.dataset['indicator'] === undefined) {
+        // The first placement does not slide in from the top.
+        root.dataset['indicator'] = 'placed';
+        frame = requestAnimationFrame(() => {
+          root.dataset['indicator'] = 'live';
+        });
+      }
+    };
+    place();
+    scroller?.addEventListener('scroll', place, { passive: true });
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
+    observer?.observe(root);
+    if (scroller !== null) observer?.observe(scroller);
+    return () => {
+      cancelAnimationFrame(frame);
+      scroller?.removeEventListener('scroll', place);
+      observer?.disconnect();
+    };
+  }, [key]);
+  return { nav, indicator };
+}
+
 export interface SidebarProps {
   state: SidebarState;
   onToggle: () => void;
@@ -105,13 +175,22 @@ export interface SidebarProps {
 
 export function Sidebar({ state, onToggle }: SidebarProps) {
   const session = useSession();
-  const { tenant } = useShellRoute();
+  const { routeId, tenant } = useShellRoute();
   const { search } = useTimeContext();
   const collapsed = state === 'collapsed';
+  const shown = useShownState(state);
+  const showLabel = shown === 'expanded';
   const isAdmin = session.user.role === 'admin';
+  const { nav: navRef, indicator: indicatorRef } = useSelectionIndicator(
+    `${routeId ?? ''}|${tenant}|${shown}`,
+  );
 
   return (
-    <aside className={cx(styles['sidebar'])} data-state={state}>
+    <aside
+      className={cx(styles['sidebar'])}
+      data-state={state}
+      data-leaving={collapsed && showLabel ? '' : undefined}
+    >
       <div className={cx(styles['top'])}>
         <Link
           to={{ pathname: `/t/${tenant}/boards`, search: contextSearchString(search) }}
@@ -123,33 +202,34 @@ export function Sidebar({ state, onToggle }: SidebarProps) {
         >
           <Icon name="activity" className={cx(styles['markIcon'])} />
         </Link>
-        {!collapsed && <TenantSwitcher collapsed={false} />}
+        {showLabel && <TenantSwitcher collapsed={false} />}
       </div>
-      {collapsed && (
+      {!showLabel && (
         <div className={cx(styles['rail'])}>
           <TenantSwitcher collapsed />
         </div>
       )}
-      <nav aria-label={t('nav.main')} className={cx(styles['nav'])}>
-        <div className={cx(styles['groups'])}>
+      <nav ref={navRef} aria-label={t('nav.main')} className={cx(styles['nav'])}>
+        <span ref={indicatorRef} className={cx(styles['indicator'])} aria-hidden="true" />
+        <div className={cx(styles['groups'])} data-sidebar-groups="">
           <ul className={cx(styles['list'])}>
-            <NavLink item={BOARDS} collapsed={collapsed} />
+            <NavLink item={BOARDS} collapsed={collapsed} showLabel={showLabel} />
           </ul>
-          {!collapsed && <h2 className={cx(styles['heading'])}>{t('nav.explore')}</h2>}
+          {showLabel && <h2 className={cx(styles['heading'])}>{t('nav.explore')}</h2>}
           <ul className={cx(styles['list'])}>
-            <NavLink item={METRICS} collapsed={collapsed} nested />
-            <NavLink item={LOGS} collapsed={collapsed} nested />
+            <NavLink item={METRICS} collapsed={collapsed} showLabel={showLabel} />
+            <NavLink item={LOGS} collapsed={collapsed} showLabel={showLabel} />
           </ul>
-          {!collapsed && <SidebarBoards />}
+          {showLabel && <SidebarBoards />}
         </div>
         {isAdmin && (
           <ul className={cx(styles['list'], styles['footerLinks'])}>
-            <NavLink item={ADMIN} collapsed={collapsed} />
+            <NavLink item={ADMIN} collapsed={collapsed} showLabel={showLabel} />
           </ul>
         )}
       </nav>
       <div className={cx(styles['footer'])}>
-        {!collapsed && <DataSourceStatus tenant={session.tenants.find((x) => x.slug === tenant)} />}
+        {showLabel && <DataSourceStatus tenant={session.tenants.find((x) => x.slug === tenant)} />}
         <Button
           variant="ghost"
           className={cx(styles['toggle'])}
@@ -158,7 +238,7 @@ export function Sidebar({ state, onToggle }: SidebarProps) {
           onPress={onToggle}
         >
           <Icon name={collapsed ? 'panel-left-open' : 'panel-left-close'} />
-          {!collapsed && <span className={cx(styles['label'])}>{t('nav.collapse')}</span>}
+          {showLabel && <span className={cx(styles['label'])}>{t('nav.collapse')}</span>}
         </Button>
       </div>
     </aside>
