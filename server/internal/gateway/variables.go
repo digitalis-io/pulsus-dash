@@ -80,7 +80,13 @@ func (q *dataRoutes) serveVariableValues(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var match *string
-	if vq.Selector != "" {
+	if vq.Selector == "" {
+		// No selector to plan: the vars are still checked as every planner route checks them.
+		if e := checkVars(lang, req.Vars); e != nil {
+			writeReqError(w, e)
+			return
+		}
+	} else {
 		sel, e := substituteSelector(lang, vq.Selector, req.Vars)
 		if e != nil {
 			writeReqError(w, e)
@@ -123,6 +129,20 @@ func (q *dataRoutes) serveVariableValues(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, body)
+}
+
+// checkVars is the planner's vars checks of the query's language (count, names, values).
+func checkVars(lang string, vs vars.Map) *reqError {
+	if lang == "promql" {
+		if pe := promplan.CheckVars(vs); pe != nil {
+			return planError(pe)
+		}
+		return nil
+	}
+	if pe := logplan.CheckVars(vs); pe != nil {
+		return logPlanError(pe)
+	}
+	return nil
 }
 
 // substituteSelector is step 3 of §3.5 in the query's language: the module's refusal as the

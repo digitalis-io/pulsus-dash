@@ -184,11 +184,19 @@ func checkInputs(in Inputs) *PlanError {
 	if len(in.Query) == 0 || len(in.Query) > MaxRawBytes {
 		return inputError("/query", "field.range", "query must be 1 to 131072 bytes")
 	}
-	if len(in.Vars) > MaxVars {
+	return checkVars(in.Vars)
+}
+
+// CheckVars is rows 3–5 of §3.1 alone: the count, the names and the values of vs (the value
+// route's label_values(label), which plans no selector, #289).
+func CheckVars(vs map[string]vars.Value) *PlanError { return checkVars(vs) }
+
+func checkVars(vs map[string]vars.Value) *PlanError {
+	if len(vs) > MaxVars {
 		return inputError("/vars", "field.range", "vars must have at most 64 entries")
 	}
-	names := make([]string, 0, len(in.Vars))
-	for n := range in.Vars {
+	names := make([]string, 0, len(vs))
+	for n := range vs {
 		names = append(names, n)
 	}
 	sort.Strings(names)
@@ -196,7 +204,7 @@ func checkInputs(in Inputs) *PlanError {
 		if !validName(n) {
 			return inputError("/vars/"+pointerToken(n), "field.pattern", "a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 		}
-		if v := in.Vars[n]; !validValue(v) {
+		if v := vs[n]; !validValue(v) {
 			return inputError("/vars/"+pointerToken(n), "field.range", vars.RangeMessage(v))
 		}
 	}
