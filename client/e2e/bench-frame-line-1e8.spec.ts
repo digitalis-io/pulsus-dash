@@ -24,7 +24,7 @@ import {
   SCRIPT,
   type Step,
 } from './bench/frameBench.ts';
-import { GALLERY_URL, open } from './helpers.ts';
+import { GALLERY_URL, waitReady } from './helpers.ts';
 
 const GATE = 'bench:frame-line-1e8';
 const PROBE_URL = `${GALLERY_URL}&engine=wasm&mode=t2&probe=1`;
@@ -56,7 +56,9 @@ async function probePage(page: Page): Promise<string[]> {
   page.on('console', (m) => {
     if (/probe-\d+ failed:/.test(m.text())) failures.push(m.text());
   });
-  await open(page, PROBE_URL);
+  // No fake clock: it hides the User Timing entries the harness collects.
+  await page.goto(PROBE_URL);
+  await waitReady(page, PROBE_URL);
   await page.waitForFunction(() => '__dashProbe' in window);
   return failures;
 }
@@ -94,6 +96,10 @@ async function setup(
         });
       }, 100);
       const ack = await p.synth(n, o);
+      // The chunk is not a ring record (`settle` does not see it): its summary is.
+      const t0 = performance.now();
+      while (ack.ok && p.last(n)?.seriesTotal !== o.series && performance.now() - t0 < 300_000)
+        await new Promise((r) => setTimeout(r, 50));
       await p.settle(n);
       const plot = p.last(n)?.plot;
       if (plot !== undefined) {
@@ -238,6 +244,10 @@ test.describe(GATE, () => {
         const seed = [{ key: '00000000000000aa', t: [extent.fromMs, extent.toMs], v: [0, 1] }];
         const n = await p.frame({ spec, series: seed, w: extent, size: [400, 200], dpr: 1 });
         const a = await p.synth(n, { series: 10, points: 1000 });
+        // The chunk is not a ring record (`settle` does not see it): its summary is.
+        const t0 = performance.now();
+        while (p.last(n)?.seriesTotal !== 10 && performance.now() - t0 < 30_000)
+          await new Promise((r) => setTimeout(r, 50));
         await p.settle(n);
         const b = await p.synth(n, { series: 10, points: 1000 });
         await p.settle(n);

@@ -36,8 +36,11 @@ export interface BenchResult {
 
 /** Nearest rank on the sorted copy; empty → all NaN. */
 export function percentiles(xs: readonly number[]): Pct {
-  const z = xs.length * 0;
-  return { p50: z, p95: z, p99: z, max: z };
+  if (xs.length === 0) return { p50: NaN, p95: NaN, p99: NaN, max: NaN };
+  const s = [...xs].sort((a, b) => a - b);
+  const at = (p: number): number =>
+    s[Math.min(s.length, Math.max(1, Math.ceil(p * s.length))) - 1] ?? NaN;
+  return { p50: at(0.5), p95: at(0.95), p99: at(0.99), max: s[s.length - 1] ?? NaN };
 }
 
 /** The span the script ran in, ms on the page's clock: marks outside it are not counted. */
@@ -46,12 +49,31 @@ export interface Span {
   end: number;
 }
 
+/** One and two missed frames at 60 Hz. */
+export const OVER_1_MS = 16.7;
+export const OVER_2_MS = 33.4;
+
+/**
+ * One case's result: `frames` counts the `chart-present` marks inside `span` (all, without one),
+ * the intervals are between consecutive ones, the draw times are the `chart-draw` measures that
+ * end inside it.
+ */
 export function summarise(
   c: Omit<BenchResult, 'frames' | 'drawMs' | 'intervalMs' | 'over1' | 'over2'>,
   presents: readonly number[],
   draws: readonly { start: number; end: number }[],
   span?: Span,
 ): BenchResult {
-  const z = percentiles(span === undefined ? [] : []);
-  return { ...c, frames: 0, intervalMs: z, drawMs: z, over1: 0, over2: 0 };
+  const inSpan = (t: number): boolean => span === undefined || (t >= span.start && t <= span.end);
+  const marks = presents.filter(inSpan).sort((a, b) => a - b);
+  const intervals = marks.slice(1).map((t, i) => t - (marks[i] ?? t));
+  const drawn = draws.filter((d) => inSpan(d.end)).map((d) => d.end - d.start);
+  return {
+    ...c,
+    frames: marks.length,
+    intervalMs: percentiles(intervals),
+    drawMs: percentiles(drawn),
+    over1: intervals.filter((x) => x > OVER_1_MS).length,
+    over2: intervals.filter((x) => x > OVER_2_MS).length,
+  };
 }

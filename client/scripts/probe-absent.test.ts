@@ -88,16 +88,18 @@ describe('ci:probe-absent (T03-024)', () => {
     expect(fault.map((f) => [f.rule, f.subject])).toEqual([
       ['probe-in-release', 'engine_probe_input'],
     ]);
-    // The probe build must carry it.
+    // The probe build must carry it (and, since plan #68 C2d1, engine_probe_synth).
     const missing = checkProbeAbsent(dist({ ...CLEAN, ...sites }), {
       expectFaults: true,
       expectProbe: true,
     });
     expect(missing.map((f) => [f.rule, f.subject])).toEqual([
       ['probe-missing', 'engine_probe_input'],
+      ['probe-missing', 'engine_probe_' + 'synth'],
     ]);
+    const both = Buffer.concat([PROBE, Buffer.from('engine_probe_' + 'synth')]);
     expect(
-      checkProbeAbsent(dist({ ...CLEAN, ...sites, 'assets/dash-engine-b.wasm': PROBE }), {
+      checkProbeAbsent(dist({ ...CLEAN, ...sites, 'assets/dash-engine-b.wasm': both }), {
         expectFaults: true,
         expectProbe: true,
       }),

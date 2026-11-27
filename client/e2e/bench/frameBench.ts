@@ -46,10 +46,16 @@ export interface Driven {
   span: Span;
 }
 
+/** After the last step: two frames, then this long (the wheel commit is 300 ms). */
+export const SETTLE_MS = 500;
+
 /**
  * Runs `steps` on the canvas `canvas` (a selector) in the page, step k in the k-th animation
- * frame, then waits two frames and 500 ms (the wheel commit is 300 ms). Collects the
- * `chart-present` marks and `chart-draw` measures of frame `frameId` over that span.
+ * frame, then waits two frames and `SETTLE_MS`. Each step acts at the plot's centre (`data-plot` of
+ * the canvas or its frame, read at the step): a wheel there, a drag from there (pointerdown, one
+ * move per step, pointerup when the drag steps end) or a hover at `(fx, fy)` of the plot. Collects
+ * the `chart-present` marks and `chart-draw` measures whose `detail.frame` is `frameId`; the span
+ * runs from the first step's frame (or the call, with no steps) to the end of the wait.
  */
 export async function drive(
   page: Page,
@@ -57,9 +63,103 @@ export async function drive(
   frameId: string,
   steps: readonly Step[],
 ): Promise<Driven> {
-  // Test-first stub: nothing is driven or collected.
-  await page.evaluate(() => undefined);
-  return { presents: [], draws: [], span: { start: 0, end: steps.length * 0 } };
+  return page.evaluate(
+    async ({ sel, frameId, steps, settleMs }) => {
+      const c = document.querySelector<HTMLCanvasElement>(sel);
+      if (c === null) throw new Error(`drive: no canvas ${sel}`);
+      const plot = (): [number, number, number, number] => {
+        const host = c.closest<HTMLElement>('[data-plot]');
+        const [x = 0, y = 0, w = 0, h = 0] = (host?.dataset['plot'] ?? '').split(',').map(Number);
+        return [x, y, w, h];
+      };
+      const presents: number[] = [];
+      const draws: { start: number; end: number }[] = [];
+      const take = (list: PerformanceEntryList): void => {
+        for (const e of list) {
+          const d = (e as PerformanceMark).detail as { frame?: unknown } | null;
+          if (d?.frame !== frameId) continue;
+          if (e.name === 'chart-present') presents.push(e.startTime);
+          else if (e.name === 'chart-draw')
+            draws.push({ start: e.startTime, end: e.startTime + e.duration });
+        }
+      };
+      const obs = new PerformanceObserver((l) => {
+        take(l.getEntries());
+      });
+      obs.observe({ entryTypes: ['mark', 'measure'] });
+      const frame = (): Promise<number> =>
+        new Promise((r) => {
+          requestAnimationFrame(r);
+        });
+      const client = (x: number, y: number) => {
+        const r = c.getBoundingClientRect();
+        return { clientX: r.left + x, clientY: r.top + y };
+      };
+      const pointer = (type: string, x: number, y: number, buttons: number): void => {
+        c.dispatchEvent(
+          new PointerEvent(type, {
+            ...client(x, y),
+            button: 0,
+            buttons,
+            pointerId: 1,
+            pointerType: 'mouse',
+            isPrimary: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      };
+      let start = performance.now();
+      let drag: { x: number; y: number } | null = null;
+      for (let k = 0; k < steps.length; k++) {
+        await frame();
+        if (k === 0) start = performance.now();
+        const s = steps[k];
+        if (s === undefined) break;
+        const [px, py, pw, ph] = plot();
+        const cx = px + pw / 2;
+        const cy = py + ph / 2;
+        if (s.kind !== 'drag' && drag !== null) {
+          pointer('pointerup', drag.x, drag.y, 0);
+          drag = null;
+        }
+        switch (s.kind) {
+          case 'wheel':
+            c.dispatchEvent(
+              new WheelEvent('wheel', {
+                ...client(cx, cy),
+                deltaX: s.dx ?? 0,
+                deltaY: s.dy,
+                deltaMode: 0,
+                shiftKey: s.shift ?? false,
+                bubbles: true,
+                cancelable: true,
+              }),
+            );
+            break;
+          case 'drag':
+            if (drag === null) {
+              drag = { x: cx, y: cy };
+              pointer('pointerdown', drag.x, drag.y, 1);
+            }
+            drag = { x: drag.x + s.dx, y: drag.y };
+            pointer('pointermove', drag.x, drag.y, 1);
+            break;
+          case 'hover':
+            pointer('pointermove', px + s.fx * pw, py + s.fy * ph, 0);
+            break;
+        }
+      }
+      if (drag !== null) pointer('pointerup', drag.x, drag.y, 0);
+      await frame();
+      await frame();
+      await new Promise((r) => setTimeout(r, settleMs));
+      take(obs.takeRecords());
+      obs.disconnect();
+      return { presents, draws, span: { start, end: performance.now() } };
+    },
+    { sel: canvas, frameId, steps, settleMs: SETTLE_MS },
+  );
 }
 
 /** PRF-001: p50 interval ≤ 16.7 ms; PRF-002: p99 ≤ 22.2 ms. */

@@ -13,7 +13,7 @@ import { expect, test, type Browser, type Page, type TestInfo } from '@playwrigh
 import { summarise, type BenchLeg, type BenchResult } from '../scripts/lib/benchStats.ts';
 import { drive, HOVER, readResults, report, reportGaps, SCRIPT } from './bench/frameBench.ts';
 import { framesReady, liveCanvas, webgpuReportOnly } from './engine.ts';
-import { frame, GALLERY_URL, open } from './helpers.ts';
+import { frame, GALLERY_URL, waitReady } from './helpers.ts';
 import { SWIFTSHADER_ARGS } from '../playwright.engine.config.ts';
 
 const GATE = 'bench:frame-gallery';
@@ -86,7 +86,10 @@ async function runCase(
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   try {
     const page = await ctx.newPage();
-    await open(page, `${GALLERY_URL}${leg.query}`);
+    // No fake clock: it hides the User Timing entries the harness collects.
+    const url = `${GALLERY_URL}${leg.query}`;
+    await page.goto(url);
+    await waitReady(page, url);
     await framesReady(page);
     const canvas = liveCanvas(page, p.id);
     if ((await canvas.getAttribute('data-engine')) !== leg.leg) return 'leg-unavailable';
