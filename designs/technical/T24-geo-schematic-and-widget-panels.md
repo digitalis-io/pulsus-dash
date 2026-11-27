@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.19-rc · 2026-11-27 |
+| **Version** | 1.20-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -422,6 +422,12 @@ nothing. The field is marked `data-escape-ladder` and registers the
 [T25-007](T25-inspector-and-pivots.md#t25-007--one-esc-ladder) pre step "clear the field". Case
 folding is ASCII-only.
 
+In the widget editor (§5.7, Part 2b) the Search text refuses the same Cc characters, and more than
+100 code points, locally: the text stays shown with its error, nothing is written to the draft,
+Done is disabled and Save is refused until it is fixed; closing the editor drops it. The editor's
+preview reads the stored query through the fixed list (no field, no Esc step), so the board's own
+field keeps its pre step.
+
 #### T24-022 — Board rows
 **MUST** — A row is one `<a>` to `/t/<tenant>/board/<uid>` + `contextSearchString(time)`, with
 `BOARD_LINK_STATE`, as in `SidebarBoards`. Loaded rows with equal titles show `‹title› · ‹uid›` (the
@@ -502,7 +508,16 @@ the truncation and `tagsStale` in one statement (§6). A stale row is returned w
 **Old server** (no `applied` in the answer): `unknown`; `truncated` is not trusted; search filters the
 titles client-side; tag mode shows "Filtering by tag needs a newer server", with no rows and no chips.
 Old binaries cannot move a head saved at the tags version or later (`ErrSchemaTooNew`). A 400 `board.json.unknownKey` at `/tags` on a
-save shows "This server does not accept board tags yet".
+save shows "This server does not accept board tags yet", on the status line and in the tags field.
+
+**The tags field** (Edit mode, Part 2b). A "Tags" button after Add section, named by its visible
+text ("Tags", "Tags (n)"), opens a popover dialog "Board tags": the tags as muted 20 px chips, each
+with a × ("Remove tag ‹tag›"), and an "Add a tag" input. Return, a comma or white space adds the
+typed or pasted pieces in order, lower-cased; a piece that is not a valid tag, is already present or
+would be the 17th stops the run and stays in the input with its text. Backspace in the empty input
+removes the last tag; at 16 tags the input is disabled. `setTags` writes `draft.tags`, and deletes the
+key when the result is empty and the head had none, so removing the tags again leaves the draft
+clean.
 
 #### T24-030 — Feed source
 **MUST** — The board owns one annotations query, `boardAnnotationsQuery(api, tenant, w)` (§5.10): key
@@ -1447,7 +1462,10 @@ export function textVis(o: TextOptions, original: WidgetPanelSpec['vis'] | undef
 // widgets/registry.tsx
 export interface WidgetDef { kind: WidgetKind; label: MessageId; editTitle: MessageId;
   size: { w: number; h: number }; newVis(): WidgetPanelSpec['vis']; Editor: ComponentType<WidgetEditorBodyProps> }
-export const WIDGETS: WidgetRegistry;                        // { defs: [TEXT_DEF] }, menu order
+export const WIDGETS: WidgetRegistry;                        // { defs: [TEXT_DEF, BOARD_LIST_DEF] }, menu order
+// BOARD_LIST_DEF (#216 Part 2b): 4 × 8, newVis {kind: 'boardList'}, Editor BoardListEditorBody (§5.7)
+// WidgetEditorBodyProps.onLocalInvalid?(message | null): a local text the body cannot write; the
+// editor disables Done and the page refuses Save while one is reported (Text never calls it)
 export const WidgetRegistryContext: Context<WidgetRegistry>; // default WIDGETS
 // boards/editorState.ts
 | { type: 'addWidget'; vis: WidgetPanelSpec['vis']; size: { w: number; h: number }; grid?: GridRef }
@@ -1631,6 +1649,17 @@ export function useBoardList(i: { tenant; currentUid; title; options; q }): Boar
 //   refreshFailed, shown, caption, facts, retry(), showMore(): first new index }
 // BoardListBody: invalid → the T24-014 state; search → SearchBoardList, else FixedBoardList; both render
 // BoardListCore (model, Shift+T, keys, announcements) → BoardListView. CAPABILITIES: app/capabilities.ts.
+// Part 2b: the editor (widgets/boardList/boardListVis.ts, BoardListEditorBody.tsx; boards/tags.ts)
+export function boardListVis(o: BoardListOptions, original: WidgetPanelSpec['vis'] | undefined): WidgetPanelSpec['vis'];
+// the head's stored representation: mode, limit, sort when the head has the key or the value is not
+// the default; query in search mode likewise; tag in tag mode when set; no options when none is written
+export function BoardListEditorBody(p: WidgetEditorBodyProps): ReactElement;
+// the preview (BoardListBody preview over useDebounced(panel, 250): inert, link-free, registers nothing),
+// Show (SegmentedControl), Search text or Tag, Rows (1–50, whole numbers), Order (Select + the caption)
+export function useDebounced<T>(value: T, ms: number): T;   // widgets/lists/
+export function addTags(tags: readonly string[], input: string):
+  { tags: readonly string[]; rest: string; problem: 'invalid' | 'duplicate' | 'full' | null };
+export function tagError(fields: readonly FieldError[]): FieldError | null;   // the first at /tags or /tags/<i>
 // widgets/lists/ (shared with part B2)
 export function useSearchCommit(initial: string): { text; q; cc; setText(v): void; clear(): void };   // 250 ms, ≤ 100, Cc
 export function useListKeys(i: { keys; listKey; names; fallback(): HTMLElement | null; onGone(name): void }): ListKeys;
@@ -3023,7 +3052,7 @@ Part B1 implementation issues, filed after this design merges:
 | Issue | Scope | Depends on | Covers |
 |---|---|---|---|
 | I1 — BFF: board tags, `/boards` search, `applied`, `truncated` (#215) | §5.5 tags (Go and the client's validator, at the next free spec version), §5.6, §6, migration 4, the itests, `make itest-old-binary`, `docs/server/boards-api.md`, `docs/server/database.md` | — | T24-021, T24-029 |
-| I2 — Board list widget, list modules, editor tags field (#216) | Part 1 (landed): §5.5 `boardList` kind and options at v6 (Go and TS), the `Api.ts` pages and filters with old-server decoding, the pure §5.7 modules and `import/boardList.ts`; a stored board list shows the "not available yet" frame. Part 2a (landed): the view (§5.7 Part 2a: sources, the search commit, rows and Show more, states, keys and focus, announcements, the meter, Shift+T through the kit `PanelTable` as a `TableView` and CSV), gallery `widget-board-list`, `widget-board-list-search`, `widget-board-list-states`, `e2e:widget-board-list`, `e2e:widget-lists-a11y`, `golden:widget-gallery`, `bench:widget-lists`; `docs/client/widgets.md`. Part 2b: Add widget → Board list, its editor body, the board tags field and the `/tags` 400 text, the e2e add flow, `docs/user/boards.md`; until then a board list has no Edit panel | I1, #198, #173 | T24-020–028 |
+| I2 — Board list widget, list modules, editor tags field (#216) | Part 1 (landed): §5.5 `boardList` kind and options at v6 (Go and TS), the `Api.ts` pages and filters with old-server decoding, the pure §5.7 modules and `import/boardList.ts`; a stored board list shows the "not available yet" frame. Part 2a (landed): the view (§5.7 Part 2a: sources, the search commit, rows and Show more, states, keys and focus, announcements, the meter, Shift+T through the kit `PanelTable` as a `TableView` and CSV), gallery `widget-board-list`, `widget-board-list-search`, `widget-board-list-states`, `e2e:widget-board-list`, `e2e:widget-lists-a11y`, `golden:widget-gallery`, `bench:widget-lists`; `docs/client/widgets.md`. Part 2b (landed): Add widget → Board list (`BOARD_LIST_DEF`), its editor body (§5.7 Part 2b: the inert preview, `boardListVis`, local texts that block Done and Save), the board tags field, `setTags` and the `/tags` 400 text, the e2e add flow, `docs/user/boards.md`. I2 is complete | I1, #198, #173 | T24-020–029 |
 | I3 — Incident-use ranking (needs design) | SRF-026 "used during incidents" | IA-007 | T24-023 |
 | I4 — Validate `boards_tags_max` (next release) | §6 `VALIDATE CONSTRAINT`, `itest:board-tags-validate` | I1 released | T24-029 |
 
@@ -3159,3 +3188,4 @@ None.
 | 1.17-rc | 2026-11-27 | #234 Part 1 (E2): §5.0 the geomap version landed as v7 (before the change-feed version, so the change-feed and map-sync versions take the next free numbers). §5.15: `GeoGroup` gains `memberLabels` (the final labels, parallel to `members`) and `GeoRowSet` `groupBy`; `geoRowSet` takes the result's `source` and the panel's `Thresholds` (lines lack the direction) and `validateGeoRows` takes `Thresholds \| null`; a null and an absent `groupBy` or `view` are one stored value. §5.16: `GeoInspectorTarget` gains `set`. T24-091: the `map-water`, `map-land`, `map-coast` and `map-border` values (the light strokes in the hairline ink) |
 | 1.18-rc | 2026-11-27 | #234 Part 2 (E2): T24-091 records the inertia's release velocity as the spring's initial velocity (D = 2v/ω), which T02-022's rest form does not fix. §5.14 names the mark tokens `pattern-ink` and `category-other` with their values. §10.4: the File column of `unit:geo-radius-project`, `unit:geo-camera`, `unit:geo-ownership`, `unit:geo-keys-engine`, `unit:geo-inertia` and `unit:geo-marks` moves from `engine/canvas2d/geo/` to `engine/controller/geo/` (the renderer-free half any engine reuses, [ADR-0031](../adr/0031-gpu-engine-default-renderer.md); gate IDs unchanged). §10.4 and §10.5 keys: at G's fit the world's east edge is 135.84 px from the centre, so containment caps Shift+→; the 256 px pan is Shift+← |
 | 1.19-rc | 2026-11-27 | #216 Part 2a (I2): the Board list view. T24-021: Esc's clear commits `''` at once. T24-023: the clamp of the shown count is kept per answer (an empty answer starts again at `limit`). T24-025: the count is announced only for a search the user committed; a row's chips and time are its link's description. T24-026: the facts are the list's description; the table caption `‹n› boards · ‹d› shown` and "Show list (Shift+T)". §4.5: the failed-refresh notice shows the rows' fetch time. §5.7: the Part 2a modules. §11: Part 2a landed, Part 2b next |
+| 1.20-rc | 2026-11-27 | #216 Part 2b (I2): §5.2a: the registry holds `TEXT_DEF` and `BOARD_LIST_DEF` (4 × 8, `{kind: 'boardList'}`); `WidgetEditorBodyProps.onLocalInvalid`. §5.7: `boardListVis`, `BoardListEditorBody` (the inert, link-free preview over the debounced draft, Show, Search text or Tag, Rows, Order), `useDebounced`, `addTags`, `tagError`. T24-021: the editor's Search text refuses Cc and more than 100 code points locally and writes nothing; Done and Save wait for it. T24-029: the tags field, `setTags` deleting the key when the head had none, lower-casing on add, and the `/tags` text in the field too. §11: Part 2b landed, I2 complete |
