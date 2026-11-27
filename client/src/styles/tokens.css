@@ -17,6 +17,10 @@
   --level-trace: #B48FC9;
   --level-unknown: #8FBF8F;
   --level-warn: #C9A36B;
+  --map-border: #FFFFFF1F;
+  --map-coast: #FFFFFF33;
+  --map-land: #1C232C;
+  --map-water: #0E1620;
   --ok: #2FB59A;
   --ramp-1: #253444;
   --ramp-2: #2C4967;
@@ -68,6 +72,10 @@
   --level-trace: #7E5A97;
   --level-unknown: #4E874E;
   --level-warn: #93703A;
+  --map-border: #0B0D1029;
+  --map-coast: #0B0D103D;
+  --map-land: #F8F9FB;
+  --map-water: #E6EDF4;
   --ok: #17806A;
   --ramp-1: #E3F0FE;
   --ramp-2: #B9DAFD;

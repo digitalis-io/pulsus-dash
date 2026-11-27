@@ -21,7 +21,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type { DataPanelSpec, DataVisKind, FieldError, QueryLang } from '../../api/types';
 import type { PanelPatch } from '../../boards/editorState';
 import { panelView } from '../../boards/panelRun';
-import { fieldMessage } from '../../boards/fieldMessages';
+import { fieldMessage, kindFieldMessage } from '../../boards/fieldMessages';
 import { PENDING_KINDS, withKind } from '../../boards/options';
 import { usePanelWidth } from '../../boards/panelWidths';
 import { usePanelRun } from '../../boards/usePanelRun';
@@ -52,6 +52,7 @@ const VIS_LABELS: Readonly<Record<VisKind, MessageId>> = {
   heatmap: 'editor.vis.heatmap',
   stat: 'editor.vis.stat',
   barchart: 'editor.vis.barchart',
+  geomap: 'editor.vis.geomap',
 };
 
 const LEGENDS: readonly { id: 'table' | 'hidden'; label: MessageId }[] = [
@@ -112,6 +113,7 @@ const KINDS: readonly { id: DataVisKind; label: MessageId }[] = [
 /** The labels of the kinds not drawn yet (`PENDING_KINDS`): shown, disabled, only when stored. */
 const PENDING_LABELS: Readonly<Partial<Record<DataVisKind, MessageId>>> = {
   pie: 'editor.vis.pie',
+  geomap: 'editor.vis.geomap',
 };
 
 /**
@@ -226,7 +228,11 @@ export function PanelEditor({
 }: PanelEditorProps) {
   const errorAt = (suffix: string): string | null => {
     const f = fields.find((x) => x.pointer === `${pointer}${suffix}`);
-    return f === undefined ? null : fieldMessage(f.messageKey);
+    if (f === undefined) return null;
+    // An older server's refusal of a map panel (plan #234 Part 1 §4.5), as the board shows it.
+    return suffix === '/vis/kind'
+      ? kindFieldMessage(panel.vis.kind, f.messageKey)
+      : fieldMessage(f.messageKey);
   };
   // The panel's own body width, so the preview sends what the panel sends; its own as a fallback.
   const [previewBody, ownWidth] = useElementWidth<HTMLDivElement>();

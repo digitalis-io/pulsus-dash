@@ -41,7 +41,7 @@ export function ChartTooltip({ hover, selected, plot, unit, timeZone, ref }: Cha
       {hover !== null && (
         <>
           <div className={cx(styles['time'])} data-time="">
-            {formatTime(hover.tMs, timeZone)}
+            {hover.tMs === null ? '' : formatTime(hover.tMs, timeZone)}
           </div>
           {rows.slice(start, end).map((r, k) => (
             <div

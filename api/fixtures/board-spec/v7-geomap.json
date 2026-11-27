@@ -1,0 +1,214 @@
+{
+  "title": "Geomap panels",
+  "panels": [
+    {
+      "id": "p-1",
+      "title": "Regions",
+      "grid": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 8
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum by (cloud_region) (rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "geomap",
+        "options": {}
+      }
+    },
+    {
+      "id": "p-2",
+      "title": "Every option",
+      "grid": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 8
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum by (cloud_region) (rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "geomap",
+        "options": {
+          "location": {
+            "mode": "coords",
+            "lat": "lat",
+            "lon": "lon"
+          },
+          "reducer": "max",
+          "size": {
+            "by": "fixed",
+            "min": 6,
+            "max": 30
+          },
+          "colour": "state",
+          "groupBy": "env",
+          "symbol": "diamond",
+          "labels": "none",
+          "cluster": false,
+          "wheelZoom": false,
+          "view": {
+            "lat": 50,
+            "lon": 5,
+            "zoom": 4
+          }
+        },
+        "thresholds": {
+          "direction": "above",
+          "steps": [
+            {
+              "value": 150,
+              "state": "watch",
+              "label": ""
+            },
+            {
+              "value": 200,
+              "state": "degraded",
+              "label": ""
+            },
+            {
+              "value": 250,
+              "state": "failing",
+              "label": "Down"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p-3",
+      "title": "Null group and view",
+      "grid": {
+        "x": 0,
+        "y": 8,
+        "w": 6,
+        "h": 8
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum by (cloud_region) (rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "geomap",
+        "options": {
+          "groupBy": null,
+          "view": null
+        }
+      }
+    },
+    {
+      "id": "p-4",
+      "title": "Geohash",
+      "grid": {
+        "x": 6,
+        "y": 8,
+        "w": 6,
+        "h": 8
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum by (cloud_region) (rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "geomap",
+        "options": {
+          "location": {
+            "mode": "geohash",
+            "field": "gh"
+          }
+        }
+      }
+    },
+    {
+      "id": "p-5",
+      "title": "Airports",
+      "grid": {
+        "x": 0,
+        "y": 16,
+        "w": 6,
+        "h": 8
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum by (cloud_region) (rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "geomap",
+        "options": {
+          "location": {
+            "mode": "lookup",
+            "field": "iata",
+            "gazetteer": "iata"
+          }
+        }
+      }
+    },
+    {
+      "id": "p-6",
+      "title": "Regions of GB",
+      "grid": {
+        "x": 6,
+        "y": 16,
+        "w": 6,
+        "h": 8
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum by (cloud_region) (rate(http_requests_total[5m]))"
+      },
+      "vis": {
+        "kind": "geomap",
+        "options": {
+          "location": {
+            "mode": "lookup",
+            "field": "r",
+            "gazetteer": "region",
+            "country": "GB"
+          }
+        }
+      }
+    }
+  ],
+  "sections": [
+    {
+      "id": "s-1",
+      "title": "Maps",
+      "collapsed": false,
+      "panels": [
+        {
+          "id": "p-7",
+          "title": "In a section",
+          "grid": {
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 8
+          },
+          "query": {
+            "lang": "promql",
+            "text": "sum by (cloud_region) (rate(http_requests_total[5m]))"
+          },
+          "vis": {
+            "kind": "geomap",
+            "options": {
+              "size": {
+                "min": 2,
+                "max": 40
+              },
+              "view": {
+                "lat": -33.87,
+                "lon": 151.21,
+                "zoom": 6.5
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

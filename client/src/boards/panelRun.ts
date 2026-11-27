@@ -12,12 +12,12 @@ import type { DataPanelSpec, PlannedQuery } from '../api/types';
 import type { VolumeResult } from '../data/decode';
 import type { FrameData } from '../data/frames';
 import type { Diagnostic } from '../editor/lang/types';
-import type { VisKind, VisSpec } from '../engine/api';
+import type { VisSpec } from '../engine/api';
 import { volumePlan } from '../explore/logsRun';
 import { seriesRows, type SeriesRow } from '../explore/seriesRows';
 import { errorView, refusalText } from '../explore/statusText';
 import { t } from '../i18n/t';
-import { autoVis, chooseVis, fromRange, type ExploreResult } from '../vis/autovis';
+import { autoVis, chooseVis, fromRange, type ExploreResult, type VisKind } from '../vis/autovis';
 import { barchartModel, type BarchartModel } from '../vis/barchart';
 import { framePlan, type FramePlan } from '../vis/framePlan';
 import { thresholdLines, type Thresholds } from '../vis/thresholds';
@@ -454,9 +454,9 @@ export function panelView(run: PanelRun, panelVis: DataPanelSpec['vis'], title: 
     rateApplied: o.planned.rateApplied,
     result: r,
   });
-  // PromQL `logs` and the pending kind (pie) are blocked above; any other saved kind overrides the
-  // auto vis.
-  const saved = vis === 'logs' || vis === 'pie' ? 'auto' : vis;
+  // PromQL `logs` and the pending kinds (pie, geomap) are blocked above; any other saved kind
+  // overrides the auto vis.
+  const saved = vis === 'logs' || vis === 'pie' || vis === 'geomap' ? 'auto' : vis;
   const chosen = chooseVis(saved, auto) ?? 'line';
   return frameView(chosen, r, o.planned.rateApplied, panelVis, title);
 }

@@ -167,6 +167,72 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for GeoLocationGazetteer.
+const (
+	Cloud   GeoLocationGazetteer = "cloud"
+	Country GeoLocationGazetteer = "country"
+	Iata    GeoLocationGazetteer = "iata"
+	Region  GeoLocationGazetteer = "region"
+)
+
+// Valid indicates whether the value is a known member of the GeoLocationGazetteer enum.
+func (e GeoLocationGazetteer) Valid() bool {
+	switch e {
+	case Cloud:
+		return true
+	case Country:
+		return true
+	case Iata:
+		return true
+	case Region:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GeoLocationMode.
+const (
+	GeoLocationModeAuto    GeoLocationMode = "auto"
+	GeoLocationModeCoords  GeoLocationMode = "coords"
+	GeoLocationModeGeohash GeoLocationMode = "geohash"
+	GeoLocationModeLookup  GeoLocationMode = "lookup"
+)
+
+// Valid indicates whether the value is a known member of the GeoLocationMode enum.
+func (e GeoLocationMode) Valid() bool {
+	switch e {
+	case GeoLocationModeAuto:
+		return true
+	case GeoLocationModeCoords:
+		return true
+	case GeoLocationModeGeohash:
+		return true
+	case GeoLocationModeLookup:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GeoSizeBy.
+const (
+	GeoSizeByFixed GeoSizeBy = "fixed"
+	GeoSizeByValue GeoSizeBy = "value"
+)
+
+// Valid indicates whether the value is a known member of the GeoSizeBy enum.
+func (e GeoSizeBy) Valid() bool {
+	switch e {
+	case GeoSizeByFixed:
+		return true
+	case GeoSizeByValue:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	HealthStatusOk HealthStatus = "ok"
@@ -507,6 +573,7 @@ const (
 	VisKindBars      VisKind = "bars"
 	VisKindBoardList VisKind = "boardList"
 	VisKindClock     VisKind = "clock"
+	VisKindGeomap    VisKind = "geomap"
 	VisKindHeatmap   VisKind = "heatmap"
 	VisKindLine      VisKind = "line"
 	VisKindLogs      VisKind = "logs"
@@ -527,6 +594,8 @@ func (e VisKind) Valid() bool {
 	case VisKindBoardList:
 		return true
 	case VisKindClock:
+		return true
+	case VisKindGeomap:
 		return true
 	case VisKindHeatmap:
 		return true
@@ -563,6 +632,24 @@ func (e VisOptionsBaselineOffset) Valid() bool {
 	case N28d:
 		return true
 	case N7d:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsColour.
+const (
+	Group VisOptionsColour = "group"
+	State VisOptionsColour = "state"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsColour enum.
+func (e VisOptionsColour) Valid() bool {
+	switch e {
+	case Group:
+		return true
+	case State:
 		return true
 	default:
 		return false
@@ -631,6 +718,7 @@ func (e VisOptionsHourCycle) Valid() bool {
 
 // Defines values for VisOptionsLabels.
 const (
+	VisOptionsLabelsAuto    VisOptionsLabels = "auto"
 	VisOptionsLabelsName    VisOptionsLabels = "name"
 	VisOptionsLabelsNone    VisOptionsLabels = "none"
 	VisOptionsLabelsPercent VisOptionsLabels = "percent"
@@ -640,6 +728,8 @@ const (
 // Valid indicates whether the value is a known member of the VisOptionsLabels enum.
 func (e VisOptionsLabels) Valid() bool {
 	switch e {
+	case VisOptionsLabelsAuto:
+		return true
 	case VisOptionsLabelsName:
 		return true
 	case VisOptionsLabelsNone:
@@ -815,6 +905,30 @@ func (e VisOptionsSort) Valid() bool {
 	case VisOptionsSortValueAsc:
 		return true
 	case VisOptionsSortValueDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VisOptionsSymbol.
+const (
+	Circle   VisOptionsSymbol = "circle"
+	Diamond  VisOptionsSymbol = "diamond"
+	Square   VisOptionsSymbol = "square"
+	Triangle VisOptionsSymbol = "triangle"
+)
+
+// Valid indicates whether the value is a known member of the VisOptionsSymbol enum.
+func (e VisOptionsSymbol) Valid() bool {
+	switch e {
+	case Circle:
+		return true
+	case Diamond:
+		return true
+	case Square:
+		return true
+	case Triangle:
 		return true
 	default:
 		return false
@@ -1117,6 +1231,39 @@ type FieldError struct {
 
 // FrameValue A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005).
 type FrameValue = json.RawMessage
+
+// GeoLocation defines model for GeoLocation.
+type GeoLocation struct {
+	Country   *string               `json:"country,omitempty"`
+	Field     *string               `json:"field,omitempty"`
+	Gazetteer *GeoLocationGazetteer `json:"gazetteer,omitempty"`
+	Lat       *string               `json:"lat,omitempty"`
+	Lon       *string               `json:"lon,omitempty"`
+	Mode      GeoLocationMode       `json:"mode"`
+}
+
+// GeoLocationGazetteer defines model for GeoLocation.Gazetteer.
+type GeoLocationGazetteer string
+
+// GeoLocationMode defines model for GeoLocation.Mode.
+type GeoLocationMode string
+
+// GeoSize defines model for GeoSize.
+type GeoSize struct {
+	By  *GeoSizeBy `json:"by,omitempty"`
+	Max *float64   `json:"max,omitempty"`
+	Min *float64   `json:"min,omitempty"`
+}
+
+// GeoSizeBy defines model for GeoSize.By.
+type GeoSizeBy string
+
+// GeoView defines model for GeoView.
+type GeoView struct {
+	Lat  float64 `json:"lat"`
+	Lon  float64 `json:"lon"`
+	Zoom float64 `json:"zoom"`
+}
 
 // Grid defines model for Grid.
 type Grid struct {
@@ -1495,17 +1642,21 @@ type VisKind string
 type VisOptions struct {
 	BaselineOffset *VisOptionsBaselineOffset `json:"baselineOffset,omitempty"`
 	CategoryBy     *string                   `json:"categoryBy,omitempty"`
+	Cluster        *bool                     `json:"cluster,omitempty"`
+	Colour         *VisOptionsColour         `json:"colour,omitempty"`
 	ColourMode     *VisOptionsColourMode     `json:"colourMode,omitempty"`
 	Content        *string                   `json:"content,omitempty"`
 	Countdown      *ClockCountdown           `json:"countdown,omitempty"`
 	Date           *bool                     `json:"date,omitempty"`
 	Donut          *bool                     `json:"donut,omitempty"`
 	GraphMode      *VisOptionsGraphMode      `json:"graphMode,omitempty"`
+	GroupBy        *string                   `json:"groupBy,omitempty"`
 	HourCycle      *VisOptionsHourCycle      `json:"hourCycle,omitempty"`
 	Labels         *VisOptionsLabels         `json:"labels,omitempty"`
 	Language       *VisOptionsLanguage       `json:"language,omitempty"`
 	Layout         *VisOptionsLayout         `json:"layout,omitempty"`
 	Limit          *int                      `json:"limit,omitempty"`
+	Location       *GeoLocation              `json:"location,omitempty"`
 	Max            *float64                  `json:"max,omitempty"`
 	Min            *float64                  `json:"min,omitempty"`
 	Mode           *VisOptionsMode           `json:"mode,omitempty"`
@@ -1514,15 +1665,22 @@ type VisOptions struct {
 	Query          *string                   `json:"query,omitempty"`
 	Reducer        *VisOptionsReducer        `json:"reducer,omitempty"`
 	Seconds        *bool                     `json:"seconds,omitempty"`
+	Size           *GeoSize                  `json:"size,omitempty"`
 	Sort           *VisOptionsSort           `json:"sort,omitempty"`
+	Symbol         *VisOptionsSymbol         `json:"symbol,omitempty"`
 	Tag            *AnnotationTag            `json:"tag,omitempty"`
 	TextMode       *VisOptionsTextMode       `json:"textMode,omitempty"`
 	ValueLabels    *bool                     `json:"valueLabels,omitempty"`
+	View           *GeoView                  `json:"view,omitempty"`
+	WheelZoom      *bool                     `json:"wheelZoom,omitempty"`
 	Zones          *[]ClockZone              `json:"zones,omitempty"`
 }
 
 // VisOptionsBaselineOffset defines model for VisOptions.BaselineOffset.
 type VisOptionsBaselineOffset string
+
+// VisOptionsColour defines model for VisOptions.Colour.
+type VisOptionsColour string
 
 // VisOptionsColourMode defines model for VisOptions.ColourMode.
 type VisOptionsColourMode string
@@ -1553,6 +1711,9 @@ type VisOptionsReducer string
 
 // VisOptionsSort defines model for VisOptions.Sort.
 type VisOptionsSort string
+
+// VisOptionsSymbol defines model for VisOptions.Symbol.
+type VisOptionsSymbol string
 
 // VisOptionsTextMode defines model for VisOptions.TextMode.
 type VisOptionsTextMode string

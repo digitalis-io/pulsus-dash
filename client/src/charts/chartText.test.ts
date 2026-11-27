@@ -16,6 +16,7 @@ const SUMMARY: FrameSummary = {
   valueAxis: { min: 0, max: 2, manual: false },
   thresholdLabels: [],
   eventLabels: [],
+  geo: null,
 };
 
 describe('summaryLabel thresholds (#64 Part B §3.9.1)', () => {

@@ -448,7 +448,7 @@ describe('engine', () => {
     show(h, LINE_NONE, seriesData(seriesFrame(K(1), ts, ts)), { fromMs: 0, toMs: 9_000 });
     const index = (): number | null => {
       const last = h.hover.at(-1);
-      return last === null || last === undefined ? null : last.tMs / 1_000;
+      return last === null || last === undefined || last.tMs === null ? null : last.tMs / 1_000;
     };
     const seen: (number | null)[] = [];
     for (const k of [

@@ -5,10 +5,17 @@ The geomap's data layer (issue #231, part E step 1a of
 resolve to a place, the two bundled offline assets (a world basemap and a gazetteer), how they are
 validated and loaded, and what they cover. It implements
 [VIZ-045](../../designs/product/05-visualisation-catalogue.md) and the bundled offline data of
-VIZ-046, by the rules T24-080 to T24-087. The map frame that draws them comes in E2 (#234); nothing
-in the app imports these modules yet.
+VIZ-046, by the rules T24-080 to T24-087. The map frame that draws them comes in E2 (#234): its
+first part adds the rows, the table, the CSV, the facts and the Inspector targets
+([below](#the-map-frames-rows-234-part-1)); PulsusIX does not draw a map yet.
 
-The modules live in `client/src/vis/geo/` and import nothing outside it except types:
+The modules live in `client/src/vis/geo/`. The data layer (step 1a: `aliases.ts` to `assets.ts`)
+imports nothing outside the directory except types. The map frame's modules (#234 Part 1) do:
+`frame.ts` imports `data/frames` (`seriesName`), `vis/reduce` (the merge, the reducer, the cap and
+the T22-004 disambiguator), `vis/thresholds`, `engine/canvas2d/seriesColour`, `engine/patterns` and
+`i18n/t`; `rows.ts` imports `vis/reduce` (`panelCsv`, `focusOf`, `largestChange`) and
+`i18n/format`; `targets.ts` imports only `i18n/t` at run time (its imports of `frame.ts` are
+types).
 
 | Module | What it holds |
 |---|---|
@@ -19,6 +26,10 @@ The modules live in `client/src/vis/geo/` and import nothing outside it except t
 | `decode.ts` | `decodeBasemap`, `decodeGazetteer` (type-only imports, so `ci:geo-data` runs it in Node) |
 | `urls.ts` | `basemapUrl`, `gazetteerUrl`: the assets imported with `?url` (the `geo-assets` build input) |
 | `assets.ts` | `geoLoader`, `loadGeoData`; re-exports the decoders |
+| `frame.ts` | the map frame's rows (#234 Part 1): `geoRowSet`, `validateGeoRows`, `geoFrame`, `finalLabels`, `valueStatusOf` and their types |
+| `rows.ts` | `geoTable`, `geoCsv`, `geoFacts` |
+| `targets.ts` | `geoTarget`, `geoPlace` (type-only imports of `frame.ts`, so the shared Inspector can take it alone) |
+| `fixtures/series.ts` | the T24 §10.4 and §10.5 fixtures as series (G, H, O, X, Cap, …) and gazetteer T, for the tests |
 | `data/basemap.json`, `data/gazetteer.json` | the assets, built by `tools/geo/build.py` ([below](#how-the-assets-are-built)) |
 
 ## Resolving a location (`locate`)
@@ -276,6 +287,94 @@ refresh procedure are in [the supply chain page](supply-chain.md#geo-data), and 
 A build error prints `geo-build: ‹message›` (for example `PPP: hole not strictly inside its outer
 ring`) and exits 2; `--check` exits 1 naming each file that differs from the rebuild.
 
+## The map frame's rows (#234 Part 1)
+
+```ts
+geoRowSet(series, source: 'instant' | 'range', o: GeomapOptions, th: Thresholds | null,
+  g: Gazetteer | null, q: Completeness): GeoRowSet
+validateGeoRows(s: GeoRowSet, th: Thresholds | null): FrameDataIssue | null
+geoFrame(s: GeoRowSet, b: Basemap, seq: number): GeoFrame
+```
+
+`geoRowSet` makes one `GeoRow` per series (T24-089). It merges duplicate series first (T22-003: an
+instant result keeps the max on a tie and counts a conflict), then sorts by key in UTF-16 code
+units, so the same series in any order give the same row set. Each row has:
+
+- **`value`**: an instant result's one sample, or a range result reduced by `o.reducer`;
+- **`valueStatus`** (T21-012): `noValue` (NaN), `infinite` (±Infinity), `outOfRange` (not 0, and
+  smaller than 1e−290 or larger than 1e290 in size) or `ok`;
+- **`state`**: null without thresholds; with them `unknown` for a value that is not `ok`, else the
+  threshold state (`vis/thresholds.ts`);
+- **`location`**: `locate(labels, o.location, g)` ([above](#resolving-a-location-locate));
+- **`draw`**, the first that holds (zoom-independent):
+
+| Draw status | When | Example (T24 §10.4 fixture G) |
+|---|---|---|
+| `notPlaced` | the location is not `placed` | `cloud_region=mars-north-1` (unknown code) |
+| `outsideMap` | placed, but \|lat\| > 85.0511 | `lat=-89.9 lon=0` |
+| `excluded` | placed on the map, but the value is not `ok` (the row is in the table and the meter only) | `lat=10 lon=10` with no value |
+| `capped` | left out by the cap: above 5 000 drawable rows, `capMarks` keeps the max, the min, the worst state's rows (up to 500) and then the rest in key order (T22-006) | the Cap fixture's `c4999`–`c5001` |
+| `shown` | drawn | `cloud_region=eu-west-1` (Dublin) |
+
+`geoFrame(s, basemap, seq)` adds `shown`, the indices of the `shown` rows.
+
+**Groups and labels (T24-090).** A row's group id is `{series: key}` without `groupBy`, else
+`{present: true, value}` or `{present: false}` (the label is absent). Groups are numbered by first
+appearance in key order. With 8 or more ids, ids 0–6 keep their own group and the rest join one
+aggregate, group 7: id `{other: true}`, label `other (n)` (n = its member groups), pattern `grid`,
+colour `category-other` (`colourIndex` null), with `members` (the ids) and `memberLabels` (their
+final labels) in first-appearance order; an aggregated row keeps its own id. One group has the
+`solid` pattern; several have `CATEGORY_PATTERNS[j]`. The colour is `seriesColourIndex` without
+`groupBy`, else j mod 8. Labels:
+
+- a series group: the series name (`{cloud_region="eu-west-1"}`);
+- a present value: plain (`prod`), or `JSON.stringify` when it starts with `"`, equals `other` or
+  `‹L› absent`, ends with ` (‹digits›)` or holds a control character (`"other (2)"`);
+- an absent label: `‹L› absent` (`env absent`).
+
+`finalLabels` then runs over every group and member label together: labels with the same base get
+T22-004's distinguishing parts (`{lat="1", lon="2"} · __name__ absent`), and a label still shared,
+or equal to the aggregate's, gets ` (n)`, n from 1 in key order, skipping labels in use. The
+aggregate is never suffixed. So labels never collide.
+
+**Coverage (T24 §4.11).** Counted before the cap: `total` (the drawable rows: `shown` or `capped`),
+`drawn` (`shown`), what the cap kept, the worst state of the drawable rows and how many of them
+were capped, the merge counts, the run's completeness and `geo`: `notPlaced` (not placed, ambiguous
+and `gazetteerUnavailable` apart), `ambiguous`, `locationsUnavailable`, `outsideMap`, `noValue`,
+`infinite` and `outOfRange`. The meter reads, for fixture G with a truncated run and two warnings:
+`truncated · limited (2 warnings) · 3 not placed · 1 ambiguous · 1 outside the map · 4 without a
+usable value (2 missing, 1 infinite, 1 out of range) · 1 duplicate series combined; 1 conflicts (max
+kept)`.
+
+**Validation.** `validateGeoRows` returns the first failing check as `{code: 'geo', detail}`, in
+this order: `order` (keys non-empty and strictly increasing), `value`, `state` (against the
+panel's thresholds), `draw` (recomputed with the cap), `group` (indices, ids, patterns, colours and
+the aggregate's members) and `coverage` (every count recounted). A chart shows it as "Invalid map
+data (‹detail›)".
+
+**Table and CSV (T24-094, §4.14).** `geoTable(s, unit)` has one row per `GeoRow`, ordered by name
+then key, with the columns `name, key, value, value_status, state, location_status,
+location_detail, source, code, provider, place, lat, lon, group, group_member, draw_status`. The
+cells are raw: `value` is `String(v)` (NaN empty, `Infinity`, `5e-300`); `location_detail` is
+`‹reason› ‹key›` (invalid), `‹source› ‹key›=‹value›` (unknown code), `‹provider›: c1; c2` (provider
+mismatch) or `‹reason›: c1; c2` (ambiguous); `place` is `geoPlace`; `group` is the drawn group's
+label (`other (n)` for an aggregate member) and `group_member` the member's own label. `geoCsv` is
+the same through `panelCsv`: RFC 4180, CRLF, every cell through `csvCell`, so a place `-89.9000,
+0.0000` becomes `"'-89.9000, 0.0000"` while a number such as `-30` stays as it is.
+
+**Facts (T22-014).** `geoFacts(title, s, series, instant, unit)` reads the rows with an `ok` value
+(before the cap, any draw status): the focus is the worst state, then the higher value, then the
+lower key; `current` its value and name, `change` (a range result) its series' largest step,
+`extent` the min and max, `baselineRatio` null. With no `ok` value it is null.
+
+**Inspector targets (T24-092, §4.13).** `geoTarget(s, frameSeq, ref)` builds a snapshot, so a
+refetch never changes an open one: a `marker` (its row, no members), a `cluster`
+(`cluster:‹seed›`, "Cluster of n", the keys' rows and one member per row), the `aggregate`
+(`other:geo`, its rows and one member per member group with its label and label map) or a `group`
+of an aggregate's entry (`group:` + the id as JSON, built from that target's snapshot only).
+Every target carries the row set it came from (`set`). `geoPlace(row)` is the gazetteer's name,
+else `lat, lon` to 4 places, else `''`.
+
 ## Tests
 
 | Gate | Where | What |
@@ -287,6 +386,10 @@ ring`) and exits 2; `--check` exits 1 naming each file that differs from the reb
 | `unit:geo-load` | same | one shared promise, two `force-cache` requests, a failed asset nulls only itself with one debug line |
 | `unit:geo-build`, `unit:geo-gazetteer-build` | `tools/geo/test_build.py` (`make geo-test`) | the exact build outputs and errors of T24 §10.3, assembly, the gazetteer rules, digests before parsing, `--check`, the fixtures, the notices |
 | `ci:geo-data` | `scripts/check-geo-data.ts` (`make geo-data`) | the committed assets match `tools/geo/manifest.json` and decode |
+| `unit:geo-rows`, `unit:geo-identity` | `src/vis/geo/frame.test.ts` | fixture G's statuses with and without thresholds, each invalid set's detail, order independence; the groups, labels, patterns and colours of G, H, H′, A, O, Q, D, U, one row and S |
+| `unit:geo-coverage` | `src/vis/reduce.test.ts` | G's meter line; the Cap selection and "showing 5,000 of 5,003; kept min, max" |
+| `unit:geo-table-csv`, `unit:geo-facts` | `src/vis/geo/rows.test.ts` | CSV G and CSV X byte for byte, the unguarded table cells; the facts block |
+| `unit:geo-targets` (builder rows) | `src/vis/geo/targets.test.ts` | the marker, cluster, O2 aggregate and `e8` group targets; `geoPlace` |
 
 The client build fixtures under `src/vis/geo/fixtures/build/` are written by `build.py --fixtures`
 from `tools/geo/fixtures/basemap-cases.json`; `unit:geo-build` checks they are current.

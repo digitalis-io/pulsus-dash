@@ -15,15 +15,16 @@ every version, the actor of every audit event, and the owner of the starred and 
 The tables are described in [the database page](database.md#schema-migration-2), and the board
 tags cache in [migration 4](database.md#schema-migration-4).
 
-## Board spec v6
+## Board spec v7
 
-A board is a JSON object, called the spec. The server stores it with `schema_version` 6. Version 2
+A board is a JSON object, called the spec. The server stores it with `schema_version` 7. Version 2
 (#64 Part B) adds the optional `vis.thresholds` and `vis.legend` to version 1; version 3 (#173
 Part 1) adds the optional `vis.options` and the kinds `barchart` and `pie`; version 4 (#215) adds
 the optional `tags`; version 5 (#198 Part 1) adds the widgets: `query` becomes optional, and the
 kinds `text` and `clock` come with their options ([widgets](#widgets-text-and-clock-v5)); version 6
-(#216 Part 1) adds the `boardList` widget and its options ([board list](#board-list-boardlist-v6)). Each
-version is otherwise the same as the one before (see
+(#216 Part 1) adds the `boardList` widget and its options ([board list](#board-list-boardlist-v6));
+version 7 (#234 Part 1) adds the `geomap` data kind and its options ([geomap](#geomap-geomap-v7)).
+Each version is otherwise the same as the one before (see
 [Versions and the upcaster](#versions-and-the-upcaster)).
 
 ```json
@@ -62,7 +63,7 @@ version is otherwise the same as the one before (see
 | `panels[].title` | string | at most 200 characters |
 | `panels[].grid` | object | `x` 0–11, `w` 1–12, `x + w` ≤ 12, `y` 0–9999, `h` 1–100, all integers. The grid has 12 columns; two panels of the same grid (the top level, or one section) must not overlap |
 | `panels[].query` | object; required on a data panel, refused on a widget (v5) | `lang` `promql` or `logql`; `text` at most 16 384 bytes |
-| `panels[].vis` | object | `kind`: a data kind `auto`, `line`, `bars`, `heatmap`, `stat`, `logs`, `barchart` or `pie`, or a widget `text` or `clock` (v5), or `boardList` (v6). The web client draws `barchart` (#173 Part 3b) but not `pie` yet: a pie panel sends no query and says so ([the panel runtime](../client/boards.md#bar-chart-panels-173-part-3b)); nor `text`, `clock` and `boardList` yet ([widgets](../client/widgets.md)) |
+| `panels[].vis` | object | `kind`: a data kind `auto`, `line`, `bars`, `heatmap`, `stat`, `logs`, `barchart`, `pie` or `geomap` (v7), or a widget `text` or `clock` (v5), or `boardList` (v6). The web client draws `barchart` (#173 Part 3b) but not `pie` or `geomap` yet: such a panel sends no query and says so ([the panel runtime](../client/boards.md#bar-chart-panels-173-part-3b), [map panels](../client/boards.md#map-panels-234-part-1)); nor `text`, `clock` and `boardList` yet ([widgets](../client/widgets.md)) |
 | `panels[].vis.thresholds` | object, optional | `direction` `above` or `below`, and `steps`: 1 to 8 objects of `value` (a number: 0, or 1e-9 ≤ \|value\| ≤ 1e15; no two equal), `state` (`watch`, `degraded` or `failing`) and `label` (at most 200 characters; `""` shows the value). Valid on every data kind; drawn on line, bars and stat. Refused on a widget |
 | `panels[].vis.legend` | object, optional | `mode` `table` or `hidden`; absent means `table`. Refused on a widget |
 | `panels[].vis.options` | object, optional | the kind's options, every key optional (below). `{}` is valid on every kind; `null` is refused |
@@ -75,7 +76,7 @@ Which keys a kind allows, their types and their values (T22 §6.1). Any other ke
 
 | Key | Type | Values | Kinds |
 |---|---|---|---|
-| `reducer` | string | `last`, `first`, `mean`, `min`, `max`, `sum`, `count` | auto, barchart, pie, stat |
+| `reducer` | string | `last`, `first`, `mean`, `min`, `max`, `sum`, `count` | auto, barchart, geomap, pie, stat |
 | `baselineOffset` | string | `1h`, `1d`, `7d`, `28d` | barchart, stat |
 | `categoryBy` | string | `""` (use the effective label), or a label name `^[A-Za-z_][A-Za-z0-9_.]{0,99}$` | barchart, pie |
 | `sort` | string | `valueDesc`, `valueAsc`, `label`, `none` (a board list has its own values, [below](#board-list-boardlist-v6)) | barchart, pie, stat |
@@ -83,7 +84,7 @@ Which keys a kind allows, their types and their values (T22 §6.1). Any other ke
 | `valueLabels` | boolean | | barchart |
 | `min`, `max` | number | \|v\| ≤ 1e15; when both are set, `min` < `max` | barchart, stat |
 | `donut` | boolean | | pie |
-| `labels` | string | `percent`, `value`, `name`, `none` | pie |
+| `labels` | string | `percent`, `value`, `name`, `none` (a geomap has its own values, [below](#geomap-geomap-v7)) | geomap, pie |
 | `parts` | boolean | | auto, pie |
 | `layout` | string | `single`, `grid` | stat |
 | `colourMode` | string | `value`, `background`, `none` | stat |
@@ -94,7 +95,9 @@ Which keys a kind allows, their types and their values (T22 §6.1). Any other ke
 `depth`, `tilt`, `shadow`, `3d`) are never allowed (T22-002). The keys are held in one table on
 each side (`internal/spec/shape.go`, `client/src/boards/options.ts`), and both suites compare it
 with `api/fixtures/board-spec/option-keys.json`: each key's type, the members of the object keys
-(`zones` items, `countdown`) and the keys of each kind.
+(`zones` items and `countdown`: required strings; the geomap's `location`, `size` and `view`: typed,
+each required or optional, in `objectMembers`), the keys that may be `null` (`nullable`) and the
+keys of each kind.
 
 #### Widgets: `text` and `clock` (v5)
 
@@ -193,6 +196,44 @@ pointers are relative to the body, for example
 `board.json.duplicateKey`, `""` `board.json.invalid` for trailing data. Nothing is written. The
 `spec` value is then checked as described next, with pointers relative to the spec.
 
+#### Geomap: `geomap` (v7)
+
+A geomap is a data panel (it needs a `query`) that places each series on a world map by its
+labels (T24 §5.15, [the client's rows](../client/geomap.md#the-map-frames-rows-234-part-1)). Its
+`vis.options` keys, every one optional:
+
+| Key | Type | Values | Default |
+|---|---|---|---|
+| `location` | object | `{mode}` plus the members of its mode only: `auto` (none); `coords` with `lat` and `lon`, the label keys of the latitude and the longitude; `geohash` with `field`, the geohash label; `lookup` with `field` and `gazetteer` (`country`, `region`, `iata` or `cloud`) and, with `region` only, an optional `country` of two upper-case letters (`GB`) that prefixes a value without `-`. Each label key is a label name `^[A-Za-z_][A-Za-z0-9_.]{0,99}$` | `{"mode":"auto"}` |
+| `reducer` | string | as above: a range result's series are reduced with it; an instant result has one value | `last` |
+| `size` | object | `{by, min, max}`, every member optional: `by` `value` or `fixed`; with the defaults applied, 2 ≤ `min` ≤ `max` ≤ 40 (CSS px radii) | `{"by":"value","min":4,"max":20}` |
+| `colour` | string | `group`; `state` only when the panel has `vis.thresholds` with at least one step | `group` |
+| `groupBy` | string or `null` | a label name; its values group the markers (colour and pattern) | `null` |
+| `symbol` | string | `circle`, `square`, `triangle`, `diamond` | `circle` |
+| `labels` | string | `auto`, `none` | `auto` |
+| `cluster`, `wheelZoom` | boolean | | `true` |
+| `view` | object or `null` | `{lat, lon, zoom}`, all required numbers: \|`lat`\| ≤ 85.0511, −180 ≤ `lon` < 180, 0 ≤ `zoom` ≤ 14; `null` fits the shown markers | `null` |
+
+`groupBy` and `view` are the only keys that may be `null`; `null` and an absent key are one stored
+value: the server stores the parsed board, so a `null` is read back absent. `perspective`,
+`projection`, `depth`, `tilt`, `shadow` and `3d` are `board.json.unknownKey` (the map is honest 2D,
+T24-001). Each rule reports one error at its key (`location`, `size` and `view` as a whole), in key
+order after the shared keys (`reducer`, `labels`, then `location`, `size`, `colour`, `groupBy`,
+`symbol`, `view`):
+
+| Key | Valid when | Else, at `…/vis/options/<key>` |
+|---|---|---|
+| `location` | a listed mode with exactly its members, each label key a label name, the gazetteer listed and `country` only with `region` | `board.options.location.invalid` (a member of the wrong type is `board.json.type` at it, an absent `mode` `board.json.required`) |
+| `size` | `by` listed; 2 ≤ `min` ≤ `max` ≤ 40 with the defaults 4 and 20 for an absent member (`{"min":30}` is refused: the maximum is 20) | `board.options.size.invalid` |
+| `colour` | `group`, or `state` with a threshold step | `board.options.colour.invalid` |
+| `groupBy` | `null` or a label name | `board.options.groupBy.invalid` |
+| `symbol` | listed | `board.options.symbol.invalid` |
+| `labels` | `auto` or `none` | `board.options.labels.invalid` |
+| `view` | `null`, or inside the bounds above | `board.options.view.invalid` |
+
+The defaults are the client's (`geomapOptions`, `client/src/boards/options.ts`); the server stores
+only the keys sent. The web client does not draw a geomap yet (#234 Parts 2–3).
+
 ### Validation
 
 The server decodes the spec strictly before anything is written (`internal/spec`). A refused spec
@@ -208,7 +249,7 @@ The first pass checks the shape, token by token:
 | a key repeated in one object | the key | `board.json.duplicateKey` |
 | a key that is not in the table above, including a wrongly cased one (`Title`), and an option key the panel's kind does not allow | the key | `board.json.unknownKey` |
 | a required key absent (reported after the object's last key) | the key | `board.json.required` |
-| a `null` value | the key | `board.json.null` |
+| a `null` value (except a geomap's `groupBy` and `view`, v7) | the key | `board.json.null` |
 | a value of the wrong type, including `1.5`, `1e2` or `2147483648` for a grid value, and a threshold `value` that is not a number or not a finite one (`"1"`, `1e400`) | the value | `board.json.type` |
 
 `vis.options` is checked after the rest of its `vis` object (its problems follow that object's
@@ -238,7 +279,7 @@ Only a spec with a clean shape goes on to the rules:
 | no `query` on a data panel (a panel whose kind is not a kind at all reports only its kind) | `…/query` | `board.panel.query.required` |
 | `query.lang` not `promql` or `logql` | `…/query/lang` | `board.query.lang.invalid` |
 | `query.text` over 16 384 bytes | `…/query/text` | `board.query.text.tooLong` |
-| `vis.kind` not one of the eleven kinds | `…/vis/kind` | `board.vis.kind.invalid` |
+| `vis.kind` not one of the twelve kinds | `…/vis/kind` | `board.vis.kind.invalid` |
 | `thresholds` or `legend` on a widget | `…/vis/thresholds`, `…/vis/legend` | `board.json.unknownKey` |
 | `thresholds.direction` not `above` or `below` | `…/vis/thresholds/direction` | `board.thresholds.direction.invalid` |
 | no step, or more than 8 | `…/vis/thresholds/steps` | `board.thresholds.steps.count` |
@@ -261,6 +302,7 @@ Only a spec with a clean shape goes on to the rules:
 | `countdown.label` empty or over 64 characters | `…/countdown/label` | `board.options.countdown.invalid` |
 | `countdown.after` not `countUp` or `hide` | `…/countdown/after` | `board.options.countdown.invalid` |
 | a board list's `query`, `tag` or `limit` against the [board list rules](#board-list-boardlist-v6) | `…/vis/options/query`, `/tag`, `/limit` | `board.options.query.invalid`, `.tag.invalid`, `.limit.invalid` |
+| a geomap's `location`, `size`, `colour`, `groupBy`, `symbol`, `labels` or `view` against the [geomap rules](#geomap-geomap-v7) | `…/vis/options/<key>` | `board.options.<key>.invalid` |
 | a string containing U+0000 | that string | `board.string.nul` |
 
 On a create and a save, a spec that passes the rules then has its zones checked against the build
@@ -272,13 +314,15 @@ come after the time and before the panels. The `query` rules come after the grid
 `vis.kind`. The threshold
 rules come after `vis.kind`, in this order for each step, then the legend, then the options in
 the key order of the tables above (the data keys, then `mode`, `content`, `language`, `zones`,
-`hourCycle`, `countdown`, then a board list's `query`, `tag`, `limit`). The value range keeps a threshold far
+`hourCycle`, `countdown`, then a board list's `query`, `tag`, `limit`, then a geomap's `location`,
+`size`, `colour`, `groupBy`, `symbol`, `view`). The value range keeps a threshold far
 inside the range where the value-axis ticks are safe (#97). The shared fixtures
 `api/fixtures/board-spec/` hold a minimal and a full valid board of each version (`v1-*.json`,
 `v2-full.json`, `v2-threshold-bounds.json` with -1e-9, 0 and 1e-9, `v3-full.json` with every
 option key of each kind, `v4-board-tags.json` with two tags, `v5-widgets.json` with text and
-clock panels beside one data panel, and `v6-board-list.json` with a board list in each mode beside
-one data panel), the option table `option-keys.json`, and `invalid.json` with
+clock panels beside one data panel, `v6-board-list.json` with a board list in each mode beside
+one data panel, and `v7-geomap.json` with a geomap per option set: `{}`, every key at a non-default
+value, `null` `groupBy` and `view`, a geohash, an IATA and a region lookup), the option table `option-keys.json`, and `invalid.json` with
 one case per problem and its exact `fields`. The server's tests and the client's tests both run
 them; a case with `client_fields` (a zone that does not exist, `w-zone-unknown`) expects those on
 the client, which does not check existence.
@@ -301,30 +345,30 @@ A save of a spec whose canonical form differs from the head writes version `n + 
 head (T11-006). A save of an identical spec is a no-op: no version, no audit event, the same ETag,
 and `changed: false` in the response. Versions are never updated or deleted.
 
-Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 6 is the current
-version; a version 1 to 5 spec is a subset of it and reads unchanged (the identity upcast: versions
-1 to 6 decode unchanged). Every write stores version 6. The spec itself needs no SQL migration
+Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 7 is the current
+version; a version 1 to 6 spec is a subset of it and reads unchanged (the identity upcast: versions
+1 to 7 decode unchanged). Every write stores version 7. The spec itself needs no SQL migration
 (`schema_version` is an existing column); migration 4 adds only the tags cache the list reads. A
 spec stored by a newer server (a rolling upgrade) answers 503 `board saved by a newer server
 version`, and is never overwritten by the older server.
 
-| Server | Reads a v1 to v5 row | Reads a v6 row | Writes |
+| Server | Reads a v1 to v6 row | Reads a v7 row | Writes |
 |---|---|---|---|
-| this release | unchanged | parsed | `schema_version` 6 |
-| the previous release (v5), during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 5 |
+| this release | unchanged | parsed | `schema_version` 7 |
+| the previous release (v6), during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 6 |
 
 During a rolling upgrade (T11-015), the previous release still lists a board this release saved at
-v6 (`GET /boards`), but its `GET` and `PUT` of that board answer 503 and write nothing. A spec with
-a board list sent to the previous release (`POST`, or `PUT` over a board it can read) is 400, the
-first field `board.vis.kind.invalid` at `/panels/<i>/vis/kind` of the first board list: it knows no
-such kind, so nothing is written. A web client tab of the previous release reads a v6 board as a
-bad response (a query-less panel of a kind it does not know); no web client writes a board list yet
-(#216 Part 2), so only boards written through the API have one. A v5 → v4 upgrade behaves the same
-way, with `board.json.required` at `/panels/<i>/query` of the first widget.
+v7 (`GET /boards`), but its `GET` and `PUT` of that board answer 503 and write nothing. A spec with
+a geomap sent to the previous release (`POST`, or `PUT` over a board it can read) is 400, the first
+field `board.vis.kind.invalid` at `/panels/<i>/vis/kind` of the first geomap: it knows no such kind
+(and does not check that kind's options), so nothing is written. The web client shows that refusal
+as "This server does not support map panels yet" ([map panels](../client/boards.md#map-panels-234-part-1)).
+The v6 → v5 upgrade behaved the same way for a board list, and v5 → v4 with `board.json.required`
+at `/panels/<i>/query` of the first widget.
 
 `spec.DecodeBoardUpTo(raw, version, max)` holds the rule (`version > max` is too new);
 `DecodeBoard` calls it with `BoardSchemaVersion`. The itest `TestPreviousServerRefusesNewerRow`
-reads a real v6 row with `max` 5, as the previous release did, and `TestSaveWritesCurrentSchema`
+reads a real row of the current version with `max` one less, as the previous release did, and `TestSaveWritesCurrentSchema`
 checks what a save stores. `make itest-old-binary` runs the previous release's binary itself beside
 this one ([the database page](database.md#old-binaries-and-make-itest-old-binary)).
 

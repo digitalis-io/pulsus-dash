@@ -113,6 +113,7 @@ function summary(
     valueAxis: kind === 'line' || kind === 'bars' ? { min, max, manual: false } : null,
     thresholdLabels: [],
     eventLabels: [],
+    geo: null,
   };
 }
 

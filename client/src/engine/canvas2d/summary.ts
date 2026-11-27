@@ -14,7 +14,7 @@ export interface Stats {
   readonly last: number | null;
 }
 
-const NONE: Stats = { min: null, max: null, last: null };
+export const NONE: Stats = { min: null, max: null, last: null };
 
 /** Line: min and max over every finite shown value; last = the highest last finite value. */
 export function lineStats(series: readonly SeriesFrame[]): Stats {
@@ -111,5 +111,7 @@ export function frameSummary(
     valueAxis,
     thresholdLabels: [],
     eventLabels: [],
+    // The geomap's camera is #234 Part 2's.
+    geo: null,
   };
 }

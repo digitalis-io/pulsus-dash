@@ -386,7 +386,8 @@ export class WasmFrame implements EngineFrame {
     if (this.disposed) return;
     switch (ev.t) {
       case 'a11y':
-        this.emit('a11y', ev.ev);
+        // ADR-0027 §6: no geomap is drawn here.
+        this.emit('a11y', { ...ev.ev, geo: null });
         return;
       case 'applied':
         this.applied = Math.max(this.applied, extendSeq(this.lastSeq, ev.seq));

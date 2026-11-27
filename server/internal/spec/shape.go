@@ -35,11 +35,13 @@ const (
 	kRawObject
 )
 
-// valueType is the expected type of a value: an object of a shape, or an array of elem.
+// valueType is the expected type of a value: an object of a shape, or an array of elem; JSON null
+// is accepted when nullable (board spec v7: the geomap's groupBy and view).
 type valueType struct {
-	kind  kind
-	shape []field
-	elem  *valueType
+	kind     kind
+	shape    []field
+	elem     *valueType
+	nullable bool
 }
 
 // field is one key of an object shape, in table order.
@@ -73,7 +75,8 @@ var (
 	// api/fixtures/board-spec/option-keys.json. Board spec v5 (#198 Part 1, T24 §5.1) adds the text
 	// and clock keys: zones is an array of {tz, label}, countdown an object {to, label, after}, every
 	// member a required string (OPTION_MEMBERS). Board spec v6 (#216 Part 1, T24 §5.5) adds the
-	// board list's query, tag and limit (a number here; the rules pass requires an integer).
+	// board list's query, tag and limit (a number here; the rules pass requires an integer). Board
+	// spec v7 (#234 Part 1, T24 §5.15) adds the geomap's keys; groupBy and view may be null.
 	optionFields = []field{{"reducer", false, tString}, {"baselineOffset", false, tString},
 		{"categoryBy", false, tString}, {"sort", false, tString}, {"orientation", false, tString},
 		{"valueLabels", false, tBool}, {"min", false, tNumber}, {"max", false, tNumber},
@@ -84,7 +87,18 @@ var (
 		{"zones", false, valueType{kind: kArray, elem: &valueType{kind: kObject, shape: zoneShape}}},
 		{"hourCycle", false, tString}, {"seconds", false, tBool}, {"date", false, tBool},
 		{"countdown", false, valueType{kind: kObject, shape: countdownShape}},
-		{"query", false, tString}, {"tag", false, tString}, {"limit", false, tNumber}}
+		{"query", false, tString}, {"tag", false, tString}, {"limit", false, tNumber},
+		{"location", false, valueType{kind: kObject, shape: locationShape}},
+		{"size", false, valueType{kind: kObject, shape: sizeShape}},
+		{"colour", false, tString}, {"groupBy", false, valueType{kind: kString, nullable: true}},
+		{"symbol", false, tString}, {"cluster", false, tBool}, {"wheelZoom", false, tBool},
+		{"view", false, valueType{kind: kObject, shape: viewShape, nullable: true}}}
+	// The geomap's object keys (board spec v7, T24 §5.15; the client's OPTION_OBJECT_MEMBERS):
+	// typed members, required or optional; which members a location mode allows is the rules pass's.
+	locationShape = []field{{"mode", true, tString}, {"lat", false, tString}, {"lon", false, tString},
+		{"field", false, tString}, {"gazetteer", false, tString}, {"country", false, tString}}
+	sizeShape      = []field{{"by", false, tString}, {"min", false, tNumber}, {"max", false, tNumber}}
+	viewShape      = []field{{"lat", true, tNumber}, {"lon", true, tNumber}, {"zoom", true, tNumber}}
 	zoneShape      = []field{{"tz", true, tString}, {"label", true, tString}}
 	countdownShape = []field{{"to", true, tString}, {"label", true, tString}, {"after", true, tString}}
 	optionKinds    = map[string][]string{
@@ -99,6 +113,7 @@ var (
 		"text":      {"mode", "content", "language"},
 		"clock":     {"zones", "hourCycle", "seconds", "date", "countdown"},
 		"boardList": {"sort", "mode", "query", "tag", "limit"},
+		"geomap":    {"reducer", "labels", "location", "size", "colour", "groupBy", "symbol", "cluster", "wheelZoom", "view"},
 	}
 	panelShape = []field{{"id", true, tString}, {"title", true, tString},
 		{"grid", true, valueType{kind: kObject, shape: gridShape}},
@@ -210,7 +225,9 @@ func (c *shapeChecker) value(pointer string, t valueType) error {
 // check checks one value whose first token tok was read.
 func (c *shapeChecker) check(pointer string, tok json.Token, t valueType) error {
 	if tok == nil {
-		c.add(pointer, keyNull)
+		if !t.nullable {
+			c.add(pointer, keyNull)
+		}
 		return nil
 	}
 	switch v := tok.(type) {

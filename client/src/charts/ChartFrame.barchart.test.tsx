@@ -59,6 +59,7 @@ const SUMMARY: FrameSummary = {
   valueAxis: { min: 0, max: 150, manual: false },
   thresholdLabels: [],
   eventLabels: [],
+  geo: null,
   coverage: { ...EMPTY_COVERAGE, total: 6, drawn: 5 },
 };
 

@@ -17,8 +17,8 @@ export const PANEL_PREFETCH_ROWS = 50;
 export type LogPanelPath = 'stream' | 'logs-bars' | 'logs-frame';
 
 /**
- * auto, logs → stream; bars → logs-bars; line, heatmap, stat, barchart, pie → logs-frame (the
- * pending kinds send nothing, plan #173 Part 1).
+ * auto, logs → stream; bars → logs-bars; line, heatmap, stat, barchart, pie, geomap → logs-frame
+ * (the pending kinds send nothing, plan #173 Part 1, #234 Part 1).
  */
 export function logPanelPath(kind: DataVisKind): LogPanelPath {
   switch (kind) {
@@ -32,6 +32,7 @@ export function logPanelPath(kind: DataVisKind): LogPanelPath {
     case 'stat':
     case 'barchart':
     case 'pie':
+    case 'geomap':
       return 'logs-frame';
   }
 }

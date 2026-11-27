@@ -764,7 +764,7 @@ export interface components {
         };
         Vis: {
             /** @enum {string} */
-            kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs" | "barchart" | "pie" | "text" | "clock" | "boardList";
+            kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs" | "barchart" | "pie" | "text" | "clock" | "boardList" | "geomap";
             thresholds?: components["schemas"]["Thresholds"];
             legend?: components["schemas"]["Legend"];
             options?: components["schemas"]["VisOptions"];
@@ -786,7 +786,7 @@ export interface components {
             max?: number;
             donut?: boolean;
             /** @enum {string} */
-            labels?: "percent" | "value" | "name" | "none";
+            labels?: "percent" | "value" | "name" | "none" | "auto";
             parts?: boolean;
             /** @enum {string} */
             layout?: "single" | "grid";
@@ -810,6 +810,42 @@ export interface components {
             query?: string;
             tag?: components["schemas"]["AnnotationTag"];
             limit?: number;
+            location?: components["schemas"]["GeoLocation"];
+            size?: components["schemas"]["GeoSize"];
+            /** @enum {string} */
+            colour?: "group" | "state";
+            groupBy?: string | null;
+            /** @enum {string} */
+            symbol?: "circle" | "square" | "triangle" | "diamond";
+            cluster?: boolean;
+            wheelZoom?: boolean;
+            view?: components["schemas"]["GeoView"] | null;
+        };
+        GeoLocation: {
+            /** @enum {string} */
+            mode: "auto" | "coords" | "geohash" | "lookup";
+            lat?: string;
+            lon?: string;
+            field?: string;
+            /** @enum {string} */
+            gazetteer?: "country" | "region" | "iata" | "cloud";
+            country?: string;
+        };
+        GeoSize: {
+            /** @enum {string} */
+            by?: "value" | "fixed";
+            /** Format: double */
+            min?: number;
+            /** Format: double */
+            max?: number;
+        };
+        GeoView: {
+            /** Format: double */
+            lat: number;
+            /** Format: double */
+            lon: number;
+            /** Format: double */
+            zoom: number;
         };
         ClockZone: {
             tz: string;

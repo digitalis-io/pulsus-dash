@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { validateFrameData, type FrameData, type SeriesFrame } from '../data/frames';
-import type { VisKind, VisSpec } from '../engine/api';
+import type { VisSpec } from '../engine/api';
+import type { VisKind } from './autovis';
 import { toggleIsolation } from '../explore/seriesRows';
 import {
   arr,

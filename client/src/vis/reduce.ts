@@ -156,7 +156,7 @@ function shownRaw(v: string): string {
 }
 
 /** `k="v"` (quoted as `seriesName` quotes) or `k absent` (T22-004). */
-function part(labels: Labels, k: string): string {
+export function part(labels: Labels, k: string): string {
   const v = labels[k];
   return v === undefined ? `${k} absent` : `${k}=${quoted(v)}`;
 }
@@ -185,7 +185,7 @@ function firstSubset(
  * sorted keys on which x differs from at least one other; the first subset of D, breadth-first,
  * whose values set x apart (D always does); D itself when |D| > 16.
  */
-function disambiguator(x: Labels, others: readonly Labels[]): readonly string[] {
+export function disambiguator(x: Labels, others: readonly Labels[]): readonly string[] {
   const keys = new Set<string>();
   for (const l of [x, ...others]) for (const k of Object.keys(l)) keys.add(k);
   const d = [...keys].filter((k) => others.some((o) => o[k] !== x[k])).sort(codeUnitOrder);
@@ -646,8 +646,8 @@ export function deltaText(v: number, b: number | null): string | null {
   return `${glyph} ${formatValue(Math.abs(d), NO_UNIT)} %`;
 }
 
-/** The kinds with a categorical table; I2 adds `stat`, I3 `pie`. */
-export type TableKind = 'barchart';
+/** The kinds with a categorical table; I2 adds `stat`, I3 `pie`; #234 the geomap (T24 §4.14). */
+export type TableKind = 'barchart' | 'geomap';
 
 export interface PanelRows {
   readonly columns: readonly string[];
@@ -659,8 +659,27 @@ export interface PanelRows {
   }[];
 }
 
-const COLUMNS: Readonly<Record<TableKind, readonly string[]>> = Object.freeze({
+/** The table and CSV columns of each kind (T22-013; the geomap's, T24 §4.14). */
+export const TABLE_COLUMNS: Readonly<Record<TableKind, readonly string[]>> = Object.freeze({
   barchart: Object.freeze(['name', 'value', 'baseline', 'state', 'drawn', 'shown as']),
+  geomap: Object.freeze([
+    'name',
+    'key',
+    'value',
+    'value_status',
+    'state',
+    'location_status',
+    'location_detail',
+    'source',
+    'code',
+    'provider',
+    'place',
+    'lat',
+    'lon',
+    'group',
+    'group_member',
+    'draw_status',
+  ]),
 });
 
 const numberCell = (v: number | null): string => (v === null || Number.isNaN(v) ? '' : String(v));
@@ -673,7 +692,8 @@ const numberCell = (v: number | null): string => (v === null || Number.isNaN(v) 
  * `unit`, which the view formats with (Part 3).
  */
 export function panelRows(
-  kind: TableKind,
+  // The geomap's rows are `vis/geo/rows.ts`'s (`geoTable`).
+  kind: Exclude<TableKind, 'geomap'>,
   all: readonly Mark[],
   drawn: readonly CategoryRow[],
   // The view's unit; the cells are raw numbers (T22-013), so this kind needs none.
@@ -701,7 +721,7 @@ export function panelRows(
       ],
     };
   });
-  return { columns: COLUMNS[kind], rows };
+  return { columns: TABLE_COLUMNS[kind], rows };
 }
 
 /** The CSV of `t` (T22-013): the header, then every row; each cell through `csvCell`; CRLF. */
@@ -725,8 +745,8 @@ function rank(s: State | null): number {
  * The focus mark (T22-014) among the finite marks: the worst state, else the highest value; ties
  * go to the higher value, then the lower key.
  */
-function focusOf(all: readonly Mark[]): Mark | null {
-  let best: Mark | null = null;
+export function focusOf<M extends Mark>(all: readonly M[]): M | null {
+  let best: M | null = null;
   for (const m of all) {
     if (!Number.isFinite(m.value)) continue;
     if (best === null) {
@@ -741,7 +761,7 @@ function focusOf(all: readonly Mark[]): Mark | null {
 }
 
 /** The largest |Δ| between consecutive finite samples (the first on ties); null below 2 samples. */
-function largestChange(s: SeriesFrame): { from: number; to: number; atMs: number } | null {
+export function largestChange(s: SeriesFrame): { from: number; to: number; atMs: number } | null {
   let prev: number | null = null;
   let best: { from: number; to: number; atMs: number } | null = null;
   for (let i = 0; i < s.values.length; i++) {
@@ -762,7 +782,7 @@ function largestChange(s: SeriesFrame): { from: number; to: number; atMs: number
  * the baseline is not 0 and the baseline run is complete. With no finite mark all four are null.
  */
 export function summaryFacts(
-  kind: TableKind,
+  kind: Exclude<TableKind, 'geomap'>,
   title: string,
   r: ExploreResult,
   all: readonly Mark[],

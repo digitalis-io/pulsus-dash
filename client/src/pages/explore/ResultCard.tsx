@@ -10,7 +10,7 @@ import { ToggleButton } from 'react-aria-components';
 import { CategoryChart } from '../../charts/CategoryChart';
 import { ChartFrame } from '../../charts/ChartFrame';
 import { SeriesTable } from '../../charts/SeriesTable';
-import type { PickEvent, VisKind } from '../../engine/api';
+import type { PickEvent } from '../../engine/api';
 import {
   TABLE_ROWS,
   type SeriesRow,
@@ -30,7 +30,7 @@ import { SegmentedControl, type SegmentedOption } from '../../kit/SegmentedContr
 import type { BoardFilter } from '../../state/boardParams';
 import type { ExploreParams } from '../../state/exploreParams';
 import { useTimeContext } from '../../state/useTimeContext';
-import type { AutoVis, VisParam } from '../../vis/autovis';
+import type { AutoVis, VisKind, VisParam } from '../../vis/autovis';
 import { barAction, type BarContext } from '../../vis/barAction';
 import type { BarchartModel } from '../../vis/barchart';
 import type { FramePlan } from '../../vis/framePlan';

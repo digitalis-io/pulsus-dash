@@ -711,7 +711,7 @@ components:
       additionalProperties: false
       required: [kind]
       properties:
-        kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs, barchart, pie, text, clock, boardList] }
+        kind: { type: string, enum: [auto, line, bars, heatmap, stat, logs, barchart, pie, text, clock, boardList, geomap] }
         thresholds: { $ref: '#/components/schemas/Thresholds' }
         legend: { $ref: '#/components/schemas/Legend' }
         options: { $ref: '#/components/schemas/VisOptions' }
@@ -725,7 +725,11 @@ components:
     # list keys (mode starred, recent, search or tag; query; tag; limit) and its sort values
     # (default, incidents); which mode and sort values each kind allows, the query's Cc and mode
     # rules, tag required iff mode tag, and limit a whole number are server rules
-    # (board.options.<key>.invalid).
+    # (board.options.<key>.invalid). Board spec v7 (#234, T24 §5.15) adds the geomap keys
+    # (location, size, colour, groupBy, symbol, cluster, wheelZoom, view) and its labels values
+    # (auto, none); groupBy and view may be null (the same as absent). The location members each
+    # mode allows, the size and view bounds, colour state only with thresholds and the groupBy
+    # label pattern are server rules (board.options.<key>.invalid).
     VisOptions:
       type: object
       additionalProperties: false
@@ -739,7 +743,7 @@ components:
         min: { type: number, format: double }
         max: { type: number, format: double }
         donut: { type: boolean }
-        labels: { type: string, enum: [percent, value, name, none] }
+        labels: { type: string, enum: [percent, value, name, none, auto] }
         parts: { type: boolean }
         layout: { type: string, enum: [single, grid] }
         colourMode: { type: string, enum: [value, background, none] }
@@ -756,6 +760,46 @@ components:
         query: { type: string, maxLength: 100 }
         tag: { $ref: '#/components/schemas/AnnotationTag' }
         limit: { type: integer, minimum: 1, maximum: 50 }
+        location: { $ref: '#/components/schemas/GeoLocation' }
+        size: { $ref: '#/components/schemas/GeoSize' }
+        colour: { type: string, enum: [group, state] }
+        groupBy: { type: [string, 'null'] }
+        symbol: { type: string, enum: [circle, square, triangle, diamond] }
+        cluster: { type: boolean }
+        wheelZoom: { type: boolean }
+        view: { oneOf: [ { $ref: '#/components/schemas/GeoView' }, { type: 'null' } ] }
+    # A geomap's location (T24 §5.11): auto; coords with the lat and lon label keys; geohash with its
+    # label (field); or lookup with the label (field), the gazetteer and, for regions only, an ISO
+    # 3166-1 alpha-2 country that prefixes a value without '-'.
+    GeoLocation:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [auto, coords, geohash, lookup] }
+        lat: { type: string }
+        lon: { type: string }
+        field: { type: string }
+        gazetteer: { type: string, enum: [country, region, iata, cloud] }
+        country: { type: string, pattern: '^[A-Z]{2}$' }
+    # A geomap's marker radii in CSS px: by value (between min and max) or fixed (max); 2 <= min <=
+    # max <= 40, with the defaults value, 4 and 20.
+    GeoSize:
+      type: object
+      additionalProperties: false
+      properties:
+        by: { type: string, enum: [value, fixed] }
+        min: { type: number, format: double, minimum: 2, maximum: 40 }
+        max: { type: number, format: double, minimum: 2, maximum: 40 }
+    # A geomap's stored view (ADR-0027): |lat| <= 85.0511, -180 <= lon < 180, 0 <= zoom <= 14.
+    GeoView:
+      type: object
+      additionalProperties: false
+      required: [lat, lon, zoom]
+      properties:
+        lat: { type: number, format: double, minimum: -85.0511, maximum: 85.0511 }
+        lon: { type: number, format: double, minimum: -180, exclusiveMaximum: 180 }
+        zoom: { type: number, format: double, minimum: 0, maximum: 14 }
     # A clock zone: tz '' (the Context zone) or an IANA name the server's build knows; label '' shows
     # the city.
     ClockZone:

@@ -334,6 +334,16 @@ class Canvas2DFrame implements ChartFrame {
     this.changed();
   }
 
+  /** ADR-0027: a geomap's focus ring and zoom anchor (#234 Part 2); a no-op on other kinds. */
+  setFocusMark(): void {
+    // No geomap scene yet: nothing to focus.
+  }
+
+  /** ADR-0027: one geomap camera key (#234 Part 2); a no-op on other kinds. */
+  cameraKey(): void {
+    // No geomap camera yet: nothing to move.
+  }
+
   on<E extends keyof FrameEvents>(e: E, cb: (ev: FrameEvents[E]) => void): () => void {
     if (this.disposed) return () => undefined;
     let set = this.listeners.get(e);

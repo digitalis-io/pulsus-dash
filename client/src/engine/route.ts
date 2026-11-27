@@ -18,6 +18,7 @@
 import { t } from '../i18n/t';
 import { faultOf, installFaults, type FaultSite } from './faults';
 import type {
+  CameraKey,
   ChartEngine,
   ChartFrame,
   EventMarker,
@@ -60,6 +61,9 @@ const FORWARDED: Readonly<Record<keyof FrameEvents, true>> = {
   commit: true,
   mark: true,
   pick: true,
+  geoCommit: true,
+  geoBrush: true,
+  geoMarks: true,
 };
 const EVENTS = Object.keys(FORWARDED) as (keyof FrameEvents)[];
 
@@ -82,6 +86,8 @@ interface State {
   events: readonly EventMarker[];
   selection: FrameSelection | null;
   size?: readonly [number, number, number];
+  /** The geomap's focus mark (ADR-0027), replayed on a rebind when set; a camera key is not. */
+  focusMark: string | null;
 }
 
 export class RoutingEngine implements ChartEngine {
@@ -122,7 +128,7 @@ export class RoutingEngine implements ChartEngine {
 }
 
 class RoutingFrame implements ChartFrame {
-  private readonly state: State = { events: [], selection: null };
+  private readonly state: State = { events: [], selection: null, focusMark: null };
   private readonly listeners = new Map<keyof FrameEvents, Set<Listener>>();
   private inner: ChartFrame | null = null;
   private innerOffs: (() => void)[] = [];
@@ -197,6 +203,15 @@ class RoutingFrame implements ChartFrame {
     this.inner?.setSelection(sel);
   }
 
+  setFocusMark(id: string | null): void {
+    this.state.focusMark = id;
+    this.inner?.setFocusMark(id);
+  }
+
+  cameraKey(k: CameraKey): void {
+    this.inner?.cameraKey(k);
+  }
+
   resize(cssWidth: number, cssHeight: number, dpr: number): void {
     this.state.size = [cssWidth, cssHeight, dpr];
     this.inner?.resize(cssWidth, cssHeight, dpr);
@@ -258,6 +273,7 @@ class RoutingFrame implements ChartFrame {
     frame.setEvents(s.events);
     frame.setSelection(s.selection);
     if (s.size !== undefined) frame.resize(...s.size);
+    if (s.focusMark !== null) frame.setFocusMark(s.focusMark);
   }
 
   private bindCanvas2d(canvas: HTMLCanvasElement): void {

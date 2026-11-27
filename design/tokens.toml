@@ -59,6 +59,12 @@ level-info = "#7AA2D6"
 level-debug = "#6FB8B8"
 level-trace = "#B48FC9"
 level-unknown = "#8FBF8F"
+# The geomap (T24-091, #234): calm water and land, a 1 px coast and 0.5 px shared borders; every
+# series colour keeps at least 3:1 on map-land and map-water.
+map-water = "#0E1620"
+map-land = "#1C232C"
+map-coast = "#FFFFFF33"
+map-border = "#FFFFFF1F"
 
 [color.light]
 canvas = "#F5F6F8"
@@ -113,6 +119,12 @@ level-info = "#3F6FA8"
 level-debug = "#358282"
 level-trace = "#7E5A97"
 level-unknown = "#4E874E"
+# The geomap (T24-091, #234): calm water and land, a 1 px coast and 0.5 px shared borders; every
+# series colour keeps at least 3:1 on map-land and map-water.
+map-water = "#E6EDF4"
+map-land = "#F8F9FB"
+map-coast = "#0B0D103D"
+map-border = "#0B0D1029"
 
 # Spacing scale (px).
 [space]

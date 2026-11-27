@@ -18,7 +18,8 @@ import { t, type MessageId } from '../i18n/t';
 /** Rows the tooltip shows at once. */
 export const TOOLTIP_ROWS = 20;
 
-const KIND: Readonly<Record<VisSpec['kind'], MessageId>> = {
+/** The kinds `summaryBase` names (a geomap has its own label). */
+const KIND: Readonly<Record<Exclude<VisSpec['kind'], 'geomap'>, MessageId>> = {
   line: 'chart.kind.line',
   bars: 'chart.kind.bars',
   heatmap: 'chart.kind.heatmap',
@@ -118,6 +119,8 @@ export function thresholdsText(spec: VisSpec): string {
  * then `Events in view: {count}.` when the frame has event labels (ADR-0023).
  */
 export function summaryLabel(spec: VisSpec, s: FrameSummary, tz: string): string {
+  // The geomap's label is its title until its frame draws marks (#234 Part 2).
+  if (spec.kind === 'geomap') return spec.title;
   const base =
     spec.kind === 'barchart'
       ? t('chart.bar.label', { title: spec.title, count: s.seriesShown })
@@ -129,7 +132,11 @@ export function summaryLabel(spec: VisSpec, s: FrameSummary, tz: string): string
   return count === 0 ? withThresholds : `${withThresholds} ${t('chart.events', { count })}`;
 }
 
-function summaryBase(spec: VisSpec, s: FrameSummary, tz: string): string {
+function summaryBase(
+  spec: Exclude<VisSpec, { kind: 'geomap' }>,
+  s: FrameSummary,
+  tz: string,
+): string {
   const unit = valueUnit(spec);
   const v = (x: number | null): string => (x === null ? '—' : formatValue(x, unit));
   const text = t('chart.summary', {
@@ -154,7 +161,7 @@ export function crosshairText(
   tz: string,
   selected = 0,
 ): string {
-  if (h === null) return t('chart.crosshair.idle');
+  if (h === null || h.tMs === null) return t('chart.crosshair.idle');
   const time = formatTime(h.tMs, tz);
   const rows = sortedRows(h.rows);
   const i = Math.min(Math.max(0, selected), rows.length - 1);
@@ -190,5 +197,7 @@ export function issueText(i: FrameDataIssue): string {
       return t('chart.issue.grid', { key: i.key });
     case 'cap':
       return t('chart.issue.cap', { count: i.count, max: i.max });
+    case 'geo':
+      return t('chart.geo.invalid', { detail: i.detail });
   }
 }

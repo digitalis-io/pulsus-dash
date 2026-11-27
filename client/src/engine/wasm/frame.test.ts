@@ -290,7 +290,8 @@ describe('WasmFrame (ADR-0019, D-PROTO)', () => {
       eventLabels: [],
     } as const;
     f.handle({ t: 'a11y', id: 1, ev: summary });
-    expect(a11y).toHaveBeenCalledWith(summary);
+    // ADR-0027 §6: the engine draws no geomap; the frame adds `geo: null`.
+    expect(a11y).toHaveBeenCalledWith({ ...summary, geo: null });
     f.handle({ t: 'failed', id: 1, reason: 'surface' });
     expect(onFail).toHaveBeenCalledWith('surface');
   });

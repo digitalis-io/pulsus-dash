@@ -135,7 +135,7 @@ First match; the text is from `messages.en-GB.ts`.
 
 | Condition | View | Text |
 |---|---|---|
-| a pending kind (Pie; PromQL or LogQL) | message `kindUnavailable` | "This chart type isn't available in this version yet." |
+| a pending kind (Pie, Map; PromQL or LogQL) | message `kindUnavailable` | "This chart type isn't available in this version yet." |
 | PromQL, visualisation Logs | message `logs` | "A metric query has no log lines. Choose Auto or a chart." |
 | blank text | message `empty` | "Add a query" |
 | a referenced variable without a value | message `variable` | "Set a value for `$a, $b` to run this panel" |
@@ -189,10 +189,10 @@ on the stored spec and on the editor's draft alike, so row 11 never fires on a b
 Map-sync's `legacyAuto` ([T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md)
 T24-099, #237) brings rows 8 and 11 to panels saved from then on.
 
-**Pie stays pending.** `PENDING_KINDS` (`boards/options.ts`) is `{pie}`: such a panel is blocked
-before anything is sent, in both languages (`pre` = `kindUnavailable`), shows the message above,
-and keeps its saved spec. The editor lists Pie only as the disabled option of a panel that stores
-it; Open in Explore opens it on Auto.
+**Pie stays pending.** `PENDING_KINDS` (`boards/options.ts`) is `{pie, geomap}`: such a panel is
+blocked before anything is sent, in both languages (`pre` = `kindUnavailable`), shows the message
+above, and keeps its saved spec. The editor lists Pie (or Map) only as the disabled option of a
+panel that stores it; Open in Explore opens it on Auto.
 
 #### The panel body
 
@@ -403,6 +403,24 @@ Board spec v6 ([the boards API](../server/boards-api.md#board-list-boardlist-v6)
 and `v6-board-list.json`, the canonical SHA-256 included). `mode` and `sort` are shared keys, so
 their readers guard them: `textOptions` takes `mode` only when `isTextMode` (else `markdown`), and
 `barchartOptions` `sort` only when `isChartSort` (else `valueDesc`).
+
+### Map panels (#234 Part 1)
+
+Board spec v7 ([the boards API](../server/boards-api.md#geomap-geomap-v7)) adds the data kind
+`geomap`. `checkBoardSpec` checks its options as the server does (the `geomap-` rows of
+`invalid.json` and `v7-geomap.json`); `groupBy` and `view` may be `null`, the same as absent.
+`geomapOptions(o)` (`boards/options.ts`) fills the defaults: auto location, `last`, size by value
+4–20, colour by group, no `groupBy`, circles, auto labels, clustering and wheel zoom on, and no
+stored view (fit).
+
+PulsusIX does not draw a map yet (#234 Parts 2–3): `geomap` is a pending kind, so a stored map
+panel sends no query and shows "This chart type isn't available in this version yet.", and the
+editor lists Map as a disabled option of such a panel. A save to a server older than v7 is refused
+with `board.vis.kind.invalid` at the geomap panel's `…/vis/kind`; the board page shows that one
+error as "This server does not support map panels yet" under the status line
+(`saveFieldMessage`, `boards/fieldMessages.ts`), and the panel editor shows the same text at its
+Visualisation field (`kindFieldMessage`). Every other field error, one under a geomap's
+options included, keeps its own text: a v7 server never reports `geomap` as an invalid kind.
 
 ## Thresholds, legends and stat tiles (#64 Part B)
 

@@ -468,3 +468,90 @@ func TestBoardListBounds(t *testing.T) {
 		})
 	}
 }
+
+// geomapBoard is a one-panel board whose geomap panel has options and, when given, thresholds.
+func geomapBoard(options, thresholds string) []byte {
+	vis := `{"kind":"geomap","options":` + options
+	if thresholds != "" {
+		vis += `,"thresholds":` + thresholds
+	}
+	return []byte(`{"title":"B","panels":[{"id":"p-1","title":"A","grid":{"x":0,"y":0,"w":6,"h":8},"query":{"lang":"promql","text":"up"},"vis":` + vis + `}}],"sections":[]}`)
+}
+
+// unit:board-spec-geomap (#234 Part 1 §3.3, T24 §5.15): the geomap option rules, as the client's
+// boards/spec.test.ts.
+func TestGeomapRules(t *testing.T) {
+	const th = `{"direction":"above","steps":[{"value":1,"state":"watch","label":""}]}`
+	bad := func(key string) string { return opts + "/" + key + " board.options." + key + ".invalid" }
+	cases := []struct {
+		name, options, thresholds string
+		want                      string // "" = valid
+	}{
+		{"empty", `{}`, "", ""},
+		{"nulls", `{"groupBy":null,"view":null}`, "", ""},
+		{"symbol null", `{"symbol":null}`, "", opts + "/symbol board.json.null"},
+		{"view member null", `{"view":{"lat":0,"lon":0,"zoom":null}}`, "", opts + "/view/zoom board.json.null"},
+		{"colour state", `{"colour":"state"}`, th, ""},
+		{"colour state, no thresholds", `{"colour":"state"}`, "", bad("colour")},
+		{"colour pink", `{"colour":"pink"}`, th, bad("colour")},
+		{"size min 2", `{"size":{"min":2}}`, "", ""},
+		{"size 40 40", `{"size":{"min":40,"max":40}}`, "", ""},
+		{"size fixed", `{"size":{"by":"fixed"}}`, "", ""},
+		{"size max 4", `{"size":{"max":4}}`, "", ""},
+		{"size empty", `{"size":{}}`, "", ""},
+		{"size min 1", `{"size":{"min":1}}`, "", bad("size")},
+		{"size 5 4", `{"size":{"min":5,"max":4}}`, "", bad("size")},
+		{"size max 41", `{"size":{"max":41}}`, "", bad("size")},
+		{"size min 30", `{"size":{"min":30}}`, "", bad("size")},
+		{"size by area", `{"size":{"by":"area"}}`, "", bad("size")},
+		{"view edges", `{"view":{"lat":85.0511,"lon":-180,"zoom":0}}`, "", ""},
+		{"view far edges", `{"view":{"lat":-85.0511,"lon":179.999,"zoom":14}}`, "", ""},
+		{"view lat", `{"view":{"lat":85.06,"lon":0,"zoom":1}}`, "", bad("view")},
+		{"view lon 180", `{"view":{"lat":0,"lon":180,"zoom":1}}`, "", bad("view")},
+		{"view lon -180.1", `{"view":{"lat":0,"lon":-180.1,"zoom":1}}`, "", bad("view")},
+		{"view zoom -1", `{"view":{"lat":0,"lon":0,"zoom":-1}}`, "", bad("view")},
+		{"view zoom 15", `{"view":{"lat":0,"lon":0,"zoom":15}}`, "", bad("view")},
+		{"location auto", `{"location":{"mode":"auto"}}`, "", ""},
+		{"location coords", `{"location":{"mode":"coords","lat":"lat","lon":"lon"}}`, "", ""},
+		{"location geohash", `{"location":{"mode":"geohash","field":"gh"}}`, "", ""},
+		{"location iata", `{"location":{"mode":"lookup","field":"iata","gazetteer":"iata"}}`, "", ""},
+		{"location region", `{"location":{"mode":"lookup","field":"r","gazetteer":"region","country":"GB"}}`, "", ""},
+		{"location auto field", `{"location":{"mode":"auto","field":"x"}}`, "", bad("location")},
+		{"location coords lat", `{"location":{"mode":"coords","lat":"lat"}}`, "", bad("location")},
+		{"location coords 1x", `{"location":{"mode":"coords","lat":"1x","lon":"lon"}}`, "", bad("location")},
+		{"location geohash", `{"location":{"mode":"geohash"}}`, "", bad("location")},
+		{"location lookup", `{"location":{"mode":"lookup","field":"x"}}`, "", bad("location")},
+		{"location moon", `{"location":{"mode":"lookup","field":"x","gazetteer":"moon"}}`, "", bad("location")},
+		{"location iata country", `{"location":{"mode":"lookup","field":"x","gazetteer":"iata","country":"GB"}}`, "", bad("location")},
+		{"location gb", `{"location":{"mode":"lookup","field":"x","gazetteer":"region","country":"gb"}}`, "", bad("location")},
+		{"location map", `{"location":{"mode":"map"}}`, "", bad("location")},
+		{"location no mode", `{"location":{"lat":"x"}}`, "", opts + "/location/mode board.json.required"},
+		{"groupBy env", `{"groupBy":"env"}`, "", ""},
+		{"groupBy empty", `{"groupBy":""}`, "", bad("groupBy")},
+		{"symbol star", `{"symbol":"star"}`, "", bad("symbol")},
+		{"labels none", `{"labels":"none"}`, "", ""},
+		{"labels percent", `{"labels":"percent"}`, "", bad("labels")},
+		{"cluster string", `{"cluster":"yes"}`, "", opts + "/cluster board.json.type"},
+		{"tilt", `{"tilt":1}`, "", opts + "/tilt board.json.unknownKey"},
+		{"projection", `{"projection":1}`, "", opts + "/projection board.json.unknownKey"},
+		{"perspective", `{"perspective":1}`, "", opts + "/perspective board.json.unknownKey"},
+		{"shadow", `{"shadow":1}`, "", opts + "/shadow board.json.unknownKey"},
+		{"3d", `{"3d":1}`, "", opts + "/3d board.json.unknownKey"},
+		{"depth", `{"depth":1}`, "", opts + "/depth board.json.unknownKey"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseNewBoard(geomapBoard(tc.options, tc.thresholds))
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("ParseNewBoard = %v, want ok", err)
+				}
+				return
+			}
+			got := fieldsOf(t, err)
+			if len(got) != 1 || got[0].Pointer+" "+got[0].MessageKey != tc.want {
+				t.Errorf("fields = %v, want [%s]", got, tc.want)
+			}
+		})
+	}
+}

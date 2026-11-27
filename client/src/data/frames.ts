@@ -4,6 +4,8 @@
  */
 import type { ThresholdState, VisSpec } from '../engine/api';
 import type { CATEGORY_PATTERNS } from '../engine/patterns';
+import type { GeoFrame } from '../vis/geo/frame';
+import type { Basemap } from '../vis/geo/types';
 import type { Completeness } from './decode';
 
 /** A series' labels. */
@@ -125,7 +127,16 @@ export type FrameData =
       readonly kind: 'categories';
       readonly categories: readonly CategoryRow[];
       readonly coverage: Coverage;
-    };
+    }
+  /** A geomap's validated rows over its basemap (ADR-0027, T24 §5.15). */
+  | { readonly kind: 'geo'; readonly geo: GeoFrame };
+
+/** A basemap with nothing on it: an empty geomap frame's (ADR-0027). */
+export const EMPTY_BASEMAP: Basemap = Object.freeze({
+  countries: Object.freeze([]),
+  coast: Object.freeze([]),
+  border: Object.freeze([]),
+});
 
 /** The most rows a `categories` frame holds (T22-006, T22 §5.1). */
 export const MAX_CATEGORIES = 200;
@@ -163,7 +174,9 @@ export type FrameDataIssue =
   | { code: 'bounds' }
   | { code: 'finite' }
   | { code: 'grid'; key: string }
-  | { code: 'cap'; count: number; max: number };
+  | { code: 'cap'; count: number; max: number }
+  /** A geomap row set breaks T24-089 (`validateGeoRows`): the first failing check. */
+  | { code: 'geo'; detail: 'order' | 'value' | 'state' | 'draw' | 'group' | 'coverage' };
 
 function isIncreasing(a: Float64Array): boolean {
   for (let i = 0; i < a.length; i++) {
@@ -223,7 +236,8 @@ function gridIssue(series: readonly SeriesFrame[]): FrameDataIssue | null {
 /**
  * The first problem with `data` for `spec`, in the order of `FrameDataIssue`, or `null`. `line` and
  * `bars` need series, `heatmap` a heatmap, `stat` a scalar or series (the first series' last finite
- * value is shown), and `barchart` categories.
+ * value is shown), `barchart` categories and `geomap` geo data (its rows are validated by the
+ * panel's plan, `validateGeoRows`).
  */
 export function validateFrameData(spec: VisSpec, data: FrameData): FrameDataIssue | null {
   switch (spec.kind) {
@@ -239,6 +253,8 @@ export function validateFrameData(spec: VisSpec, data: FrameData): FrameDataIssu
       return data.kind === 'series' ? seriesIssue(data.series) : { code: 'kind' };
     case 'barchart':
       return data.kind === 'categories' ? categoriesIssue(data.categories) : { code: 'kind' };
+    case 'geomap':
+      return data.kind === 'geo' ? null : { code: 'kind' };
   }
 }
 
@@ -255,7 +271,10 @@ function categoriesIssue(rows: readonly CategoryRow[]): FrameDataIssue | null {
   return null;
 }
 
-/** Data that draws an empty chart of `spec`'s kind: no series, a 0 × 0 heatmap, `NaN` or no bars. */
+/**
+ * Data that draws an empty chart of `spec`'s kind: no series, a 0 × 0 heatmap, `NaN`, no bars or
+ * no rows over an empty basemap.
+ */
 export function emptyFrameData(spec: VisSpec): FrameData {
   switch (spec.kind) {
     case 'line':
@@ -274,6 +293,19 @@ export function emptyFrameData(spec: VisSpec): FrameData {
       return { kind: 'scalar', scalar: { value: NaN, timestampMs: NaN } };
     case 'barchart':
       return { kind: 'categories', categories: [], coverage: EMPTY_COVERAGE };
+    case 'geomap':
+      return {
+        kind: 'geo',
+        geo: {
+          rows: [],
+          groups: [],
+          coverage: EMPTY_COVERAGE,
+          groupBy: null,
+          seq: 0,
+          shown: new Uint32Array(0),
+          basemap: EMPTY_BASEMAP,
+        },
+      };
   }
 }
 

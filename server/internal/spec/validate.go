@@ -47,7 +47,7 @@ var (
 	// tagPattern is the OpenAPI AnnotationTag (the gateway's tagPattern, the client's TAG_PATTERN).
 	tagPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_.:/-]{0,63}$`)
 	queryLangs = []string{"promql", "logql"}
-	visKinds   = []string{"auto", "line", "bars", "heatmap", "stat", "logs", "barchart", "pie", "text", "clock", "boardList"}
+	visKinds   = []string{"auto", "line", "bars", "heatmap", "stat", "logs", "barchart", "pie", "text", "clock", "boardList", "geomap"}
 	// widgetKinds are the kinds without a query (board spec v5, T24-003; boardList by v6); the
 	// others in visKinds are data panels.
 	widgetKinds = []string{"text", "clock", "boardList"}
@@ -82,6 +82,25 @@ var (
 	// and boardListSort). mode and sort are shared keys: each kind has its own values.
 	boardListModes = []string{"starred", "recent", "search", "tag"}
 	boardListSorts = []string{"default", "incidents"}
+
+	// The geomap option values of board spec v7 (T24 §5.15; client OPTION_VALUES). labels is shared
+	// with pie: each kind has its own values. countryPattern is a region's country prefix.
+	geomapLabels   = []string{"auto", "none"}
+	gazetteers     = []string{"country", "region", "iata", "cloud"}
+	sizeBys        = []string{"value", "fixed"}
+	colours        = []string{"group", "state"}
+	symbols        = []string{"circle", "square", "triangle", "diamond"}
+	countryPattern = regexp.MustCompile(`^[A-Z]{2}$`)
+)
+
+// The geomap's size and view bounds (board spec v7, ADR-0027; the client's GEO_SIZE, GEO_VIEW).
+const (
+	geoSizeMin        = 2
+	geoSizeMax        = 40
+	geoSizeDefaultMin = 4
+	geoSizeDefaultMax = 20
+	geoMaxLat         = 85.0511
+	geoMaxZoom        = 14
 )
 
 // maxOptionAbs bounds options.min and options.max (|v| <= 1e15, as the threshold values).
@@ -293,7 +312,77 @@ func (v *validator) vis(pointer string, vis Vis) {
 	}
 	if vis.Options != nil && slices.Contains(visKinds, vis.Kind) {
 		v.options(pointer+"/options", vis.Kind, *vis.Options)
+		if vis.Kind == "geomap" {
+			v.geomapOptions(pointer+"/options", *vis.Options, vis.Thresholds != nil && len(vis.Thresholds.Steps) > 0)
+		}
 	}
+}
+
+// geomapOptions checks a geomap's own keys (board spec v7, T24 §5.15), after the shared ones, in
+// OPTION_ORDER, each with one error at its key: location (validLocation), size (by value or fixed,
+// 2 <= min <= max <= 40 with the defaults 4 and 20), colour (state only with a threshold step),
+// groupBy (a label key; null is none), symbol and view (|lat| <= 85.0511, -180 <= lon < 180, 0 <=
+// zoom <= 14; null is none). The shape pass has typed every member and made the numbers finite.
+func (v *validator) geomapOptions(pointer string, o Options, steps bool) {
+	if o.Location != nil && !validLocation(*o.Location) {
+		v.add(pointer+"/location", optionKey("location"))
+	}
+	if s := o.Size; s != nil {
+		lo, hi := float64(geoSizeDefaultMin), float64(geoSizeDefaultMax)
+		if s.Min != nil {
+			lo = *s.Min
+		}
+		if s.Max != nil {
+			hi = *s.Max
+		}
+		by := s.By == nil || slices.Contains(sizeBys, *s.By)
+		if !by || lo < geoSizeMin || lo > hi || hi > geoSizeMax {
+			v.add(pointer+"/size", optionKey("size"))
+		}
+	}
+	if o.Colour != nil {
+		v.str(pointer+"/colour", *o.Colour, func(s string) string {
+			if !slices.Contains(colours, s) || (s == "state" && !steps) {
+				return optionKey("colour")
+			}
+			return ""
+		})
+	}
+	if o.GroupBy != nil {
+		v.str(pointer+"/groupBy", *o.GroupBy, func(s string) string {
+			if !labelPattern.MatchString(s) {
+				return optionKey("groupBy")
+			}
+			return ""
+		})
+	}
+	if o.Symbol != nil {
+		v.str(pointer+"/symbol", *o.Symbol, oneOf(symbols, optionKey("symbol")))
+	}
+	if w := o.View; w != nil && (math.Abs(w.Lat) > geoMaxLat || w.Lon < -180 || w.Lon >= 180 || w.Zoom < 0 || w.Zoom > geoMaxZoom) {
+		v.add(pointer+"/view", optionKey("view"))
+	}
+}
+
+// validLocation reports whether a geomap's location is valid (the client's validLocation, T24
+// §5.11): a listed mode with exactly its members (coords lat and lon, geohash field, lookup field
+// and gazetteer, and country only for the region gazetteer), each label key a labelPattern key,
+// the gazetteer listed and the country two upper-case letters.
+func validLocation(l GeoLocation) bool {
+	label := func(s *string) bool { return s != nil && labelPattern.MatchString(*s) }
+	switch l.Mode {
+	case "auto":
+		return l.Lat == nil && l.Lon == nil && l.Field == nil && l.Gazetteer == nil && l.Country == nil
+	case "coords":
+		return label(l.Lat) && label(l.Lon) && l.Field == nil && l.Gazetteer == nil && l.Country == nil
+	case "geohash":
+		return label(l.Field) && l.Lat == nil && l.Lon == nil && l.Gazetteer == nil && l.Country == nil
+	case "lookup":
+		region := l.Gazetteer != nil && *l.Gazetteer == "region"
+		return label(l.Field) && l.Gazetteer != nil && slices.Contains(gazetteers, *l.Gazetteer) &&
+			l.Lat == nil && l.Lon == nil && (l.Country == nil || (region && countryPattern.MatchString(*l.Country)))
+	}
+	return false
 }
 
 func optionKey(key string) string { return "board.options." + key + ".invalid" }
@@ -335,7 +424,11 @@ func (v *validator) options(pointer, kind string, o Options) {
 	if o.Max != nil && (!bound(*o.Max) || (minValid && *o.Min >= *o.Max)) {
 		v.add(pointer+"/max", optionKey("max"))
 	}
-	enum("labels", o.Labels, pieLabels)
+	if kind == "geomap" {
+		enum("labels", o.Labels, geomapLabels)
+	} else {
+		enum("labels", o.Labels, pieLabels)
+	}
 	enum("layout", o.Layout, layouts)
 	enum("colourMode", o.ColourMode, colourModes)
 	if o.TextMode != nil {

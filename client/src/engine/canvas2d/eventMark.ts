@@ -15,9 +15,12 @@ import type { LayerInput } from './draw';
 import { AXIS_FONT, EVENT_BAND, LABEL_HEIGHT } from './layout';
 import { fitText } from './text';
 
-/** The label band of a frame: present once `setEvents` held one event, in view or not (§4.2 step 1). */
+/**
+ * The label band of a frame: present once `setEvents` held one event, in view or not (§4.2 step 1);
+ * none for stat and the geomap (its `setEvents` is a no-op, ADR-0027).
+ */
 export function eventBandOf(kind: VisKind, events: readonly EventMarker[] | undefined): number {
-  return kind !== 'stat' && (events?.length ?? 0) > 0 ? EVENT_BAND : 0;
+  return kind !== 'stat' && kind !== 'geomap' && (events?.length ?? 0) > 0 ? EVENT_BAND : 0;
 }
 
 /** `${glyph} ${title}`, or the title of a kind without a glyph (T02-008). */
