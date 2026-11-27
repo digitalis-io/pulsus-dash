@@ -22,7 +22,6 @@ import { Canvas2DEngine } from './canvas2d/Canvas2DEngine';
 import { markOnFailure, markSessionFailed, sessionFailed } from './failFlag';
 import { RoutingEngine } from './route';
 import type { Backend, EngineProbe } from './wasm/engine';
-import { register } from './wasm/chunkRefs';
 import { setMode, type EngineMode } from './mode';
 import { chooseEngine, probe, stReason } from './select';
 
@@ -35,8 +34,9 @@ function fillDecoder(b: Backend): void {
     streamDecoder(
       // The worker's messages are the API layer's `DecodedRange` (its own head and rows).
       () => b.openDecode() as unknown as DecodeSession,
+      // Through the backend: a static import of `wasm/` would load an engine chunk on every page.
       (series, m) => {
-        register(series, { chunk: m.chunk, epoch: m.epoch });
+        b.registerChunk(series, { chunk: m.chunk, epoch: m.epoch });
       },
     ),
   );

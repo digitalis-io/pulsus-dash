@@ -26,7 +26,7 @@
  *
  * The session flag is injected (`markFailed`): this directory imports only `../api` (T03-001).
  */
-import type { FrameInit } from '../api';
+import type { FrameInit, SeriesFrame } from '../api';
 import {
   BOOT_TIMEOUT_MS,
   bootFaults,
@@ -45,7 +45,7 @@ import {
   OFF_INPUT_OVERFLOW,
   OFF_INPUT_TAIL,
 } from './layout.gen';
-import { setReleaser } from './chunkRefs';
+import { register, setReleaser, type ChunkRef } from './chunkRefs';
 import type { DecodedHeadWire, MainToRender, RenderEvent, RenderToMain } from './protocol';
 import { BatchRing, InputRing, type FrameRing, type InputRec } from './ring';
 import { spawnPool, spawnRender, spawnRenderSt } from './workers';
@@ -137,6 +137,8 @@ export interface Backend {
    * `ids`, `busy`, `gone`) or with a `DecodeFailed`-named error (`error`, `invalid`).
    */
   openDecode(): DecodeSessionLike;
+  /** Plan #68 D2 §4.2: `series` (by identity) is the worker's chunk `ref` (`chunkRefs.register`). */
+  registerChunk(series: readonly SeriesFrame[], ref: ChunkRef): void;
 }
 
 /** A decoded range as the worker posts it (the API layer's `DecodedRange`). */
@@ -346,6 +348,10 @@ class EngineHost implements Backend {
     const open = [...this.sessions.values()];
     this.sessions.clear();
     for (const s of open) s.reject(declined('gone'));
+  }
+
+  registerChunk(series: readonly SeriesFrame[], ref: ChunkRef): void {
+    register(series, ref);
   }
 
   openDecode(): DecodeSessionLike {
