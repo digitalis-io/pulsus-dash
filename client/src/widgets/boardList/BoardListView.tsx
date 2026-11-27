@@ -10,9 +10,9 @@
  * caption, notice, meter, summary and live region stay in both.
  *
  * A row is a link as the sidebar's (the board's path, the time Context, `BOARD_LINK_STATE`,
- * preloading the board route) named `‹display›[, this board]`; search and tag rows have a meta line
- * (≤ 3 tag chips and `+k`, or "tags unknown", and `updated d MMM HH:mm` in the Context's zone) as
- * the link's description. Rows new on a same-key refresh are `data-new` (a 150 ms fade, none under
+ * preloading the board route) named `‹display›[, this board]`, its visible text; search and tag rows
+ * have a meta line after the link (≤ 3 tag chips and `+k`, or "tags unknown", and `updated d MMM
+ * HH:mm` in the Context's zone) as the link's description. Rows new on a same-key refresh are `data-new` (a 150 ms fade, none under
  * reduced motion).
  */
 import { useId, useMemo, useRef, useState, type ReactElement, type Ref } from 'react';
@@ -275,10 +275,10 @@ export function BoardListView({ ref, ...p }: BoardListViewProps): ReactElement {
                     <span className={cx(styles['uid'])}>{` · ${r.uid}`}</span>
                   )}
                   {r.current && (
-                    <span className={cx(styles['muted'])}>{` ${t('boardList.thisBoard')}`}</span>
+                    <span className={cx(styles['muted'])}>{`, ${t('boardList.thisBoard')}`}</span>
                   )}
-                  {meta && <Meta row={r} id={`${metaId}-${String(i)}`} tz={tz} />}
                 </Link>
+                {meta && <Meta row={r} id={`${metaId}-${String(i)}`} tz={tz} />}
               </li>
             );
           })}

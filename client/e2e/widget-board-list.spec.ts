@@ -146,7 +146,7 @@ test.describe('Board list widget', () => {
       };
       const refetch = async () => {
         await page.evaluate(() => {
-          document.dispatchEvent(new Event('visibilitychange'));
+          window.dispatchEvent(new Event('visibilitychange'));
         });
       };
       const list = panel(page, 'Starred');

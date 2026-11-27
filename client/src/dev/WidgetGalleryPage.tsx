@@ -46,7 +46,12 @@ function GalleryPanel({ m, panel }: { m: BoardModule; panel: WidgetPanelSpec }) 
       <h2 id={headingId} className={cx(styles['title'])}>
         {panel.title}
       </h2>
-      <div className={cx(styles['body'])}>
+      <div
+        className={cx(
+          styles['body'],
+          panel.vis.kind === 'boardList' ? styles['listBody'] : undefined,
+        )}
+      >
         <m.WidgetBody panel={panel} headingId={headingId} editing={false} />
       </div>
     </section>

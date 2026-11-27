@@ -53,6 +53,8 @@ async function ready(page: Page, p: string): Promise<void> {
   }
   await page.evaluate(async () => {
     await document.fonts.ready;
+    // A page without mono text (the search page) never loads the mono face on its own.
+    await document.fonts.load('14px "JetBrains Mono Variable"');
   });
   await page.waitForFunction(() =>
     ['14px "Inter Variable"', '14px "JetBrains Mono Variable"'].every((f) =>

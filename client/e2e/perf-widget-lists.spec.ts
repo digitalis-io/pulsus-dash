@@ -67,7 +67,7 @@ test('bench:widget-lists (report-only; LONG_TASK_GATE=enforce fails a miss)', as
   for (let i = 0; i < 20; i++) {
     const before = await list.getAttribute('data-board-list-updated');
     await page.evaluate(() => {
-      document.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('visibilitychange'));
     });
     await expect(list).not.toHaveAttribute('data-board-list-updated', before ?? '');
     await expect(list).not.toHaveAttribute('data-board-list-fetching', '');

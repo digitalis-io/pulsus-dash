@@ -39,6 +39,11 @@
   height: calc(var(--size-chart) + var(--size-chart));
 }
 
+/* A Board list pads itself as a board panel's body does (it has no region padding of its own). */
+.listBody {
+  padding: 0 var(--space-3) var(--space-3);
+}
+
 /* The editor body as the widget editor lays it out. */
 .editor {
   display: grid;
