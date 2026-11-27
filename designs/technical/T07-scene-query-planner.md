@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.13-rc · 2026-11-27 |
+| **Version** | 1.14-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -295,7 +295,7 @@ pub fn resolve(range: TimeRange, px: u32, pass: Pass, sig: &SignalCaps, roll: &R
         Source::PulsusDb | Source::Mixed => roll.predict(range.len()),      // table above; None = raw (the PulsusDB operands' level)
     };
     let floor        = level.map_or(sig.min_step, |l| l.width.max(sig.min_step)); // sig.min_step: max of operand floors and virtual floors
-    let step         = NICE.ceil_multiple_of(raw_step.max(floor), floor);   // ladder below, multiple of floor
+    let step         = NICE.nearest_multiple_of(raw_step.max(floor), floor); // ladder below, multiple of floor (#303)
     let step         = step.max(range.len() / sig.max_intervals);           // 11 000 PromQL/LogQL, 10 000 TraceQL metrics
     let start        = range.start.floor_to(step);                          // grid alignment: PulsusDB read cache + our tiles
     let end          = range.end.ceil_to(step);
@@ -341,9 +341,21 @@ within the ±1 level tolerance of the acceptance.
 #### T07-003 — Step from pixels, aligned to the level grid
 **MUST** — The coarse pass (P2) MUST use a step of about range / (CSS px / 4) and the fine pass (P3)
 about range / CSS px, each raised to the larger of the predicted level width and the signal floor
-(a virtual source has no level and uses its virtual floor alone), rounded up to
-the `NICE` ladder as a multiple of that floor, and raised further to respect the signal's interval
-cap. `start` MUST be floored and `end` ceiled to the step.
+(a virtual source has no level and uses its virtual floor alone), rounded to the nearest `NICE`
+entry that is a multiple of that floor (of the two entries around it, the larger from their
+midpoint up), and raised further to respect the signal's interval cap. `start` MUST be floored and
+`end` ceiled to the step. *(#303: the rounding was "rounded up to the `NICE` ladder", which at
+6 h on 560 px gave 60 s, about 0.6 points per pixel.)*
+
+*v1 (#303).* The PromQL range route plans the fine pass only, with no level prediction
+(`pulsusdb.PromGrid`): the `NICE` entries from the 15 s scrape floor up to 1 d, the nearest to
+range / CSS px by the midpoint rule, raised to the next entry while the grid would pass 11 000
+steps; 0.7 to 1.75 points per pixel, 30 s at 6 h on 560 px. The rate window at a step, of
+`$__rate_interval` and of the rate rewrite alike, is `max(step + S, 4 × S)` with `S` the scrape
+interval (15 s until a per-binding one exists, open question 10): one scrape longer than the step
+and at least four scrapes. It was `max(4 × step, step + S, 4 × S)`, which averaged a 60 s step
+over 4 min and hid short peaks. The log routes keep #62's grid (`pulsusdb.LogGrid`, the first of
+1 s … 1 d at least range / CSS px) until a log-step change of their own.
 
 **Level-split refine.** At 2 d, the level caps the chart at 240 points across 1 600 px. When the
 viewport is **focused** and budget allows, the fine pass splits the range into chunks that each fall
@@ -1164,3 +1176,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.11-rc | 2026-11-22 | #116: §0 "Parser crates" row (LogQL read by the in-house selector reader for Classify only); §0 "Log volume (#65)" row (the template applied by `logs.Plan`, no position inside it, ADR-0021 §3); §4.1 Classify names the LogQL implementation (`logs.Prepare`), replacing the interim; T07-002 note (the template is composed by the planner) |
 | 1.12-rc | 2026-11-23 | #121: §0 Reserved names row: the LogQL `#` refusal (`query.invalid`) precedes the reserved-selector check, and the no-dispatch guarantee is unchanged; §4.1 Classify: LogQL has no comments, and the selector reader skips no text |
 | 1.13-rc | 2026-11-27 | #291: §4.1 Bind and Classify leave the range macros as placeholders; Plan substitutes the range macros (`$__range`, `$__range_s`, `$__range_ms`) from the request window, with the rounding rule; a request without a window refuses them (`query.no_window`) |
+| 1.14-rc | 2026-11-27 | #303: T07-003 rounds the step to the nearest `NICE` entry (midpoint rule) instead of up, and §4.3 `resolve` with it; T07-003 v1 note: the PromQL range grid (`PromGrid`: fine pass, 15 s scrape floor, no level prediction) and the rate window `max(step + S, 4 × S)` (was `max(4 × step, step + S, 4 × S)`); the log routes keep #62's grid |

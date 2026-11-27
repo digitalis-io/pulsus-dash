@@ -279,7 +279,7 @@ Go's `strconv.Unquote` rules and dropping CRs from backtick values), `volumeRang
 follows the LogQL route order: `prepareLogs`; a `virtual` or `mixed` class is refused as
 `RESERVED_MATCHER`; the byte guard on the substituted text; `checkCap`; `plan`; then the class and
 the byte guard of the planned text, both refusing with `planned`. `queryLogs` and `queryVolume`
-plan at the `promGrid` step and return their synthetic page and frames with `planned`.
+plan at the `logGrid` step (the log routes' grid) and return their synthetic page and frames with `planned`.
 `src/api/stub/logsPlan.test.ts` runs every case of `wire/fixtures/plan/logql.json` (the `classify`
 and `plan` groups and the tables, loaded by `logsPlanFixture.ts`) by the same outcome rules as the
 Go runner.
@@ -1062,7 +1062,7 @@ are sent; nothing is planned in the browser),
 |---|---|
 | `src/state/logsParams.ts`, `useLogsParams.ts` | `LogsParams` `{q, dir, wrap}`, `DEFAULT_LOGS`, `readLogsParams` (the first value of each key: `dir=forward` is oldest first, `wrap=on` wraps, anything else is the default), `writeLogsParams` (non-default keys only, sorted with the rest), `normalisedLogsSearch`; the hook's `set(p, {replace})` keeps the time Context |
 | `src/explore/useLogqlModules.ts` | Starts `LANGUAGES.logql()` and `import('../editor/logqlEditor')` on mount; a rejection sets `failed`, an editor rejection also `editorFailed`. The page never imports `editor/editor.ts` |
-| `src/explore/stepWidth.ts` | `StepWidth` `{stepMs, widthPx}`, `stepWidth(prev, window, widthPx)` and `useStepWidth`: the width sent is held per grid step (`promGrid`), so a resize within one step keeps the same object and changes no key |
+| `src/explore/stepWidth.ts` | `StepWidth` `{stepMs, widthPx}`, `stepWidth(prev, window, widthPx)` and `useStepWidth`: the width sent is held per grid step (`logGrid`, the log routes' grid), so a resize within one step keeps the same object and changes no key |
 | `src/explore/useLogsVolume.ts` | `logsVolumeKey` = `['data', 'logs', 'volume', tenant, q, fromMs, toMs, stepMs]` and `useLogsVolume`: one TanStack query of `Api.queryVolume` (`retry: false`, the previous data as placeholder only from the same tenant), the last success kept per tenant (D-RUN), `rerun()` = cancel, then refetch |
 | `src/explore/logsRun.ts` | `VOLUME_STACK` (critical … unknown, bottom to top), `pagerInput`, `LastLogsResult` and `nextLast`, `layoutOf`, `volumePlan` (stacked bars, `categoryLabel: 'level'`, unit suffix `lines`), `metricPlan` (`framePlan('line', …)`), `firstPageError`, `logsStatusView` |
 | `src/pages/explore/LogsQueryCard.tsx` | `LogQL` tag, Run hint, **Run** (disabled until ready, described by the status row), `LogQLEditor` (label `LogQL query`) or its placeholder, or `QueryFallback` when the editor chunk failed (`editorFailed`); the load-failed alert shows whenever either import failed; the status row. No metric picker |

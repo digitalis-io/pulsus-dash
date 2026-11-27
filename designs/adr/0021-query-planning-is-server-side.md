@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Accepted (2026-11-21, product owner) |
+| **Status** | Accepted (2026-11-21, product owner); §1 rate window revised (2026-11-27, #303, owner issue: `max(step + S, 4 × S)`) |
 | **Amends** | [ADR-0015](0015-go-bff.md) "Query validation" (the BFF now parses PromQL, for planning only); [T07](../technical/T07-scene-query-planner.md) §0 and T07-002 (the v1 "no parse, no rewrite" rule); [T09](../technical/T09-query-editors.md) §0, T09-010 and T09-015; [T06](../technical/T06-bff-architecture.md) §4.3. [ADR-0018](0018-query-language-modules.md) is unchanged: planning is added to its language modules |
 | **Source** | Owner decision of 2026-11-21, with two sub-decisions: the upstream Go PromQL parser (Apache-2.0) reads the planning shape, and a raw query of 64 to 128 KiB may reach the request URL before the server refuses it |
 | **See** | [ADR-0008](0008-dash-alert-evaluator.md), [ADR-0014](0014-typescript-react-web-client.md), [ADR-0018](0018-query-language-modules.md); T06-005, T06-028; T07-002, T07-003, T07-014; T09-002, T09-009, T09-010, T09-015; [T16](../technical/T16-alert-evaluator.md) |
@@ -33,8 +33,8 @@ Two problems follow:
    - variable and macro substitution (`$name`, `${name}`, `$__interval`, `$__rate_interval`);
    - the step from the chart width (already `PromGrid`, T07-003);
    - the counter → `rate` and histogram → `sum by (le) (rate(…))` rewrites behind the rate toggle;
-   - the rate window `max(4 × step, step + S, 4 × S)`, with `S` = 15 s until a per-binding scrape
-     interval exists;
+   - the rate window `max(step + S, 4 × S)`, with `S` = 15 s until a per-binding scrape interval
+     exists (#303, 2026-11-27, owner issue; it was `max(4 × step, step + S, 4 × S)`, see T07-003 v1);
    - the query-size limits: 131 072 bytes of raw text, 65 536 bytes of planned text.
 
    PromQL planning is `internal/pulsusdb/prom` (`prom.Plan`), and LogQL planning is

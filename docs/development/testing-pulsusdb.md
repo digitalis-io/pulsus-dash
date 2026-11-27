@@ -174,8 +174,9 @@ workers are waiting for. Reset is for debugging with a single worker only.
 `client/e2e/transcripts/` holds the 18 transcripts of the Explore and board e2e suites (#63, #64). Four are byte
 copies of `server/internal/pulsusfake/testdata/` (`runtimeinfo`, `histogram`, `scalar`,
 `too-broad`); the others are synthetic, with the reason in `provenance.synthetic` and query ids
-`fake-<name>-1`. Their range bodies are on the e2e window `2026-01-01T00:00:00Z`–`01:00:00Z` at a
-5 s step, except `slow-final-<browser>`: `e2e:board-cancel`'s final window (each browser's day 2
+`fake-<name>-1`. Their range bodies are on the e2e window `2026-01-01T00:00:00Z`–`01:00:00Z` at
+points of the 15 s step that a 1 h PromQL panel plans (#303; `histogram` was re-timed from 5 s),
+except `slow-final-<browser>`: `e2e:board-cancel`'s final window (each browser's day 2
 plus 2 h), matched on its `start` form value ahead of `slow`, so the window the board ends on
 answers with a series (7, then 42) that the windows it skipped never do. The same provenance rules apply as above; Prettier does not touch the directory, so the
 copies stay byte-equal. `go test ./cmd/pulsus-fake` (`TestE2ETranscripts`) loads the directory,
@@ -197,7 +198,8 @@ checks the 18 names and compares the copies byte for byte.
 |---|---|---|
 | `json/promql-range-counter.json`, `promql-instant-gauge.json`, `promql-instant-scalar.json` | `go test ./internal/gateway -run Golden -update` (the gateway against the fake, at a fixed `Deps.Now`) | `unit:range-golden` (byte for byte) and the client's `unit:decode-frames` and `HttpApi` tests |
 | `json/logql-streams-backward-{1,2}.json`, `logql-streams-forward-{1,2,3}.json`, `logql-metric.json`, `logql-volume.json` | `go test ./internal/gateway -run 'TestLogqlGolden$' -args -update` (the log routes against the fake, `Deps.Now` 1767229300000) | `unit:logql-golden` (byte for byte) and the client's `unit:decode-logs` |
-| `json/promql-step.json` | by hand (the step cases) | `unit:promql-step` in Go (`PromGrid`) and TypeScript (`promGrid`) |
+| `json/promql-step.json` | by hand (the PromQL step cases, #303) | `unit:promql-step` in Go (`PromGrid`) and TypeScript (`promGrid`) |
+| `json/log-step.json` | by hand (the log routes' step cases, the #62 rule) | `unit:log-step` in Go (`LogGrid`) and TypeScript (`logGrid`) |
 | `keyhash/labels.json` | `go test ./internal/keyhash -run Corpus -update` (then frozen) | `unit:keyhash-corpus`; the empty set's key is the published XXH3-64 of empty input |
 
 Regenerate a golden file only with a change that means to move it, and review the diff: the first
