@@ -132,9 +132,13 @@ fn decode(name: &str) -> Decoded {
 
 /// The planned member's bytes of a JSON range body: the first member, up to `,"start":`.
 fn planned_bytes(body: &[u8]) -> String {
-    let text = std::str::from_utf8(body).expect("UTF-8 body");
-    let rest = text.strip_prefix(r#"{"planned":"#).expect("planned first");
-    let end = rest.find(r#","start":"#).expect("start after planned");
+    let text = std::str::from_utf8(body).unwrap_or_else(|e| panic!("UTF-8 body: {e}"));
+    let rest = text
+        .strip_prefix(r#"{"planned":"#)
+        .unwrap_or_else(|| panic!("planned first"));
+    let end = rest
+        .find(r#","start":"#)
+        .unwrap_or_else(|| panic!("start after planned"));
     rest[..end].to_owned()
 }
 
@@ -148,16 +152,16 @@ fn value_of(v: &Value) -> Option<f64> {
             "-Inf" => f64::NEG_INFINITY,
             other => panic!("value string {other:?}"),
         }),
-        Value::Number(n) => Some(n.as_f64().expect("f64")),
+        Value::Number(n) => Some(n.as_f64().unwrap_or_else(|| panic!("f64"))),
         other => panic!("value {other:?}"),
     }
 }
 
 fn strs(v: &Value) -> Vec<String> {
     v.as_array()
-        .expect("list")
+        .unwrap_or_else(|| panic!("list"))
         .iter()
-        .map(|s| s.as_str().expect("string").to_owned())
+        .map(|s| s.as_str().unwrap_or_else(|| panic!("string")).to_owned())
         .collect()
 }
 
@@ -170,7 +174,7 @@ fn final_coverage<'a>(name: &str, d: &'a Decoded) -> &'a Coverage {
 /// §3.5 field by field for one case with a JSON pair.
 fn check_pair(name: &str) {
     let raw = read(&format!("{name}.json"));
-    let j: Value = serde_json::from_slice(&raw).expect("JSON body");
+    let j: Value = serde_json::from_slice(&raw).unwrap_or_else(|e| panic!("JSON body: {e}"));
     let d = decode(&format!("{name}.dsf"));
     assert!(d.ended, "{name}: no END");
     assert_eq!(d.verdict, Some(Verdict::Complete), "{name}");
@@ -182,29 +186,36 @@ fn check_pair(name: &str) {
         "{name}: planned"
     );
     let (start, end, step) = (
-        j["start"].as_i64().unwrap(),
-        j["end"].as_i64().unwrap(),
-        j["step"].as_i64().unwrap(),
+        j["start"].as_i64().unwrap_or_else(|| panic!("missing")),
+        j["end"].as_i64().unwrap_or_else(|| panic!("missing")),
+        j["step"].as_i64().unwrap_or_else(|| panic!("missing")),
     );
     assert_eq!(d.start_ms, start, "{name}: start");
     assert_eq!(d.step_ms, step, "{name}: step");
     assert_eq!(start + (i64::from(d.len) - 1) * step, end, "{name}: end");
     assert!(d.requested_start_ms >= start && d.requested_start_ms < start + step);
 
-    let frames = j["frames"].as_array().expect("frames");
+    let frames = j["frames"].as_array().unwrap_or_else(|| panic!("frames"));
     assert_eq!(frames.len(), d.series.len(), "{name}: series count");
     for (i, (f, s)) in frames.iter().zip(&d.series).enumerate() {
         assert_eq!(f["key"].as_str(), Some(s.key.as_str()), "{name} #{i}: key");
         let labels: BTreeMap<String, String> = f["labels"]
             .as_object()
-            .expect("labels")
+            .unwrap_or_else(|| panic!("labels"))
             .iter()
-            .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned()))
+            .map(|(k, v)| {
+                (
+                    k.clone(),
+                    v.as_str().unwrap_or_else(|| panic!("missing")).to_owned(),
+                )
+            })
             .collect();
         let got: BTreeMap<String, String> = s.labels.iter().cloned().collect();
         assert_eq!(labels, got, "{name} #{i}: labels");
-        let ts = f["timestamps"].as_array().expect("timestamps");
-        let vs = f["values"].as_array().expect("values");
+        let ts = f["timestamps"]
+            .as_array()
+            .unwrap_or_else(|| panic!("timestamps"));
+        let vs = f["values"].as_array().unwrap_or_else(|| panic!("values"));
         assert_eq!(ts.len(), s.values.len(), "{name} #{i}: points");
         for (k, (t, v)) in ts.iter().zip(vs).enumerate() {
             assert_eq!(t.as_i64(), Some(start + k as i64 * step), "{name} #{i}.{k}");
@@ -284,7 +295,12 @@ fn route_edge_cases_are_present() {
     let future = json("future-sample.json");
     assert_eq!(future["completeness"]["data_age_ms"].as_i64(), Some(0));
     let d = decode("future-sample.dsf");
-    assert!(final_coverage("future-sample", &d).data_end.unwrap() > NOW_MS);
+    assert!(
+        final_coverage("future-sample", &d)
+            .data_end
+            .unwrap_or_else(|| panic!("missing"))
+            > NOW_MS
+    );
     let empty = json("empty.json");
     assert!(empty["completeness"].get("data_age_ms").is_none());
     assert_eq!(final_coverage("empty", &decode("empty.dsf")).data_end, None);
@@ -329,17 +345,20 @@ fn mid_stream_errors_follow_the_envelope_mapping() {
         let hint = &e["hint"];
         assert_eq!(
             row.code,
-            wire_code(e["code"].as_str().unwrap(), hint["reason"].as_str()),
+            wire_code(
+                e["code"].as_str().unwrap_or_else(|| panic!("missing")),
+                hint["reason"].as_str()
+            ),
             "{class}: code"
         );
         assert_eq!(
             i64::from(row.http_status),
-            env["status"].as_i64().unwrap(),
+            env["status"].as_i64().unwrap_or_else(|| panic!("missing")),
             "{class}: status"
         );
         assert_eq!(
             &*row.message,
-            e["message"].as_str().unwrap(),
+            e["message"].as_str().unwrap_or_else(|| panic!("missing")),
             "{class}: message"
         );
         assert_eq!(
@@ -349,7 +368,7 @@ fn mid_stream_errors_follow_the_envelope_mapping() {
         );
         let retry = env["retry_after"]
             .as_str()
-            .map(|s| s.parse::<i64>().unwrap() * 1000);
+            .map(|s| s.parse::<i64>().unwrap_or_else(|e| panic!("{e}")) * 1000);
         assert_eq!(row.retry_after_ms.map(i64::from), retry, "{class}: retry");
         assert_eq!(
             row.suggestion.as_deref() == Some("narrow"),
