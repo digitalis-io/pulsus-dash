@@ -43,6 +43,9 @@ const SIZE: [number, number] = [1118, 240];
 const BENCH = '[data-bench="bench"]';
 const NOISE = '[data-bench="noise"]';
 const SYNTH_TIMEOUT_MS = 120_000;
+/** Boots tried after a reload, and the pause between them. */
+const BOOT_TRIES = 6;
+const BOOT_PAUSE_MS = 20_000;
 /** An allocation the worker cannot make (16 GB of values, within `MAX_SAMPLES`). */
 const IMPOSSIBLE = { series: 20_000, points: 100_000 };
 
@@ -151,17 +154,21 @@ async function prepare(page: Page, keys: string[] | null, boxMs: number): Promis
       const p = (window as unknown as { __dashProbe: Probe }).__dashProbe;
       p.call(0, 'setSelection', keys === null ? null : { keys, fromMs: null, toMs: null });
       p.call(0, 'setTimeWindow', extent);
-      const settled = await Promise.race([
-        p.settle(0).then(
-          () => true,
-          () => false,
-        ),
-        new Promise<boolean>((r) =>
-          setTimeout(() => {
-            r(false);
-          }, left()),
-        ),
-      ]);
+      // `settle` gives up after 60 s; a slow frame (m = 500 at 10⁸) gets the whole box.
+      let settled = false;
+      while (!settled && left() > 0) {
+        settled = await Promise.race([
+          p.settle(0).then(
+            () => true,
+            () => false,
+          ),
+          new Promise<boolean>((r) =>
+            setTimeout(() => {
+              r(false);
+            }, left()),
+          ),
+        ]);
+      }
       // The selection is a message, not a ring record: wait until the frame stops presenting.
       let seen = p.drawn(0).at(-1);
       let still = performance.now();
@@ -189,14 +196,15 @@ async function after(page: Page, from: number) {
   return page.evaluate((from) => {
     const p = (window as unknown as { __dashProbe: Probe }).__dashProbe;
     const s = p.last(0);
-    const hs = p
-      .hovers(0)
-      .slice(from)
-      .filter((h): h is HoverEvent => h !== null);
+    const all = p.hovers(0);
+    const was = all.slice(0, from).at(-1)?.tMs ?? null;
+    const hs = all.slice(from).filter((h): h is HoverEvent => h !== null);
     return {
       w: [s?.fromMs ?? NaN, s?.toMs ?? NaN] as [number, number],
       hovers: hs.length,
-      distinct: new Set(hs.map((h) => h.tMs)).size,
+      // The crosshair moved: a hover at a time other than the one before the case. The engine
+      // answers only the latest Overlay (C2b), so a slow frame may report one hover.
+      moved: hs.some((h) => h.tMs !== was),
       status: document.documentElement.getAttribute('data-dash-status'),
     };
   }, from);
@@ -219,7 +227,8 @@ interface Checked {
   result: BenchResult;
   moved: boolean;
   hovers: number;
-  distinct: number;
+  /** A hover case moved the crosshair. */
+  crosshairMoved: boolean;
   status: string | null;
   failures: string[];
 }
@@ -245,6 +254,30 @@ async function runGate(
   let fault: SynthFault | null = o.fault ?? null;
   let sc = o.scales[0];
   let ready = false;
+  /**
+   * `setup`, retried on a page whose engine does not boot (a busy GPU process after a slow 10⁸
+   * frame on the page before): up to `BOOT_TRIES` reloads, `BOOT_PAUSE_MS` apart, then
+   * `timedOut`.
+   */
+  const bootAndSetup = async (
+    s: Scale,
+    so: { boxMs: number; synthTimeoutMs: number; fault: SynthFault | null },
+  ): Promise<Outcome> => {
+    for (let k = 0; ; k++) {
+      try {
+        return await setup(page, s, so);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/engine status/.test(msg)) throw e;
+        if (k + 1 >= BOOT_TRIES) return 'timedOut';
+        console.log(`${GATE}: the engine did not boot (${msg.split('\n')[0] ?? ''}); reloading`);
+        await page.close();
+        await new Promise((r) => setTimeout(r, BOOT_PAUSE_MS));
+        page = await ctx.newPage();
+        failures = await probePage(page);
+      }
+    }
+  };
   const reload = async (): Promise<void> => {
     await page.close();
     page = await ctx.newPage();
@@ -264,12 +297,15 @@ async function runGate(
       if (c === undefined) break;
       const t0 = Date.now();
       if (!ready) {
-        const out = await setup(page, sc, {
+        const out = await bootAndSetup(sc, {
           boxMs: o.boxMs,
           synthTimeoutMs: o.synthTimeoutMs,
           fault,
         });
         fault = null;
+        console.log(
+          `${GATE}: ${sc.tag} synthesis for ${sc.tag}${c.name}: ${out} (${String(Date.now() - t0)} ms)`,
+        );
         if (out === 'fatal')
           throw new Error(`${sc.tag}: the engine failed (fatal) during synthesis`);
         if (out === 'alloc') {
@@ -298,11 +334,14 @@ async function runGate(
       const hover = c.steps === HOVER;
       const result = summarise({ ...base(c, sc), ...(hover ? { hovers: a.hovers } : {}) }, d);
       results.push(result);
+      console.log(
+        `${GATE}: ${result.case}: ${String(result.frames)} frames${d.timedOut ? ', timed out' : ''} (${String(Date.now() - t0)} ms)`,
+      );
       checked.push({
         result,
         moved: before.w[0] !== a.w[0] || before.w[1] !== a.w[1],
         hovers: a.hovers,
-        distinct: a.distinct,
+        crosshairMoved: a.moved,
         status: a.status,
         failures: [...failures],
       });
@@ -324,7 +363,7 @@ function sanity(c: Checked): void {
   expect.soft(c.result.frames, `${what}: frames`).toBeGreaterThanOrEqual(MIN_PRESENTS);
   if (what.endsWith('-hover')) {
     expect.soft(c.hovers, `${what}: a hover event`).toBeGreaterThan(0);
-    expect.soft(c.distinct, `${what}: the crosshair moved`).toBeGreaterThanOrEqual(2);
+    expect.soft(c.crosshairMoved, `${what}: the crosshair moved`).toBe(true);
   } else {
     expect.soft(c.moved, `${what}: the window moved`).toBe(true);
   }

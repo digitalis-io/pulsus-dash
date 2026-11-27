@@ -64,19 +64,26 @@ async function windowOf(page: Page, id: string): Promise<[number, number]> {
 interface Hovers {
   /** Changes of the crosshair's `aria-valuenow`: one per presented hover. */
   events: number;
-  /** Distinct values it took. */
-  distinct: number;
+  /** It took a value other than its value before the case. */
+  moved: boolean;
 }
 
-/** Watches the frame's crosshair (`aria-valuenow`); the returned call stops and reads it. */
+/**
+ * Watches the frame's crosshair (`aria-valuenow`); the returned call stops and reads it. The engine
+ * answers only the latest Overlay (C2b), so a slow frame may report a single hover.
+ */
 async function watchHovers(page: Page, id: string): Promise<() => Promise<Hovers>> {
   await frame(page, id).evaluate((f) => {
     const s = f.querySelector('[role="slider"]');
     const w = window as unknown as {
-      __benchHovers: { events: number; values: Set<string> };
+      __benchHovers: { events: number; values: Set<string>; was: string };
       __benchHoverObs?: MutationObserver;
     };
-    w.__benchHovers = { events: 0, values: new Set() };
+    w.__benchHovers = {
+      events: 0,
+      values: new Set(),
+      was: s?.getAttribute('aria-valuenow') ?? '',
+    };
     w.__benchHoverObs?.disconnect();
     const o = new MutationObserver((list) => {
       for (const m of list) {
@@ -90,11 +97,12 @@ async function watchHovers(page: Page, id: string): Promise<() => Promise<Hovers
   return () =>
     page.evaluate(() => {
       const w = window as unknown as {
-        __benchHovers: { events: number; values: Set<string> };
+        __benchHovers: { events: number; values: Set<string>; was: string };
         __benchHoverObs?: MutationObserver;
       };
       w.__benchHoverObs?.disconnect();
-      return { events: w.__benchHovers.events, distinct: w.__benchHovers.values.size };
+      const h = w.__benchHovers;
+      return { events: h.events, moved: [...h.values].some((v) => v !== h.was) };
     });
 }
 
@@ -178,7 +186,7 @@ function sanity(r: Run): void {
   expect.soft(r.result.frames, `${what}: frames`).toBeGreaterThanOrEqual(MIN_PRESENTS);
   if (r.result.case.endsWith('-hover')) {
     expect.soft(r.hovers.events, `${what}: a hover event`).toBeGreaterThan(0);
-    expect.soft(r.hovers.distinct, `${what}: the crosshair moved`).toBeGreaterThanOrEqual(2);
+    expect.soft(r.hovers.moved, `${what}: the crosshair moved`).toBe(true);
   } else {
     expect.soft(r.moved, `${what}: the window moved`).toBe(true);
   }
