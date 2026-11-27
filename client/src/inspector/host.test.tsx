@@ -1,7 +1,9 @@
 // unit:escape-ladder, unit:escape-skips, unit:host-registries, unit:inspector-collapse
 // (T25-006, T25-007, T25-008, T25-011, T25-013; plan #192 §5).
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { selectionOf } from '../charts/inspectTarget';
+import { frameOf } from '../test/geoKit';
 import {
   K1,
   P_ORIGIN,
@@ -10,9 +12,13 @@ import {
   pRequest,
   renderHost,
   stubReducedMotion,
+  type HostHarness,
 } from '../test/inspectorKit';
+import { N, O2 } from '../vis/geo/fixtures/series';
+import { geoTarget, type GeoInspectorTarget } from '../vis/geo/targets';
 import type { EscapeProvider } from './host';
 import type { MemberList } from './members';
+import type { InspectorTarget, InspectRequest } from './types';
 
 let restore: () => void = () => undefined;
 beforeEach(() => {
@@ -36,7 +42,11 @@ function ladder(log: string[], pre: string[], post: string[]): EscapeProvider {
   return { pre: step([...pre]), post: step([...post]) };
 }
 
-const heading = (): HTMLElement => screen.getByRole('heading', { level: 2 });
+const heading = Object.assign((): HTMLElement => screen.getByRole('heading', { level: 2 }), {
+  /** The open sheet's heading text, or null without one. */
+  safe: (): string | null =>
+    document.querySelector('[data-inspector]:not([data-closing]) h2')?.textContent ?? null,
+});
 
 describe('unit:escape-ladder', () => {
   it('(a) pre steps, clear selection, close, post steps; the 8th Esc is not prevented', () => {
@@ -368,5 +378,153 @@ describe('unit:inspector-tenant', () => {
     });
     expect(h.selection()).toBe('null');
     expect(document.querySelector('[data-inspector-live]')?.textContent).toBe('');
+  });
+});
+
+/** A geo request on `t` (fixture O2 or N), opened from panel p1. */
+function geoRequest(t: GeoInspectorTarget, o: Partial<InspectRequest> = {}): InspectRequest {
+  const target: InspectorTarget = { type: 'geo', target: t };
+  return pRequest({
+    origin: { ...P_ORIGIN, title: 'Latency map', unit: { kind: 'time', base: 'ms' } },
+    target,
+    selection: selectionOf(target),
+    ...o,
+  });
+}
+
+const entry = (name: string): HTMLElement =>
+  within(document.querySelector<HTMLElement>('[data-section="members"]') as HTMLElement).getByRole(
+    'button',
+    { name },
+  );
+
+const crumbs = (): string[] =>
+  [...document.querySelectorAll<HTMLElement>('nav[aria-label="Inspector path"] li')].map(
+    (li) => li.textContent,
+  );
+
+describe('unit:inspector-nav (host)', () => {
+  const o2 = frameOf(O2(), { opts: { groupBy: 'env' } });
+  const agg = geoTarget(o2, o2.seq, { kind: 'aggregate' });
+
+  function open(pre: string[]): { h: HostHarness; log: string[]; origin: HTMLElement } {
+    const h = renderHost(
+      <div data-panel-id="p1" tabIndex={-1}>
+        <button type="button" data-testid="origin">
+          origin
+        </button>
+      </div>,
+    );
+    const log: string[] = [];
+    act(() => {
+      h.api().registerEscape('p1', ladder(log, pre, ['post']));
+    });
+    const origin = screen.getByTestId('origin');
+    h.inspect(geoRequest(agg, { returnFocus: origin }));
+    return { h, log, origin };
+  }
+
+  it('Back and the breadcrumb name the views; Esc: pop, pop, clear selection, close, post', () => {
+    const { h, log, origin } = open([]);
+    expect(heading()).toHaveTextContent('other (3)');
+    expect(document.querySelector('nav[aria-label="Inspector path"]')).toBeNull();
+    fireEvent.click(entry('e8'));
+    expect(heading()).toHaveTextContent('e8');
+    expect(h.selection()).toBe('q08,q10|null|null');
+    expect(screen.getByRole('button', { name: 'Back to other (3)' })).toBeInTheDocument();
+    expect(crumbs()).toEqual(['other (3)', 'e8']);
+    fireEvent.click(entry('{env="e8", lat="11", lon="11", pod="b"}'));
+    expect(heading()).toHaveTextContent('{env="e8", lat="11", lon="11", pod="b"}');
+    expect(h.selection()).toBe('q10|null|null');
+    expect(screen.getByRole('button', { name: 'Back to e8' })).toBeInTheDocument();
+    expect(crumbs()).toEqual(['other (3)', 'e8', '{env="e8", lat="11", lon="11", pod="b"}']);
+    const path = document.querySelector<HTMLElement>('nav[aria-label="Inspector path"]');
+    if (path === null) throw new Error('no path');
+    // Every crumb but the last is a pop button.
+    expect(
+      within(path)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['other (3)', 'e8']);
+    const steps: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      const before = { h2: heading.safe(), sel: h.selection(), open: h.aside() !== null };
+      const n = log.length;
+      const e = esc();
+      expect(e.defaultPrevented).toBe(i < 5);
+      if (log.length > n) steps.push(log.at(-1) ?? '');
+      else if (before.open && h.aside() !== null && heading.safe() !== before.h2)
+        steps.push(`pop:${heading.safe()}`);
+      else if (before.sel !== 'null' && h.selection() === 'null') steps.push('clearSelection');
+      else if (before.open && h.aside() === null) {
+        steps.push('close');
+        expect(document.activeElement).toBe(origin);
+      }
+    }
+    expect(steps).toEqual(['pop:e8', 'pop:other (3)', 'clearSelection', 'close', 'post']);
+  });
+
+  it('collapsed at a deeper view: Esc pops, expands the sheet and focuses the parent heading (review r1)', () => {
+    const { h } = open([]);
+    fireEvent.click(entry('e8'));
+    fireEvent.click(entry('{env="e8", lat="11", lon="11", pod="b"}'));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse Inspector' }));
+    expect(h.aside()).toHaveAttribute('data-collapsed');
+    esc(screen.getByRole('button', { name: 'Expand Inspector' }));
+    expect(h.aside()).not.toHaveAttribute('data-collapsed');
+    expect(heading()).toHaveTextContent('e8');
+    expect(document.activeElement).toBe(heading());
+    expect(crumbs()).toEqual(['other (3)', 'e8']);
+    expect(h.selection()).toBe('q08,q10|null|null');
+  });
+
+  it('a pre step runs before the pop; a crumb pops to its depth', () => {
+    const { h, log } = open(['clearSearch']);
+    fireEvent.click(entry('e8'));
+    fireEvent.click(entry('{env="e8", lat="11", lon="11", pod="b"}'));
+    esc();
+    expect(log).toEqual(['clearSearch']);
+    expect(heading()).toHaveTextContent('{env="e8", lat="11", lon="11", pod="b"}');
+    esc();
+    expect(heading()).toHaveTextContent('e8');
+    fireEvent.click(entry('{env="e8", lat="11", lon="11", pod="b"}'));
+    const path = document.querySelector<HTMLElement>('nav[aria-label="Inspector path"]');
+    if (path === null) throw new Error('no path');
+    fireEvent.click(within(path).getByRole('button', { name: 'other (3)' }));
+    expect(heading()).toHaveTextContent('other (3)');
+    expect(h.selection()).toBe('q07,q08,q09,q10|null|null');
+    expect(document.querySelector('nav[aria-label="Inspector path"]')).toBeNull();
+  });
+});
+
+describe('unit:geo-members-fullscreen (host)', () => {
+  it('geo ids resolve from the request top, whichever instances registered for the panel', () => {
+    const n = frameOf(N(), { opts: { groupBy: 'env' } });
+    const agg = geoTarget(n, n.seq, { kind: 'aggregate' });
+    const h = renderHost();
+    // A full screen of p1 registering its own resolver changes nothing for geo ids.
+    let off: () => void = () => undefined;
+    act(() => {
+      off = h.api().registerMembers('p1', () => ({ texts: ['x'], members: [] }));
+    });
+    h.inspect(geoRequest(agg));
+    const root = h.api().resolveMembers('p1', 'geo:other:geo');
+    expect(root?.texts).toEqual(Array.from({ length: 12 }, (_, i) => `e${String(i + 7)}`));
+    expect(root?.labels?.[0]).toEqual({ env: 'e7' });
+    fireEvent.click(screen.getByRole('button', { name: '+4 more' }));
+    fireEvent.click(entry('e18'));
+    const gid = 'geo:group:{"present":true,"value":"e18"}';
+    const grp = h.api().resolveMembers('p1', gid);
+    expect(grp?.texts).toHaveLength(12);
+    expect(grp?.texts[0]).toBe('{env="e18", lat="10", lon="10"}');
+    expect(grp?.texts[11]).toBe('{env="e18", lat="10", lon="10", pod="p29"}');
+    expect(grp?.labels).toHaveLength(12);
+    // The root's id is stale while the group is on top; another panel never answers.
+    expect(h.api().resolveMembers('p1', 'geo:other:geo')).toBeNull();
+    expect(h.api().resolveMembers('p2', gid)).toBeNull();
+    act(() => {
+      off();
+    });
+    expect(h.api().resolveMembers('p1', gid)?.texts).toHaveLength(12);
   });
 });

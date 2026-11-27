@@ -649,8 +649,36 @@ Inspector. The meter reads `loading` while loading and `unavailable` for an erro
 `inspector/geoModel.ts` ([the Inspector](inspector.md#the-geo-target-234-part-3)): a marker's name,
 place, value and facts with the T25 `mark` pivots over the origin window; a cluster, the
 aggregate and a group with their spread and members and no pivots. A list of more than eight
-members resolves its `geo:` run id from the open request's own target; no map instance registers
+members resolves its `geo:` run id from the open request's top view; no map instance registers
 a resolver for it.
+
+### Drilling down (#234 Part 4)
+
+The members of a cluster, a group and the aggregate are buttons that open a deeper view inside the
+same Inspector request (the [navigation stack](inspector.md#the-navigation-stack-234-part-4),
+[T25 §4.8, §4.9](../../designs/technical/T25-inspector-and-pivots.md)):
+
+| From | An entry opens | Its selection | Its title |
+|---|---|---|---|
+| a cluster or a group | the `marker` of that row | `[key]` | the row's name |
+| the aggregate `other (n)` | the `group` of that entry (`geoTarget({kind: 'group', from, entry})`) | the group's keys | the entry's text |
+| a marker | — (no members) | — | — |
+
+- **Snapshots (T25-012).** Every view is built from the root target's row set (`target.set`), so a
+  refresh that removes a row leaves the open views and their entries as they were, and Back shows
+  them again. A marker view's pivots use the request's origin window.
+- **Members past eight (T25-011).** Each view has its own "+k more": `resolveGeoMembers(top,
+  'geo:' + top.id)` answers from the top view's own entries, so a board panel, its full screen and
+  the editor preview resolve alike. Pushing or popping starts the next view with its first eight.
+- **Back, the path and Esc (T25-007).** "Back to ‹previous›" and the path above the heading pop
+  the stack; Esc pops one view before it clears the selection, then closes the Inspector (focus
+  returns to the legend entry, list item or table row that opened it).
+- **Levels (T25-008).** A view below the root is announced with its level:
+  `Inspector: Level 2: e18, 12 series`, `Inspector: Level 3: ‹name›, 27 ms`. Each push and pop
+  focuses the new heading and writes the live region once (at most once per 500 ms, the latest
+  wins).
+- **Races.** Two entry presses before the next render push only the first; a press on a closed or
+  replaced request does nothing.
 
 ### Load failure (`GeoMapBody`)
 
@@ -733,9 +761,13 @@ and coverage meter in the three themes; `bench:geomap-markers` pans and zooms th
 | `unit:geo-render-failed` (a, b) | `src/engine/canvas2d/Canvas2DEngine.geo.test.ts` | the one `geo: null` summary, and none after a line spec or dispose |
 | `unit:geo-chunk-failed` | `src/pages/board/GeoMapBody.test.tsx` | the host chunk failing once and twice on a board with a line panel |
 | `unit:geo-preview-members` (c) | `src/inspector/host.test.tsx` | the per-panel resolver stack |
+| `unit:geo-members` | `src/inspector/members.test.ts`, `src/charts/GeoMapFrame.nav.test.tsx` | M12's cluster and N's aggregate and e18 group: the texts with parallel labels, the 12 resolved, `next` to the marker or group; the snapshot after a refresh; bins and state runs keep `next` null |
+| `unit:geo-members-fullscreen` | `src/inspector/host.test.tsx`, `src/charts/GeoMapFrame.nav.test.tsx` | "+4 more" resolving 12 at the root and at e18 before, during and after a full screen of the panel |
+| `unit:geo-announce`, `unit:geo-nav`, `unit:geo-nav-life`, `unit:geo-targets` (member rows) | `src/charts/GeoMapFrame.nav.test.tsx` | the level texts and the 500 ms limiter; the keyboard path with its selections, path, focus and close; snapshots, the origin window, every close, a double press, an unmount, the per-view "+4 more"; O2's e8 group and q10 |
+| `unit:geo-inspect` (levels) | `src/inspector/model.test.ts` | the N aggregate at depth 0 and its e18 group at depth 1 |
 | `unit:panel-table` (amended) | `src/charts/PanelTable.test.tsx` | the toggle, Inspect and the note |
 | `unit:bundle-modules` (geo) | `scripts/check-bundle-modules.test.ts` | the geo fixtures: clean, geo in the initial and board closures, targets allowed, a static host |
-| `e2e:geomap-offline`, `e2e:geomap`, `e2e:geomap-a11y`, `e2e:geomap-chunk` | `e2e/geomap.spec.ts` | the offline basemap's pixels; a board map's Inspector, Esc, table and CSV G; axe per state, Tab order, keys, reduced motion; the chunk failures |
+| `e2e:geomap-offline`, `e2e:geomap`, `e2e:geomap-a11y`, `e2e:geomap-chunk` | `e2e/geomap.spec.ts` | the offline basemap's pixels; a board map's Inspector, Esc, table and CSV G, and the drill-down leg (`other (11)` → its first group → its row → Back → Back, by keys, then Esc twice: the first clears the selection, the second closes the Inspector and focus returns to the legend entry); axe per state, Tab order, keys, reduced motion; the chunk failures |
 | `golden:gallery` (geomap pages) | `e2e/golden-gallery.spec.ts` | the three pages in three themes |
 | `bench:geomap-markers` (report-only) | `e2e/perf-geomap-markers.spec.ts` | the p95 of `chart-draw` (`kind: geomap`) against 16 ms |
 

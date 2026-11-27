@@ -195,9 +195,9 @@ export function locationDetail(l: LocationResult): string {
 }
 
 /**
- * The full member list behind `geo:` + `top.id` (T25 §4.9; plan #234 Part 3 §4.5 with Part 4
+ * The full member list behind `geo:` + `top.id` (T25 §4.8, §4.9; plan #234 Part 3 §4.5 with Part 4
  * §4.4): every entry's text and labels, from the target's own snapshot; null for another id or a
- * marker. The host answers `geo:` ids from the open request with it.
+ * marker. Pure. The host answers `geo:` ids with it from the open request's top view, at any depth.
  */
 export function resolveGeoMembers(
   top: GeoInspectorTarget,

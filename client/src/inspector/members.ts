@@ -3,7 +3,7 @@
  * `MEMBERS_SHOWN` with its own "+k more"; the first press resolves the full lists once.
  */
 import type { State } from '../theme/stateEncoding';
-import type { Labels } from './types';
+import type { Labels, NavView } from './types';
 
 export const MEMBERS_SHOWN = 8;
 
@@ -31,6 +31,11 @@ export interface MemberSection {
   readonly runs: { readonly shown: readonly MemberFacts[]; readonly count: number } | null;
   /** Null = the lists are complete. */
   readonly resolve: { readonly panelId: string; readonly runId: string } | null;
+  /**
+   * The view entry `i` opens (T25 §4.8, T25-011): `geo` targets only; null for every other kind,
+   * whose entries stay plain text.
+   */
+  readonly next: ((i: number) => NavView | null) | null;
 }
 
 export interface MembersState {

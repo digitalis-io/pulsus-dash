@@ -116,6 +116,8 @@
 .chip:focus-visible,
 .action:focus-visible,
 .textButton:focus-visible,
+.entry:focus-visible,
+.crumbButton:focus-visible,
 .line:focus-visible,
 .title:focus-visible {
   outline: var(--size-focus-ring) solid var(--focus);
@@ -346,6 +348,110 @@
   font: inherit;
   font-size: var(--font-size-sm);
   cursor: pointer;
+}
+
+/* A member entry that opens a deeper view (T25-011): the row reads as text, the accent on hover. */
+.entry {
+  display: block;
+  width: calc(100% + var(--space-2) * 2);
+  min-height: var(--size-target-min);
+  margin: 0 calc(var(--space-2) * -1);
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--motion-easing-out),
+    color var(--motion-fast) var(--motion-easing-out);
+}
+
+.entry:hover {
+  background: var(--surface-hover);
+  color: var(--accent);
+}
+
+/* Back and the path (T25 §4.8): one quiet line above the heading. */
+.navBar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+  min-width: 0;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-1);
+  max-width: 100%;
+  min-height: var(--size-target-min);
+  margin-top: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.backGlyph {
+  font-size: var(--font-size-lg);
+  line-height: 1;
+}
+
+.path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  list-style: none;
+}
+
+.crumb {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.crumb + .crumb::before {
+  padding: 0 var(--space-1);
+  content: '›';
+}
+
+.crumbButton,
+.crumbHere {
+  max-width: calc(var(--space-12) * 3);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.crumbButton {
+  min-height: var(--size-target-min);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.crumbButton:hover {
+  color: var(--accent);
+}
+
+.crumbHere {
+  color: var(--text);
 }
 
 .pivot + .pivot,

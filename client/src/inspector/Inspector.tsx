@@ -1,10 +1,11 @@
 /**
- * The Inspector sheet (T25-003, T25-008, T25-011, T25-013, T25-015; plan #192 §4.4): a floating
- * translucent sheet over the content column that never reflows it. Its sections are fixed, in
- * order: header, value, details, labels, members (if any), pivots, query and actions. The sheet
- * opens with a 200 ms fade and slide; a new target crossfades its content over 150 ms (the outgoing
- * layer is inert); a close fades out over 150 ms. Under reduced motion nothing animates, and every
- * change is instant. It collapses to a 40 px tab.
+ * The Inspector sheet (T25-003, T25-008, T25-011, T25-013, T25-015, T25 §4.8; plan #192 §4.4, plan
+ * #234 Part 4 §4.2): a floating translucent sheet over the content column that never reflows it.
+ * Its sections are fixed, in order: header, value, details, labels, members (if any), pivots, query
+ * and actions. The sheet opens with a 200 ms fade and slide; a new view (`viewKey`: a new target, a
+ * push or a pop) crossfades its content over 150 ms (the outgoing layer is inert); a close fades
+ * out over 150 ms. Under reduced motion nothing animates, and every change is instant. With a
+ * navigation stack the header shows "Back to ‹previous›" and the path. It collapses to a 40 px tab.
  */
 import {
   useEffect,
@@ -34,7 +35,7 @@ import {
   type MembersState,
   type MemberSection,
 } from './members';
-import type { InspectorModel, Pivot } from './types';
+import type { InspectorModel, NavView, Pivot } from './types';
 
 /** The crossfade and the close (T25 §4.4): `motion.fast`. */
 const FADE_MS = 150;
@@ -51,13 +52,30 @@ export interface InspectorProps {
   readonly scope: string;
   /** +1 per inspect. */
   readonly seq: number;
+  /**
+   * The shown view's identity (T25 §4.8): it keys the content and the layers, and a change within
+   * one `seq` (a push or a pop) focuses the heading.
+   */
+  readonly viewKey: string;
   /** The `seq` of a keyboard open, whose heading takes focus; null otherwise. */
   readonly focusHeading: number | null;
+  /** The navigation stack's titles and pop; null at the root. */
+  readonly nav: InspectorNav | null;
+  /** A member entry's view to push (`next(i)`); stale pushes are dropped by the host. */
+  readonly onEntry: (view: NavView) => void;
   readonly collapsed: boolean;
   readonly onToggleCollapsed: () => void;
   readonly onClose: () => void;
   readonly onEditQuery: () => void;
   readonly resolveMembers: (panelId: string, runId: string) => MemberList | null;
+}
+
+/** The path of the open request's views (T25 §4.8). */
+export interface InspectorNav {
+  /** The root's heading, then each pushed view's title: `nav.length + 1` entries. */
+  readonly titles: readonly string[];
+  /** Back to depth `to` (`pop {to}`). */
+  readonly onPop: (to: number) => void;
 }
 
 /** Reduced motion, read per event (VL-016). */
@@ -70,7 +88,7 @@ function reducedMotion(): boolean {
 }
 
 interface Layer {
-  readonly seq: number;
+  readonly key: string;
   readonly model: InspectorModel;
 }
 
@@ -97,12 +115,12 @@ const PIVOT_ICON: Readonly<Record<Pivot['id'], IconName>> = {
   labelFilter: 'filter',
 };
 
-/** The layers to show for `model` and `seq`, from the last ones (a render-time state update). */
-function nextLayers(l: Layers, model: InspectorModel | null, seq: number, scope: string): Layers {
+/** The layers to show for `model` and `key`, from the last ones (a render-time state update). */
+function nextLayers(l: Layers, model: InspectorModel | null, key: string, scope: string): Layers {
   if (l.scope !== scope) {
     return model === null
       ? noLayers(scope)
-      : { scope, current: { seq, model }, leaving: null, closing: false };
+      : { scope, current: { key, model }, leaving: null, closing: false };
   }
   if (model === null) {
     if (l.current === null || l.closing) return l;
@@ -111,18 +129,18 @@ function nextLayers(l: Layers, model: InspectorModel | null, seq: number, scope:
       : { scope, current: l.current, leaving: null, closing: true };
   }
   if (l.current === null || l.closing) {
-    return { scope, current: { seq, model }, leaving: null, closing: false };
+    return { scope, current: { key, model }, leaving: null, closing: false };
   }
-  if (l.current.seq !== seq) {
-    // A third target drops the older outgoing layer at once: at most two layers.
+  if (l.current.key !== key) {
+    // A third view drops the older outgoing layer at once: at most two layers.
     return {
       scope,
-      current: { seq, model },
+      current: { key, model },
       leaving: reducedMotion() ? null : l.current,
       closing: false,
     };
   }
-  return l.current.model === model ? l : { ...l, current: { seq, model } };
+  return l.current.model === model ? l : { ...l, current: { key, model } };
 }
 
 export function Inspector({
@@ -130,7 +148,10 @@ export function Inspector({
   model,
   scope,
   seq,
+  viewKey,
   focusHeading,
+  nav,
+  onEntry,
   collapsed,
   onToggleCollapsed,
   onClose,
@@ -138,7 +159,7 @@ export function Inspector({
   resolveMembers,
 }: InspectorProps) {
   const [layers, setLayers] = useState<Layers>(() => noLayers(scope));
-  const next = nextLayers(layers, model, seq, scope);
+  const next = nextLayers(layers, model, viewKey, scope);
   if (next !== layers) setLayers(next);
   const headingId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -173,6 +194,18 @@ export function Inspector({
   useLayoutEffect(() => {
     if (focusHeading !== null) headingRef.current?.focus();
   }, [focusHeading]);
+
+  // A push or a pop (a new view of the same request) focuses the new heading, whatever the open's
+  // source (T25-008, T25 §4.8).
+  const shown = useRef<{ seq: number; viewKey: string } | null>(null);
+  const open = model !== null;
+  useLayoutEffect(() => {
+    const last = shown.current;
+    shown.current = open ? { seq, viewKey } : null;
+    if (last !== null && open && last.seq === seq && last.viewKey !== viewKey) {
+      headingRef.current?.focus();
+    }
+  }, [open, seq, viewKey]);
 
   useLayoutEffect(() => {
     if (!toggled.current) return;
@@ -215,22 +248,25 @@ export function Inspector({
           <div className={cx(styles['body'])}>
             {leaving !== null && (
               <Content
-                key={leaving.seq}
+                key={leaving.key}
                 model={leaving.model}
                 leaving
+                onEntry={onEntry}
                 onDone={() => {
                   setLayers((l) => (l.leaving === leaving ? { ...l, leaving: null } : l));
                 }}
               />
             )}
             <Content
-              key={current.seq}
+              key={current.key}
               model={current.model}
               leaving={false}
               headingId={headingId}
               headingRef={headingRef}
               onEditQuery={onEditQuery}
               resolveMembers={resolveMembers}
+              nav={nav}
+              onEntry={onEntry}
               chrome={
                 <div className={cx(styles['chrome'])}>
                   <button
@@ -267,6 +303,9 @@ interface ContentProps {
   readonly headingRef?: Ref<HTMLHeadingElement>;
   readonly onEditQuery?: () => void;
   readonly resolveMembers?: (panelId: string, runId: string) => MemberList | null;
+  /** The path of the current layer; a leaving layer shows none. */
+  readonly nav?: InspectorNav | null;
+  readonly onEntry?: (view: NavView) => void;
   readonly onDone?: () => void;
   /** The collapse and close buttons, after the heading in the tab order (T25-008). */
   readonly chrome?: ReactNode;
@@ -280,6 +319,8 @@ function Content({
   headingRef,
   onEditQuery,
   resolveMembers,
+  nav,
+  onEntry,
   onDone,
   chrome,
 }: ContentProps) {
@@ -319,6 +360,7 @@ function Content({
       }}
     >
       <header className={cx(styles['section'], styles['header'])} data-section="header">
+        {nav !== undefined && nav !== null && <NavBar nav={nav} />}
         <h2
           id={headingId}
           ref={headingRef}
@@ -358,7 +400,11 @@ function Content({
         ))}
       </section>
       {m.members !== null && (
-        <MembersSection members={m.members} resolve={resolveMembers ?? (() => null)} />
+        <MembersSection
+          members={m.members}
+          resolve={resolveMembers ?? (() => null)}
+          onEntry={onEntry ?? null}
+        />
       )}
       <PivotsSection pivots={m.pivots} />
       <section className={cx(styles['section'])} data-section="query">
@@ -488,6 +534,56 @@ function LabelList({ labels }: { labels: readonly (readonly [string, string])[] 
   );
 }
 
+/**
+ * "Back to ‹previous›" and the path of titles (T25 §4.8): every title but the last is a pop to its
+ * depth; the last is the shown view.
+ */
+function NavBar({ nav }: { nav: InspectorNav }) {
+  const { titles, onPop } = nav;
+  const depth = titles.length - 1;
+  const previous = titles[depth - 1] ?? '';
+  return (
+    <div className={cx(styles['navBar'])} data-inspector-nav="">
+      <button
+        type="button"
+        className={cx(styles['textButton'], styles['back'])}
+        onClick={() => {
+          onPop(depth - 1);
+        }}
+      >
+        <span aria-hidden="true" className={cx(styles['backGlyph'])}>
+          ‹
+        </span>
+        {t('inspector.back', { title: previous })}
+      </button>
+      <nav aria-label={t('inspector.path')}>
+        <ol className={cx(styles['path'])}>
+          {titles.map((title, i) => (
+            <li key={`${String(i)}:${title}`} className={cx(styles['crumb'])}>
+              {i < depth ? (
+                <button
+                  type="button"
+                  className={cx(styles['crumbButton'])}
+                  title={title}
+                  onClick={() => {
+                    onPop(i);
+                  }}
+                >
+                  {title}
+                </button>
+              ) : (
+                <span aria-current="location" className={cx(styles['crumbHere'])} title={title}>
+                  {title}
+                </span>
+              )}
+            </li>
+          ))}
+        </ol>
+      </nav>
+    </div>
+  );
+}
+
 function memberText(f: MemberFacts, tz: string): string {
   return `${formatClockMs(f.fromMs, tz)} – ${formatClockMs(f.toMs, tz)} ${f.text}`;
 }
@@ -495,13 +591,24 @@ function memberText(f: MemberFacts, tz: string): string {
 function MembersSection({
   members,
   resolve,
+  onEntry,
 }: {
   members: MemberSection;
   resolve: (panelId: string, runId: string) => MemberList | null;
+  onEntry: ((view: NavView) => void) | null;
 }) {
   const tz = useTimeZone();
   const [s, setS] = useState<MembersState>(NO_MEMBERS_STATE);
   const v = membersView(members, s);
+  const nextOf = members.next;
+  // With `next`, every text entry, shown or expanded, opens its view (T25-011); runs stay plain.
+  const push =
+    nextOf === null || onEntry === null
+      ? null
+      : (i: number): void => {
+          const view = nextOf(i);
+          if (view !== null) onEntry(view);
+        };
   const list = (
     which: 'texts' | 'runs',
     title: string,
@@ -513,7 +620,22 @@ function MembersSection({
       <h4 className={cx(styles['sectionTitle'])}>{title}</h4>
       <ul className={cx(styles['memberList'])} data-open={fewer ? '' : undefined}>
         {items.map((x, i) => (
-          <li key={`${String(i)}:${x}`}>{x}</li>
+          <li key={`${String(i)}:${x}`}>
+            {which === 'texts' && push !== null ? (
+              <button
+                type="button"
+                className={cx(styles['entry'])}
+                title={x}
+                onClick={() => {
+                  push(i);
+                }}
+              >
+                {x}
+              </button>
+            ) : (
+              x
+            )}
+          </li>
         ))}
       </ul>
       {more !== null && (

@@ -126,6 +126,13 @@ colour per series, close marks gathered into clusters); you can set thresholds.
   spread). Click empty map to clear the selection.
 - **Legend.** With several groups, the legend under the map lists them; choose one to select its
   series, or the **other (n)** entry to inspect the groups gathered there.
+- **Step in and back.** In the Inspector, the series of a cluster or a group and the groups of
+  **other (n)** are buttons: choose one to step into it (a group lists its series; a series shows
+  its value, place and pivots). The map selects what you are looking at. **Back to …** and the path
+  above the title step back out. **Esc** steps back one view at a time; at the first view it
+  clears the selection, then closes the Inspector. Each step keeps what you saw when you opened
+  it, even if the panel refreshes, and a screen reader hears the level ("Level 2: e18, 12
+  series").
 - **Keyboard.** Tab to the map and use **+**, **-**, **0** (fit) and **Shift**+arrows to zoom and
   pan. Tab again to reach the list of marks in view: move with the arrows, Home, End, Page Up and
   Page Down, and press **Enter** to inspect one. "No marks in view · Fit" means the map shows none:

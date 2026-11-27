@@ -7,7 +7,7 @@ import { K1, P_LABELS, P_ORIGIN, P_TARGET, P_T, pEnv, pRequest } from '../test/i
 import { selectionOf } from '../charts/inspectTarget';
 import { fkey } from '../test/categoryFixtures';
 import { frameOf } from '../test/geoKit';
-import { G, M12, O2, TH } from '../vis/geo/fixtures/series';
+import { G, M12, N, O2, TH } from '../vis/geo/fixtures/series';
 import type { GeoFrame } from '../vis/geo/frame';
 import { geoTarget, resolveGeoMembers, type GeoInspectorTarget } from '../vis/geo/targets';
 import { inspectorModel } from './model';
@@ -450,5 +450,29 @@ describe('unit:geo-inspect (T24 §4.13, T25 §4.9; plan #234 Part 3 §4.5)', () 
     expect(cm.announce).toBe('Inspector: Cluster of 12, near 10.0000, 10.0000');
     expect(resolveGeoMembers(c, 'geo:cluster:m12')?.texts).toHaveLength(12);
     expect(resolveGeoMembers(c, 'geo:cluster:m11')).toBeNull();
+  });
+
+  it('levels: the N aggregate at depth 0, its e18 group at depth 1', () => {
+    const n = frameOf(N(), { opts: { groupBy: 'env' } });
+    const agg = geoTarget(n, n.seq, { kind: 'aggregate' });
+    const a0 = inspectorModel(req(agg), pEnv());
+    expect(a0.announce).toBe('Inspector: other (12), 12 groups, 23 series');
+    const a00 = inspectorModel(req(agg), pEnv(), 0);
+    expect(a00.announce).toBe(a0.announce);
+    expect(a00.members?.texts).toEqual(a0.members?.texts);
+    const grp = geoTarget(n, n.seq, { kind: 'group', from: agg, entry: 11 });
+    const g0 = inspectorModel(req(grp), pEnv());
+    const g1 = inspectorModel(req(grp), pEnv(), 1);
+    expect(g0.announce).toBe('Inspector: e18, 12 series');
+    expect(g1.announce).toBe('Inspector: Level 2: e18, 12 series');
+    const marker = geoTarget(n, n.seq, { kind: 'marker', id: 'n27', keys: ['n27'] });
+    expect(inspectorModel(req(marker), pEnv(), 2).announce).toBe(
+      'Inspector: Level 3: {env="e18", lat="10", lon="10", pod="p27"}, 27 ms',
+    );
+    // Facts and members do not depend on the depth.
+    expect(g1.facts).toEqual(g0.facts);
+    expect(g1.members?.texts).toEqual(g0.members?.texts);
+    expect(g1.members?.resolve).toEqual(g0.members?.resolve);
+    expect(g1.heading).toBe(g0.heading);
   });
 });

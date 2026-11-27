@@ -327,7 +327,14 @@ function actions(env: InspectorEnv): InspectorAction[] {
   ];
 }
 
-export function inspectorModel(req: InspectRequest, env: InspectorEnv): InspectorModel {
+/**
+ * The sheet's model of `req` (T25 §5). `depth` is the view's place in the navigation stack (T25
+ * §4.8): a geo view at depth d > 0 announces `Level ‹d + 1›: ` first (T25 §4.9); nothing else
+ * depends on it.
+ */
+export function inspectorModel(req: InspectRequest, env: InspectorEnv, depth = 0): InspectorModel {
+  // eslint-disable-next-line @typescript-eslint/no-meaningless-void-operator -- a stub until Part 4 lands
+  void depth;
   const q = req.origin.query;
   const query =
     q === null ? null : ({ lang: q.lang === 'promql' ? 'PromQL' : 'LogQL', text: q.text } as const);
@@ -336,7 +343,7 @@ export function inspectorModel(req: InspectRequest, env: InspectorEnv): Inspecto
     // T24 §4.13: a marker gets the T25 `mark` pivots over the origin window; the others none.
     const g = target.target;
     return {
-      ...geoModel(g, req.origin.unit ?? NONE, req.origin.panelId),
+      ...geoModel(g, req.origin.unit ?? NONE, req.origin.panelId, depth),
       pivots: g.kind === 'marker' ? pivots(req, env) : [],
       query,
       actions: actions(env),
