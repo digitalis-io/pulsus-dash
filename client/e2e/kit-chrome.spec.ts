@@ -151,38 +151,25 @@ test.describe('kit chrome (#282)', () => {
       const header = page.getByRole('banner');
       await openUserMenu(page);
       const pop = userPopover(page);
-      // The material applies only where the browser supports backdrop-filter and the
-      // reduced-transparency query (Chromium; Firefox and WebKit have no such query): elsewhere
-      // the opaque fallback.
-      const translucent = await page.evaluate(
-        () =>
-          (CSS.supports('backdrop-filter', 'blur(1px)') ||
-            CSS.supports('-webkit-backdrop-filter', 'blur(1px)')) &&
-          matchMedia('(prefers-reduced-transparency: no-preference)').matches,
-      );
-      if (browserName === 'chromium') {
-        expect(translucent, `${browserName} supports the material`).toBe(true);
-      }
+      // Every engine can blur: the material is required in all three. A browser without the
+      // reduced-transparency query (Firefox, WebKit) keeps it (VL-017 as amended).
       for (const [name, l, material] of [
         ['header', header, 'material-bar'],
         ['popover', pop, 'material-menu'],
       ] as const) {
-        const f = await backdrop(l);
-        if (translucent) {
-          expect(f, `${theme} ${name} filter`).toContain('blur(24px)');
-          expectColour(await css(l, 'background-color'), tok(theme, material), name);
-        } else {
-          expect(f === 'none' || f === '', `${theme} ${name} filter: ${f}`).toBe(true);
-          expectColour(await css(l, 'background-color'), tok(theme, 'surface-1'), name);
-        }
+        expect(await backdrop(l), `${browserName} ${theme} ${name} filter`).toContain('blur(24px)');
+        expectColour(await css(l, 'background-color'), tok(theme, material), name);
       }
       expect(await css(pop, 'border-top-left-radius')).toBe('10px');
       expect(await css(pop, 'box-shadow')).not.toBe('none');
       await page.keyboard.press('Escape');
     }
 
+    // The last leg left the light theme chosen.
+    const theme = (): Theme => 'light';
     const opaque = async (what: string): Promise<void> => {
       await open(page, '/t/demo/boards');
+      await expect(page.locator('html')).toHaveAttribute('data-theme', theme());
       await openUserMenu(page);
       for (const [name, l] of [
         ['header', page.getByRole('banner')],
@@ -190,7 +177,10 @@ test.describe('kit chrome (#282)', () => {
       ] as const) {
         const f = await backdrop(l);
         expect(f === 'none' || f === '', `${what} ${name} filter: ${f}`).toBe(true);
-        expect(fromCss(await css(l, 'background-color'))[3], `${what} ${name} alpha`).toBe(1);
+        const bg = await css(l, 'background-color');
+        // Forced colours repaint the background in a system colour; it stays opaque.
+        if (what === 'forced colours') expect(fromCss(bg)[3], `${what} ${name} alpha`).toBe(1);
+        else expectColour(bg, tok(theme(), 'surface-1'), `${what} ${name}`);
       }
     };
     if (browserName === 'chromium') {
@@ -198,6 +188,10 @@ test.describe('kit chrome (#282)', () => {
       await cdp.send('Emulation.setEmulatedMedia', {
         features: [{ name: 'prefers-reduced-transparency', value: 'reduce' }],
       });
+      expect(
+        await page.evaluate(() => matchMedia('(prefers-reduced-transparency: reduce)').matches),
+        'reduce emulated',
+      ).toBe(true);
       await opaque('reduced transparency');
       await cdp.send('Emulation.setEmulatedMedia', { features: [] });
       await cdp.detach();

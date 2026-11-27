@@ -9,14 +9,23 @@
   font-size: var(--font-size-sm);
 }
 
+/* The material where the browser can blur (VL-017 as amended, #282). A browser without the
+   reduced-transparency query (Safari, Firefox) keeps it; an explicit `reduce` or forced colours
+   override it back to the opaque base below. */
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
-  @media (prefers-reduced-transparency: no-preference) and (not (forced-colors: active)) {
-    .tooltip {
-      background: var(--material-menu);
-      /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
-      -webkit-backdrop-filter: var(--material-filter);
-      backdrop-filter: var(--material-filter);
-    }
+  .tooltip {
+    background: var(--material-menu);
+    /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
+    -webkit-backdrop-filter: var(--material-filter);
+    backdrop-filter: var(--material-filter);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .tooltip {
+    background: var(--surface-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 

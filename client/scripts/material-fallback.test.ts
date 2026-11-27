@@ -1,9 +1,10 @@
 /**
  * `unit:material-fallback` (#282, VL-017 as amended): the materials (header, popover, tooltip,
- * Inspector) are opaque `surface-1` by default; the translucent material and its backdrop filter
- * apply only inside a positive `@supports (backdrop-filter…)` and the reduced-transparency /
- * forced-colours guard, so a browser without the filter, or a user who asked for less
- * transparency or forced colours, gets the opaque surface in both themes.
+ * Inspector) are opaque `surface-1` in their base rule; the translucent material and its backdrop
+ * filter apply inside `@supports (backdrop-filter…)` only, with no positive preference query, so a
+ * browser without the reduced-transparency query (Safari, Firefox) still gets it; a later
+ * `@media (prefers-reduced-transparency: reduce), (forced-colors: active)` rule sets the opaque
+ * `surface-1` back with no filter.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -32,50 +33,71 @@ function ancestors(d: Declaration): AtRule[] {
   return out;
 }
 
-/** Inside `@supports (backdrop-filter…)` and the no-preference, not-forced-colours media guard. */
-function guarded(d: Declaration): boolean {
-  const at = ancestors(d);
-  const supports = at.some((a) => a.name === 'supports' && a.params.includes('backdrop-filter'));
-  const media = at.some(
-    (a) =>
-      a.name === 'media' &&
-      /prefers-reduced-transparency:\s*no-preference/.test(a.params) &&
-      /not\s*\(forced-colors:\s*active\)/.test(a.params),
-  );
-  return supports && media;
-}
+const isSupports = (a: AtRule): boolean =>
+  a.name === 'supports' && a.params.includes('backdrop-filter');
+const isOverride = (a: AtRule): boolean =>
+  a.name === 'media' &&
+  /prefers-reduced-transparency:\s*reduce/.test(a.params) &&
+  /forced-colors:\s*active/.test(a.params);
 
 const isMaterialBackground = (d: Declaration): boolean =>
   (d.prop === 'background' || d.prop === 'background-color') && d.value.includes('--material-');
 
+const decls = (r: Rule): Declaration[] =>
+  r.nodes.filter((n): n is Declaration => n.type === 'decl');
+
 describe('unit:material-fallback', () => {
   for (const { file, cls } of MATERIALS) {
-    it(`${file}: ${cls} is opaque surface-1 unless translucency is supported and wanted`, () => {
+    it(`${file}: ${cls} is the material where the browser can blur, opaque otherwise`, () => {
       const root = postcss.parse(readFileSync(join(CLIENT_ROOT, file), 'utf8'), { from: file });
       const base = root.nodes.filter(
         (n): n is Rule => n.type === 'rule' && n.selectors.includes(cls),
       );
       expect(base.length, `${cls} has a top-level rule`).toBeGreaterThan(0);
-      const baseDecls = base.flatMap((r) =>
-        r.nodes.filter((n): n is Declaration => n.type === 'decl'),
-      );
+      const baseDecls = base.flatMap(decls);
       expect(
         baseDecls.filter((d) => d.prop === 'background').map((d) => d.value),
         `${cls} base background`,
       ).toEqual(['var(--surface-1)']);
       expect(baseDecls.filter((d) => FILTERS.has(d.prop)).map((d) => d.prop)).toEqual([]);
 
-      const material: Declaration[] = [];
+      // Every material and blur sits in @supports alone: no media query gates it.
+      let lastMaterial = -1;
       root.walkDecls((d) => {
-        if (FILTERS.has(d.prop) && d.value !== 'none') {
-          expect(guarded(d), `${file}:${String(d.source?.start?.line)} ${d.prop}`).toBe(true);
-        }
-        if (isMaterialBackground(d)) {
-          expect(guarded(d), `${file}:${String(d.source?.start?.line)} ${d.prop}`).toBe(true);
-          material.push(d);
-        }
+        if (!isMaterialBackground(d) && !(FILTERS.has(d.prop) && d.value !== 'none')) return;
+        const at = ancestors(d);
+        const where = `${file}:${String(d.source?.start?.line)} ${d.prop}`;
+        expect(at.some(isSupports), where).toBe(true);
+        expect(
+          at.filter((a) => a.name === 'media').map((a) => a.params),
+          where,
+        ).toEqual([]);
+        lastMaterial = Math.max(lastMaterial, d.source?.start?.offset ?? 0);
       });
-      expect(material.length, `${file} has a guarded material background`).toBeGreaterThan(0);
+      expect(lastMaterial, `${file} has the material`).toBeGreaterThan(-1);
+
+      // The override, after the material: opaque surface-1, both filters none.
+      const overrides: Rule[] = [];
+      root.walkAtRules((a) => {
+        if (!isOverride(a)) return;
+        a.walkRules((r) => {
+          if (r.selectors.includes(cls)) overrides.push(r);
+        });
+      });
+      expect(overrides.length, `${file} overrides for reduce and forced colours`).toBe(1);
+      const o = overrides[0];
+      if (o === undefined) return;
+      expect(o.source?.start?.offset ?? 0).toBeGreaterThan(lastMaterial);
+      const od = decls(o);
+      expect(od.filter((d) => d.prop === 'background').map((d) => d.value)).toEqual([
+        'var(--surface-1)',
+      ]);
+      expect(
+        od
+          .filter((d) => FILTERS.has(d.prop))
+          .map((d) => `${d.prop}: ${d.value}`)
+          .sort(),
+      ).toEqual(['-webkit-backdrop-filter: none', 'backdrop-filter: none']);
     });
   }
 });

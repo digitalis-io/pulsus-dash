@@ -9,19 +9,27 @@
   min-width: 0;
   padding: 0 var(--size-page-padding);
   border-bottom: var(--border-hairline) solid var(--hairline);
-  /* Opaque unless translucency is supported and wanted (VL-017 as amended, #282). */
+  /* Opaque unless the browser can blur (VL-017 as amended, #282). */
   background: var(--surface-1);
 }
 
-/* The unified toolbar: the bar material where content scrolls beneath it. */
+/* The material where the browser can blur (VL-017 as amended, #282). A browser without the
+   reduced-transparency query (Safari, Firefox) keeps it; an explicit `reduce` or forced colours
+   override it back to the opaque base below. */
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
-  @media (prefers-reduced-transparency: no-preference) and (not (forced-colors: active)) {
-    .header {
-      background: var(--material-bar);
-      /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
-      -webkit-backdrop-filter: var(--material-filter);
-      backdrop-filter: var(--material-filter);
-    }
+  .header {
+    background: var(--material-bar);
+    /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
+    -webkit-backdrop-filter: var(--material-filter);
+    backdrop-filter: var(--material-filter);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .header {
+    background: var(--surface-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 

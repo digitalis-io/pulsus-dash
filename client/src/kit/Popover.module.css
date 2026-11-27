@@ -1,5 +1,6 @@
-/* Popovers, menus and listboxes (#282, VL-017 as amended): opaque surface-1 unless translucency is
-   supported and wanted, then the menu material; elevation 2; a short scale-in from the trigger. */
+/* Popovers, menus and listboxes (#282, VL-017 as amended): the menu material where the browser can
+   blur, opaque surface-1 otherwise and under reduced transparency or forced colours; elevation 2;
+   a short scale-in from the trigger. */
 .popover {
   min-width: var(--size-sidebar-collapsed);
   max-width: calc(100vw - var(--space-6));
@@ -13,14 +14,23 @@
   transform-origin: var(--trigger-anchor-point);
 }
 
+/* The material where the browser can blur (VL-017 as amended, #282). A browser without the
+   reduced-transparency query (Safari, Firefox) keeps it; an explicit `reduce` or forced colours
+   override it back to the opaque base below. */
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
-  @media (prefers-reduced-transparency: no-preference) and (not (forced-colors: active)) {
-    .popover {
-      background: var(--material-menu);
-      /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
-      -webkit-backdrop-filter: var(--material-filter);
-      backdrop-filter: var(--material-filter);
-    }
+  .popover {
+    background: var(--material-menu);
+    /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
+    -webkit-backdrop-filter: var(--material-filter);
+    backdrop-filter: var(--material-filter);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .popover {
+    background: var(--surface-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 
