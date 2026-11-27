@@ -1,10 +1,11 @@
 /**
- * Engine selection (plan #68 C1 §3.5, D-SEL): the WASM engine is opt-in until #69 draws axes and
- * the other kinds. The flag is the URL's `engine` parameter, else the build's `VITE_ENGINE`, else
- * `canvas2d`. Even when it says `wasm`, the engine runs only cross-origin isolated, with
- * OffscreenCanvas, a GPU API and `Atomics.waitAsync` (the CSP blocks the glue's blob-worker
- * fallback), outside the modes it does not serve yet (`st`, `mtr`, `static`: Canvas 2D until
- * `dash-core-st`), and not after it failed earlier in this session (T03-025).
+ * Engine selection (plan #68 C1 §3.5; plan #256 §3.1): the WASM engine is the default renderer and
+ * Canvas 2D the fallback (ADR-0031). Only the flag `canvas2d` forces Canvas 2D: the URL's `engine`
+ * parameter, else the build's `VITE_ENGINE`; any other value, or none, selects the engine. It runs
+ * only cross-origin isolated, with OffscreenCanvas, a GPU API and `Atomics.waitAsync` (the CSP
+ * blocks the glue's blob-worker fallback), outside the modes it does not serve yet (`st`, `mtr`,
+ * `static`: Canvas 2D until `dash-core-st`), and not after it failed earlier in this session
+ * (T03-025), a failed boot included (`failFlag.ts` `markOnFailure`).
  */
 export interface Probe {
   /** `location.search`. */
@@ -27,9 +28,10 @@ const CANVAS_MODES = new Set(['st', 'mtr', 'static']);
 
 export function chooseEngine(p: Probe): EngineChoice {
   const q = new URLSearchParams(p.search);
-  const flag = q.get('engine') ?? p.buildFlag ?? 'canvas2d';
+  // The URL's `engine` beats the build's; only `canvas2d` forces Canvas 2D (ADR-0031).
+  const flag = q.get('engine') ?? p.buildFlag;
   const mode = q.get('mode');
-  if (flag !== 'wasm' || p.failedThisSession) return { kind: 'canvas2d' };
+  if (flag === 'canvas2d' || p.failedThisSession) return { kind: 'canvas2d' };
   if (mode !== null && CANVAS_MODES.has(mode)) return { kind: 'canvas2d' };
   if (!p.isolated || !p.offscreen || (!p.webgpu && !p.webgl2) || !p.waitAsync) {
     return { kind: 'canvas2d' };

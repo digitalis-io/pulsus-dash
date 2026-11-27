@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.12-rc · 2026-11-26 |
+| **Version** | 1.13-rc · 2026-11-27 |
 | **Requirement area** | `VIZ` |
 | **Source draft** | plans/05-visualisation-catalogue.md (not tracked) |
 | **Depends on** | [03 Interaction model](03-interaction-model.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [04 Surfaces](04-surfaces.md) · [07 Alerting](07-alerting.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -56,10 +56,12 @@ the engine active, when the frame is captured, then it is drawn by the engine in
 canvas, one GPU device serves every canvas on the page, and nothing is drawn by DOM, SVG or the
 interim renderer.
 
-> **Note:** until the engine lands, line, stacked bars, heatmap and stat are drawn by the in-house
-> Canvas 2D renderer behind the same seam ([ADR-0014](../adr/0014-typescript-react-web-client.md)
-> §4). That renderer meets the library clause but not the engine clause, so VIZ-001 stays M-UI0 and
-> is met when the engine draws every non-DOM vis of that milestone (decision D6).
+> **Note:** line frames are drawn by the engine by default
+> ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md), #256); stacked bars, heatmap and stat stay
+> on the in-house Canvas 2D renderer behind the same seam
+> ([ADR-0014](../adr/0014-typescript-react-web-client.md) §4) until #69, and it draws every
+> fallback. That renderer meets the library clause but not the engine clause, so VIZ-001 stays M-UI0
+> and is met when the engine draws every non-DOM vis of that milestone (decision D6).
 
 #### VIZ-002 — Every vis is a composition of shared mark primitives
 **MUST** · M-UI0 · Engineer
@@ -1521,7 +1523,8 @@ board.
 | 1.9-rc | 2026-11-25 | #184 step 1b: VIZ-067 identity per group for grouped spatial marks, and its acceptance covers every series or group; Table 5-8 Markers: target 10⁵, 5 000 drawn in the 2D core; VIZ-044 staging (markers in step 1b, symbol and rotation from fields in part G; T24) |
 | 1.10-rc | 2026-11-25 | #184 step 2: VIZ-047 note (sync through `map=*`, the bounds filter as the `geo=` map area, the panels it filters and those it does not yet); VIZ-065 row 8 staging (a synchronous label test after rows 5–7; `legacyAuto` keeps stored boards; not in Explore yet); VIZ-060 Geomap staging (the T24 §4.19 mapping at M-UI3, the corpus at M-UI5; T24) |
 | 1.11-rc | 2026-11-26 | #215: VIZ-065 row 8 and the VIZ-060 Geomap import name the map-sync board spec version (T24 §5.0) instead of v8: every panel stored before it keeps its existing vis (`legacyAuto`) |
-| 1.12-rc | 2026-11-26 | #173 Part 3b: VIZ-065 row 11 staging (Explore only; board `auto` panels keep the pre-bars set until `legacyAuto` covers rows 8 and 11, T24-099) |
+| 1.12-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md)): the VIZ-001 note: line frames are on the engine by default, the other kinds on Canvas 2D until #69; VIZ-001 stays M-UI0 and incomplete (D6) |
+| 1.13-rc | 2026-11-27 | #173 Part 3b: VIZ-065 row 11 staging (Explore only; board `auto` panels keep the pre-bars set until `legacyAuto` covers rows 8 and 11, T24-099) |
 
 ## Resolved during formalisation
 

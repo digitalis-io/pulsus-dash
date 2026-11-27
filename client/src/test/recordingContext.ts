@@ -1,6 +1,7 @@
 /**
- * A `Ctx2D` that records every call with the style in effect, for engine tests. `measureText` is
- * fixed at 7 px per character, so layouts are deterministic.
+ * A `Ctx2D` that records every call with the style and the transform in effect, for engine tests.
+ * `measureText` is fixed at 7 px per character, so layouts are deterministic. `save`/`restore`
+ * keep the style and the transform, as a canvas does.
  */
 import type { Ctx2D } from '../engine/canvas2d/ctx';
 
@@ -13,6 +14,8 @@ export interface RecordedOp {
   readonly font: string;
   readonly textAlign: string;
   readonly globalAlpha: number;
+  /** The transform `[a, b, c, d, e, f]` in effect (after a `setTransform`, its own). */
+  readonly transform: readonly number[];
 }
 
 export interface RecordingContext extends Ctx2D {
@@ -36,6 +39,7 @@ export function recordingContext(): RecordingContext {
     textAlign: 'start' as CanvasTextAlign,
     textBaseline: 'alphabetic' as CanvasTextBaseline,
     globalAlpha: 1,
+    transform: [1, 0, 0, 1, 0, 0] as number[],
   };
   const stack: (typeof state)[] = [];
   const text = (v: string | CanvasGradient | CanvasPattern): string =>
@@ -52,6 +56,7 @@ export function recordingContext(): RecordingContext {
         font: state.font,
         textAlign: state.textAlign,
         globalAlpha: state.globalAlpha,
+        transform: [...state.transform],
       });
     };
   const ctx = {
@@ -109,7 +114,10 @@ export function recordingContext(): RecordingContext {
     set textBaseline(v) {
       state.textBaseline = v;
     },
-    setTransform: rec('setTransform'),
+    setTransform: ((...m: number[]) => {
+      state.transform = m.slice(0, 6);
+      rec('setTransform')(...m);
+    }) as Ctx2D['setTransform'],
     fillRect: rec('fillRect'),
     strokeRect: rec('strokeRect'),
     clearRect: rec('clearRect'),
@@ -124,10 +132,26 @@ export function recordingContext(): RecordingContext {
     rect: rec('rect'),
     clip: rec('clip'),
     setLineDash: rec('setLineDash'),
-    rotate: rec('rotate'),
-    translate: rec('translate'),
+    rotate(r: number) {
+      const [a = 1, b = 0, c = 0, d = 1, e = 0, f = 0] = state.transform;
+      const [cos, sin] = [Math.cos(r), Math.sin(r)];
+      state.transform = [
+        a * cos + c * sin,
+        b * cos + d * sin,
+        c * cos - a * sin,
+        d * cos - b * sin,
+        e,
+        f,
+      ];
+      rec('rotate')(r);
+    },
+    translate(x: number, y: number) {
+      const [a = 1, b = 0, c = 0, d = 1, e = 0, f = 0] = state.transform;
+      state.transform = [a, b, c, d, e + a * x + c * y, f + b * x + d * y];
+      rec('translate')(x, y);
+    },
     save() {
-      stack.push({ ...state });
+      stack.push({ ...state, transform: [...state.transform] });
       rec('save')();
     },
     restore() {

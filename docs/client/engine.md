@@ -12,9 +12,11 @@ of the interim Canvas 2D renderer ([Charts](charts.md)). It is built in four par
 | C2 | Input: the input ring, the camera controller, hover, selection, `dash-core-st` | planned |
 | D | Arrow responses on the query routes and the data worker's byte pump | planned |
 
-The engine is opt-in (`?engine=wasm`) and draws line frames only; Canvas 2D draws everything else
-and every frame of a page without the engine. Axis labels, ticks as text, bars, heatmap and stat
-are #69.
+The engine is the default renderer
+([ADR-0031](../../designs/adr/0031-gpu-engine-default-renderer.md), #256) and draws line frames
+only; Canvas 2D draws everything else and every frame of a page that cannot run the engine
+([below](#choosing-an-engine)). `?engine=canvas2d` forces Canvas 2D. Axis labels, ticks as text,
+threshold and event labels, bars, heatmap and stat on the engine are #69.
 
 ## Workspace and crate layering
 
@@ -590,24 +592,44 @@ profile so that the split-point and fuzz tests stay fast.
 
 ## In the browser (Part C1)
 
-Part C1 runs the engine in the page, opt-in: a chart frame uses it only when the engine flag is
-`wasm` (the URL's `?engine=wasm`, else the build's `VITE_ENGINE`) and the page can run it. Axis
-text, bars, heatmap and stat stay with Canvas 2D until #69; Part C2 adds input: the input ring
+Part C1 runs the engine in the page; since #256 it is the default renderer
+([ADR-0031](../../designs/adr/0031-gpu-engine-default-renderer.md)): a chart frame uses it unless
+the engine flag (the URL's `?engine=`, else the build's `VITE_ENGINE`) is `canvas2d` or the page
+cannot run it. Axis text, bars, heatmap and stat stay with Canvas 2D until #69; Part C2 adds input: the input ring
 (C2a1, [below](#the-input-ring-part-c2a1)), the camera controller (C2a2,
 [below](#the-camera-controller-part-c2a2)), then hover and selection; Part D
 streams Arrow data to a data worker.
 
 ### Choosing an engine
 
-`client/src/engine/index.ts` calls `chooseEngine` (`select.ts`, D-SEL) once per page:
+`client/src/engine/index.ts` calls `chooseEngine` (`select.ts`) once per page; the first match
+wins:
 
-| Condition | Engine |
-|---|---|
-| The flag is not `wasm` (default `canvas2d`) | Canvas 2D |
-| The engine failed earlier in this session (`failFlag.ts`) | Canvas 2D |
-| `?mode=st`, `mtr` or `static` (Canvas 2D until `dash-core-st`) | Canvas 2D |
-| Not cross-origin isolated, no `OffscreenCanvas`, neither WebGPU nor WebGL2, or no `Atomics.waitAsync` (the glue's fallback is a blob worker, which the CSP blocks) | Canvas 2D |
-| Otherwise | the routing engine; `?mode=t2` forces WebGL2 |
+| # | Condition | Engine |
+|---|---|---|
+| 1 | The flag (the URL's `?engine=`, else the build's `VITE_ENGINE`) is `canvas2d` | Canvas 2D |
+| 2 | The session is marked failed (`failFlag.ts`: a trap, a second device loss, or a failed boot, below) | Canvas 2D |
+| 3 | `?mode=st`, `mtr` or `static` (Canvas 2D until `dash-core-st`) | Canvas 2D |
+| 4 | Not cross-origin isolated, no `OffscreenCanvas`, neither WebGPU nor WebGL2, or no `Atomics.waitAsync` (the glue's fallback is a blob worker, which the CSP blocks) | Canvas 2D |
+| 5 | Otherwise: no flag, `wasm`, empty or any other value | the routing engine (line frames on the engine, the other kinds on Canvas 2D); `?mode=t2` forces WebGL2 |
+
+There are two overrides, and only `canvas2d` does anything: `?engine=canvas2d` on a page, and a
+`VITE_ENGINE=canvas2d` build (the engine is still built in; the main e2e suite pins its builds this
+way, [Build, test and CI](../development/build-and-ci.md#end-to-end-tests)). The URL beats the
+build: `?engine=wasm` opts a page of a pinned build in.
+
+**A failed boot marks the session** (`markOnFailure` in `failFlag.ts`, plan #256 §4.2). When the
+engine does not boot (the integrity check refuses the wasm twice, a compile error, status 3 or 4,
+or no status in 10 s), its frames stay on Canvas 2D with no notice, as before, and the session is
+marked, so later pages take row 2 and make no engine request. The page's single `load()` promise
+marks at most once. A module without the engine (the unit tests' `absent.ts`: `compileEngine`
+throws `EngineAbsent`) is not marked, so building the engine takes effect at the next reload; the
+console still shows `pulsus engine unavailable: …`.
+
+**The accepted gap until #69** (ADR-0031). Engine line frames draw no axis labels or tick text,
+and no threshold or event labels. Their summaries' `thresholdLabels` and `eventLabels` are `[]`:
+there is no `ThresholdHit` or `EventHit`, event labels are not keyboard-reachable, and the summary
+text carries no event count. `?engine=canvas2d` restores them.
 
 Every chart canvas carries `data-engine`: `canvas2d`, `wasm-webgpu` or `wasm-webgl2`. With the
 engine, `<html>` carries `data-dash-status` (0 booting, 1 WebGPU, 2 WebGL2, 4 failed),
@@ -917,6 +939,73 @@ Canvas 2D clips event lines only under a manual axis (`clipped`), so under an au
 at the window's end is stroked one column right of the plot; the engine draws it in the plot's
 last column instead (`layer_parity` expects that rect, and the pinned case dropped).
 
+### The selection highlight (Part C2c2)
+
+Line frames draw the page selection
+([ADR-0025](../../designs/adr/0025-chart-frame-selection.md), T25-006, T02-025) on the next frame,
+with the unmatched series dimmed together as one layer
+([ADR-0032](../../designs/adr/0032-selection-dims-as-one-layer.md)).
+
+**The message.** `WasmFrame.setSelection(sel)` posts the selection to the worker, unless it equals
+the last one posted (`sameSelection`: the same keys in order and the same interval); the first call
+always posts. `null` goes as no keys and no interval:
+
+```json
+{"t":"selection","id":1,"keys":["00000000000000a1"],"fromMs":1795090200000,"toMs":1795090800000}
+```
+
+The worker stores it (`frame_set_selection`, `Frames::set_selection`) as a layer input, so the
+layer is rebuilt once and a hover frame reuses it. A key becomes a `u64` only when it is exactly 16
+lower-case hex digits (`SelectionIn::new`); any other string, `00000000000000A1` included,
+matches nothing, as TS compares strings exactly. `ControlledFrame.setSelection` only flushes and
+forwards the call: no layout change, no hover change. A restart replays the kept selection with the
+frame's other inputs.
+
+**Relevance and the build.** `matched` (TS `matchedKeys`) flags each shown series whose key is in
+the selection. No flag set means nothing is dimmed: the Line item has no `emphasis` and is drawn
+exactly as without a selection. Otherwise the item carries `Emphasis { matched, dimmed:
+opacity.dimmed, focus, underlay_extra_css: 4 }`. The interval draws a band whatever the keys:
+`selection_band` (TS `drawSelectionBand`) is one `selection`-coloured rect from `x(fromMs)`, at
+least 1 device px wide, cut to the plot, or nothing when it lies wholly outside. It is the first
+shape of the layer `Overlay` item, before the thresholds and events (Canvas 2D's order: series,
+band, thresholds, events).
+
+**The passes** (`dash-marks/src/line/passes.rs`). The series are decimated once. A matched
+series' instances carry its rank r (1…m, in shown order) as their lane, and every other series
+lane 0. Each pass writes the view uniform (`lane_only`, `guides`, `use_colour`, `colour`, the
+width) and is its own submission:
+
+| Pass | Draws | Onto |
+|---|---|---|
+| A1 | the guides (`lane_only` none) | the frame, which it clears |
+| A2 | lane 0, the unmatched series at their colours and full alpha | the dim layer, cleared to transparent |
+| A3 | the dim layer, one full-target triangle (`dim.wgsl`) at `dimmed` | the frame |
+| B_r | lane r, `focus`, the line width + 4 CSS px | the frame |
+| C_r | lane r at its colour | the frame |
+
+The order is Canvas 2D's: every unmatched series dimmed, then each matched series' underlay and
+line in shown order (ADR-0025 decision 4), so a later series' underlay covers an earlier one's line
+where they cross. In the vertex shader an instance of another lane is a degenerate quad (all six
+corners at one clip point outside the view). With one instance batch the passes reuse the
+decimated instances: on T1 the same indirect args (P4–P5 run once, with A1), on the CPU path the
+same buffer. With more batches the passes are outer and the batches inner, so the decimation
+repeats per pass. T1's status read-back is the decimation's, once, and `drawn` and `Rerun` are
+unchanged. Without an emphasis there is one pass, `lane_only` every lane: the draw of C2c1, bit for
+bit.
+
+**The dim layer.** One `Rgba8Unorm` texture per renderer (one renderer per frame) at the target's
+device size, created on the first draw with an emphasis, made again on a resize, released on the
+first list without one and with the renderer (device loss, restart). A2 draws into it with a
+premultiplied blend (colour `SrcAlpha, OneMinusSrcAlpha`, alpha `One, OneMinusSrcAlpha`); A3
+composites it with `One, OneMinusSrcAlpha`, so a pixel of coverage a and colour c ends as
+`dst·(1 − a·d) + c·a·d`. Overlapping capsules and crossing series build up inside the layer as at
+full alpha, and are dimmed once (ADR-0032); a per-instance alpha would build up to an effective
+0.6–0.8 on dense lines.
+
+**Cost.** While m series are matched: 3 + 2m submissions and one target-sized texture per frame.
+Nothing extra while no series is matched. Measured, report-only, in the implementation report of
+#68 Part C2c2.
+
 ### Tiers and the frame loop
 
 `engine_start` asks for a WebGPU adapter and device (T1, status 1; the decimation passes run as
@@ -942,6 +1031,7 @@ at 0, with a `chart-draw` measure (`detail: {kind: 'line', series, frame}`); see
 | `failed` (surface, read-back) | that frame falls back |
 | Device lost (handled at once, also while the loop is idle: the worker wakes itself) | one new device on the same canvases; if it lands on another tier (WebGPU lost, only WebGL2 left), every engine frame moves to Canvas 2D with the notice (`failed{tier}`) and later frames use the new tier; a second loss within 60 s, or no device at all, is fatal |
 | The render worker throws after a `drawn`, the first time on the page | one restart: new render and pool workers from the same `Module`; every engine frame moves to a fresh transferred canvas, replayed, with the notice |
+| The engine does not boot (integrity refused twice, a compile error, status 3 or 4, or no status in 10 s) | every frame stays on Canvas 2D without a notice; the session flag is set (not for a build without the engine) |
 | A throw before any `drawn`, a second throw, a restart without status 1 or 2 in 10 s, or `fatal` | the session flag is set (`sessionStorage` `pulsus-dash.engine-failed`, and in memory for the page); every engine frame falls back; later frames and pages use Canvas 2D |
 | A data or spec error | the frame's data or spec is cleared; `console.error` once |
 
@@ -949,8 +1039,11 @@ Without storage the flag lasts for the page only; a reload tries the engine agai
 
 ### Debugging
 
-- `?engine=wasm` (and `&mode=t2` for WebGL2) on any page; `data-engine` on the canvas and the
-  `<html>` attributes show what runs.
+- `?engine=canvas2d` on any page draws it with Canvas 2D (labels included); `&mode=t2` forces
+  WebGL2; `data-engine` on the canvas and the `<html>` attributes show what runs. On a build pinned
+  with `VITE_ENGINE=canvas2d` (the e2e builds), `?engine=wasm` opts in.
+- After a failed boot the tab stays on Canvas 2D: clear `sessionStorage`
+  `pulsus-dash.engine-failed` (or open a new tab) to try the engine again.
 - The console: `pulsus engine unavailable: <reason>` (e.g. `engine_integrity_failed`),
   `pulsus engine: frame <id> spec|data: <error>`.
 - The fault build (`VITE_ENGINE_FAULTS=1`, e2e only) takes `&fault=`: `surface` (the first line
@@ -979,9 +1072,16 @@ Without storage the flag lasts for the page only; a reload tries the engine agai
 
 `make engine-wasm` builds the engine with the pinned nightly (`+atomics`, `build-std`), wasm-bindgen
 (`--target web`, no default module path) and `wasm-opt -O3` into the git-ignored
-`client/src/engine/wasm/gen/` (in the engine web image; `make build` needs it). Vite resolves
-`virtual:dash-engine` to that glue, or to `wasm/absent.ts` when there is no build (every frame then
-stays on Canvas 2D and `ci:bundle-size` reports `missing-artefact:engine`). The engine's files are
+`client/src/engine/wasm/gen/` (in the engine web image; `make build` runs it, and `make client-dev`
+runs it before the dev server). The `dash-engine` plugin (`client/config/dashEngine.ts`) resolves
+`virtual:dash-engine` to that glue. Every build and dev server includes the engine (ADR-0031):
+without both `dash_core_mt.js` and `dash_core_mt_bg.wasm`, `vite build` fails at `buildStart` and
+the dev server refuses to start, with `the chart engine is not built (src/engine/wasm/gen/ is
+missing): run make engine-wasm first` (`gen-probe/` and `make engine-wasm-probe` in the probe
+build), also with `VITE_ENGINE=canvas2d` or `VITEST` set; there is no opt-out (`ci:engine-built`).
+Only the unit tests run without it: `client/vitest.config.ts`, which only Vitest reads, uses
+`absentEngine` (`wasm/absent.ts`) in its place; `ci:bundle-size` still reports
+`missing-artefact:engine` for a tree without the engine. The engine's files are
 `assets/dash-engine-*` (the wasm, its workers and adapter chunks). `make engine-wasm-check`
 (`ci:engine-gen`) builds twice and requires byte-equal output, a committed `dash_core_mt.d.ts`
 equal to the generated one, and `layout.gen.ts` equal to `cargo xtask gen-layout --check`.
@@ -998,8 +1098,10 @@ every other tree, the fault build included, that holds it.
 
 ### Tests in the browser
 
-`make engine-e2e` runs `client/playwright.engine.config.ts` against the fault build, in two
-Chromium projects of the engine web image:
+`make engine-e2e` runs `client/playwright.engine.config.ts` against the fault build (pinned to
+Canvas 2D, so its engine specs pass `engine=wasm`) and, for the default legs of `e2e:mode-matrix`,
+the unflagged release BFF (port 4176), `vite preview` of an unflagged build with its computed
+manifest (4177) and the dev server (5175), in two Chromium projects of the engine web image:
 
 | Project | Tier | Gated |
 |---|---|---|
@@ -1020,7 +1122,13 @@ Chromium projects of the engine web image:
   `line-thresholds` and `line-events`: the plot is `layer.json`'s, both renderers have the
   threshold rows (at each dash's centre) and event columns within ±1 device px outside Canvas 2D's
   label boxes, and the line mask holds outside them.
-- `e2e:mode-matrix`, `e2e:engine-recovery` and the engine leg of `e2e:csp-violations`.
+- `e2e:mode-matrix` (plan #256): M1 the engine with no flag (both projects) and M2 a board's line
+  panel on the engine with its stat on Canvas 2D, on the release BFF; M3 `?engine=canvas2d`, M5–M12
+  each fallback condition (no OffscreenCanvas, `mode=static`, `st`, `mtr`, not isolated, no GPU
+  API, no `Atomics.waitAsync`, a failed session) on Canvas 2D with no engine request; M4 the pinned
+  fault build; the integrity leg, then a reload with no engine request; M13–M14 the engine and the
+  integrity leg on `vite preview`; M15 the engine on the dev server.
+- `e2e:engine-recovery` and the engine leg of `e2e:csp-violations`.
 - `e2e:shim-fuzz` (project `probe`: lavapipe, the probe build's BFF on port 4175, this spec only):
   two probe frames with the gallery's `line-50` data take 10⁴ seeded ops (resize, time window,
   spec; batches of 1–2 000, the first before the frames are created, the rest after their first
@@ -1061,6 +1169,19 @@ Chromium projects of the engine web image:
   px) and leaves the view; L4 under a pinned axis an event at each window end is drawn at the
   plot's left column and nothing is drawn right of the plot; L5 on an auto axis an event at the
   window's end and one 1 s before it are drawn in the plot's last column, nothing right of it.
+- `e2e:engine-selection` (Part C2c2; as `e2e:engine-camera`, S11 in `probe`) on `S3` (a1 rising,
+  a2 falling, a3 flat; 800×240): S1 a2 selected: a1 dimmed mid-segment and at a joint, a2 at its
+  colour, `focus` beside it, the summary unchanged; S1b line-50's series on a pinned axis: 400
+  seeded ink pixels obey the one-layer rule `bg + (L − bg)·0.35` (L the unmatched series alone,
+  ±6), mean alpha 0.35 ± 0.02; S1c a dot and a dense span of an unmatched series are dimmed too,
+  engine and Canvas 2D; S10 crossings of dimmed series obey the rule in both renderers (±10), DPR
+  1 and 2, and at DPR 2 the matched series and the crosshair sit at the same device positions; S2
+  a foreign key changes nothing; S3 the band; S4 the band follows wheel zooms; S5 a hover keeps
+  its rows and full-colour dots; S6 clearing restores the image exactly; S9 a2's underlay over
+  a1's line at their crossing; S7 against `dash-golden render --select-keys --select-interval`;
+  S11 the probe's `renew()` drops every renderer (as the same-tier restore after a device loss
+  does) and S1 holds again. The engine leg of `e2e:selection-sources` (`inspector.spec.ts`) runs
+  here too, against the http-mode BFF (port 4174).
 - `bench:shim-input-cost` (project `probe`, report-only): 10⁴ wheels and 10⁴ pointer moves on a
   probe frame, 16 per animation frame, each dispatch timed with the frame's flush; prints p50, p99 and max per dispatch and per frame's group
   next to the catalogue limits (p99 ≤ 0.05 ms, callback ≤ 2 ms) and asserts only that every
@@ -1072,7 +1193,8 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
 
 ## Limits
 
-- 500 series per line while the interim cap holds; at most 65 535 lanes.
+- 500 series per line while the interim cap holds; at most 65 535 lanes, so every matched series
+  of a selection has its own lane (m ≤ 500).
 - Columns are CSS px (≤ 65 535); a viewport past `max_instances` is batched, never truncated.
 - A chunk holds at most 2³¹ samples (`ChunkError::TooLarge`); timestamps must be finite and
   strictly increasing per series (`ChunkError::Order`).
@@ -1085,8 +1207,8 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
 - The value band is at least the widest compact label (`min_value_band`, as Canvas 2D's
   `minValueBand`), so the engine's plot rect equals Canvas 2D's.
 - In the browser: line frames only; zoom, pan, axis drags, hover, click select and the box band
-  work, and so do threshold lines and event lines without their labels (#69); the `setSelection`
-  highlight is not drawn until C2c2; WebGPU
+  work, and so do threshold lines and event lines without their labels (#69), and the
+  `setSelection` highlight (bars, heatmap and stat highlights come with #69's marks); WebGPU
   is verified only report-only in the engine image (SwiftShader); one restart per page.
 - A hover frame redraws the whole GPU frame from the cached layer list (at most one per tick, as a
   pan frame); hover answers come one tick after the Overlay is published. A click picks on the
@@ -1120,6 +1242,7 @@ Real-GPU WebGPU runs on a hardware runner later (follow-up).
 | T03-022, ADR-0026 | CSP, Trusted Types, COEP | `e2e:csp-violations`, `unit:CSP` |
 | T03-024 | no test hook in a release build; the probe export only in the probe build | `ci:probe-absent` |
 | T03-025 | fallback and recovery | `routing`, `restart policy`, `e2e:engine-recovery`, `e2e:mode-matrix` |
+| ADR-0031 | the engine is the default; only `canvas2d` forces Canvas 2D; a failed boot marks the session; every build includes the engine; the preview's computed manifest, loopback only | `select.test.ts` (U1–U19), `markOnFailure`, `ci:engine-built`, `previewManifest`, `e2e:mode-matrix` (M1–M15), `e2e:canvas2d-pin` |
 | T18-006 | integrity-checked engine wasm | `wasm/integrity.test.ts`, `e2e:mode-matrix` (integrity leg) |
 | PRF-009 | the engine row | `ci:bundle-size` |
 | VIZ-001 | the line drawn in the browser | `golden:engine-line`, `canvas2d parity` |

@@ -349,6 +349,30 @@ of the frame's own series, a `focus` underlay under a selected line, a 2 px inne
 a selected bar segment, a 2 px `focus` ring on a selected stat, and a `selection` band for an
 interval on line and heatmap.
 
+**The line rule, in both engines (#68 Part C2c2,
+[ADR-0032](../../designs/adr/0032-selection-dims-as-one-layer.md)).** The unselected line series
+are dimmed *together*: drawn at full alpha into one layer that is composited once at
+`opacity.dimmed`, so a series' own overlaps and the crossings of two dimmed series are dimmed once,
+not twice. Then, per selected series in shown order, its `focus` underlay 4 px wider and its line
+(ADR-0025 decision 4). Canvas 2D keeps one scratch canvas per frame (from `createCanvas`, after
+the layer canvas). For a line layer with a match: (1) under identity, the scratch is sized to the
+layer's device px and cleared; (2) inside one `save`/`restore`, under the DPR transform and the
+layer's own clip (pinned axis only), the unchanged `drawLineSeries` draws each unselected series
+on it (strokes, dense-column spans and dots) at alpha 1; (3) on the layer, inside `save`/`restore`
+under identity, one `drawImage(scratch, 0, 0)` at `dimmed`. The selected series follow on the layer
+under the DPR transform at alpha 1. The scratch is released to 0×0 when the layer has no match,
+when the frame is not a line chart or has no data, at a zero size and on `dispose`. Bars keep
+their per-segment alpha (segments never overlap). The WASM engine draws the same layer as a
+texture ([engine](engine.md#the-selection-highlight-part-c2c2)).
+
+**Parity fixture.** `engine/fixtures/selection.json` (`client/scripts/engine-fixtures-layer.ts`,
+part of `npm run engine-fixtures`) records TS `matchedKeys` over a frame's shown keys (inside,
+beyond the 500 shown, foreign, non-hex, empty, and a key differing by case only), the
+`drawSelectionBand` rect of `drawLayer`'s own call with its plot (inside, cut on either side,
+outside on either side, `toMs` or `fromMs` null, `from = to`, DPR 1 and 2, a pinned axis), and the
+crossing case's Canvas 2D series order as `[key, 'dimmed' | 'underlay' | 'line']`. The Rust
+tests `selection_parity` and `selection_passes` read it; `unit:engine-fixtures` keeps it fresh.
+
 **One rule set, two engines (#68 Part C2b).** The hover and click rules live in
 `canvas2d/pick.ts` (`hoverAt`: the keyboard crosshair or the pointer's nearest sample, and
 `hoverRows`), `canvas2d/select.ts` (`pickItem`, line: the hover row nearest the pointer's y) and

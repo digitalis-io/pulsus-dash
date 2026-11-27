@@ -73,6 +73,8 @@ export interface ProbeHost {
   /** The probe build (plan #68 C2b §3.4): the worker holds frame `id` after seq `seq`, or not. */
   freeze(id: number, seq: number): void;
   unfreeze(id: number): void;
+  /** The probe build (plan #68 C2c2 S11): every renderer made again. */
+  renew(): void;
 }
 
 export interface Backend {
@@ -87,7 +89,10 @@ export interface Backend {
 /** Fetches (with integrity) and compiles the engine; never instantiates it here. */
 async function compileEngine(): Promise<WebAssembly.Module> {
   const { wasmUrl } = await import('virtual:dash-engine');
-  if (wasmUrl === null) throw new Error('the engine is not in this build');
+  if (wasmUrl === null) {
+    // Not a boot failure: `markOnFailure` leaves the session unmarked (plan #256 §3.2).
+    throw Object.assign(new Error('the engine is not in this build'), { name: 'EngineAbsent' });
+  }
   const r = await fetchEngineWasm(wasmUrl, {
     fetch: globalThis.fetch.bind(globalThis),
     dev: import.meta.env.DEV,
@@ -207,6 +212,9 @@ class EngineHost implements Backend {
       bad: () => word(OFF_INPUT_BAD),
       freeze: (id, seq) => {
         worker.postMessage({ t: 'probe-freeze', id, seq } satisfies MainToRender);
+      },
+      renew: () => {
+        worker.postMessage({ t: 'probe-renew' } satisfies MainToRender);
       },
       unfreeze: (id) => {
         worker.postMessage({ t: 'probe-unfreeze', id } satisfies MainToRender);

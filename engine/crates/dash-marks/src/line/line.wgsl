@@ -3,6 +3,11 @@
 // `view_proj` (composed in f64 on the CPU, D-CAM), divided by w, and only then extruded in device
 // pixels. Coverage is clamp(r + 0.5 − d, 0, 1) in device px; near a capsule end d is the distance
 // to that end itself, so it depends only on that end's coordinates.
+//
+// Plan #68 C2c2 §3.3: one pass draws one lane of the decimated instances. `lane_only` picks the
+// lane of kinds 0–2 (0xFFFFFFFF every lane; 0xFFFFFFFE none), `guides` whether kind 3 is drawn,
+// and `use_colour` replaces the series' colours with `colour` (the `focus` underlay). An instance
+// a pass skips is a degenerate quad: all six corners at one clip point outside the view.
 
 struct View {
   view_proj: mat4x4<f32>,
@@ -15,7 +20,14 @@ struct View {
   lane_z0: f32,
   lane_dz: f32,
   colours: array<vec4<f32>, 9>,
+  lane_only: u32,
+  guides: u32,
+  use_colour: u32,
+  pad: u32,
+  colour: vec4<f32>,
 };
+
+const ALL_LANES: u32 = 0xFFFFFFFFu;
 
 @group(0) @binding(0) var<uniform> view: View;
 
@@ -88,6 +100,14 @@ fn vs(@builtin(vertex_index) vi: u32, @location(0) col: u32, @location(1) va: f3
   let z = view.lane_z0 + f32(lane) * view.lane_dz;
   o.kind = kind;
   o.colour = view.colours[min(slot, 8u)];
+  let skipped = select(view.lane_only != ALL_LANES && lane != view.lane_only, view.guides == 0u, kind == 3u);
+  if (skipped) {
+    o.pos = vec4<f32>(-2.0, -2.0, 0.0, 1.0);
+    return o;
+  }
+  if (kind != 3u && view.use_colour == 1u) {
+    o.colour = view.colour;
+  }
   // Two triangles: corners (0,0) (1,0) (0,1) (0,1) (1,0) (1,1).
   var corner = array<vec2<f32>, 6>(vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0), vec2<f32>(0.0, 1.0), vec2<f32>(1.0, 0.0), vec2<f32>(1.0, 1.0));
   let k = corner[vi % 6u];

@@ -1,5 +1,7 @@
 //! The T1 compute path (plan #68 §4.2, C1 §3.1): P1 → P2 → P3, the total (read back under
-//! `Block`; known, or deferred to `poll`, under `Defer`), then P4 → P5 → draw per batch.
+//! `Block`; known, or deferred to `poll`, under `Defer`), then P4 → P5 → draw per batch. Plan #68
+//! C2c2: the draw is the item's passes (`passes.rs`): with one batch, P4–P5 run once and every
+//! pass reuses the indirect args; with more, each pass runs P4–P5 and draws per batch.
 
 use dash_gpu::GpuContext;
 use dash_scales::ColumnRanges;
@@ -10,6 +12,7 @@ use super::gpu::{
     COL_BYTES, DebugCounters, Draw, Frame, Grow, INSTANCE_BYTES, LastLine, LineRef, PassU,
     RangesKey, Renderer, STATUS_HEADER, Sync, create,
 };
+use super::passes::{PassKind, plan};
 use super::pipeline::{ComputePipelines, compute_pipelines};
 
 /// The status header's bytes (draw-indirect args, the total, padding).
@@ -115,7 +118,7 @@ impl Renderer {
             .filter(|(k, _)| *k == tkey)
             .map(|(_, total)| total);
         if self.opts.sync == Sync::Defer && known.is_none() {
-            return self.draw_deferred(ctx, f, c, vi, guides, (series, n, per_series), tkey);
+            return self.draw_deferred(ctx, f, line, c, vi, guides, (series, n, per_series), tkey);
         }
         let mut pass_u = PassU {
             n,
@@ -155,20 +158,32 @@ impl Renderer {
         };
         let batches = self.batches(ctx, all);
         let single = batches.len() == 1;
-        for (lo, hi) in batches {
-            self.write_guides(ctx, guides, lo, hi);
-            (pass_u.window_lo, pass_u.window_hi) = (lo as u32, hi as u32);
-            ctx.queue
-                .write_buffer(&c.pass_buf, 0, bytemuck::bytes_of(&pass_u));
-            let mut enc = ctx.device.create_command_encoder(&Default::default());
-            Self::p4_p5(&mut enc, c, &pass_bg, &data_bg, series, n);
-            let draw = if single {
-                Draw::Indirect
-            } else {
-                Draw::Direct((hi - lo) as u32)
-            };
-            self.draw_pass_with(ctx, &mut enc, f, draw, c);
-            ctx.queue.submit([enc.finish()]);
+        let passes = plan(line);
+        let c: &Compute = c;
+        for (pi, p) in passes.iter().enumerate() {
+            if p.kind == PassKind::A3 {
+                self.run_pass(ctx, f, line, p, Draw::Direct(0), None, |_| {});
+                continue;
+            }
+            if single && pi > 0 {
+                // One batch: P4–P5 ran with the first pass; the same indirect args.
+                self.run_pass(ctx, f, line, p, Draw::Indirect, Some(&c.status.buf), |_| {});
+                continue;
+            }
+            for &(lo, hi) in &batches {
+                self.write_guides(ctx, guides, lo, hi);
+                (pass_u.window_lo, pass_u.window_hi) = (lo as u32, hi as u32);
+                ctx.queue
+                    .write_buffer(&c.pass_buf, 0, bytemuck::bytes_of(&pass_u));
+                let draw = if single {
+                    Draw::Indirect
+                } else {
+                    Draw::Direct((hi - lo) as u32)
+                };
+                self.run_pass(ctx, f, line, p, draw, Some(&c.status.buf), |enc| {
+                    Self::p4_p5(enc, c, &pass_bg, &data_bg, series, n);
+                });
+            }
         }
         self.last = Some(LastLine::Gpu {
             series,
@@ -186,6 +201,7 @@ impl Renderer {
         &mut self,
         ctx: &GpuContext,
         f: &mut Frame,
+        line: &LineRef,
         c: &mut Compute,
         vi: usize,
         guides: &[LineInstance],
@@ -217,12 +233,32 @@ impl Renderer {
             HEADER_BYTES,
             &mut self.counters,
         );
+        let passes = plan(line);
         let mut enc = ctx.device.create_command_encoder(&Default::default());
         Self::p1_p3(&mut enc, c, &pass_bg, &data_bg, series, n);
         Self::p4_p5(&mut enc, c, &pass_bg, &data_bg, series, n);
-        self.draw_pass_with(ctx, &mut enc, f, Draw::Indirect, c);
+        if let Some(p) = passes.first() {
+            self.encode_pass(
+                ctx,
+                &mut enc,
+                f,
+                line,
+                p,
+                Draw::Indirect,
+                Some(&c.status.buf),
+            );
+        }
         enc.copy_buffer_to_buffer(&c.status.buf, 0, &read, 0, HEADER_BYTES);
         ctx.queue.submit([enc.finish()]);
+        // The other passes reuse the same indirect args (P3 caps the count at `cap`).
+        for p in passes.iter().skip(1) {
+            let draw = if p.kind == PassKind::A3 {
+                Draw::Direct(0)
+            } else {
+                Draw::Indirect
+            };
+            self.run_pass(ctx, f, line, p, draw, Some(&c.status.buf), |_| {});
+        }
         self.pending = Some(Readback::start(read, tkey, g, cap, !ctx.take_map()));
         self.awaiting = true;
         self.last = Some(LastLine::Gpu {

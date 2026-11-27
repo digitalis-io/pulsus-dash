@@ -8,4 +8,4 @@ pub mod line;
 #[cfg(feature = "gpu")]
 mod overlay;
 
-pub use desc::{DrawList, DrawnEvent, MarkItem, OverlayShape};
+pub use desc::{DrawList, DrawnEvent, Emphasis, MarkItem, OverlayShape};

@@ -325,8 +325,10 @@ dependencies = [
  "dash-wire",
  "glam",
  "naga",
+ "nv-flip",
  "pulsus-synth",
  "serde",
+ "serde_json",
  "wgpu",
 ]
 

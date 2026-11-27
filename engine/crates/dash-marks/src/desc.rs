@@ -49,12 +49,27 @@ pub enum MarkItem {
         /// None = lane 0 for all (2D).
         lanes: Option<Vec<u16>>,
         width_css: f32,
+        /// The selection's emphasis (plan #68 C2c2 §3.3): None = no series matched, one pass.
+        emphasis: Option<Emphasis>,
         /// A.3.3: CPU decimation with f64 segment clipping, on T1 and T2.
         far: bool,
     },
     /// The overlay (plan #68 C2b §3.2): crosshair, hover dots and box band, drawn last, unclipped,
     /// in CSS px.
     Overlay { shapes: Vec<OverlayShape> },
+}
+
+/// How a Line item highlights the matched series (plan #68 C2c2 §3.2; ADR-0025, ADR-0032).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Emphasis {
+    /// Per series of the item: matched by the selection.
+    pub matched: Vec<bool>,
+    /// The opacity the unmatched series' layer is composited at (`opacity.dimmed`).
+    pub dimmed: f32,
+    /// The underlay colour (`focus`).
+    pub focus: Rgba8,
+    /// The underlay is this much wider than the line, CSS px.
+    pub underlay_extra_css: f32,
 }
 
 /// One overlay shape, CSS px.

@@ -67,7 +67,8 @@ function canvas2d() {
     createCanvas: () => {
       const l = document.createElement('canvas');
       layerSet.add(l);
-      if (visible !== null) layers.set(visible, l);
+      // The first canvas a frame creates is its layer; the second its dim layer (plan #68 C2c2).
+      if (visible !== null && !layers.has(visible)) layers.set(visible, l);
       return l;
     },
     fonts: null,

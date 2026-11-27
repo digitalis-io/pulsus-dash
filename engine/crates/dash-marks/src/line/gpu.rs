@@ -17,17 +17,20 @@
 //!
 //! The overlay (plan #68 C2b): a `MarkItem::Overlay` is drawn after every line and guide of the
 //! list, in its own pass (`crate::overlay`), never scissored.
+//!
+//! The selection (plan #68 C2c2): a Line item with an emphasis is drawn in the lane passes of
+//! `passes.rs`, the unmatched series through the dim layer; without one, in one pass as before.
 
 use dash_gpu::{FrameTarget, GpuContext, Tier};
 use dash_scales::decimate::{
-    ColOut, DecimateInput, Decimated, FarClip, INST_KIND_SHIFT, INST_LANE_SHIFT, INST_SLOT,
-    KIND_HLINE, LineInstance, decimate,
+    ColOut, Decimated, INST_KIND_SHIFT, INST_LANE_SHIFT, INST_SLOT, KIND_HLINE, LineInstance,
 };
 use dash_scales::encode::Encoding;
 use dash_scales::{ColumnRanges, column_ranges};
 use dash_wire::{Chunk, ChunkId};
 
 use super::defer::{Readback, TotalKey};
+use super::passes::{Composite, DimLayer, Pass, PassKind, Target, lanes_of};
 use super::pipeline::{Pipelines, pipelines};
 use super::t1::Compute;
 use crate::desc::{DrawList, DrawnEvent, MarkItem};
@@ -111,7 +114,7 @@ pub(super) struct PassU {
     pub(super) pad: [u32; 2],
 }
 
-/// The draw uniform (`line.wgsl` `View`, 256 bytes).
+/// The draw uniform (`line.wgsl` `View`, 288 bytes; plan #68 C2c2 appends the pass fields).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct ViewU {
@@ -125,6 +128,11 @@ struct ViewU {
     lane_z0: f32,
     lane_dz: f32,
     colours: [[f32; 4]; 9],
+    lane_only: u32,
+    guides: u32,
+    use_colour: u32,
+    pad: u32,
+    colour: [f32; 4],
 }
 
 /// A buffer that grows on demand and is never shrunk (L3).
@@ -222,12 +230,16 @@ pub(super) enum Draw {
     Indirect,
 }
 
-/// Where a frame goes: its view, device size and whether the next pass clears.
+/// Where a frame goes: its view, device size and whether the next pass clears; the target of the
+/// pass being drawn, and the dim layer's view and whether its next pass clears it.
 pub(super) struct Frame<'a> {
     pub(super) list: &'a DrawList,
     view: wgpu::TextureView,
     size: (u32, u32),
     first: bool,
+    pub(super) target: Target,
+    dim: Option<wgpu::TextureView>,
+    dim_first: bool,
 }
 
 /// The line renderer. One per device; it owns the pipelines, the per-item buffers and the
@@ -261,6 +273,11 @@ pub struct Renderer {
     pub(super) total: Option<u64>,
     /// The overlay pipeline (plan #68 C2b).
     overlay: Overlay,
+    /// The dim layer while a list has an emphasis, and its composite (plan #68 C2c2).
+    pub(super) dim: Option<DimLayer>,
+    pub(super) composite: Composite,
+    /// The passes of the last render (test hook).
+    pub(super) passes: Vec<PassKind>,
 }
 
 /// The fields of a `MarkItem::Line`.
@@ -269,13 +286,14 @@ pub(super) struct LineRef<'a> {
     pub(super) series: &'a std::ops::Range<u32>,
     window: (f64, f64),
     pub(super) n: u32,
-    plot: [f32; 4],
     pub(super) encoding: Encoding,
-    axis: (f32, f32),
-    colour_slots: &'a [u8],
-    lanes: Option<&'a [u16]>,
-    width_css: f32,
-    far: bool,
+    pub(super) plot: [f32; 4],
+    pub(super) axis: (f32, f32),
+    pub(super) colour_slots: &'a [u8],
+    pub(super) lanes: Option<&'a [u16]>,
+    pub(super) width_css: f32,
+    pub(super) far: bool,
+    pub(super) emphasis: Option<&'a crate::desc::Emphasis>,
 }
 
 impl<'a> LineRef<'a> {
@@ -293,6 +311,7 @@ impl<'a> LineRef<'a> {
                 lanes,
                 width_css,
                 far,
+                emphasis,
             } => Some(Self {
                 chunk,
                 series,
@@ -305,6 +324,7 @@ impl<'a> LineRef<'a> {
                 lanes: lanes.as_deref(),
                 width_css: *width_css,
                 far: *far,
+                emphasis: emphasis.as_ref(),
             }),
             MarkItem::Guides { .. } | MarkItem::Overlay { .. } => None,
         }
@@ -314,13 +334,14 @@ impl<'a> LineRef<'a> {
         self.series.end.saturating_sub(self.series.start)
     }
 
-    /// slot | lane << 16 per series.
+    /// slot | lane << 16 per series (the lanes of `passes::lanes_of`).
     pub(super) fn slot_lanes(&self) -> Vec<u32> {
-        (0..self.series_count() as usize)
-            .map(|s| {
+        lanes_of(self)
+            .into_iter()
+            .enumerate()
+            .map(|(s, lane)| {
                 let slot = u32::from(self.colour_slots.get(s).copied().unwrap_or(0)) & INST_SLOT;
-                let lane = u32::from(self.lanes.and_then(|l| l.get(s)).copied().unwrap_or(0));
-                slot | (lane << INST_LANE_SHIFT)
+                slot | (u32::from(lane) << INST_LANE_SHIFT)
             })
             .collect()
     }
@@ -371,6 +392,9 @@ impl Renderer {
             opts,
             p: pipelines(ctx, format),
             overlay: Overlay::new(ctx, format),
+            dim: None,
+            composite: Composite::new(ctx, format),
+            passes: Vec::new(),
             view_buf,
             compute,
             instances,
@@ -419,15 +443,20 @@ impl Renderer {
         // A newer render drops the previous frame's read-back.
         self.pending = None;
         self.awaiting = false;
+        self.passes.clear();
         let size = target.size_px();
         if size.0 == 0 || size.1 == 0 || !(list.css.0 > 0.0 && list.css.1 > 0.0) {
             return None;
         }
+        self.prepare_dim(ctx, list, size);
         let mut f = Frame {
             list,
             view: target.view(),
             size,
             first: true,
+            target: Target::Frame,
+            dim: self.dim.as_ref().map(|d| d.view.clone()),
+            dim_first: true,
         };
         let complete = self.draw(ctx, &mut f, None);
         let drawn = (complete && !list.items.is_empty()).then_some(DrawnEvent {
@@ -456,6 +485,7 @@ impl Renderer {
         target: &mut dyn FrameTarget,
     ) {
         self.draws = 0;
+        self.passes.clear();
         let size = target.size_px();
         if size.0 > 0 && size.1 > 0 {
             let mut f = Frame {
@@ -463,6 +493,9 @@ impl Renderer {
                 view: target.view(),
                 size,
                 first: true,
+                target: Target::Frame,
+                dim: None,
+                dim_first: true,
             };
             let _ = self.draw(ctx, &mut f, Some(instances));
         }
@@ -482,18 +515,18 @@ impl Renderer {
                 continue;
             };
             let g = std::mem::take(&mut guides);
-            self.write_view(ctx, f, line.plot, line.axis, line.width_css);
             complete &= match replace {
                 Some(raw) => {
                     let mut all = g;
                     all.extend_from_slice(raw);
+                    self.write_view(ctx, f, line.plot, line.axis, &Pass::all(line.width_css));
                     self.draw_list(ctx, f, &all)
                 }
                 None => self.draw_line(ctx, f, &line, &g),
             };
         }
         if !guides.is_empty() {
-            self.write_view(ctx, f, guides_plot, (0.0, 0.0), 0.0);
+            self.write_view(ctx, f, guides_plot, (0.0, 0.0), &Pass::all(0.0));
             complete &= self.draw_list(ctx, f, &guides);
         }
         // The overlay last, over everything, unclipped (plan #68 C2b §3.2).
@@ -514,25 +547,31 @@ impl Renderer {
         complete
     }
 
+    /// The view uniform of pass `p` (its lane, guides, colour and width) over `plot` and `axis`.
     pub(super) fn write_view(
         &self,
         ctx: &GpuContext,
         f: &Frame,
         plot: [f32; 4],
         axis: (f32, f32),
-        w: f32,
+        p: &Pass,
     ) {
         let v = ViewU {
             view_proj: f.list.view_proj,
             device_px: [f.size.0 as f32, f.size.1 as f32],
             dpr: f.list.dpr,
-            width_css: w,
+            width_css: p.width_css,
             plot,
             ku: axis.0,
             ou: axis.1,
             lane_z0: 0.0,
             lane_dz: 0.0,
             colours: f.list.palette.map(|c| c.to_f32()),
+            lane_only: p.lane_only,
+            guides: u32::from(p.guides),
+            use_colour: u32::from(p.colour.is_some()),
+            pad: 0,
+            colour: p.colour.unwrap_or([0.0; 4]),
         };
         ctx.queue
             .write_buffer(&self.view_buf, 0, bytemuck::bytes_of(&v));
@@ -555,12 +594,28 @@ impl Renderer {
         load
     }
 
-    fn begin_pass<'e>(enc: &'e mut wgpu::CommandEncoder, f: &mut Frame) -> wgpu::RenderPass<'e> {
-        let load = Self::load_op(f);
+    /// A render pass onto the pass's target: the frame (cleared by its first pass) or the dim
+    /// layer (cleared to transparent by its first pass); the plot scissor under a manual axis.
+    pub(super) fn begin_pass<'e>(
+        enc: &'e mut wgpu::CommandEncoder,
+        f: &mut Frame,
+    ) -> wgpu::RenderPass<'e> {
+        let to_dim = f.target == Target::Dim && f.dim.is_some();
+        let load = if !to_dim {
+            Self::load_op(f)
+        } else if std::mem::replace(&mut f.dim_first, false) {
+            wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+        } else {
+            wgpu::LoadOp::Load
+        };
+        let view = match (to_dim, f.dim.as_ref()) {
+            (true, Some(dim)) => dim,
+            _ => &f.view,
+        };
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("line"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &f.view,
+                view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
@@ -591,19 +646,7 @@ impl Renderer {
         self.draw_pass_on(ctx, enc, f, draw, None);
     }
 
-    /// `draw_pass` with the T1 status buffer, for `Draw::Indirect`.
-    pub(super) fn draw_pass_with(
-        &mut self,
-        ctx: &GpuContext,
-        enc: &mut wgpu::CommandEncoder,
-        f: &mut Frame,
-        draw: Draw,
-        c: &Compute,
-    ) {
-        self.draw_pass_on(ctx, enc, f, draw, Some(&c.status.buf));
-    }
-
-    fn draw_pass_on(
+    pub(super) fn draw_pass_on(
         &mut self,
         ctx: &GpuContext,
         enc: &mut wgpu::CommandEncoder,
@@ -627,7 +670,11 @@ impl Renderer {
         if empty_clip || matches!(draw, Draw::Direct(0)) {
             return;
         }
-        pass.set_pipeline(&self.p.line);
+        pass.set_pipeline(if f.target == Target::Dim {
+            &self.p.line_dim
+        } else {
+            &self.p.line
+        });
         pass.set_bind_group(0, &view_bg, &[]);
         pass.set_vertex_buffer(0, self.instances.buf.slice(..));
         match draw {
@@ -823,83 +870,6 @@ impl Renderer {
         self.resident[i].cpu = Some(bits);
         self.ranges_cache = Some(cache);
         ok
-    }
-
-    /// Decimates, uploads, draws and releases one batch at a time (§4.2), so at most one bounded
-    /// batch of instances is held and queued; batch 0 also yields `total` and is kept (without
-    /// its instances when there are more batches) for `read_decimation`.
-    fn draw_cpu_batches(
-        &mut self,
-        ctx: &GpuContext,
-        f: &mut Frame,
-        line: &LineRef,
-        guides: &[LineInstance],
-        bits: &[u32],
-        ranges: &ColumnRanges,
-    ) -> bool {
-        let offsets = &line.chunk.offsets[line.series.start as usize..=line.series.end as usize];
-        let lanes: Vec<u16> = match line.lanes {
-            Some(l) => l.to_vec(),
-            None => vec![0; line.series_count() as usize],
-        };
-        let far = line.far.then(|| FarClip {
-            values: &line.chunk.values,
-            clip: line.encoding.clip_box(),
-        });
-        let g = guides.len() as u64;
-        let max = self.max_instances(ctx);
-        let run = |window: std::ops::Range<u64>| {
-            decimate(&DecimateInput {
-                values_bits: bits,
-                offsets,
-                ranges,
-                n: line.n,
-                guides: g as u32,
-                colour_slots: line.colour_slots,
-                lanes: &lanes,
-                window,
-                far,
-            })
-        };
-        let mut first = Some(run(0..max));
-        let all = g + first.as_ref().map_or(0, |d| d.total);
-        self.size_instances(ctx, all);
-        let batches = self.batches(ctx, all);
-        let single = batches.len() == 1;
-        for (lo, hi) in batches {
-            let mut d = match first.take() {
-                Some(d) => d,
-                None => run(lo..hi),
-            };
-            let held = INSTANCE_BYTES * d.instances.len() as u64;
-            let peak = &mut self.counters.cpu_instance_bytes_peak;
-            *peak = (*peak).max(held);
-            for (k, gi) in guides.iter().enumerate().skip(lo as usize) {
-                if let Some(slot) = d.instances.get_mut(k - lo as usize) {
-                    *slot = *gi;
-                }
-            }
-            ctx.queue
-                .write_buffer(&self.instances.buf, 0, bytemuck::cast_slice(&d.instances));
-            let mut enc = ctx.device.create_command_encoder(&Default::default());
-            self.draw_pass(ctx, &mut enc, f, Draw::Direct(d.instances.len() as u32));
-            ctx.queue.submit([enc.finish()]);
-            if !single
-                && self.opts.sync == Sync::Block
-                && let Err(e) = ctx.wait()
-            {
-                self.error = Some(e);
-                return false;
-            }
-            if lo == 0 {
-                if !single {
-                    d.instances = Vec::new();
-                }
-                self.total = Some(d.total);
-                self.last = Some(LastLine::Cpu(d));
-            }
-        }
-        true
     }
 
     /// Test hook: the decimation buffers of the last Line item, read back (tier parity).

@@ -36,6 +36,10 @@ pub enum ColourRole {
     Watch,
     Degraded,
     Failing,
+    /// The selection band (T25-006): `accent` at 16 %.
+    Selection,
+    /// The selection underlay (T25-006).
+    Focus,
 }
 
 /// The token of `role` in `theme`.
@@ -50,6 +54,8 @@ pub fn colour(theme: Theme, role: ColourRole) -> Rgba8 {
         (Theme::Dark, ColourRole::Watch) => dark::WATCH,
         (Theme::Dark, ColourRole::Degraded) => dark::DEGRADED,
         (Theme::Dark, ColourRole::Failing) => dark::FAILING,
+        (Theme::Dark, ColourRole::Selection) => dark::SELECTION,
+        (Theme::Dark, ColourRole::Focus) => dark::FOCUS,
         (Theme::Light, ColourRole::Surface1) => light::SURFACE_1,
         (Theme::Light, ColourRole::Hairline) => light::HAIRLINE,
         (Theme::Light, ColourRole::TextMuted) => light::TEXT_MUTED,
@@ -58,6 +64,8 @@ pub fn colour(theme: Theme, role: ColourRole) -> Rgba8 {
         (Theme::Light, ColourRole::Watch) => light::WATCH,
         (Theme::Light, ColourRole::Degraded) => light::DEGRADED,
         (Theme::Light, ColourRole::Failing) => light::FAILING,
+        (Theme::Light, ColourRole::Selection) => light::SELECTION,
+        (Theme::Light, ColourRole::Focus) => light::FOCUS,
     }
 }
 

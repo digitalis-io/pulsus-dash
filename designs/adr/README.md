@@ -15,7 +15,7 @@
 | [0011](0011-terraform-provider-in-go.md) | Terraform provider written in Go | Proposed |
 | [0012](0012-derived-state-in-postgres.md) | Dash-derived state (alert history, baselines, anomaly scores, change events, fallback pyramids) lives in PostgreSQL | **Accepted** (2026-11-18) |
 | [0013](0013-metrics-data-scopes.md) | Data scopes on metrics without promoted resource attributes | Proposed — **open decision** |
-| [0014](0014-typescript-react-web-client.md) | TypeScript, React and Vite web client; a WASM chart engine later behind a typed API | **Accepted** (2026-11-19; amended by 0016, 0017, 0019, 0020, 0022, 0023, 0024, 0025, 0026, 0027, 0028) |
+| [0014](0014-typescript-react-web-client.md) | TypeScript, React and Vite web client; a WASM chart engine later behind a typed API | **Accepted** (2026-11-19; amended by 0016, 0017, 0019, 0020, 0022, 0023, 0024, 0025, 0026, 0027, 0028, 0031) |
 | [0015](0015-go-bff.md) | The BFF is written in Go | **Accepted** (2026-11-19; amended by 0021, query validation) |
 | [0016](0016-asset-integrity-verified-by-bff.md) | Asset integrity is verified by the BFF, not per module in the browser (amends 0014's lazy-chunk SRI) | **Accepted** (2026-11-19) |
 | [0017](0017-react-router.md) | React Router (data mode) replaces TanStack Router | **Accepted** (2026-11-19) |
@@ -23,15 +23,17 @@
 | [0019](0019-chart-frame-drawn-event-and-frame-id.md) | The chart engine seam reports completed draws (`drawn`) and carries a frame identity (`FrameInit.id`); amends 0014 §3 | **Accepted** (2026-11-21) |
 | [0020](0020-chart-camera-commit-and-value-range.md) | The chart engine seam reports camera commits (`commit`) and carries a value-axis range (`valueRange`, `valueAxis`); amends 0014 §3 | **Accepted** (2026-11-21) |
 | [0021](0021-query-planning-is-server-side.md) | Query planning (substitution, rate rewrites, size limits) is server-side, in the Go language modules; the browser sends inputs, not a plan; amends 0015 "Query validation" | **Accepted** (2026-11-21) |
-| [0022](0022-chart-thresholds-and-stat-sparkline.md) | The chart engine seam carries threshold lines (`thresholds`, `thresholdLabels`) and draws a stat sparkline; amends 0014 §3 | **Accepted** (2026-11-22) |
-| [0023](0023-chart-event-markers.md) | The chart engine seam carries event markers (`setEvents`, `eventLabels`), drawn as lines over the series with labels in a band above the plot; amends 0014 §3 | **Accepted** (2026-11-23) |
+| [0022](0022-chart-thresholds-and-stat-sparkline.md) | The chart engine seam carries threshold lines (`thresholds`, `thresholdLabels`) and draws a stat sparkline; amends 0014 §3 | **Accepted** (2026-11-22; amended by 0031) |
+| [0023](0023-chart-event-markers.md) | The chart engine seam carries event markers (`setEvents`, `eventLabels`), drawn as lines over the series with labels in a band above the plot; amends 0014 §3 | **Accepted** (2026-11-23; amended by 0031) |
 | [0024](0024-markdown-runtime-dependencies.md) | Markdown runtime dependencies: `commonmark`, `parse5` and `parse5-sax-parser` join the runtime allowlist, the parse5 tree and tokenizer used together as a union; amends 0014 §7 | **Accepted** (2026-11-25) |
-| [0025](0025-chart-frame-selection.md) | The chart engine seam carries the selection (`setSelection`, the `select` item) and draws it in the layer pass; amends 0014 §3 | **Accepted** (2026-11-25) |
+| [0025](0025-chart-frame-selection.md) | The chart engine seam carries the selection (`setSelection`, the `select` item) and draws it in the layer pass; amends 0014 §3 | **Accepted** (2026-11-25; amended by 0032) |
 | [0026](0026-engine-csp-and-worker-policy.md) | The chart engine's CSP: `'wasm-unsafe-eval'` and the `pulsus-engine` Trusted Types policy for its worker URLs; assets carry COEP; amends 0014 §9 | **Accepted** (2026-11-25) |
 | [0027](0027-geomap-frame-seam.md) | The chart engine seam carries the geomap (`geomap` kind, `geoCommit`, `geoBrush`, `geoMarks`, `setFocusMark`, `cameraKey`) in one Web Mercator world that never repeats across ±180°; amends 0014 §3 | **Accepted** (2026-11-25) |
 | [0028](0028-chart-seam-bar-chart.md) | The chart engine seam carries the bar chart (`barchart`, `categories`, `mark`, `pick`, `coverage`) with one category extent and layout for every engine; amends 0014 §3 | **Accepted** (2026-11-26; amended by 0029) |
 | [0029](0029-bar-chart-keys-and-brush.md) | The bar chart takes keys and brushes (`keyTarget` mirror listbox, `PickEvent.source`, focus mark, brush band); amends 0028 §4 | **Accepted** (2026-11-26) |
 | [0030](0030-engine-camera-controller-on-main.md) | A 2D engine frame's camera controller is the application's (#93's, shared with Canvas 2D), on the main thread; the worker applies the camera, band and value view from the input ring and emits no `commit`; amends 0014 §2 and 0020 decision 4 | **Accepted** (2026-11-26) |
+| [0031](0031-gpu-engine-default-renderer.md) | The GPU chart engine is the default renderer and Canvas 2D the fallback; only `canvas2d` forces Canvas 2D; a failed boot marks the session; every build includes the engine; amends 0014 §4, 0022 decision 2 and 0023 decision 4 | **Accepted** (2026-11-26) |
+| [0032](0032-selection-dims-as-one-layer.md) | While a selection is active, a line chart's unmatched series are dimmed together: one layer composited once at `dimmed`, in every renderer; amends 0025 | **Accepted** (2026-11-26) |
 
 Format: context, decision, consequences. An ADR is immutable once Accepted. It can be changed
 only by a later ADR that supersedes it.

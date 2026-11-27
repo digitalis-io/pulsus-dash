@@ -29,6 +29,9 @@ export interface Harness {
   /** The layer canvas's context (marks), and the visible canvas's (blit and overlay). */
   layer(): RecordingContext;
   visible(): RecordingContext;
+  /** The dim layer's scratch canvas (plan #68 C2c2, ADR-0032) and its context. */
+  scratchCanvas(): HTMLCanvasElement;
+  scratch(): RecordingContext;
   readonly a11y: FrameSummary[];
   readonly hover: (HoverEvent | null)[];
   readonly brush: BrushEvent[];
@@ -126,6 +129,12 @@ export function harness(
     queued: () => queue.size,
     layer: () => ctxOf(layers[0]),
     visible: () => ctxOf(canvas),
+    scratchCanvas: () => {
+      const c = layers[1];
+      if (c === undefined) throw new Error('no scratch canvas');
+      return c;
+    },
+    scratch: () => ctxOf(layers[1]),
     a11y,
     hover,
     brush,

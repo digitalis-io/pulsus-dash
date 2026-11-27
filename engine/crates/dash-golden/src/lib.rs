@@ -13,7 +13,9 @@ use dash_marks::line::{Renderer, RendererOptions};
 use dash_scales::Range64;
 use dash_scales::encode::{axis_map, choose_encoding, is_far};
 use dash_scene::hover::{HoverAt, hover_at, overlay_item};
-use dash_scene::{Band, Camera, PlotCamera, Size64, Theme, ValueRange, Viewport, VisSpec, YRange};
+use dash_scene::{
+    Band, Camera, PlotCamera, SelectionIn, Size64, Theme, ValueRange, Viewport, VisSpec, YRange,
+};
 use dash_tokens::Rgba8;
 use dash_wire::{Chunk, ChunkBuilder, ChunkId, SeriesMeta};
 use pulsus_synth::{GALLERY_WINDOW, GalleryLine, gallery_line};
@@ -175,6 +177,7 @@ pub fn page_viewport(
         data: Some(Arc::new(chunk)),
         band: Band::Measure,
         events: std::sync::Arc::from([]),
+        selection: Default::default(),
     }
 }
 
@@ -251,6 +254,7 @@ pub fn layer_viewport(id: &str, theme: Theme, css: Size64, dpr: f32) -> Result<V
         data: Some(Arc::new(fixture_chunk(&row["series"])?)),
         band: Band::Measure,
         events: Arc::from(fixture_nums(&row["events"])),
+        selection: Default::default(),
     })
 }
 
@@ -330,7 +334,9 @@ pub struct OverlayAt {
 }
 
 /// Renders a gallery page with the overlay the engine draws for `o` (plan #68 C2b): the pointer
-/// hover picked on the page's presentation (`dash-scene::hover`) and the box band.
+/// hover picked on the page's presentation (`dash-scene::hover`) and the box band; and with the
+/// page `selection` (plan #68 C2c2: the emphasis and the interval band).
+#[allow(clippy::too_many_arguments)]
 pub fn render_page_overlay(
     ctx: &GpuContext,
     page: GalleryLine,
@@ -339,8 +345,10 @@ pub fn render_page_overlay(
     dpr: f32,
     value_range: Option<ValueRange>,
     o: OverlayAt,
+    selection: &SelectionIn,
 ) -> Image {
-    let v = page_viewport(page, theme, css, dpr, value_range);
+    let mut v = page_viewport(page, theme, css, dpr, value_range);
+    v.selection = Arc::new(selection.clone());
     let b = dash_scene::build_frame(&v);
     let mut list = b.list;
     if let Some(p) = b.pick.as_deref() {
@@ -391,6 +399,7 @@ pub fn line_list(
             axis: (m.ku as f32, m.ou as f32),
             colour_slots: (0..s).map(|k| (k % 8) as u8).collect(),
             lanes: None,
+            emphasis: None,
             width_css: dash_tokens::size::CHART_LINE,
             chunk,
         });

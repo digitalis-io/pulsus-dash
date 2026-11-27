@@ -11,6 +11,8 @@ import { frame, GALLERY_IDS, GALLERY_URL, galleryReady } from './helpers.ts';
 import { decodePng } from './png.ts';
 
 export const ENGINE_URL = `${GALLERY_URL}&engine=wasm`;
+/** The unflagged release BFF (`make e2e-build-release`, plan #256 §4.3): the engine by default. */
+export const RELEASE_URL = 'http://localhost:4176';
 
 /** The engine tier a project runs (playwright.engine.config.ts). */
 export interface Tier {
@@ -233,10 +235,16 @@ export function nativeRender(o: {
   /** Plan #68 C2b: a pointer hover and a box band, canvas CSS px (`--hover x,y`, `--box x0,x`). */
   hover?: readonly [number, number];
   box?: readonly [number, number];
+  /** Plan #68 C2c2: the page selection (`--select-keys`, `--select-interval` ms). */
+  select?: { readonly keys: readonly string[]; readonly interval?: readonly [number, number] };
 }): void {
   const overlay = [
     ...(o.hover === undefined ? [] : ['--hover', o.hover.join(',')]),
     ...(o.box === undefined ? [] : ['--box', o.box.join(',')]),
+    ...(o.select === undefined || o.select.keys.length === 0
+      ? []
+      : ['--select-keys', o.select.keys.join(',')]),
+    ...(o.select?.interval === undefined ? [] : ['--select-interval', o.select.interval.join(',')]),
   ];
   const r = spawnSync(
     goldenBin(),

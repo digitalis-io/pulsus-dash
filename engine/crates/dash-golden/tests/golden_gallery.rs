@@ -4,7 +4,8 @@
 //! `golden:engine-overlay` (plan #68 C2b §5; T02-029): `line-50` dark and light with a hover at the
 //! plot's centre column and a box band, T1 and T2 within mean ꟻLIP 0.001. Plan #68 C2c1 §5: the
 //! layer pages `line-thresholds` and `line-events` (inputs from `layer.json`), dark and light,
-//! against their committed PNGs, T1 and T2 within mean ꟻLIP 0.001.
+//! against their committed PNGs, T1 and T2 within mean ꟻLIP 0.001. Plan #68 C2c2 §5: the
+//! selection pages `line-50-selection`, dark and light (series 3 selected, 12:10–12:20), likewise.
 mod common;
 
 use common::*;
@@ -13,7 +14,7 @@ use dash_golden::{
     pages, pinned_driver, render_layer_page, render_page, render_page_overlay,
 };
 use dash_gpu::Tier;
-use dash_scene::Theme;
+use dash_scene::{SelectionIn, Theme};
 use pulsus_synth::GalleryLine;
 
 #[test]
@@ -73,8 +74,26 @@ fn golden_engine_overlay() {
             hover: Some((xs(0.5), p.y + p.height / 2.0)),
             box_x: Some((xs(0.2), xs(0.4))),
         };
-        let a = render_page_overlay(&t1, GalleryLine::Line50, theme, PAGE_CSS, 1.0, None, o);
-        let b = render_page_overlay(&t2, GalleryLine::Line50, theme, PAGE_CSS, 1.0, None, o);
+        let a = render_page_overlay(
+            &t1,
+            GalleryLine::Line50,
+            theme,
+            PAGE_CSS,
+            1.0,
+            None,
+            o,
+            &SelectionIn::default(),
+        );
+        let b = render_page_overlay(
+            &t2,
+            GalleryLine::Line50,
+            theme,
+            PAGE_CSS,
+            1.0,
+            None,
+            o,
+            &SelectionIn::default(),
+        );
         let plain = render_page(&t1, GalleryLine::Line50, theme, PAGE_CSS, 1.0, None);
         let tiers = flip_mean(&a, &b, &[]);
         if tiers.is_nan() || tiers > 0.001 {
@@ -97,6 +116,46 @@ fn golden_engine_overlay() {
                 }
             }
             Err(e) => failures.push(format!("{name} overlay: no baseline ({e})")),
+        }
+    }
+    // Plan #68 C2c2: `line-50` with series 3 selected and the interval 12:10–12:20.
+    let selection = selection_of_line50();
+    for (theme, name) in [(Theme::Dark, "dark"), (Theme::Light, "light")] {
+        let render = |t| {
+            render_page_overlay(
+                t,
+                GalleryLine::Line50,
+                theme,
+                PAGE_CSS,
+                1.0,
+                None,
+                OverlayAt::default(),
+                &selection,
+            )
+        };
+        let (a, b) = (render(&t1), render(&t2));
+        let plain = render_page(&t1, GalleryLine::Line50, theme, PAGE_CSS, 1.0, None);
+        let tiers = flip_mean(&a, &b, &[]);
+        if tiers.is_nan() || tiers > 0.001 {
+            failures.push(format!("selection {name}: T1 vs T2 mean FLIP {tiers}"));
+        }
+        if a == plain {
+            failures.push(format!("selection {name}: no selection drawn"));
+        }
+        let path = goldens_dir().join(format!("line-50-selection-{name}.png"));
+        if update {
+            let w = a.write_png(&path);
+            assert!(w.is_ok(), "{name}: {w:?}");
+            continue;
+        }
+        match Image::read_png(&path) {
+            Ok(golden) => {
+                let mean = flip_mean(&golden, &a, &[]);
+                if mean.is_nan() || mean > 0.005 {
+                    failures.push(format!("selection {name}: mean FLIP {mean}"));
+                }
+            }
+            Err(e) => failures.push(format!("selection {name}: no baseline ({e})")),
         }
     }
     for id in LAYER_PAGES {
@@ -128,4 +187,12 @@ fn golden_engine_overlay() {
         }
     }
     assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// `line-50`'s selection page (plan #68 C2c2 §5): series 3's key and 12:10–12:20.
+fn selection_of_line50() -> SelectionIn {
+    let (chunk, _) = pulsus_synth::gallery_line(GalleryLine::Line50, pulsus_synth::GALLERY_WINDOW);
+    let key = format!("{:016x}", chunk.series[3].key_hash);
+    let t0 = pulsus_synth::GALLERY_WINDOW.0;
+    SelectionIn::new([key.as_str()], Some(t0 + 600_000.0), Some(t0 + 1_200_000.0))
 }

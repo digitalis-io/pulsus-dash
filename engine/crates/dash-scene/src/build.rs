@@ -2,7 +2,8 @@
 //! function of the viewport: the caller sets the camera and the band (D-GESTURE). [`build_frame`]
 //! also returns the stage (plan #68 C2a2) and what picking reads (plan #68 C2b): the chunk, the
 //! series shown, the view and the value axis of the list. Plan #68 C2c1: thresholds widen the auto
-//! domain, events reserve the label band, and both are drawn as a layer `Overlay` item.
+//! domain, events reserve the label band, and both are drawn as a layer `Overlay` item. Plan #68
+//! C2c2: the selection tags the Line item with its emphasis and puts its band first in that item.
 
 use dash_axes::{PlotRect, VisKind, event_band, value_axis};
 use dash_marks::desc::{DrawList, MarkItem};
@@ -13,6 +14,7 @@ use dash_wire::Chunk;
 
 use crate::camera::{Camera, YRange, js_round};
 use crate::layer::{event_shapes, threshold_shapes, with_thresholds};
+use crate::selection::{emphasis, matched, selection_band};
 use crate::spec::VisSpec;
 use crate::summary::{FrameSummary, ValueAxisSummary};
 use crate::{Size64, Viewport};
@@ -182,13 +184,18 @@ pub fn build_frame(v: &Viewport) -> Built {
             axis: (m.ku as f32, m.ou as f32),
             colour_slots,
             lanes: None,
+            emphasis: matched(chunk, shown, &v.selection).map(|m| emphasis(m, v.theme)),
             width_css: dash_tokens::size::CHART_LINE,
             far: is_far(&enc, chunk.finite),
         });
     }
-    // The layer marks (plan #68 C2c1 §4.2): thresholds, then events, over the series and under the
-    // hover overlay; clipped to the plot by construction.
-    let mut shapes = threshold_shapes(&axis, &spec.thresholds, v.theme);
+    // The layer marks (plan #68 C2c1 §4.2, C2c2 §4.2): the selection band, thresholds, then events
+    // (Canvas 2D's order), over the series and under the hover overlay; inside the plot by
+    // construction.
+    let mut shapes: Vec<_> = selection_band(&plot, window, &v.selection, v.dpr, v.theme)
+        .into_iter()
+        .collect();
+    shapes.extend(threshold_shapes(&axis, &spec.thresholds, v.theme));
     shapes.extend(event_shapes(&plot, window, &v.events, axis.manual, v.theme));
     if !shapes.is_empty() {
         list.items.push(MarkItem::Overlay { shapes });
