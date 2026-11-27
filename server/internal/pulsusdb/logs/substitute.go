@@ -1,6 +1,9 @@
 package logs
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // segmentKind is how a segment maps its bytes (plan #112 §4.2, unchanged).
 type segmentKind int
@@ -39,21 +42,28 @@ func at(segs []segment, total, s int) (int, bool) {
 	return 0, false
 }
 
-// The step macros.
+// The macros: the step macros and the range macros of the request window (#291).
 const (
 	macroInterval     = "__interval"
 	macroRateInterval = "__rate_interval"
+	macroRange        = "__range"
+	macroRangeS       = "__range_s"
+	macroRangeMs      = "__range_ms"
 	maxNameLen        = 64
 )
 
-// macroText is the text of each macro: the placeholder "1s" in Prepare, the durations at the step
-// in Plan.
-type macroText struct{ interval, rateInterval string }
+// macroText is the text of each macro: the placeholders in Prepare ("1s" for a duration, "1" for
+// a number), the step durations and the window in Plan.
+type macroText struct{ interval, rateInterval, rng, rngS, rngMs string }
 
-func placeholders() macroText { return macroText{interval: "1s", rateInterval: "1s"} }
+func placeholders() macroText {
+	return macroText{interval: "1s", rateInterval: "1s", rng: "1s", rngS: "1", rngMs: "1"}
+}
 
-func macrosAt(stepMs int64) macroText {
-	return macroText{interval: FormatDuration(stepMs), rateInterval: FormatDuration(RateWindowMs(stepMs))}
+func macrosAt(stepMs, rangeMs int64) macroText {
+	s := RangeSeconds(rangeMs)
+	return macroText{interval: FormatDuration(stepMs), rateInterval: FormatDuration(RateWindowMs(stepMs)),
+		rng: FormatDuration(s * 1000), rngS: strconv.FormatInt(s, 10), rngMs: strconv.FormatInt(rangeMs, 10)}
 }
 
 // lexState is the lexical state of the substitution scan (plan #116 §4.2). PulsusDB's LogQL has
@@ -72,6 +82,7 @@ type substitution struct {
 	size            int      // bytes of the substituted text
 	missing         []string // referenced variables without a value: distinct, first-reference order
 	unrepresentable []string // referenced values that cannot be written where they are (row 7b)
+	rangeMacro      bool     // a range macro is referenced
 	text            string   // built only when asked
 	segs            []segment
 }
@@ -207,6 +218,12 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 				value, subst = m.interval, true
 			case name == macroRateInterval:
 				value, subst = m.rateInterval, true
+			case name == macroRange:
+				value, subst, out.rangeMacro = m.rng, true, true
+			case name == macroRangeS:
+				value, subst, out.rangeMacro = m.rngS, true, true
+			case name == macroRangeMs:
+				value, subst, out.rangeMacro = m.rngMs, true, true
 			case strings.HasPrefix(name, "__") || len(name) > maxNameLen:
 			default:
 				if v, has := vars[name]; has {

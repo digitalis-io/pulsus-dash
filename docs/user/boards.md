@@ -194,7 +194,11 @@ and what the server makes of it:
 - **The query as you wrote it**, with the values of the board variables it uses (see
   [the filter bar](#the-filter-bar)). The server puts the values in, expands the macros and sends
   the result to the data source: `$__interval` is the panel's step (one point per pixel or two of
-  its width) and `$__rate_interval` the rate window for that step.
+  its width), `$__rate_interval` the rate window for that step, and `$__range` the board's time
+  range (`$__range_s` and `$__range_ms` the same in seconds and milliseconds), so
+  `sum(increase(x_total[$__range]))` is the total over the board's window. A query whose result
+  is a scalar or a string runs as an instant query, which has no window, so the range macros are
+  refused there.
 - **A counter is drawn as a rate.** A bare counter such as `http_requests_total` is sent as
   `rate(http_requests_total[<window>])` with the window for the panel's step, and the header reads
   "in /s".

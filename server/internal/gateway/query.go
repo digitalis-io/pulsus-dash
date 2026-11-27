@@ -216,7 +216,8 @@ func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 	rate := req.Rate == nil || *req.Rate
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
-	pr, e := q.planFor(ctx, tenant, promplan.Inputs{Query: *req.Query, Vars: req.Vars, Kind: promplan.KindRange, Rate: rate, StepMs: grid.Step})
+	pr, e := q.planFor(ctx, tenant, promplan.Inputs{Query: *req.Query, Vars: req.Vars, Kind: promplan.KindRange, Rate: rate, StepMs: grid.Step,
+		RangeMs: to - from})
 	if e != nil || pr == nil {
 		if e != nil {
 			writeReqError(w, e)
@@ -376,6 +377,7 @@ func (q *dataRoutes) serveInstant(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
+	// The instant body has no window, so a range macro is refused (#291).
 	pr, e := q.planFor(ctx, tenant, promplan.Inputs{Query: *req.Query, Vars: req.Vars, Kind: promplan.KindInstant, Rate: true, StepMs: stepMs})
 	if e != nil || pr == nil {
 		if e != nil {

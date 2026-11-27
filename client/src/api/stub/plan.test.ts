@@ -28,6 +28,7 @@ function inputsOf(c: FixtureCase) {
     kind: c.inputs.kind,
     stepMs: c.inputs.step_ms,
     rate: c.inputs.rate,
+    ...(c.inputs.range_ms === undefined ? {} : { rangeMs: c.inputs.range_ms }),
   };
 }
 

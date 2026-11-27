@@ -2166,6 +2166,117 @@
     ],
     "position": 10
    }
+  },
+  {
+   "name": "RG1 range macro on a 6 h window",
+   "from": "issue #291",
+   "inputs": {
+    "query": "sum(count_over_time({app=\"x\"}[$__range]))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 60000,
+    "range_ms": 21600000
+   },
+   "substituted": "sum(count_over_time({app=\"x\"}[1s]))",
+   "planned": {
+    "query": "sum(count_over_time({app=\"x\"}[6h]))",
+    "expanded": "sum(count_over_time({app=\"x\"}[6h]))",
+    "bytes": 35,
+    "step_ms": 60000
+   }
+  },
+  {
+   "name": "RG2 range in seconds and milliseconds in a string",
+   "from": "issue #291",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$__range_s ${__range_ms}\"",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 60000,
+    "range_ms": 1500
+   },
+   "substituted": "{app=\"x\"} |= \"1 1\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"2 1500\"",
+    "expanded": "{app=\"x\"} |= \"2 1500\"",
+    "bytes": 21,
+    "step_ms": 60000
+   }
+  },
+  {
+   "name": "RG3 sub-second window is at least 1 s",
+   "from": "issue #291",
+   "inputs": {
+    "query": "rate({app=\"x\"}[$__range])",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 60000,
+    "range_ms": 999
+   },
+   "substituted": "rate({app=\"x\"}[1s])",
+   "planned": {
+    "query": "rate({app=\"x\"}[1s])",
+    "expanded": "rate({app=\"x\"}[1s])",
+    "bytes": 19,
+    "step_ms": 60000
+   }
+  },
+  {
+   "name": "RG4 a year",
+   "from": "issue #291",
+   "inputs": {
+    "query": "sum(count_over_time({app=\"x\"}[$__range]))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 60000,
+    "range_ms": 31536000000
+   },
+   "substituted": "sum(count_over_time({app=\"x\"}[1s]))",
+   "planned": {
+    "query": "sum(count_over_time({app=\"x\"}[365d]))",
+    "expanded": "sum(count_over_time({app=\"x\"}[365d]))",
+    "bytes": 37,
+    "step_ms": 60000
+   }
+  },
+  {
+   "name": "RG5 volume with a range macro",
+   "from": "issue #291",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$__range\"",
+    "vars": {},
+    "kind": "volume",
+    "step_ms": 5000,
+    "range_ms": 3600000
+   },
+   "substituted": "{app=\"x\"} |= \"1s\"",
+   "planned": {
+    "query": "sum by (level, detected_level) (count_over_time({app=\"x\"} |= \"1h\"\n| drop __error__ [5s]))",
+    "expanded": "{app=\"x\"} |= \"1h\"",
+    "bytes": 89,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "RG6 range macro without a window",
+   "from": "issue #291",
+   "inputs": {
+    "query": "sum(count_over_time({app=\"x\"}[$__range]))",
+    "vars": {},
+    "kind": "range",
+    "step_ms": 60000,
+    "range_ms": 0
+   },
+   "error": {
+    "status": 400,
+    "message": "$__range, $__range_s and $__range_ms need a time window, and the request has none",
+    "fields": [
+     {
+      "pointer": "/query",
+      "message_key": "query.no_window"
+     }
+    ]
+   }
   }
  ],
  "reserved": [
