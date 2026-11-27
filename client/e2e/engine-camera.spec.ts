@@ -561,7 +561,9 @@ test.describe('e2e:engine-camera', () => {
       const cy = box.y + plot.y + plot.height / 2;
       const url0 = page.url();
       await page.mouse.move(cx, cy);
+      await page.keyboard.down('Control');
       await page.mouse.wheel(0, -300);
+      await page.keyboard.up('Control');
       await expect.poll(() => page.url(), { timeout: 2_000 }).not.toBe(url0);
       const url1 = page.url();
       await galleryReady(page);

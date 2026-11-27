@@ -76,6 +76,7 @@ import styles from './ChartFrame.module.css';
 import { ChartTooltip } from './ChartTooltip';
 import { BarList } from './BarList';
 import { MarkTooltip } from './MarkTooltip';
+import { useWheelHint } from './WheelHint';
 import {
   crosshairText,
   eventText,
@@ -357,6 +358,8 @@ export function ChartFrame({
   const geoTipRef = useRef<HTMLDivElement>(null);
   const barListId = useId();
   const [unsupported, setUnsupported] = useState(false);
+  const wheelHint = useWheelHint();
+  const showWheelHint = wheelHint.show;
   const ownSize = useRef<FrameSize | null>(null);
   const memo = sizeMemo ?? ownSize;
   // Drawn at its current size: `pending` hides. The ref skips redundant updates (hover redraws).
@@ -433,6 +436,9 @@ export function ChartFrame({
       }),
       frame.on('mark', (m) => {
         setMark(m);
+      }),
+      frame.on('wheelHint', () => {
+        showWheelHint();
       }),
       frame.on('pick', (e) => {
         latest.current.onPick?.(e, listRef.current);
@@ -535,7 +541,7 @@ export function ChartFrame({
       canvasRef.current = null;
       setDrawnTo(false, false);
     };
-  }, [engine, tz, noCrosshair, isBar, isStat, isGeo, fill, memo]);
+  }, [engine, tz, noCrosshair, isBar, isStat, isGeo, fill, memo, showWheelHint]);
 
   useEffect(() => {
     // A kind change on a kept frame clears its canvas (the engine), so it is not drawn.
@@ -803,6 +809,7 @@ export function ChartFrame({
         <p className={cx(styles['notice'])}>{t('chart.invalid', { reason: issueText(issue) })}</p>
       )}
       {unsupported && <p className={cx(styles['notice'])}>{t('chart.unsupported')}</p>}
+      {!isStat && !isGeo && !isBar && wheelHint.hint}
       {pending !== undefined && !drawn && !unsupported && (
         <div className={cx(styles['pending'])} data-chart-pending="">
           {pending}
