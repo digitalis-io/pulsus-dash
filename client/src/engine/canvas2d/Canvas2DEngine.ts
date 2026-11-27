@@ -81,7 +81,23 @@ export interface Canvas2DOptions {
   clearTimer?: (id: number) => void;
   /** Default: one `windowWheelLatch(globalThis)` per page, created at the first `createFrame`. */
   wheelLatch?: WheelLatch;
+  /** The geomap scene module (plan #234 Part 2 §3.1); default `loadGeoModule`. */
+  loadGeo?: () => Promise<GeoModule>;
 }
+
+/** The geomap scene's dynamic entry (ADR-0027): imported on a frame's first `geomap` spec. */
+export type GeoModule = typeof import('./geo/scene');
+
+/**
+ * A loader of the geo module over `imp`: one shared promise, kept on success; a rejection clears
+ * it, so the next call imports again (plan #234 Part 2 §3.1).
+ */
+export function geoModuleLoader(imp: () => Promise<GeoModule>): () => Promise<GeoModule> {
+  return imp;
+}
+
+/** The page's geo module loader. */
+export const loadGeoModule: () => Promise<GeoModule> = geoModuleLoader(() => import('./geo/scene'));
 
 interface Resolved {
   requestFrame: (cb: () => void) => number;

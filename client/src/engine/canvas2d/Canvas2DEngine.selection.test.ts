@@ -6,7 +6,8 @@ import type { FrameData, FrameSelection, VisSpec } from '../api';
 import { harness, pointer, seriesData, seriesFrame, type Harness } from '../../test/engineHarness';
 import { last, xOf } from '../../test/cameraKit';
 import type { RecordedOp } from '../../test/recordingContext';
-import { Canvas2DEngine } from './Canvas2DEngine';
+import { frameOf, geoSpec } from '../../test/geoKit';
+import { Canvas2DEngine, loadGeoModule } from './Canvas2DEngine';
 import { seriesColourIndex, themeColours } from './palette';
 
 const K1 = '00000000000000a1';
@@ -404,5 +405,80 @@ describe('unit:selection-draw', () => {
     f.frame.setSelection(sel([K1]));
     f.flush();
     expect(calls(third)).toEqual(calls(f.scratch().ops));
+  });
+});
+
+describe('unit:selection-draw (geomap, T24-092)', () => {
+  /** G's marks at fit (T24 §10.4). */
+  const MARKS: [string, number, number][] = [
+    ['cluster:k03', 389.19, 154.65],
+    ['cluster:k07', 48.0, 215.77],
+    ['k05', 976.0, 242.09],
+    ['k14', 371.94, 411.2],
+    ['k06', 827.13, 405.29],
+  ];
+  const near = (o: RecordedOp, x: number, y: number): boolean =>
+    Math.abs((o.args[0] as number) - x) < 0.01 && Math.abs((o.args[1] as number) - y) < 0.01;
+
+  /** Per mark: the alpha of the fill of its disc, and whether a 2 px focus ring is stroked about it. */
+  function marks(ops: readonly RecordedOp[]): Record<string, [number | null, boolean]> {
+    const out: Record<string, [number | null, boolean]> = {};
+    for (const [id, x, y] of MARKS) {
+      let arcs: RecordedOp[] = [];
+      let alpha: number | null = null;
+      let ring = false;
+      for (const o of ops) {
+        if (o.op === 'beginPath') arcs = [];
+        else if (o.op === 'arc') arcs.push(o);
+        else if (o.op === 'fill' && alpha === null && arcs.some((a) => near(a, x, y)))
+          alpha = o.globalAlpha;
+        else if (
+          o.op === 'stroke' &&
+          o.strokeStyle === C.focus &&
+          o.lineWidth === 2 &&
+          arcs.some((a) => near(a, x, y))
+        )
+          ring = true;
+      }
+      out[id] = [alpha, ring];
+    }
+    return out;
+  }
+
+  async function geo(): Promise<Harness> {
+    const mod = await loadGeoModule();
+    const h = harness(Canvas2DEngine, { loadGeo: () => Promise.resolve(mod), clockNow: true });
+    h.frame.setSpec(geoSpec({ motion: 'cut' }));
+    h.frame.setData({ kind: 'geo', geo: frameOf() });
+    h.frame.resize(1024, 512, 1);
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+    h.flush();
+    return h;
+  }
+
+  function geoWith(h: Harness, keys: string[]): Record<string, [number | null, boolean]> {
+    h.visible().clearOps();
+    h.frame.setSelection(sel(keys));
+    h.flush();
+    return marks(h.visible().ops);
+  }
+
+  it('[k03]: cluster:k03 ringed, the other 4 marks dimmed', async () => {
+    const h = await geo();
+    expect(geoWith(h, ['k03'])).toEqual({
+      'cluster:k03': [1, true],
+      'cluster:k07': [C.dimmed, false],
+      k05: [C.dimmed, false],
+      k14: [C.dimmed, false],
+      k06: [C.dimmed, false],
+    });
+  });
+
+  it('[k10] (loaded, not placed): all 5 dimmed; [zz] (foreign): none dimmed', async () => {
+    const h = await geo();
+    const all = (a: number) =>
+      Object.fromEntries(MARKS.map(([id]) => [id, [a, false] as [number, boolean]]));
+    expect(geoWith(h, ['k10'])).toEqual(all(C.dimmed));
+    expect(geoWith(h, ['zz'])).toEqual(all(1));
   });
 });

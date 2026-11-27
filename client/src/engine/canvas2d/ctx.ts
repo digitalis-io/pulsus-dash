@@ -16,6 +16,7 @@ export type Ctx2D = Pick<
   | 'drawImage'
   | 'rect'
   | 'clip'
+  | 'createPattern'
   | 'save'
   | 'restore'
   | 'rotate'
