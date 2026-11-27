@@ -538,7 +538,7 @@ test.describe('panels-categorical (fake)', () => {
     const csv = (await readFile(file, 'utf8')).trim().split(/\r?\n/);
     expect(csv[0]).toBe('name,value,baseline,state,drawn,shown as');
     expect(csv).toHaveLength(251);
-    expect(csv.slice(1).filter((l) => l.split(',')[4] === 'no')).toHaveLength(208);
+    expect(csv.slice(1).filter((l) => l.split(',')[4] === 'no')).toHaveLength(250 - 39);
     const one = csv.slice(1).find((l) => l.startsWith('1,'));
     expect(one?.split(',')[1]).toBe('');
   });

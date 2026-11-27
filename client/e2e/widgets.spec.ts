@@ -684,6 +684,10 @@ test.describe('Text widget', () => {
         name: t('widget.text.previewLabel', { title: 'Note' }),
       });
       await expect(preview).toContainText('Short.');
+      // The dialog's entrance and the segmented thumb's colour change run first.
+      await page.evaluate(() =>
+        Promise.all(document.getAnimations().map((x) => x.finished.catch(() => undefined))),
+      );
       if (axe) expect(await axeSerious(page)).toEqual([]);
       await editor
         .getByRole('textbox', { name: t('widget.text.content') })
