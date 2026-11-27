@@ -17,7 +17,7 @@ and [ADR-0039](../../designs/adr/0039-data-crossfade-on-the-seam.md); the user's
 | `src/data/rangeScheduler.ts` | the page's one scheduler of board range requests |
 | `src/boards/rangeView.ts` | `planRangeView`, `chunkable`, `usesRangeMacro`, `ladderOf`, `coarseStep` |
 | `src/boards/panelStore.ts` | the panel run's store helpers: `useStoreRun`, `outcomeOf`, the lease gate |
-| `src/app/providers.tsx` | `useRangeStore`; the session's scope epochs into the store, a dropped tenant's queries removed, the lease tick |
+| `src/data/useRangeStore.ts` | `useRangeStore`: the store made on first use in the providers' slot (`src/app/providers.tsx`, so none of it is in the initial bundle) and wired there: the session's scope epochs observed at their receipt time, a dropped tenant's queries removed, the lease ticked every second |
 
 ## Buckets and identities
 
@@ -121,7 +121,7 @@ A response without scope headers (the stub, an older BFF) confirms the current e
 
 ## The scheduler
 
-Every board range request of the page runs through one scheduler (`useRangeStore().scheduler`):
+Every board range request of the page runs through one scheduler (`useRangeStore().scheduler`, `src/data/useRangeStore.ts`):
 store jobs, the single requests of bypassed and ineligible panels (`exec`), and LogQL frames and
 their volume.
 
