@@ -313,8 +313,8 @@ describe('panel menu', () => {
   });
 
   it.each([
-    [ABS, 'avg_over_time(x[5s]) + rate(y[1m])'],
-    [ABS24, 'avg_over_time(x[5m]) + rate(y[20m])'],
+    [ABS, 'avg_over_time(x[15s]) + rate(y[1m])'],
+    [ABS24, 'avg_over_time(x[1m]) + rate(y[75s])'],
   ])('open in Explore keeps the macros: %s', async (search, want) => {
     const t = openBoard([panel('p-1', 'Mix', MIX)], { search });
     await ready('Mix');
@@ -342,13 +342,13 @@ describe('panel menu', () => {
     show('Mix');
     await settled(t, 'Mix');
     act(() => {
-      resizeAll(200, 240);
+      resizeAll(100, 240);
     });
     await calls(t, 2);
     await settled(t, 'Mix');
     await waitFor(async () => {
       expect(qOf((await exploreState(t, 'Mix')).itemHref)).toBe(
-        'avg_over_time(x[30s]) + rate(y[2m])',
+        'avg_over_time(x[30s]) + rate(y[1m])',
       );
     });
   });
@@ -361,7 +361,7 @@ describe('panel menu', () => {
       await settled(t, 'Mix');
       const s = await exploreState(t, 'Mix');
       expect(s.disabled).toBe(false);
-      expect(qOf(s.itemHref)).toBe('avg_over_time(x[5s]) + rate(y[1m])');
+      expect(qOf(s.itemHref)).toBe('avg_over_time(x[15s]) + rate(y[1m])');
       expect(s.link).toHaveAttribute('href', s.itemHref);
       const p = new URL(s.itemHref ?? '', 'http://x').searchParams;
       expect([p.get('from'), p.get('to')]).toEqual([
@@ -376,10 +376,10 @@ describe('panel menu', () => {
       const frames = t.engine.frames.length;
       const h = holdRange(t);
       act(() => {
-        resizeAll(200, 240);
+        resizeAll(100, 240);
       });
       await calls(t, 2);
-      expect(h.held[0]?.req.widthPx).toBe(200);
+      expect(h.held[0]?.req.widthPx).toBe(100);
       expect(t.engine.frames).toHaveLength(frames);
       // The chart stays (its own cover shows until it has drawn at the new size, #90).
       expect(panelState('Mix')).toBe('frame');
@@ -389,7 +389,7 @@ describe('panel menu', () => {
       await h.held[0]?.resolve();
       await waitFor(async () => {
         expect(qOf((await exploreState(t, 'Mix')).itemHref)).toBe(
-          'avg_over_time(x[30s]) + rate(y[2m])',
+          'avg_over_time(x[30s]) + rate(y[1m])',
         );
       });
     });
@@ -407,7 +407,7 @@ describe('panel menu', () => {
       await h.held[0]?.resolve();
       await waitFor(async () => {
         const s = await exploreState(t, 'Mix');
-        expect(qOf(s.itemHref)).toBe('avg_over_time(x[5m]) + rate(y[20m])');
+        expect(qOf(s.itemHref)).toBe('avg_over_time(x[1m]) + rate(y[75s])');
         const p = new URL(s.itemHref ?? '', 'http://x').searchParams;
         expect([p.get('from'), p.get('to')]).toEqual([
           '2026-11-18T13:00:00.000Z',
@@ -423,18 +423,18 @@ describe('panel menu', () => {
       await calls(t, 2);
       const s = await exploreState(t, 'Mix');
       expect(s.disabled).toBe(false);
-      expect(qOf(s.itemHref)).toBe('avg_over_time(x[5s]) + rate(y[1m])');
+      expect(qOf(s.itemHref)).toBe('avg_over_time(x[15s]) + rate(y[1m])');
       await h.held[0]?.resolve();
       expect(qOf((await exploreState(t, 'Mix')).itemHref)).toBe(
-        'avg_over_time(x[5s]) + rate(y[1m])',
+        'avg_over_time(x[15s]) + rate(y[1m])',
       );
     });
 
     it.each(['planned', 'none'] as const)('X4: an error after a resize: %s', async (c) => {
       const t = await x0();
       const P: PlannedQuery = {
-        query: 'avg_over_time(x[30s]) + rate(y[2m])',
-        expanded: 'avg_over_time(x[30s]) + rate(y[2m])',
+        query: 'avg_over_time(x[30s]) + rate(y[1m])',
+        expanded: 'avg_over_time(x[30s]) + rate(y[1m])',
         bytes: 35,
         valueType: 'vector',
         rateCandidate: false,

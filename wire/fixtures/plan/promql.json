@@ -1307,7 +1307,7 @@
     "value_type": "vector"
    },
    "planned": {
-    "query": "rate(x_total[2m])",
+    "query": "rate(x_total[1m])",
     "expanded": "x_total",
     "bytes": 17,
     "value_type": "vector",
@@ -1315,7 +1315,7 @@
     "rate_applied": true,
     "histogram": false,
     "step_ms": 30000,
-    "rate_window_ms": 120000
+    "rate_window_ms": 60000
    }
   },
   {
@@ -1343,7 +1343,7 @@
     "value_type": "vector"
    },
    "planned": {
-    "query": "sum by (le) (rate(h_bucket[2m]))",
+    "query": "sum by (le) (rate(h_bucket[1m]))",
     "expanded": "h_bucket",
     "bytes": 32,
     "value_type": "vector",
@@ -1351,7 +1351,7 @@
     "rate_applied": true,
     "histogram": true,
     "step_ms": 30000,
-    "rate_window_ms": 120000
+    "rate_window_ms": 60000
    }
   },
   {
@@ -1379,15 +1379,15 @@
     "value_type": "vector"
    },
    "planned": {
-    "query": "rate(x_total[4m])",
+    "query": "rate(x_total[75s])",
     "expanded": "x_total",
-    "bytes": 17,
+    "bytes": 18,
     "value_type": "vector",
     "rate_candidate": true,
     "rate_applied": true,
     "histogram": false,
     "step_ms": 60000,
-    "rate_window_ms": 240000
+    "rate_window_ms": 75000
    }
   },
   {
@@ -1415,15 +1415,15 @@
     "value_type": "vector"
    },
    "planned": {
-    "query": "sum by (le) (rate(h_bucket[4m]))",
+    "query": "sum by (le) (rate(h_bucket[75s]))",
     "expanded": "h_bucket",
-    "bytes": 32,
+    "bytes": 33,
     "value_type": "vector",
     "rate_candidate": true,
     "rate_applied": true,
     "histogram": true,
     "step_ms": 60000,
-    "rate_window_ms": 240000
+    "rate_window_ms": 75000
    }
   },
   {
@@ -1451,15 +1451,15 @@
     "value_type": "vector"
    },
    "planned": {
-    "query": "rate(x_total[4h])",
+    "query": "rate(x_total[3615s])",
     "expanded": "x_total",
-    "bytes": 17,
+    "bytes": 20,
     "value_type": "vector",
     "rate_candidate": true,
     "rate_applied": true,
     "histogram": false,
     "step_ms": 3600000,
-    "rate_window_ms": 14400000
+    "rate_window_ms": 3615000
    }
   },
   {
@@ -1487,15 +1487,15 @@
     "value_type": "vector"
    },
    "planned": {
-    "query": "sum by (le) (rate(h_bucket[4h]))",
+    "query": "sum by (le) (rate(h_bucket[3615s]))",
     "expanded": "h_bucket",
-    "bytes": 32,
+    "bytes": 35,
     "value_type": "vector",
     "rate_candidate": true,
     "rate_applied": true,
     "histogram": true,
     "step_ms": 3600000,
-    "rate_window_ms": 14400000
+    "rate_window_ms": 3615000
    }
   },
   {
@@ -2246,8 +2246,8 @@
     "value_type": "vector"
    },
    "planned": {
-    "query": "rate(x[2m])",
-    "expanded": "rate(x[2m])",
+    "query": "rate(x[1m])",
+    "expanded": "rate(x[1m])",
     "bytes": 11,
     "value_type": "vector",
     "rate_candidate": false,
@@ -4187,9 +4187,9 @@
     "value_type": "vector"
    },
    "planned": {
-    "query": "sum(rate(http_requests_total{job=\"api\"}[4m]))",
-    "expanded": "sum(rate(http_requests_total{job=\"api\"}[4m]))",
-    "bytes": 45,
+    "query": "sum(rate(http_requests_total{job=\"api\"}[75s]))",
+    "expanded": "sum(rate(http_requests_total{job=\"api\"}[75s]))",
+    "bytes": 46,
     "value_type": "vector",
     "rate_candidate": false,
     "rate_applied": false,
@@ -4813,9 +4813,9 @@
     "step_ms": 300000
    },
    "planned": {
-    "query": "sum by (service) (rate(http_requests_total[20m])) and on(service) pulsus_anomaly_score{signal=\"latency\"} > 0.8",
-    "expanded": "sum by (service) (rate(http_requests_total[20m])) and on(service) pulsus_anomaly_score{signal=\"latency\"} > 0.8",
-    "bytes": 110,
+    "query": "sum by (service) (rate(http_requests_total[315s])) and on(service) pulsus_anomaly_score{signal=\"latency\"} > 0.8",
+    "expanded": "sum by (service) (rate(http_requests_total[315s])) and on(service) pulsus_anomaly_score{signal=\"latency\"} > 0.8",
+    "bytes": 112,
     "value_type": "vector",
     "rate_candidate": false,
     "rate_applied": false,
@@ -6459,18 +6459,18 @@
   },
   {
    "step_ms": 30000,
-   "window_ms": 120000,
-   "text": "2m"
+   "window_ms": 60000,
+   "text": "1m"
   },
   {
    "step_ms": 60000,
-   "window_ms": 240000,
-   "text": "4m"
+   "window_ms": 75000,
+   "text": "75s"
   },
   {
    "step_ms": 3600000,
-   "window_ms": 14400000,
-   "text": "4h"
+   "window_ms": 3615000,
+   "text": "3615s"
   },
   {
    "step_ms": 1,
@@ -6489,13 +6489,28 @@
   },
   {
    "step_ms": 45000,
-   "window_ms": 180000,
-   "text": "3m"
+   "window_ms": 60000,
+   "text": "1m"
   },
   {
    "step_ms": 86400000,
-   "window_ms": 345600000,
-   "text": "4d"
+   "window_ms": 86415000,
+   "text": "86415s"
+  },
+  {
+   "step_ms": 45001,
+   "window_ms": 60001,
+   "text": "60001ms"
+  },
+  {
+   "step_ms": 120000,
+   "window_ms": 135000,
+   "text": "135s"
+  },
+  {
+   "step_ms": 300000,
+   "window_ms": 315000,
+   "text": "315s"
   }
  ],
  "durations": [

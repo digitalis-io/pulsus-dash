@@ -16,6 +16,15 @@ export const LADDER_MS: readonly number[] = [
 /** The most steps a range grid has (`promGrid` is null past it). */
 export const MAX_STEPS = 11000;
 
+/** Stub (#303). */
+export const PROM_LADDER_MS: readonly number[] = LADDER_MS;
+/** Stub (#303). */
+export const LOG_LADDER_MS: readonly number[] = LADDER_MS;
+/** Stub (#303). */
+export function logGrid(fromMs: number, toMs: number, widthPx: number): Grid | null {
+  return promGrid(fromMs, toMs, widthPx);
+}
+
 /**
  * The step is also the base of the rate window the server's planner writes for a bare counter or
  * histogram selector (`prom.RateWindowMs`, ADR-0021: at least 4 × step).

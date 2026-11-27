@@ -8,6 +8,12 @@ type Grid struct{ Start, End, Step int64 }
 // Ladder is the step ladder in ms (the issue's step rule).
 var Ladder = []int64{1e3, 5e3, 10e3, 15e3, 30e3, 60e3, 300e3, 900e3, 3600e3, 21600e3, 86400e3}
 
+// PromLadder is the PromQL step ladder (stub, #303).
+var PromLadder = Ladder
+
+// LogGrid is the log routes' grid (stub, #303).
+func LogGrid(fromMs, toMs int64, widthPx int) (Grid, error) { return PromGrid(fromMs, toMs, widthPx) }
+
 // maxSteps bounds the number of steps of a grid.
 const maxSteps = 11000
 
