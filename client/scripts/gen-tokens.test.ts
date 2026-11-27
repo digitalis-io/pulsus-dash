@@ -20,10 +20,52 @@ describe('tokens generate', () => {
   it('emits the dark canvas and surfaces and the sidebar width', () => {
     const { css } = generate(toml);
     const dark = /:root,\n:root\[data-theme="dark"\] \{([^}]*)\}/.exec(css)?.[1] ?? '';
-    expect(dark).toContain('--canvas: #0B0D10;');
-    expect(dark).toContain('--surface-1: #12151A;');
-    expect(dark).toContain('--surface-2: #191D24;');
+    expect(dark).toContain('--canvas: #0E1014;');
+    expect(dark).toContain('--surface-1: #16181D;');
+    expect(dark).toContain('--surface-2: #1D2026;');
     expect(css).toContain('--size-sidebar-expanded: 240px;');
+  });
+
+  // #282: the half step, the radius scale, tracking, elevation, material and the 28 px control.
+  it('emits the #282 scales, the string tables and the reduced-motion quick duration', () => {
+    const { css, ts, rs } = generate(toml);
+    const common = /\n:root \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    for (const decl of [
+      '--space-0-5: 2px;',
+      '--radius-pill: 9999px;',
+      '--radius-lg: 14px;',
+      '--tracking-xl: -0.017em;',
+      '--elevation-2: inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key);',
+      '--material-filter: blur(24px) saturate(180%);',
+      '--size-control: 28px;',
+    ]) {
+      expect(common, decl).toContain(decl);
+    }
+    expect(css).not.toContain('--radius-float');
+    const reduced = /@media \(prefers-reduced-motion: reduce\) \{([^]*)\}\s*$/.exec(css)?.[1] ?? '';
+    expect(reduced).toContain('--motion-quick: 0ms;');
+    expect(ts).toMatch(/"tracking": \{[^}]*"lg": -0\.011/);
+    expect(ts).toMatch(/export const elevation = \{[^}]*"1": "inset 0 1px 0 var\(--highlight\)/);
+    expect(rs).toContain('pub const LG: f32 = -0.011;');
+    expect(rs).toContain('pub const S_0_5: f32 = 2.0;');
+    expect(rs).toMatch(
+      /pub mod elevation \{[^}]*pub const E_1: &str = "inset 0 1px 0 var\(--highlight\)/,
+    );
+    expect(rs).toContain(
+      'pub mod material { pub const FILTER: &str = "blur(24px) saturate(180%)"; }',
+    );
+  });
+
+  it('rejects a tracking value outside ±0.05 and an unsafe string, naming the key', () => {
+    expect(() => generate(toml.replace('lg = -0.011', 'lg = 0.2'))).toThrow(/font\.tracking\.lg/);
+    expect(() =>
+      generate(
+        toml.replace(
+          '1 = "inset 0 1px 0 var(--highlight), 0 1px 2px var(--shadow-ambient)"',
+          '1 = "a;b"',
+        ),
+      ),
+    ).toThrow(/elevation\.1/);
   });
 });
 
@@ -50,7 +92,7 @@ describe('tokens committed', () => {
 
 describe('tokens invalid', () => {
   it('names the offending key', () => {
-    const bad = toml.replace('canvas = "#0B0D10"', 'canvas = "blue"');
+    const bad = toml.replace('canvas = "#0E1014"', 'canvas = "blue"');
     expect(() => generate(bad)).toThrow(/color\.dark\.canvas/);
   });
 });
@@ -101,7 +143,7 @@ describe('ci:token-lint Rust output', () => {
 
   it('emits every colour as sRGB-encoded Rgba8 bytes equal to its CSS hex', () => {
     const { rs } = generate(toml);
-    expect(rs).toContain('pub const SURFACE_1: Rgba8 = Rgba8([0x12, 0x15, 0x1A, 0xFF]);');
+    expect(rs).toContain('pub const SURFACE_1: Rgba8 = Rgba8([0x16, 0x18, 0x1D, 0xFF]);');
     expect(rs).toContain('pub mod advance { pub const MONO: f32 = 0.6; }');
     const tk = parseTokens(toml);
     for (const theme of ['dark', 'light'] as const) {
