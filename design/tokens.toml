@@ -368,13 +368,14 @@ float-open = 200
 zoom-open = 400
 zoom-close = 200
 # The shared selection indicators sliding between rows and segments, hover fills, the sidebar
-# collapsing and expanding, and popovers and menus opening from their trigger.
+# collapsing and expanding, and popovers and menus opening from their trigger. The spring is an
+# ease-out without overshoot: nothing bounces (VL-014).
 slide = 220
 hover = 120
 sidebar = 240
 pop-open = 180
 pop-close = 120
-easing-spring = "cubic-bezier(0.2, 1.1, 0.3, 1)"
+easing-spring = "cubic-bezier(0.22, 1, 0.36, 1)"
 easing-zoom = "cubic-bezier(0.16, 1, 0.3, 1)"
 easing-out = "cubic-bezier(0.2, 0, 0, 1)"
 easing-in = "cubic-bezier(0.4, 0, 1, 1)"

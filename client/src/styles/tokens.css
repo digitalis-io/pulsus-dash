@@ -196,7 +196,7 @@
   --material-filter: blur(24px) saturate(180%);
   --motion-easing-in: cubic-bezier(0.4, 0, 1, 1);
   --motion-easing-out: cubic-bezier(0.2, 0, 0, 1);
-  --motion-easing-spring: cubic-bezier(0.2, 1.1, 0.3, 1);
+  --motion-easing-spring: cubic-bezier(0.22, 1, 0.36, 1);
   --motion-easing-zoom: cubic-bezier(0.16, 1, 0.3, 1);
   --motion-fast: 150ms;
   --motion-float-open: 200ms;
