@@ -800,6 +800,34 @@ describe('panel menu: bar chart toggles (#173 Part 3b §4.3)', () => {
     expect(await menuNames(t, 'Versions')).toContain('Hide baseline ghost');
   });
 
+  it('a bar chart has the header badge: Partial data when truncated, Warnings when warned (PRF-031)', async () => {
+    const t = openBoard([
+      panel('p-1', 'Truncated', 'bars_a', 'barchart'),
+      panel('p-2', 'Warned', 'bars_b', 'barchart'),
+    ]);
+    t.range.mockImplementation((_tenant, req) =>
+      Promise.resolve({
+        ...rangeByVersion(1, req.query),
+        completeness:
+          req.query === 'bars_a'
+            ? { ...C0, truncated: true, warnings: ['w1'] }
+            : { ...C0, warnings: ['w2'] },
+      }),
+    );
+    await ready('Truncated', 'Warned');
+    show('Truncated', 'Warned');
+    await waitFor(() => {
+      expect(panelOf('Truncated')).toHaveAttribute('data-panel-vis', 'barchart');
+    });
+    await t.user.click(await screen.findByRole('button', { name: 'Partial data: Truncated' }));
+    const notices = await screen.findByRole('status', { name: 'Query notices' });
+    expect(notices).toHaveTextContent('w1');
+    expect(within(notices).getByRole('button', { name: 'Narrow the time range' })).toBeVisible();
+    await t.user.keyboard('{Escape}');
+    await t.user.click(await screen.findByRole('button', { name: 'Warnings: Warned' }));
+    expect(await screen.findByRole('status', { name: 'Query notices' })).toHaveTextContent('w2');
+  });
+
   it('a LogQL bar chart has no ghost item', async () => {
     const t = openLogBoard([logPanel('p-1', 'Rates', 'rate({app="a"}[1m])', 'barchart')]);
     await ready('Rates');

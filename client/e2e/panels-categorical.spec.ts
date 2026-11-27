@@ -329,6 +329,17 @@ test.describe('panels-categorical (fake)', () => {
       const p2 = panel(page, 'P2');
       await drawn(p1);
       await drawn(p2);
+      // The keys by name: P2's table rows.
+      await listIn(p2).focus();
+      await page.keyboard.press('Shift+T');
+      await expect(p2.locator('[data-row-key]')).toHaveCount(5);
+      const keyOf: Record<string, string> = {};
+      for (const r of await p2.locator('[data-row-key]').all()) {
+        const name = (await r.locator('[role="gridcell"]').first().textContent())?.trim() ?? '';
+        keyOf[name] = (await r.getAttribute('data-row-key')) ?? '';
+      }
+      await page.keyboard.press('Shift+T');
+      await expect(frameIn(p2)).toHaveAttribute('data-frame-ready', 'true');
       const load2 = await probes(p2, VALUES);
 
       await tabTo(page, listIn(p1));
@@ -344,13 +355,19 @@ test.describe('panels-categorical (fake)', () => {
       await page.keyboard.press('Home');
       await page.keyboard.press('Shift+ArrowRight');
       await page.keyboard.press('Shift+ArrowRight');
-      await expect
-        .poll(
-          async () => (await frameIn(p2).getAttribute('data-selection-keys'))?.split(',').length,
-        )
-        .toBe(3);
+      // The brush selects 2.31, 2.29 and 2.33 in draw order; P2 keeps them and dims the others.
+      const want = ['2.31', '2.29', '2.33'].map((n) => keyOf[n] ?? n).join(',');
+      await expect(frameIn(p2)).toHaveAttribute('data-selection-keys', want);
+      await page.mouse.move(0, 0);
       const brushed = await probes(p2, VALUES);
-      expect(near(brushed[3] ?? [0, 0, 0], load2[3] ?? [0, 0, 0])).toBe(false);
+      for (const i of [0, 1, 2]) {
+        expect(near(brushed[i] ?? [0, 0, 0], load2[i] ?? [0, 0, 0]), `bar ${String(i)}`).toBe(true);
+      }
+      for (const i of [3, 4]) {
+        expect(near(brushed[i] ?? [0, 0, 0], load2[i] ?? [0, 0, 0]), `bar ${String(i)}`).toBe(
+          false,
+        );
+      }
       await page.keyboard.press('Escape');
       await expect(frameIn(p2)).toHaveAttribute('data-selection-keys', '');
       await expect

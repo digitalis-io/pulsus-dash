@@ -485,18 +485,16 @@ export function PanelBody({
 }
 
 /**
- * The completeness badge shows with any frame or message view of an outcome (§4.2); a LogQL stream
- * panel's is its pager's (plan #67 §3.4), with its stream view too.
+ * The completeness badge shows with any frame, bar chart or message view of an outcome (§4.2); a
+ * LogQL stream panel's is its pager's (plan #67 §3.4), with its stream view too.
  */
 function noticesOf(run: PanelRun, view: PanelView) {
+  // A bar chart's header badge too (PRF-031): its meter shows the detail under the bars.
+  const drawn = view.kind === 'frame' || view.kind === 'category' || view.kind === 'message';
   if (run.stream !== null) {
-    return view.kind === 'stream' || view.kind === 'frame' || view.kind === 'message'
-      ? streamMeta(run.stream.state).completeness
-      : null;
+    return drawn || view.kind === 'stream' ? streamMeta(run.stream.state).completeness : null;
   }
-  return run.outcome !== null && (view.kind === 'frame' || view.kind === 'message')
-    ? run.outcome.result.completeness
-    : null;
+  return run.outcome !== null && drawn ? run.outcome.result.completeness : null;
 }
 
 /**
