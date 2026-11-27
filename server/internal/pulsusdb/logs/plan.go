@@ -133,6 +133,19 @@ func RewriteAtByte(msg string, off int) string {
 	return msg[:m[2]] + strconv.Itoa(off) + msg[m[3]:]
 }
 
+// RangeSeconds is the window of $__range and $__range_s (#291): rangeMs rounded to the nearest
+// whole second, a half second up, and at least 1 s, so a sub-second window is never a zero range.
+// $__range_ms is rangeMs itself.
+func RangeSeconds(rangeMs int64) int64 {
+	return max(1, (rangeMs+500)/1000)
+}
+
+// noWindow is the refusal of a range macro without a window (#291): the request has no from and
+// to (an instant query), so $__range has no value.
+func noWindow() *PlanError {
+	return inputError("/query", "query.no_window", "$__range, $__range_s and $__range_ms need a time window, and the request has none")
+}
+
 // Prepared is a query checked, substituted with placeholder macros and classified.
 type Prepared struct {
 	in          Inputs
@@ -217,7 +230,8 @@ func hashError(raw int, ok bool) *PlanError {
 	return e
 }
 
-// prepareSubstitute is Prepare before row 9b: rows 1–5, 7, 7b and 9, then the substituted text
+// prepareSubstitute is Prepare before row 9b: rows 1–5, 7, 7b, 8b (a range macro without a
+// window, #291) and 9, then the substituted text
 // (each macro as the placeholder "1s") and its segment map to the raw text.
 func prepareSubstitute(in Inputs) (text string, segs []segment, err *PlanError) {
 	if e := checkInputs(in); e != nil {
@@ -230,6 +244,9 @@ func prepareSubstitute(in Inputs) (text string, segs []segment, err *PlanError) 
 	if len(count.unrepresentable) > 0 {
 		return "", nil, namesError(ErrInput, count.unrepresentable, "variable.unrepresentable",
 			"the value of variable ", " cannot be written where it is referenced")
+	}
+	if count.rangeMacro && in.RangeMs <= 0 {
+		return "", nil, noWindow()
 	}
 	if count.size > MaxExpandedBytes {
 		return "", nil, processingCap()
@@ -264,13 +281,13 @@ func (p *Prepared) Class() Class { return p.class }
 // Prepare counted, so the substituted length is counted again, without building the text. Plan
 // repeats it.
 func (p *Prepared) CheckCap(stepMs int64) *PlanError {
-	if substitute(p.in.Query, p.in.Vars, macrosAt(stepMs), false).size > MaxExpandedBytes {
+	if substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), false).size > MaxExpandedBytes {
 		return processingCap()
 	}
 	return nil
 }
 
-// Plan substitutes the macros at stepMs, applies the volume template, refuses a top-level '#' in
+// Plan substitutes the step macros at stepMs and the range macros from the window, applies the volume template, refuses a top-level '#' in
 // the final text, applies the size limit and classifies the planned text: rows 6, 9, 9b and 10 of
 // §3.1 (plan #116 §4.1, plan #121 §4.3).
 func (p *Prepared) Plan(stepMs int64) (Planned, *PlanError) {
@@ -281,7 +298,7 @@ func (p *Prepared) Plan(stepMs int64) (Planned, *PlanError) {
 	if pe := p.CheckCap(stepMs); pe != nil {
 		return Planned{}, pe
 	}
-	sub := substitute(p.in.Query, p.in.Vars, macrosAt(stepMs), true)
+	sub := substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), true)
 	expanded := sub.text
 	out := Planned{Query: expanded, Expanded: expanded, StepMs: stepMs, sub: sub.segs,
 		rw: []segment{{sentFrom: 0, sentLen: len(expanded), rawFrom: 0, rawLen: len(expanded), kind: segCopy}}}

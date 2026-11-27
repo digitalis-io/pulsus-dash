@@ -18,6 +18,8 @@ import {
   MAX_SENT_BYTES,
   MAX_VALUE_BYTES,
   MAX_VARS,
+  NO_WINDOW_MESSAGE,
+  rangeMacros,
   rateWindowMs,
   utf8Length,
 } from './plan';
@@ -232,14 +234,27 @@ function hashError(raw: number | null): LogsStubPlanError {
 interface Macros {
   readonly interval: Uint8Array;
   readonly rateInterval: Uint8Array;
+  readonly range: Uint8Array;
+  readonly rangeS: Uint8Array;
+  readonly rangeMs: Uint8Array;
 }
 
-const PLACEHOLDERS: Macros = { interval: encoder.encode('1s'), rateInterval: encoder.encode('1s') };
+const PLACEHOLDERS: Macros = {
+  interval: encoder.encode('1s'),
+  rateInterval: encoder.encode('1s'),
+  range: encoder.encode('1s'),
+  rangeS: encoder.encode('1'),
+  rangeMs: encoder.encode('1'),
+};
 
-function macrosAt(stepMs: number): Macros {
+function macrosAt(stepMs: number, rangeMs: number): Macros {
+  const r = rangeMacros(rangeMs);
   return {
     interval: encoder.encode(formatDuration(stepMs)),
     rateInterval: encoder.encode(formatDuration(rateWindowMs(stepMs))),
+    range: encoder.encode(r.range),
+    rangeS: encoder.encode(r.rangeS),
+    rangeMs: encoder.encode(r.rangeMs),
   };
 }
 
@@ -247,6 +262,8 @@ interface Substitution {
   readonly size: number;
   readonly missing: readonly string[];
   readonly unrepresentable: readonly string[];
+  /** A range macro is referenced (#291). */
+  readonly rangeMacro: boolean;
   readonly bytes: Uint8Array;
   readonly segs: readonly Segment[];
 }
@@ -262,6 +279,7 @@ function substitute(
   const segs: Segment[] = [];
   const missing: string[] = [];
   const unrepresentable: string[] = [];
+  let rangeMacro = false;
   let size = 0;
   let copyFrom = 0;
   const flush = (to: number) => {
@@ -303,7 +321,10 @@ function substitute(
       let isVar = false;
       if (ref.name === '__interval') value = m.interval;
       else if (ref.name === '__rate_interval') value = m.rateInterval;
-      else if (!ref.name.startsWith('__') && ref.name.length <= MAX_NAME_LEN) {
+      else if (ref.name === '__range' || ref.name === '__range_s' || ref.name === '__range_ms') {
+        value = ref.name === '__range' ? m.range : ref.name === '__range_s' ? m.rangeS : m.rangeMs;
+        rangeMacro = true;
+      } else if (!ref.name.startsWith('__') && ref.name.length <= MAX_NAME_LEN) {
         value = vars.get(ref.name) ?? null;
         isVar = value !== null;
         if (value === null && !missing.includes(ref.name)) missing.push(ref.name);
@@ -354,7 +375,7 @@ function substitute(
       o += p.length;
     }
   }
-  return { size, missing, unrepresentable, bytes, segs };
+  return { size, missing, unrepresentable, rangeMacro, bytes, segs };
 }
 
 const unhex = (b: number | undefined): number => {
@@ -622,7 +643,10 @@ interface Substituted {
   readonly sub: Substitution;
 }
 
-/** Prepare before row 9b: rows 1–5, 7, 7b and 9, then the placeholder substitution. */
+/**
+ * Prepare before row 9b: rows 1–5, 7, 7b, 8b (a range macro without a window, #291) and 9, then
+ * the placeholder substitution.
+ */
 function prepareSubstitute(i: LogsPlanInputs): Substituted | LogsStubPlanError {
   const raw = encoder.encode(i.query);
   const bad = checkInputs(i, raw.length);
@@ -641,6 +665,8 @@ function prepareSubstitute(i: LogsPlanInputs): Substituted | LogsStubPlanError {
       'variable.unrepresentable',
       `the value of variable $${count.unrepresentable.join(', $')} cannot be written where it is referenced`,
     );
+  if (count.rangeMacro && (i.rangeMs ?? 0) <= 0)
+    return inputError('/query', 'query.no_window', NO_WINDOW_MESSAGE);
   if (count.size > MAX_EXPANDED_BYTES) return PROCESSING_CAP;
   return { raw, vars, sub: substitute(raw, vars, PLACEHOLDERS, true) };
 }
@@ -657,7 +683,7 @@ export function prepareLogs(i: LogsPlanInputs): LogsPrepared | LogsStubPlanError
   const hash = hashAt(sub);
   if (hash >= 0) return hashError(at(s.sub.segs, sub.length, hash));
   const checkCap = (stepMs: number): LogsStubPlanError | null =>
-    substitute(raw, vars, macrosAt(stepMs), false).size > MAX_EXPANDED_BYTES
+    substitute(raw, vars, macrosAt(stepMs, i.rangeMs ?? 0), false).size > MAX_EXPANDED_BYTES
       ? PROCESSING_CAP
       : null;
   return {
@@ -668,7 +694,7 @@ export function prepareLogs(i: LogsPlanInputs): LogsPrepared | LogsStubPlanError
       if (stepMs <= 0) return inputError('/step_ms', 'field.range', 'step_ms must be positive');
       const cap = checkCap(stepMs);
       if (cap !== null) return cap;
-      const e = substitute(raw, vars, macrosAt(stepMs), true);
+      const e = substitute(raw, vars, macrosAt(stepMs, i.rangeMs ?? 0), true);
       let query = e.bytes;
       let rw: Segment[] = [
         { sentFrom: 0, sentLen: e.size, rawFrom: 0, rawLen: e.size, kind: 'copy' },

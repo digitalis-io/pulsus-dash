@@ -10,8 +10,8 @@ import (
 // rounding rule and the no-window refusal are fixture cases (RG1–RG10, unit:plan-parity); these
 // cover what the fixture cannot state.
 
-// noWindow is the refusal of a range macro in a request without a window.
-var noWindow = []FieldError{{Pointer: "/query", MessageKey: "query.no_window"}}
+// noWindowFields is the refusal of a range macro in a request without a window.
+var noWindowFields = []FieldError{{Pointer: "/query", MessageKey: "query.no_window"}}
 
 // Prepare substitutes the range macros as placeholders ("1s", "1", "1"), as it does the step
 // macros; Plan writes them from the window.
@@ -58,7 +58,7 @@ func TestRangeMacrosRefusalOrder(t *testing.T) {
 	}{
 		{"missing first", "x[$__range] + $a", 60_000, []FieldError{{Pointer: "/vars/a", MessageKey: "variable.missing"}}},
 		{"step_ms before the window", "x[$__interval] + x[$__range]", 0, []FieldError{{Pointer: "/step_ms", MessageKey: "field.required"}}},
-		{"the window", "x[$__interval] + x[$__range_ms]", 60_000, noWindow},
+		{"the window", "x[$__interval] + x[$__range_ms]", 60_000, noWindowFields},
 	}
 	for _, c := range cases {
 		_, err := Prepare(Inputs{Query: c.query, Kind: KindInstant, StepMs: c.step, Rate: true})
@@ -67,7 +67,7 @@ func TestRangeMacrosRefusalOrder(t *testing.T) {
 		}
 	}
 	// A negative window is no window.
-	if _, err := Prepare(Inputs{Query: "vector($__range_s)", Kind: KindRange, StepMs: 60_000, RangeMs: -1}); err == nil || !slices.Equal(err.Fields, noWindow) {
+	if _, err := Prepare(Inputs{Query: "vector($__range_s)", Kind: KindRange, StepMs: 60_000, RangeMs: -1}); err == nil || !slices.Equal(err.Fields, noWindowFields) {
 		t.Errorf("negative window: %+v", err)
 	}
 }

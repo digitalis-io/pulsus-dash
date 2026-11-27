@@ -99,7 +99,8 @@ func (q *dataRoutes) readLogWindow(w http.ResponseWriter, r *http.Request, dst a
 
 // planLogWindow is steps 3–6 of plan #116 §4.4 for lw: the plan, or false once the refusal is written.
 func (q *dataRoutes) planLogWindow(w http.ResponseWriter, r *http.Request, lw logWindow, kind logplan.Kind) (logplan.Planned, bool) {
-	planned, e := q.logPlanFor(r.Context(), logplan.Inputs{Query: lw.query, Vars: lw.vars, Kind: kind, StepMs: lw.grid.Step})
+	planned, e := q.logPlanFor(r.Context(), logplan.Inputs{Query: lw.query, Vars: lw.vars, Kind: kind, StepMs: lw.grid.Step,
+		RangeMs: lw.to - lw.from})
 	if e != nil {
 		writeReqError(w, e)
 		return logplan.Planned{}, false
