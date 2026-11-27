@@ -1,5 +1,5 @@
 // Package spec is the board spec (plan #61 §3.4; v2 by plan #64 Part B §3.1, v3 by #173 Part 1, v4 by
-// #215, v5 by #198 Part 1, v6 by #216 Part 1, v7 by #234 Part 1, v8 by #290): strict,
+// #215, v5 by #198 Part 1, v6 by #216 Part 1, v7 by #234 Part 1, v8 by #290, v9 by #289): strict,
 // presence-aware decoding, validation with JSON-pointer field errors, the upcaster entry point
 // (T11 §4.0), canonical JSON and the RFC 6902 patch recorded in the audit trail (T11-006).
 package spec
@@ -16,18 +16,36 @@ import (
 // pie (#173); 4 adds tags (#215, T24-029); 5 adds widgets: query optional, the kinds text and clock
 // and their options (#198 Part 1, T24-003); 6 adds the board list widget, the kind boardList and its
 // options (#216 Part 1, T24 §5.5); 7 adds the geomap, the kind geomap and its options (#234 Part 1,
-// T24 §5.15); 8, the units version, adds vis.unit (#290, T22 §6.2). Each version is a subset of
-// the next.
-const BoardSchemaVersion int64 = 8 // adds vis.unit, the units version (#290)
+// T24 §5.15); 8, the units version, adds vis.unit (#290, T22 §6.2); 9, the variables version,
+// adds variables (#289, IA-006). Each version is a subset of the next.
+const BoardSchemaVersion int64 = 9 // adds variables, the variables version (#289)
 
 // Board is a board spec. Panels are the ungrouped panels drawn above the sections. Tags are 0 to
 // 16 unique AnnotationTags in their order; an empty list is the same as none (no key).
 type Board struct {
-	Title    string     `json:"title"`
-	Time     *TimeRange `json:"time,omitempty"`
-	Tags     []string   `json:"tags,omitempty"`
-	Panels   []Panel    `json:"panels"`
-	Sections []Section  `json:"sections"`
+	Title     string     `json:"title"`
+	Time      *TimeRange `json:"time,omitempty"`
+	Tags      []string   `json:"tags,omitempty"`
+	Variables []Variable `json:"variables,omitempty"`
+	Panels    []Panel    `json:"panels"`
+	Sections  []Section  `json:"sections"`
+}
+
+// Variable is a board variable (board spec v9, #289 §3.1): kind query (values from Query),
+// custom (Values) or constant (one value). Which optional keys a kind takes is validateVariables'.
+// Default is in the address encoding: ["$__all"] is All, a literal starting with $ has one more.
+type Variable struct {
+	Name       string   `json:"name"`
+	Label      string   `json:"label"`
+	Kind       string   `json:"kind"`
+	Query      *Query   `json:"query,omitempty"`
+	Values     []string `json:"values,omitempty"`
+	Multi      *bool    `json:"multi,omitempty"`
+	IncludeAll *bool    `json:"includeAll,omitempty"`
+	AllValue   *string  `json:"allValue,omitempty"`
+	Default    []string `json:"default,omitempty"`
+	Sort       *string  `json:"sort,omitempty"`
+	Refresh    *string  `json:"refresh,omitempty"`
 }
 
 // TimeRange is the board's saved time range: relative (now, now/d, now-6h) or RFC 3339.
@@ -261,7 +279,7 @@ func DecodeBoard(raw []byte, schemaVersion int64) (Board, error) {
 }
 
 // DecodeBoardUpTo decodes a stored spec of schemaVersion when schemaMax is the newest version the
-// caller reads. Versions 1 to 8 decode unchanged (each is a subset of the next: the identity upcast); a
+// caller reads. Versions 1 to 9 decode unchanged (each is a subset of the next: the identity upcast); a
 // version above schemaMax returns ErrSchemaTooNew and a version below 1 ErrSchemaVersion. With
 // schemaMax 1 it decodes as the previous release did (plan #64 Part B §4.7).
 func DecodeBoardUpTo(raw []byte, schemaVersion, schemaMax int64) (Board, error) {

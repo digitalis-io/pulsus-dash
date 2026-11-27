@@ -1,6 +1,7 @@
 package prom
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -81,13 +82,29 @@ const (
 
 // substitution is the outcome of one scan of the raw text.
 type substitution struct {
-	size            int      // bytes of the substituted text
-	missing         []string // row 7: distinct, first-reference order
-	unrepresentable []string // row 7b: distinct, first-reference order
-	macro           bool     // a step macro is referenced
-	rangeMacro      bool     // a range macro is referenced
-	text            string   // built only when asked
-	segs            []segment
+	size       int            // bytes of the substituted text
+	missing    []string       // row 7: distinct, first-reference order
+	refusals   []vars.Refusal // row 7b and T07-031, in the order found
+	macro      bool           // a step macro is referenced
+	rangeMacro bool           // a range macro is referenced
+	text       string         // built only when asked
+	segs       []segment
+}
+
+// unrepresentable is the refused names, distinct, in the order of their first refused reference,
+// and the place of the first refused reference ("" for row 7b).
+func (s substitution) unrepresentable() (names []string, where string) {
+	rs := slices.Clone(s.refusals)
+	slices.SortStableFunc(rs, func(a, b vars.Refusal) int { return a.At - b.At })
+	for _, r := range rs {
+		if !contains(names, r.Name) {
+			names = append(names, r.Name)
+		}
+	}
+	if len(rs) > 0 {
+		where = rs[0].Where
+	}
+	return names, where
 }
 
 // isNameStart and isNameByte are the bytes of NAME = [A-Za-z_][A-Za-z0-9_]* (#61 VARIABLE_REF).
@@ -239,10 +256,23 @@ func quoteOf(st lexState) byte {
 	return 0
 }
 
-// memoKey is one reference name in one lexical state.
+// memoKey is one reference name in one lexical state and one context kind: a structured value is
+// written by its context (T07-031), a legacy one the same in every context (kind CtxNone).
 type memoKey struct {
 	name string
 	st   lexState
+	kind vars.CtxKind
+}
+
+// renderKey is one reference name in one context kind.
+type renderKey struct {
+	name string
+	kind vars.CtxKind
+}
+
+type rendered struct {
+	text string
+	ok   bool
 }
 
 // valueReads, when a test sets it, is called at each quotedLen or representable computation of a
@@ -255,20 +285,45 @@ func countValueRead() {
 	}
 }
 
-// valueMemo is a scan's memo of each referenced value's length and row-7b check per state: a
-// text may repeat one reference many times, so each value is read once per state (review r1).
-// The maps are made on first use.
+// valueMemo is a scan's memo of each referenced value's rendering per context kind, and its
+// length and row-7b check per state and kind: a text may repeat one reference many times, so each
+// value is read once per state and kind (review r1). The maps are made on first use.
 type valueMemo struct {
-	lens map[memoKey]int
-	reps map[memoKey]bool
+	renders map[renderKey]rendered
+	lens    map[memoKey]int
+	reps    map[memoKey]bool
 }
 
-func (m *valueMemo) length(name, v string, st lexState) int {
+func memoKind(v vars.Value, c vars.Ctx) vars.CtxKind {
+	if v.Legacy {
+		return vars.CtxNone
+	}
+	return c.Kind
+}
+
+// render is vars.Render(v, c), memoised by name and context kind.
+func (m *valueMemo) render(name string, v vars.Value, c vars.Ctx) (string, bool) {
+	if v.Legacy {
+		return v.Text, true
+	}
+	k := renderKey{name, c.Kind}
+	if r, ok := m.renders[k]; ok {
+		return r.text, r.ok
+	}
+	if m.renders == nil {
+		m.renders = map[renderKey]rendered{}
+	}
+	text, ok := vars.Render(v, c)
+	m.renders[k] = rendered{text, ok}
+	return text, ok
+}
+
+func (m *valueMemo) length(name, text string, st lexState, kind vars.CtxKind) int {
 	q := quoteOf(st)
 	if q == 0 {
-		return len(v)
+		return len(text)
 	}
-	k := memoKey{name, st}
+	k := memoKey{name, st, kind}
 	if n, ok := m.lens[k]; ok {
 		return n
 	}
@@ -276,16 +331,16 @@ func (m *valueMemo) length(name, v string, st lexState) int {
 		m.lens = map[memoKey]int{}
 	}
 	countValueRead()
-	n := quotedLen(v, q)
+	n := quotedLen(text, q)
 	m.lens[k] = n
 	return n
 }
 
-func (m *valueMemo) representable(name, v string, st lexState) bool {
+func (m *valueMemo) representable(name, text string, st lexState, kind vars.CtxKind) bool {
 	if st != stBQ && st != stComment {
 		return true
 	}
-	k := memoKey{name, st}
+	k := memoKey{name, st, kind}
 	if r, ok := m.reps[k]; ok {
 		return r
 	}
@@ -293,15 +348,23 @@ func (m *valueMemo) representable(name, v string, st lexState) bool {
 		m.reps = map[memoKey]bool{}
 	}
 	countValueRead()
-	r := representable(v, st)
+	r := representable(text, st)
 	m.reps[k] = r
 	return r
 }
 
-// substitute scans raw once (plan #112 §4.2), by the lexical states of plan #118 §4.1. With build
-// false it only counts the output, so a text over the cap is refused before it is built; with
-// build true it builds the text and the segment map of expanded → raw.
-func substitute(raw string, vars map[string]vars.Value, m macroText, build bool) substitution {
+// scanOptions are what one scan does beyond substitution: run the probe guard over its regex
+// strings (Prepare's count; nil skips it), and leave every macro as written (the value route).
+type scanOptions struct {
+	guard      *vars.Guard
+	keepMacros bool
+}
+
+// substitute scans raw once (plan #112 §4.2), by the lexical states of plan #118 §4.1 and the
+// contexts of plan #289 §3.4. With build false it only counts the output, so a text over the cap
+// is refused before it is built; with build true it builds the text and the segment map of
+// expanded → raw.
+func substitute(raw string, vs map[string]vars.Value, m macroText, build bool, o scanOptions) substitution {
 	var out substitution
 	var memo valueMemo
 	var b strings.Builder
@@ -318,31 +381,62 @@ func substitute(raw string, vars map[string]vars.Value, m macroText, build bool)
 			out.size += to - copyFrom
 		}
 	}
+	var t vars.Tracker
+	var sctx vars.Ctx        // the context of the open string
+	var rx *vars.RegexString // the open string's regex parts (a CtxRe string only)
+	open := func(st lexState, at int) {
+		sctx = t.String()
+		rx = nil
+		if sctx.Kind == vars.CtxRe {
+			rx = vars.NewRegexString(quoteOf(st), at+1)
+		}
+	}
+	closeString := func(at int) {
+		if rx != nil {
+			out.refusals = append(out.refusals, rx.Close(raw, at, MaxExpandedBytes, o.guard)...)
+			rx = nil
+		}
+		t.EndString()
+	}
 	st := stNone
 	for i := 0; i < len(raw); {
 		c := raw[i]
 		if c == '$' {
 			name, end, ok := reference(raw, i)
 			if !ok {
+				if st == stNone {
+					t.Byte(c)
+				}
 				i++
 				continue
 			}
-			value, subst, isVar := "", false, false
+			var ctx vars.Ctx
+			switch st {
+			case stNone:
+				ctx = t.Ref()
+			case stComment:
+				ctx = vars.Ctx{Kind: vars.CtxNone, Where: vars.WhereComment}
+			default:
+				ctx = sctx
+			}
+			text, subst, isVar := "", false, false
+			var v vars.Value
 			switch {
+			case isMacro(name) && o.keepMacros:
 			case name == macroInterval:
-				value, subst, out.macro = m.interval, true, true
+				text, subst, out.macro = m.interval, true, true
 			case name == macroRateInterval:
-				value, subst, out.macro = m.rateInterval, true, true
+				text, subst, out.macro = m.rateInterval, true, true
 			case name == macroRange:
-				value, subst, out.rangeMacro = m.rng, true, true
+				text, subst, out.rangeMacro = m.rng, true, true
 			case name == macroRangeS:
-				value, subst, out.rangeMacro = m.rngS, true, true
+				text, subst, out.rangeMacro = m.rngS, true, true
 			case name == macroRangeMs:
-				value, subst, out.rangeMacro = m.rngMs, true, true
+				text, subst, out.rangeMacro = m.rngMs, true, true
 			case strings.HasPrefix(name, "__") || len(name) > maxNameLen:
 			default:
-				if v, has := vars[name]; has {
-					value, subst, isVar = v.Text, true, true
+				if val, has := vs[name]; has {
+					v, subst, isVar = val, true, true
 				} else if !contains(out.missing, name) {
 					out.missing = append(out.missing, name)
 				}
@@ -351,19 +445,37 @@ func substitute(raw string, vars map[string]vars.Value, m macroText, build bool)
 				i = end
 				continue
 			}
-			// A macro's text is a duration or a number: only a value is checked (row 7b).
-			if isVar && !memo.representable(name, value, st) && !contains(out.unrepresentable, name) {
-				out.unrepresentable = append(out.unrepresentable, name)
+			kind := vars.CtxNone
+			if isVar {
+				kind = memoKind(v, ctx)
+				var rendered bool
+				if text, rendered = memo.render(name, v, ctx); !rendered {
+					out.refusals = append(out.refusals, vars.Refusal{Name: name, At: i, Where: ctx.Where})
+				}
+				// A macro's text is a duration or a number: only a value is checked (row 7b).
+				if rendered && !memo.representable(name, text, st, kind) {
+					out.refusals = append(out.refusals, vars.Refusal{Name: name, At: i})
+				}
+				if rx != nil {
+					rx.Add(raw, i, end, name, text, rendered && !v.Legacy, v.Values != nil)
+				}
+			} else if rx != nil {
+				rx.Add(raw, i, end, name, text, false, false)
 			}
 			flush(i)
 			q := quoteOf(st)
-			n := memo.length(name, value, st)
+			n := len(text)
+			if isVar {
+				n = memo.length(name, text, st, kind)
+			} else if q != 0 {
+				n = quotedLen(text, q)
+			}
 			if build {
 				out.segs = append(out.segs, segment{sentFrom: out.size, sentLen: n, rawFrom: i, rawLen: end - i, kind: segInsert})
 				if q != 0 {
-					writeQuoted(&b, value, q)
+					writeQuoted(&b, text, q)
 				} else {
-					b.WriteString(value)
+					b.WriteString(text)
 				}
 			}
 			out.size += n
@@ -375,12 +487,18 @@ func substitute(raw string, vars map[string]vars.Value, m macroText, build bool)
 			switch c {
 			case '"':
 				st = stDQ
+				open(st, i)
 			case '\'':
 				st = stSQ
+				open(st, i)
 			case '`':
 				st = stBQ
+				open(st, i)
 			case '#':
+				t.End()
 				st = stComment
+			default:
+				t.Byte(c)
 			}
 		case stDQ, stSQ:
 			switch {
@@ -389,10 +507,12 @@ func substitute(raw string, vars map[string]vars.Value, m macroText, build bool)
 				i += 2
 				continue
 			case c == quoteOf(st) || c == '\n':
+				closeString(i)
 				st = stNone
 			}
 		case stBQ:
 			if c == '`' {
+				closeString(i)
 				st = stNone
 			}
 		case stComment:
@@ -402,11 +522,23 @@ func substitute(raw string, vars map[string]vars.Value, m macroText, build bool)
 		}
 		i++
 	}
+	if rx != nil {
+		closeString(len(raw))
+	}
 	flush(len(raw))
 	if build {
 		out.text = b.String()
 	}
 	return out
+}
+
+// isMacro reports whether name is one of the macros.
+func isMacro(name string) bool {
+	switch name {
+	case macroInterval, macroRateInterval, macroRange, macroRangeS, macroRangeMs:
+		return true
+	}
+	return false
 }
 
 // appendCopy appends a copy segment, merged with a copy just before it.

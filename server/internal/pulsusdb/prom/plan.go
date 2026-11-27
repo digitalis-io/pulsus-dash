@@ -40,7 +40,7 @@ const (
 // Inputs are what a route hands the planner: the raw text and the request members.
 type Inputs struct {
 	Query string
-	Vars  map[string]vars.Value
+	Vars  map[string]vars.Value // legacy strings and the structured values of plan #289 §3.4
 	Kind  Kind
 	Rate  bool
 	// StepMs is the base step: range, the PromGrid step; instant, step_ms or 0.
@@ -225,11 +225,27 @@ func checkInputs(in Inputs) *PlanError {
 		if !validName(n) {
 			return inputError("/vars/"+pointerToken(n), "field.pattern", "a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 		}
-		if v := in.Vars[n].Text; !utf8.ValidString(v) || len(v) > MaxValueBytes {
-			return inputError("/vars/"+pointerToken(n), "field.range", "a variable value must be UTF-8 and at most 4096 bytes")
+		if v := in.Vars[n]; !validValue(v) {
+			return inputError("/vars/"+pointerToken(n), "field.range", vars.RangeMessage(v))
 		}
 	}
 	return nil
+}
+
+// validValue is row 5 for one value (vars.Check).
+func validValue(v vars.Value) bool {
+	_, ok := vars.Check(v)
+	return ok
+}
+
+// unrepresentableError is row 7b and T07-031 (plan #289 §3.4): the refused names, the message
+// naming the place of the first refused reference.
+func unrepresentableError(names []string, where string) *PlanError {
+	suffix := " cannot be written where it is referenced"
+	if where != "" {
+		suffix += " (in " + where + ")"
+	}
+	return namesError(ErrInput, names, "variable.unrepresentable", "the value of variable ", suffix)
 }
 
 // namesError is one refusal naming variables: "<prefix>$a, $b<suffix>", one field per name.
@@ -256,14 +272,14 @@ func Prepare(in Inputs) (*Prepared, *PlanError) {
 	if e := checkInputs(in); e != nil {
 		return nil, e
 	}
-	count := substitute(in.Query, in.Vars, placeholders(), false)
+	count := substitute(in.Query, in.Vars, placeholders(), false, scanOptions{guard: &vars.Guard{}})
 	if len(count.missing) > 0 {
 		return nil, namesError(ErrVariableMissing, count.missing, "variable.missing", "no value for variable ", "")
 	}
-	// Row 7b depends only on the raw text and the values, never on the step (plan #118 §4.3).
-	if len(count.unrepresentable) > 0 {
-		return nil, namesError(ErrInput, count.unrepresentable, "variable.unrepresentable",
-			"the value of variable ", " cannot be written where it is referenced")
+	// Row 7b and T07-031 depend only on the raw text and the values, never on the step (plan #118
+	// §4.3, plan #289 §3.4).
+	if names, where := count.unrepresentable(); len(names) > 0 {
+		return nil, unrepresentableError(names, where)
 	}
 	if count.macro && in.StepMs == 0 {
 		return nil, inputError("/step_ms", "field.required", "step_ms is required for $__interval and $__rate_interval")
@@ -274,7 +290,7 @@ func Prepare(in Inputs) (*Prepared, *PlanError) {
 	if count.size > MaxExpandedBytes {
 		return nil, processingCap()
 	}
-	text := substitute(in.Query, in.Vars, placeholders(), true).text
+	text := substitute(in.Query, in.Vars, placeholders(), true, scanOptions{}).text
 	shape := ShapeOf(text)
 	return &Prepared{in: in, substituted: text, shape: shape, class: ClassifyShape(shape)}, nil
 }
@@ -321,7 +337,7 @@ func isHistogram(n string, t MetricTypes) bool {
 // text. It is pure: the routes call it right after resolving the step, before tenant resolution or
 // any metadata read; Plan repeats it.
 func (p *Prepared) CheckCap(stepMs int64) *PlanError {
-	if substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), false).size > MaxExpandedBytes {
+	if substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), false, scanOptions{}).size > MaxExpandedBytes {
 		return processingCap()
 	}
 	return nil
@@ -337,7 +353,7 @@ func (p *Prepared) Plan(stepMs int64, types MetricTypes) (Planned, *PlanError) {
 	if pe := p.CheckCap(stepMs); pe != nil {
 		return Planned{}, pe
 	}
-	sub := substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), true)
+	sub := substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), true, scanOptions{})
 	expanded := sub.text
 	shape := ShapeOf(expanded)
 	out := Planned{Query: expanded, Expanded: expanded, ValueType: shape.ValueType, StepMs: stepMs, sub: sub.segs,

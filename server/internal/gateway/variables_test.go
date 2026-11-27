@@ -36,10 +36,8 @@ type variableValues struct {
 		Label string  `json:"label"`
 		Match *string `json:"match"`
 	} `json:"planned"`
-	Values       []string `json:"values"`
-	Completeness *struct {
-		Truncated bool `json:"truncated"`
-	} `json:"completeness"`
+	Values       []string       `json:"values"`
+	Completeness map[string]any `json:"completeness"`
 }
 
 func variableValuesOf(t *testing.T, b []byte) variableValues {
@@ -66,7 +64,9 @@ func wantCall(t *testing.T, what string, up *logUpstream, path string, form url.
 	}
 }
 
-// itest:variable-values (SRF-017, T06-029, plan #289 §3.5, §5): the value route plans
+// itest:variable-values (SRF-017, T06-029, plan #289 §3.5, §5; the times as the label values
+// calls send them: PromQL seconds floored and raised to the minute, LogQL 19-digit nanoseconds):
+// the value route plans
 // label_values with the variable rules and calls the label values methods with exactly these
 // parameters; a refusal makes no upstream call.
 func TestVariableValues(t *testing.T) {
@@ -79,7 +79,7 @@ func TestVariableValues(t *testing.T) {
 	rec := postJSON(h, variablesPath, valuesRequest("promql", "label_values("+sel+", instance)", `,"limit":50`))
 	v := variableValuesOf(t, rec.Body.Bytes())
 	if rec.Code != 200 || v.Planned == nil || v.Planned.Label != "instance" || v.Planned.Match == nil || *v.Planned.Match != sel ||
-		!reflect.DeepEqual(v.Values, []string{"a", "b", "c"}) || v.Completeness == nil || v.Completeness.Truncated {
+		!reflect.DeepEqual(v.Values, []string{"a", "b", "c"}) || v.Completeness == nil || v.Completeness["truncated"] != false {
 		t.Errorf("ClickHouse: %d %s", rec.Code, rec.Body.String())
 	}
 	wantCall(t, "ClickHouse", up, "/api/v1/label/instance/values", url.Values{"match[]": {sel}, "start": {"0"}, "end": {"60"}, "limit": {"50"}})
@@ -96,17 +96,17 @@ func TestVariableValues(t *testing.T) {
 	rec = postJSON(h, variablesPath, valuesRequest("logql", `label_values({app="$app"}, pod)`, `,"vars":{"app":{"values":["api"]}},"limit":2`))
 	v = variableValuesOf(t, rec.Body.Bytes())
 	if rec.Code != 200 || v.Planned == nil || v.Planned.Match == nil || *v.Planned.Match != `{app="api"}` ||
-		!reflect.DeepEqual(v.Values, []string{"a", "b"}) || v.Completeness == nil || !v.Completeness.Truncated {
+		!reflect.DeepEqual(v.Values, []string{"a", "b"}) || v.Completeness == nil || v.Completeness["truncated"] != true {
 		t.Errorf("LogQL: %d %s", rec.Code, rec.Body.String())
 	}
-	wantCall(t, "LogQL", up, "/api/logs/v1/label/pod/values", url.Values{"query": {`{app="api"}`}, "start": {"1000000000"}, "end": {"2000000000"}})
+	wantCall(t, "LogQL", up, "/api/logs/v1/label/pod/values", url.Values{"query": {`{app="api"}`}, "start": {"0000000001000000000"}, "end": {"0000000002000000000"}})
 
 	up.reset()
 	rec = postJSON(h, variablesPath, valuesRequest("logql", "label_values(pod)", ""))
 	if v := variableValuesOf(t, rec.Body.Bytes()); rec.Code != 200 || v.Planned == nil || v.Planned.Match != nil {
 		t.Errorf("LogQL no selector: %d %s", rec.Code, rec.Body.String())
 	}
-	wantCall(t, "LogQL no selector", up, "/api/logs/v1/label/pod/values", url.Values{"start": {"1000000000"}, "end": {"2000000000"}})
+	wantCall(t, "LogQL no selector", up, "/api/logs/v1/label/pod/values", url.Values{"start": {"0000000001000000000"}, "end": {"0000000002000000000"}})
 
 	up.reset()
 	rec = postJSON(h, variablesPath, valuesRequest("promql", `label_values(up{instance=~"$node"}, job)`, `,"vars":{"node":{"values":["a","b"]}}`))
