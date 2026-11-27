@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/digitalis-io/pulsus-dash/server/internal/arrowwire/wiretest"
 	"github.com/digitalis-io/pulsus-dash/server/internal/core"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 	promplan "github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/prom"
@@ -250,6 +252,41 @@ func TestPlanAuthority(t *testing.T) {
 	}
 	if n := len(fake.Requests()) - before; n != 0 {
 		t.Errorf("A3, A4, A6, A7: %d upstream requests", n)
+	}
+}
+
+// itest:plan-authority with the DSF Accept (plan #68 D1 §5, T06-029): the range rows of A.5
+// answered as DSF send the same upstream queries as their JSON runs, each the planned.query the
+// body carries in dash.planned.
+func TestPlanAuthorityDSF(t *testing.T) {
+	sentQueries := func(accept string) []string {
+		fake, url := fakeharness.Start(t)
+		h := plannedGateway(t, url, fixedNow)
+		for _, b := range []string{rangeBody("rate(x[$__rate_interval])"), rangeBody("x_total"), rangeBody("x_total", `"rate":false`),
+			rangeBody("rate(x_total[1m])"), rangeBody("x_total", `"vars":{"x":"1"}`), rangeBody(`x_total{job="a"}`), rangeBody(`up{job="$r"}`, `"vars":{"r":"ab"}`)} {
+			rec := serve(h, b, accept)
+			if accept == "" || rec.Code != 200 {
+				continue
+			}
+			p := wiretest.Read(t, rec.Body.Bytes())
+			var planned struct {
+				Query string `json:"query"`
+			}
+			if len(p.Parts) != 1 || p.Parts[0].Planned == nil || json.Unmarshal([]byte(*p.Parts[0].Planned), &planned) != nil {
+				t.Fatalf("%s: no dash.planned", b)
+			}
+			if r := fake.Requests(); r[len(r)-1].Form.Get("query") != planned.Query {
+				t.Errorf("%s: sent %q, planned %q", b, r[len(r)-1].Form.Get("query"), planned.Query)
+			}
+		}
+		var out []string
+		for _, r := range fake.Requests() {
+			out = append(out, r.Method+" "+r.Path+" "+r.Form.Get("query"))
+		}
+		return out
+	}
+	if j, d := sentQueries(""), sentQueries(dsfAccept); !slices.Equal(j, d) || len(j) == 0 {
+		t.Errorf("upstream requests differ:\n json %q\n dsf  %q", j, d)
 	}
 }
 

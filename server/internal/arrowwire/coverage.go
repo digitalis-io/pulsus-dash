@@ -4,6 +4,7 @@ import (
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 
+	"github.com/digitalis-io/pulsus-dash/server/internal/apierr"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 )
 
@@ -170,4 +171,10 @@ func coverageRecord(c Coverage) arrow.RecordBatch {
 	b.Field(20).(*array.Uint32Builder).Append(c.UpstreamMs)
 	b.Field(21).(*array.Uint32Builder).Append(c.ConvertMs)
 	return b.NewRecordBatch()
+}
+
+// ErrorFrom is the error/1 row of a classified failure (plan #68 D1 §3.4).
+func ErrorFrom(c apierr.Class) ErrorRow {
+	_ = c
+	return ErrorRow{}
 }

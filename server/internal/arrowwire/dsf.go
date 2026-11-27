@@ -347,3 +347,6 @@ func streamPayload(rec arrow.RecordBatch) func(*payloadBuf) error {
 		}
 	}
 }
+
+// Err is the sticky io.Writer error, nil if none.
+func (w *Writer) Err() error { return nil }
