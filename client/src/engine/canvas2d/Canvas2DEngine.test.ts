@@ -531,7 +531,8 @@ describe('engine', () => {
     expect(h.queued()).toBe(1);
     h.frame.dispose();
     expect(h.queued()).toBe(0);
-    expect(onCanvas).toHaveBeenCalledTimes(12);
+    // The controller's 12 and the frame's `contextrestored` (#296).
+    expect(onCanvas).toHaveBeenCalledTimes(13);
     // keydown, focus (the bar chart's focus mark, ADR-0029) and focusout.
     expect(onTarget).toHaveBeenCalledTimes(3);
     expect(h.canvas.width).toBe(0);

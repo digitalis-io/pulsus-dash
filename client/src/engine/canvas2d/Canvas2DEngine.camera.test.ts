@@ -611,7 +611,8 @@ describe('camera', () => {
     h.frame.dispose();
     h.advance(400);
     expect(h.commit).toEqual([]);
-    expect(off).toHaveBeenCalledTimes(12);
+    // The controller's 12 and the frame's `contextrestored` (#296).
+    expect(off).toHaveBeenCalledTimes(13);
   });
 
   it('sub-minimum preview survives a wider external window', () => {

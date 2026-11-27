@@ -72,9 +72,10 @@ function listeners(t: EventTarget): Record<string, number> {
   return out;
 }
 
-/** What a line frame's controller listens to (one each). */
+/** What a line frame listens to (one each): its controller's and `contextrestored` (#296). */
 const LINE_CANVAS = {
   contextmenu: 1,
+  contextrestored: 1,
   dblclick: 1,
   gesturechange: 1,
   gestureend: 1,
