@@ -15,13 +15,14 @@ covers the code in `client/src/inspector/` and its wiring; the design is
 `MetricsPage` and `LogsPage` (T25-001). It owns, in memory only:
 
 - the page **selection** (`Selection`: series or stream keys and an optional `[fromMs, toMs)`);
-- the **Inspector** state: the request it shows, its sequence number, and whether it is collapsed
-  (a pure reducer, `inspector/store.ts`);
+- the **Inspector** state: the request it shows, its sequence number, whether it is collapsed and
+  the request's **navigation stack** (a pure reducer, `inspector/store.ts`; see
+  [The navigation stack](#the-navigation-stack-234-part-4));
 - the **registries** of member resolvers and Esc providers (`Map`s in refs). Member resolvers are
   a stack per panel (#234 Part 3 §4.9): the newest live registration answers, its disposer removes
   only its own entry and the one before answers again (a full screen closing, StrictMode's
   re-mount). Esc providers: the last registration wins, and a disposer removes only its own entry.
-  A `geo:` run id is answered from the open request's own geo target (`resolveGeoMembers`), never
+  A `geo:` run id is answered from the open request's **top view** (`resolveGeoMembers`), never
   from a registration;
 - the page's one `document` `keydown` listener (the Esc ladder) and the live region.
 
@@ -100,11 +101,59 @@ title; the selection is its rows' keys.
 | `group` | `‹m› series` | `min – max` | Worst state, Values | its rows | none |
 
 Members show entries 0–7 with their label maps; with more than eight, `resolve` is
-`{panelId, runId: 'geo:' + id}`, and the host answers it from the open request's target. `next` is
-not set yet (the navigation stack is #234 Part 4). The announcement is `Inspector: ` followed by a
-marker's `‹name›, ‹value›[, ‹state›]`, a cluster's `Cluster of ‹n›, near ‹place›[, worst ‹state›]`,
-the aggregate's `other (n), ‹n› groups, ‹m› series` or a group's `‹label›, ‹m› series[, worst
-‹state›]`.
+`{panelId, runId: 'geo:' + id}`, and the host answers it from the open request's top view. `next`
+opens an entry's deeper view (#234 Part 4): a `cluster` or `group` row → the `marker` of that row,
+an `aggregate` entry → its `group`; each selects its own rows and is titled by the entry's text. A
+marker has no members. The announcement is `Inspector: `, then `Level ‹d + 1›: ` for a view at
+depth d > 0, then a marker's `‹name›, ‹value›[, ‹state›]`, a cluster's `Cluster of ‹n›, near
+‹place›[, worst ‹state›]`, the aggregate's `other (n), ‹n› groups, ‹m› series` or a group's
+`‹label›, ‹m› series[, worst ‹state›]`.
+
+### The navigation stack (#234 Part 4)
+
+A member entry can open a deeper view inside the open request
+([T25 §4.8](../../designs/technical/T25-inspector-and-pivots.md)). The views are a stack in the
+host's state, never new requests: nothing is fetched, so there is nothing to race, and every view
+is built from the root target's snapshot (a refresh never changes an open view).
+
+| Piece | What it is |
+|---|---|
+| `NavView` (`types.ts`) | `{ target, selection, title }`: one deeper view |
+| `InspectorState.nav` | the pushed views, in order; `[]` at rest. The **top** is `topOf(state)`: the last view, else `req.target` |
+| `push {seq, depth, view}` | applies only while a request is open, `seq` is its `seq` and `depth` is `nav.length`; the selection becomes the view's. Anything else is a no-op: an entry of an older request, a second press before the next render, a press after a close |
+| `pop {to}` | for `0 ≤ to < nav.length`: keeps `nav.slice(0, to)`; the selection becomes the new top's (`req.selection` at 0) |
+| reset | `inspect`, `close`, a matching `originChanged` and `reset` empty the stack; `select` keeps it |
+| `MemberSection.next` | `(i) => NavView \| null`: geo targets only; null for every other kind, whose entries stay plain text |
+
+The sheet renders `inspectorModel({ ...req, target: top }, env, nav.length)`. With a non-empty
+stack its header shows **Back to ‹previous›** (the title of the view below, else the root's
+heading), a `pop` to `nav.length − 1`, and the **Inspector path**: a `<nav aria-label="Inspector
+path"><ol>` of the root heading and each view's title, where every item but the last is a `pop`
+button to its depth. With `next`, every text entry, shown or expanded, is a button that pushes its
+view at the render's `seq` and depth.
+
+**`viewKey`** = `${seq}:${nav.length}:${topKey}`, `topKey` the top's id for a `geo` target and
+`root` for every other kind (so for them it changes exactly when `seq` does). It is the identity
+of:
+
+- the content (its React key: the members' expanded state starts over in each view);
+- the layers (an inert leaving layer for 150 ms, at most one; none under reduced motion);
+- the heading focus: every push and pop focuses the new `h2`, whatever the open's source; a
+  keyboard open focuses it as before;
+- the live region: one write per change, at most one per 500 ms, the latest wins; a text equal to
+  the last one is cleared and rewritten on the next frame, so it is read again.
+
+The Esc ladder pops before it clears the selection, and the stack goes with the request: a close,
+the origin panel removed or its query or vis changed, a route change and a tenant reset (T25-012).
+A marker view's pivots use the request's origin window, so a window change after the push does not
+move them.
+
+**Member ids.** `resolveMembers(panelId, runId)` with a `geo:` run id answers from the host's own
+state: when the top is a `geo` target, the request's origin is `panelId` and `runId` is `'geo:' +
+top.id`, it returns `resolveGeoMembers(top, runId)` (every entry's text and labels, from the
+snapshot); otherwise null, which the sheet shows as stale. No panel instance holds geo state, so a
+board panel, its full screen and the editor preview answer alike in any mount order. Other run ids
+use the per-panel resolver stack.
 
 ### Adding a kind
 
@@ -159,9 +208,10 @@ The host's one `document` listener (bubble phase) skips an event that is not Esc
 runs the first step that applies and prevents the default:
 
 1. the active kind's `pre` step (for example "clear the field" for a marked search field);
-2. clear the selection;
-3. close the Inspector (focus returns to `returnFocus`, else the origin panel, else `main`);
-4. the active kind's `post` step.
+2. pop the navigation stack (`pop {to: nav.length − 1}`), while it is not empty;
+3. clear the selection;
+4. close the Inspector (focus returns to `returnFocus`, else the origin panel, else `main`);
+5. the active kind's `post` step.
 
 The active kind is the Inspector's origin when focus is in the sheet, else the panel holding focus
 (`[data-panel-id]`), else the last panel pressed. The crosshair and a press in progress keep their
@@ -212,18 +262,19 @@ the content width less 24 px). It never reflows the board, so nothing re-queries
 - **Material:** `surface-float` with a 20 px backdrop blur and 140 % saturation, a hairline, the
   kit Popover's shadow, `radius.float`. Under `prefers-reduced-transparency` or forced colours it is
   opaque `surface-1` without the blur. While a modal dialog is open the sheet steps aside.
-- **Motion:** it opens with a fade and a 16 px slide over `motion.float-open` (200 ms); a new target
-  crossfades the body over 150 ms (the outgoing layer is `inert` and `aria-hidden`; a third target
-  drops it at once); a close fades over 150 ms. Under `prefers-reduced-motion` every change is
-  instant.
+- **Motion:** it opens with a fade and a 16 px slide over `motion.float-open` (200 ms); a new view
+  (a new target, a push or a pop: a new `viewKey`) crossfades the body over 150 ms (the outgoing
+  layer is `inert` and `aria-hidden`; a third view drops it at once); a close fades over 150 ms.
+  Under `prefers-reduced-motion` every change is instant.
 - **Collapse:** a 40 px tab (`size.inspector-tab`) at the right edge holds Expand. A new target
   expands it.
-- **Focus:** a pointer open keeps focus; a keyboard open focuses the heading. Tab order: heading,
-  Collapse, Close, Copy value, member buttons, pivot chips, Copy query, ✎, actions. A close by Esc
-  or Close returns focus as the ladder says; an automatic close moves focus only when it was in the
-  sheet.
-- **Live region:** one polite region outside the sheet gets the model's `announce` text, at most
-  once per 500 ms (the latest wins, T08-018).
+- **Focus:** a pointer open keeps focus; a keyboard open, a push and a pop focus the heading. Tab
+  order: Back and the path (with a stack; they sit above the heading), heading, Collapse, Close,
+  Copy value, member buttons, pivot chips, Copy query, ✎, actions. A close by Esc or Close returns
+  focus as the ladder says; an automatic close moves focus only when it was in the sheet.
+- **Live region:** one polite region outside the sheet gets the model's `announce` text once per
+  `viewKey`, at most once per 500 ms (the latest wins, T08-018); the same text again is cleared and
+  rewritten on the next frame.
 - **Source cue:** the origin board panel has a 2 px `focus` outline at a 2 px offset
   (`data-inspector-origin`).
 
@@ -248,9 +299,11 @@ the content width less 24 px). It never reflows the board, so nothing re-queries
 ## Tests
 
 `unit:inspector-model`, `unit:inspector-pivots`, `unit:pivot-context` (`model.test.ts`);
-`unit:inspector-members`; `unit:escape-ladder`, `unit:escape-skips`, `unit:host-registries`,
-`unit:inspector-collapse` (`host.test.tsx`); `unit:clipboard-denied`, `unit:inspector-focus`,
-`unit:inspector-crossfade` (`Inspector.test.tsx`); `unit:engine-select`, `unit:selection-draw`
+`unit:inspector-members`, `unit:geo-members` (`members.test.ts`); `unit:escape-ladder`,
+`unit:escape-skips`, `unit:host-registries`, `unit:inspector-collapse`, `unit:inspector-nav`,
+`unit:geo-members-fullscreen` (`host.test.tsx`); `unit:inspector-nav` and `unit:inspector-viewkey`
+(`store.test.ts`); `unit:clipboard-denied`, `unit:inspector-focus`, `unit:inspector-crossfade`,
+`unit:inspector-viewkey` (`Inspector.test.tsx`); `unit:engine-select`, `unit:selection-draw`
 (the engine); `unit:inspect-target`, `unit:chart-inspect`, `unit:series-select`,
 `unit:log-selection`, `unit:log-inspect`; the end-to-end rows in `e2e/inspector.spec.ts`;
 `bench:inspector-redraw` (report).
@@ -267,8 +320,9 @@ the content width less 24 px). It never reflows the board, so nothing re-queries
 | T25-007 Esc ladder | `inspector/escape.ts`, `host.tsx` |
 | T25-008 focus and live region | `Inspector.tsx`, `host.tsx` |
 | T25-009, T25-010 pivots and Context | `inspector/pivots.ts`, `model.ts`, `boards/exploreLink.ts` |
-| T25-011 members | `inspector/members.ts` |
-| T25-012 lifetime | `host.tsx` (`originKey`) |
+| T25-011 members | `inspector/members.ts`; entry buttons in `Inspector.tsx`; geo `next` in `geoModel.ts` |
+| T25-012 lifetime | `host.tsx` (`originKey`), `store.ts` (the stack goes with the request) |
+| T25 §4.8 navigation stack | `inspector/store.ts` (`nav`, `push`, `pop`, `topOf`, `viewKey`), `Inspector.tsx` (Back, the path), `host.tsx` (the Esc pop, member ids) |
 | T25-013 look and motion | `Inspector.module.css` |
 | T25-014 source cue | `PanelFrame` (`data-inspector-origin`) |
 | T25-015 actions | `Inspector.tsx` |
