@@ -83,8 +83,10 @@ export function geoTable(
   const rows = ordered.map((r) => {
     const [group, member] = groupCells(s, r);
     const place = r.location.status === 'placed' ? r.location.place : null;
+    const mark = markOf(r);
     return {
-      mark: markOf(r),
+      key: mark.key,
+      mark,
       drawn: r.draw === 'shown',
       shownAs: group,
       cells: [

@@ -192,6 +192,9 @@ inspector-tab = 40
 inspector-inset = 12
 # The table view (#173 Part 3a, T22-013): one row of a panel's virtualised table.
 table-row = 28
+# The list widgets (#216 Part 2a, T24-027): a row and a tag chip.
+list-row = 36
+list-chip = 20
 
 [radius]
 default = 6

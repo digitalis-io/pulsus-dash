@@ -162,6 +162,8 @@
   --size-inspector: 360px;
   --size-inspector-inset: 12px;
   --size-inspector-tab: 40px;
+  --size-list-chip: 20px;
+  --size-list-row: 36px;
   --size-log-level-bar: 3px;
   --size-log-row: 20px;
   --size-log-sentinel: 40px;

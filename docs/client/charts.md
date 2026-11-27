@@ -770,6 +770,14 @@ the element to return focus to, labels the canvas `<title>: <n> bars` (then the 
 shows no `Showing X of N series` notice: `CategoryChart`'s meter states the coverage. Under
 `engine=wasm` the bar chart stays on Canvas 2D until the engine implements ADR-0028 and ADR-0029.
 
+## Table view and coverage meter
+
+The kit table view and the coverage meter are documented with the categorical panels:
+[`PanelTable`](panels.md#the-table-view-chartspaneltabletsx-t22-013) takes any `TableView`
+(`{columns, rows: {key, drawn, cells}[]}`), or `null` rows with an `emptyText` status and Export
+disabled, and a caller's `caption` and `closeLabel` (#216 Part 2a: the Board list's table);
+[`CoverageMeter`](panels.md) has an optional `onNarrow` (absent: no Narrow) and `timeZone`.
+
 ## Limits
 
 - At most 500 series per frame (the rest are dropped with the notice), at most one polyline point

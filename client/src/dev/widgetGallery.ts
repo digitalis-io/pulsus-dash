@@ -1,6 +1,7 @@
 /**
- * The widget gallery's pages (plan #198 Part 3b §2; VIZ-069): the corpus of `golden:widget-gallery`.
- * Each page is a list of Text panels; `widget-text-removals` shows its one panel in the editor body,
+ * The widget gallery's pages (plan #198 Part 3b §2, plan #216 Part 2a §4.6; VIZ-069): the corpus of
+ * `golden:widget-gallery`. Each Text page is a list of Text panels (the Board list pages' panels are
+ * in `boardListGallery.ts`); `widget-text-removals` shows its one panel in the editor body,
  * so the "Not shown in the panel" list is in the shot. `RUNBOOK` (2 KiB) is also the four small
  * panels of `bench:text-widget-render`.
  *
@@ -8,8 +9,16 @@
  */
 import type { WidgetPanelSpec } from '../api/types';
 
-export const WIDGET_GALLERY_PAGES = ['widget-text', 'widget-text-removals'] as const;
+export const WIDGET_GALLERY_PAGES = [
+  'widget-text',
+  'widget-text-removals',
+  // The Board list pages (plan #216 Part 2a §4.6): their panels are `boardListGallery.ts`'s.
+  'widget-board-list',
+  'widget-board-list-search',
+  'widget-board-list-states',
+] as const;
 export type WidgetGalleryPage = (typeof WIDGET_GALLERY_PAGES)[number];
+export type TextGalleryPage = 'widget-text' | 'widget-text-removals';
 
 export function widgetGalleryPage(raw: string | null): WidgetGalleryPage {
   return (WIDGET_GALLERY_PAGES as readonly string[]).includes(raw ?? '')
@@ -118,7 +127,7 @@ const text = (
 });
 
 /** The panels of a page, in order. */
-export function widgetGalleryPanels(page: WidgetGalleryPage): readonly WidgetPanelSpec[] {
+export function widgetGalleryPanels(page: TextGalleryPage): readonly WidgetPanelSpec[] {
   if (page === 'widget-text-removals') {
     return [text('text-removals', 'Release notes', { mode: 'markdown', content: REMOVALS })];
   }

@@ -144,7 +144,9 @@ fit object, so the frame is not given new data; a 0 × 0 cell keeps the last fit
 run or the baseline run is truncated or has warnings, the text is a ghost button (`Coverage:
 <text>`) whose popover has a `This query` and/or a `Baseline (shifted window)` section, each that
 run's completeness notice (its warnings, and Narrow the time range when truncated). Otherwise the
-text is a status line.
+text is a status line. `onNarrow` is optional (#216 Part 2a): without it a truncated run's notice
+has no Narrow (a Board list that is not a search); with it, Narrow acts and then closes the popover.
+`timeZone` (default the browser's) sets the zone of a list's `stale (HH:mm:ss)`.
 
 ## Auto-vis row 11 (VIZ-065, T22 §4.5)
 
@@ -306,10 +308,16 @@ The gallery keeps one table flag per bar chart.
 
 ### The table view (`charts/PanelTable.tsx`, T22-013)
 
-`PanelTable({ rows, title, selected, onRow?, onClose })` is a read-only grid over `PanelRows`:
+`PanelTable({ rows, title, caption?, closeLabel?, emptyText?, selected, onRow?, onClose })` is a
+read-only grid over a `TableView` (`vis/reduce.ts`, re-exported here; #216 Part 2a):
+`{columns, rows: {key, drawn, cells}[]}`. A bar chart's `PanelRows` is one (each row also has its
+`mark`, whose key is the row's `key`); so is a list widget's table
+([Board list](widgets.md#the-board-list-view-part-2a)).
 
-- **Bar:** the caption `<n> rows · <d> drawn`, then the kit buttons `Export CSV` and `Show chart
-  (Shift+T)` (`onClose`).
+- **Bar:** the caption (`caption`, default `<n> rows · <d> drawn`), then the kit buttons `Export
+  CSV` and the way back (`closeLabel`, default `Show chart (Shift+T)`; `onClose`).
+- **Null rows:** `rows: null` (a list with nothing to show yet) shows `emptyText` as a
+  `role="status"` paragraph instead of the grid, and Export is disabled.
 - **Grid:** `role="grid"`, named by the title, `aria-rowcount` n + 1, `aria-colcount` the column
   count, one tab stop, a sticky header row of the columns.
 - **Rows:** virtualised (`useVirtualizer`, 28 px rows (`--size-table-row`), overscan 10). Each row
@@ -323,7 +331,7 @@ The gallery keeps one table flag per bar chart.
   `onRow(key, 'keyboard', grid)`. `aria-activedescendant` names the active row; the range
   extractor keeps that row mounted at its own position when it is scrolled away. New `rows` clear
   it.
-- **Export:** a `text/csv;charset=utf-8` Blob of `panelCsv(rows)` through an object URL and a
+- **Export:** a `text/csv;charset=utf-8` Blob of `panelCsv(rows)` (any `TableView`) through an object URL and a
   detached `<a download="csvFileName(title)">`; the URL is revoked on the next task. An empty table
   reads `0 rows · 0 drawn` and exports the header.
 

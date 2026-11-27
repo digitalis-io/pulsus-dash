@@ -337,8 +337,9 @@ interface Result<T> {
 
 /**
  * Runs one boards request: a thrown fetch error is `network` (an abort is re-thrown), 404
- * `notFound`, 400 `invalid` with the envelope's fields, 409 `BoardConflictError`; any other status
- * without a body of the success type is `unknown` with the envelope's message.
+ * `notFound`, 400 `invalid` with the envelope's fields, 409 `BoardConflictError`, 503
+ * `unavailable` (the configuration store; plan #216 Part 2a); any other status without a body of
+ * the success type is `unknown` with the envelope's message.
  */
 async function call<T>(request: () => Promise<Result<T>>, ok: number): Promise<T | undefined> {
   let r: Result<T>;
@@ -359,6 +360,7 @@ async function call<T>(request: () => Promise<Result<T>>, ok: number): Promise<T
     if (current !== undefined)
       throw new BoardConflictError(toBoard(current), messageOf(r.error, status));
   }
+  if (status === 503) throw new ApiError('unavailable', messageOf(r.error, status));
   throw new ApiError('unknown', messageOf(r.error, status));
 }
 

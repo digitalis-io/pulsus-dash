@@ -440,7 +440,7 @@ export function categoryCoverage(a: {
 const clocks = new Map<string, Intl.DateTimeFormat>();
 
 /** `HH:mm:ss` in `tz`. */
-function clockText(ms: number, tz: string): string {
+export function clockText(ms: number, tz: string): string {
   let f = clocks.get(tz);
   if (f === undefined) {
     f = new Intl.DateTimeFormat('en-GB', {
@@ -649,9 +649,24 @@ export function deltaText(v: number, b: number | null): string | null {
 /** The kinds with a categorical table; I2 adds `stat`, I3 `pie`; #234 the geomap (T24 §4.14). */
 export type TableKind = 'barchart' | 'geomap';
 
-export interface PanelRows {
+/**
+ * The kit table's rows (T22-013; plan #216 Part 2a §3.3): the columns, then one row per item with
+ * its key, whether it is drawn (shown) and its cells. `PanelRows` and the list widgets' tables are
+ * table views.
+ */
+export interface TableView {
   readonly columns: readonly string[];
   readonly rows: readonly {
+    readonly key: string;
+    readonly drawn: boolean;
+    readonly cells: readonly string[];
+  }[];
+}
+
+export interface PanelRows extends TableView {
+  readonly rows: readonly {
+    /** The mark's key. */
+    readonly key: string;
     readonly mark: Mark;
     readonly drawn: boolean;
     readonly shownAs: string;
@@ -708,6 +723,7 @@ export function panelRows(
   const rows = all.map((mark) => {
     const as = shownAs.get(mark.key);
     return {
+      key: mark.key,
       mark,
       drawn: as !== undefined,
       shownAs: as ?? '',
@@ -725,7 +741,7 @@ export function panelRows(
 }
 
 /** The CSV of `t` (T22-013): the header, then every row; each cell through `csvCell`; CRLF. */
-export function panelCsv(t: PanelRows): string {
+export function panelCsv(t: TableView): string {
   const line = (cells: readonly string[]): string => `${cells.map(csvCell).join(',')}\r\n`;
   return line(t.columns) + t.rows.map((r) => line(r.cells)).join('');
 }

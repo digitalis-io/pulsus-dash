@@ -155,6 +155,8 @@ export const size = {
   "inspector": 360,
   "inspector-inset": 12,
   "inspector-tab": 40,
+  "list-chip": 20,
+  "list-row": 36,
   "log-level-bar": 3,
   "log-row": 20,
   "log-sentinel": 40,

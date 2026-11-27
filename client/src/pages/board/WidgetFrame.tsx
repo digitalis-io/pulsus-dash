@@ -2,10 +2,11 @@
  * A widget panel's frame on a board (plan #198 Part 1 §4.2; T24-002): the panel chrome with the
  * title, the Panel menu and, in Edit mode, Move or resize, around the widget's body. A widget has no
  * query, so no run, viewport tracking, `ChartFrame`, Inspector, Explore, Copy query or Full screen.
- * The menu has Edit panel when the registry has a def for the kind (Part 3a §4.4), then Duplicate
+ * The menu has Edit panel when the registry has a def for the kind (Part 3a §4.4), "Show as table" /
+ * "Show list" for a kind with a table view (`TABLE_WIDGETS`, plan #216 Part 2a), then Duplicate
  * and Remove.
  */
-import { forwardRef, useContext, useId } from 'react';
+import { forwardRef, useContext, useId, useState } from 'react';
 import { MenuTrigger, type ButtonProps } from 'react-aria-components';
 import type { WidgetPanelSpec } from '../../api/types';
 import { t } from '../../i18n/t';
@@ -14,6 +15,7 @@ import { IconButton } from '../../kit/IconButton';
 import { Menu, MenuItem } from '../../kit/Menu';
 import { Popover } from '../../kit/Popover';
 import { useWidgetDef } from '../../widgets/registry';
+import { TABLE_WIDGETS } from '../../widgets/spec';
 import { WidgetBody } from '../../widgets/WidgetBody';
 import styles from './Board.module.css';
 import { BoardModeContext } from './boardMode';
@@ -34,6 +36,8 @@ export const WidgetFrame = forwardRef<HTMLElement, WidgetFrameProps>(function Wi
   const headingId = useId();
   const def = useWidgetDef(panel.vis.kind);
   const editing = useContext(BoardModeContext) === 'edit';
+  const [table, setTable] = useState(false);
+  const tabled = TABLE_WIDGETS.has(panel.vis.kind);
   const title = panelTitle(panel);
   const g = panel.grid;
   const onLayoutKey = (e: Parameters<NonNullable<ButtonProps['onKeyDown']>>[0]): void => {
@@ -89,6 +93,16 @@ export const WidgetFrame = forwardRef<HTMLElement, WidgetFrameProps>(function Wi
                     {t('panel.editPanel')}
                   </MenuItem>
                 )}
+                {tabled && (
+                  <MenuItem
+                    id="table"
+                    onAction={() => {
+                      setTable((on) => !on);
+                    }}
+                  >
+                    {t(table ? 'panel.menu.list' : 'panel.menu.table')}
+                  </MenuItem>
+                )}
                 <MenuItem
                   id="duplicate"
                   isDisabled={readOnly}
@@ -114,7 +128,13 @@ export const WidgetFrame = forwardRef<HTMLElement, WidgetFrameProps>(function Wi
         </div>
       </PanelHeader>
       <div className={cx(styles['body'])}>
-        <WidgetBody panel={panel} headingId={headingId} editing={editing} />
+        <WidgetBody
+          panel={panel}
+          headingId={headingId}
+          editing={editing}
+          table={table}
+          onTable={setTable}
+        />
       </div>
     </section>
   );

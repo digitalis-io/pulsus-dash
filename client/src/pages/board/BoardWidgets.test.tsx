@@ -381,8 +381,10 @@ describe('unit:widget-registry-generic', () => {
   });
 });
 
-describe('unit:board-spec-board-list (pending)', () => {
-  it('stored board lists show not available; only the data panel runs', async () => {
+// Plan #216 Part 2a §5 (`unit:widget-frame` amended): stored board lists draw; Clock is still
+// pending (above); a Board list's menu has Show as table, and no Edit panel until Part 2b.
+describe('unit:widget-frame (board lists)', () => {
+  it('stored board lists draw; only the data panel runs; the menu', async () => {
     const lists = ['Starred', 'Recent', 'Checkout boards', 'Payments team', 'Search'];
     const t = openBoard([], {
       seed: seedWith({ boards: [stubBoard('b-1', spec('v6-board-list.json'))] }),
@@ -396,9 +398,13 @@ describe('unit:board-spec-board-list (pending)', () => {
     for (const title of lists) {
       const p = panelOf(title);
       expect(p, title).toHaveAttribute('data-widget');
-      expect(within(p).getByText(messages['widget.kindUnavailable'])).toBeInTheDocument();
+      await waitFor(() => {
+        expect(p.querySelector('[data-board-list]'), title).not.toBeNull();
+      });
+      expect(within(p).queryByText(messages['widget.kindUnavailable'])).toBeNull();
       expect(p.querySelector('[data-chart-frame]'), title).toBeNull();
     }
     expect(panelOf('Requests')).not.toHaveAttribute('data-widget');
+    expect(await menuOf(t, 'Starred')).toEqual(['Show as table', 'Duplicate', 'Remove']);
   });
 });
