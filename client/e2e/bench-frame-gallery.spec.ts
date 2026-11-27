@@ -138,7 +138,19 @@ async function runCase(
     const before = await windowOf(page, p.id);
     const stop = await watchHovers(page, p.id);
     const sel = `[data-gallery-id="${p.id}"] [data-chart-frame] canvas:not([data-retired])`;
+    const t0 = Date.now();
     const d = await drive(page, sel, frameId, hover ? HOVER : SCRIPT, GALLERY_BOX_MS);
+    if (hover && !d.timedOut) {
+      // The engine answers the latest Overlay a frame later (C2b): its hover, inside the box.
+      await page
+        .waitForFunction(
+          () =>
+            (window as unknown as { __benchHovers: { events: number } }).__benchHovers.events > 0,
+          undefined,
+          { timeout: Math.max(1, GALLERY_BOX_MS - (Date.now() - t0)), polling: 50 },
+        )
+        .catch(() => undefined);
+    }
     const hovers = await stop();
     const after = await windowOf(page, p.id);
     const result = summarise(

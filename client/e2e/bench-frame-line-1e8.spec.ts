@@ -330,8 +330,22 @@ async function runGate(
       const d = before.timedOut
         ? emptyDrive(true)
         : await drive(page, BENCH, 'probe-0', c.steps, left());
-      const a = await after(page, before.hovers);
       const hover = c.steps === HOVER;
+      if (hover && !d.timedOut) {
+        // The engine answers the latest Overlay a frame later (C2b): its hover, inside the box.
+        await page
+          .waitForFunction(
+            (from) =>
+              (window as unknown as { __dashProbe: Probe }).__dashProbe
+                .hovers(0)
+                .slice(from)
+                .some((h) => h !== null),
+            before.hovers,
+            { timeout: left(), polling: 50 },
+          )
+          .catch(() => undefined);
+      }
+      const a = await after(page, before.hovers);
       const result = summarise({ ...base(c, sc), ...(hover ? { hovers: a.hovers } : {}) }, d);
       results.push(result);
       console.log(
