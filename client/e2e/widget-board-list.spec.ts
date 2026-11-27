@@ -5,6 +5,8 @@
  *
  * - `e2e:widget-board-list`: rows and Show more, the debounced search (one request, 250 ms after the
  *   last key, none for its prefixes), the announcement, hrefs with the time, a modified click.
+ * - `e2e:widget-board-list (narrow, long tags)`: in a 2-column panel the title keeps half the row
+ *   and the meta line gives way (T24-022).
  * - `e2e:widget-lists-a11y`: axe in each state (held, empty, error, stale, old server, truncated)
  *   in view and Edit mode, focus repair, the T24-025 Tab order, `aria-setsize`, reduced motion.
  */
@@ -121,6 +123,56 @@ test.describe('Board list widget', () => {
       expect(new URL(tab.url()).pathname).toBe('/t/demo/board/ck-1');
       await tab.close();
       expect(new URL(page.url()).pathname).toBe(`/t/demo/board/${uid}`);
+    } finally {
+      await deleteBoard(request, uid);
+    }
+  });
+
+  test('e2e:widget-board-list (narrow, long tags)', async ({ page, request }, info) => {
+    const uid = await createListBoard(
+      request,
+      `E2E board list narrow ${info.project.name} ${crypto.randomUUID()}`,
+      [listPanelSpec('p-1', 'Narrow', [0, 0, 2, 8], { mode: 'search', query: '' })],
+    );
+    const tags = [
+      'team:payments-platform',
+      'service:checkout-gateway',
+      'region:europe-west',
+      'tier:one',
+    ];
+    const page1 = {
+      items: [
+        {
+          uid: 'long-1',
+          title: 'Checkout payments overview for the platform team',
+          version: 1,
+          updatedAt: '2026-11-26T12:00:00Z',
+          updatedBy: 'Ada',
+          tags,
+        },
+      ],
+      truncated: false,
+      applied: {},
+      tagsStale: 0,
+    };
+    try {
+      await routeBoardLists(page, { boards: () => ({ body: wireOf(page1) }) });
+      await page.goto(`/t/demo/board/${uid}?${BOARD_TIME}`);
+      const link = rows(panel(page, 'Narrow')).first();
+      await expect(link).toBeVisible();
+      const li = link.locator('xpath=..');
+      const [lw, rw] = await Promise.all([
+        link.evaluate((e) => e.getBoundingClientRect().width),
+        li.evaluate((e) => e.getBoundingClientRect().width),
+      ]);
+      // The title keeps at least half the row; the meta line gives way.
+      // (less the gap between them)
+      expect(lw).toBeGreaterThanOrEqual(rw / 2 - 16);
+      expect(rw).toBeLessThan(400);
+      const title = link.locator('span').first();
+      expect(await title.evaluate((e) => e.getBoundingClientRect().width)).toBeGreaterThan(40);
+      // Nothing of the row spills out of it.
+      expect(await li.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
     } finally {
       await deleteBoard(request, uid);
     }

@@ -238,7 +238,11 @@ described by the summary. Each row is a link to `/t/<tenant>/board/<uid>` with t
 `aria-current="page"` on the board that holds it, and `aria-setsize` / `aria-posinset`
 (`listSetSize`: −1 when truncated or of unknown coverage). Equal titles show ` · ‹uid›` in mono.
 Search and tag rows show up to 3 tag chips and `+k` (or "tags unknown") and `updated 26 Nov 12:00`
-(`d MMM HH:mm`, h23, the Context's zone). A modified click opens a new tab. Rows are 36 px
+(`d MMM HH:mm`, h23, the Context's zone) after the link. The meta line takes at most half the row, so
+the link keeps the rest and truncates its title; within the meta line the chips give way first
+(chips that do not fit on its one line wrap out of view; their text stays in the description); the time
+keeps its width. A modified click opens a
+new tab. Rows are 36 px
 (`--size-list-row`), chips 20 px (`--size-list-chip`), with hairlines, hover `surface-2`, a 2 px
 focus ring and no state colour; rows new on a same-key refresh are `data-new` and fade in over
 150 ms, with no animation under reduced motion.
@@ -316,7 +320,9 @@ reduced motion.
 **Bench** (`e2e/perf-widget-lists.spec.ts`, `bench:widget-lists`, report-only, Chromium, the
 production stub build): a seeded board with one search list on `bulk` (limit 50) over 1 002 stub
 boards, Show more ×19 to 1 000 rows, then 20 `visibilitychange` refetches. `BoardListCore` marks
-each render and measures `boardList:render` per commit in the stub and dev builds; the p50, p95
+each render and measures `boardList:render` per commit in the stub and dev builds while
+`localStorage['pulsus-dash.bench.boardList']` is `1` (the bench sets it; no other session keeps
+timing entries); the p50, p95
 and max go to stdout and `test-results/widget-lists.json` (no samples fails the run).
 `LONG_TASK_GATE=enforce` fails a p95 over 16 ms; a miss is the cue to virtualise the rows.
 

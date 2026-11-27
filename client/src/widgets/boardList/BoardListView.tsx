@@ -142,9 +142,13 @@ function Meta({ row, id, tz }: { row: BoardRow; id: string; tz: string }): React
   return (
     <span id={id} className={cx(styles['meta'])}>
       {row.tags === null ? (
-        <span className={cx(styles['muted'])}>{t('boardList.tagsUnknown')}</span>
+        <span className={cx(styles['muted'], styles['tagsUnknown'])}>
+          {t('boardList.tagsUnknown')}
+        </span>
       ) : (
-        <>
+        // One line of chips: a chip that does not fit wraps out of view (its text stays in the
+        // description), so the time and the title keep their room.
+        <span className={cx(styles['chips'])}>
           {row.tags.slice(0, MAX_CHIPS).map((tag) => (
             <span key={tag} className={cx(styles['chip'])} data-board-list-chip="">
               {tag}
@@ -155,10 +159,10 @@ function Meta({ row, id, tz }: { row: BoardRow; id: string; tz: string }): React
               {t('boardList.moreTags', { k: more })}
             </span>
           )}
-        </>
+        </span>
       )}
       {row.updatedAt !== null && (
-        <span className={cx(styles['muted'])}>
+        <span className={cx(styles['muted'], styles['time'])}>
           {t('boardList.updated', { time: updatedText(row.updatedAt, tz) })}
         </span>
       )}
