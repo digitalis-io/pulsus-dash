@@ -197,6 +197,16 @@ class RoutingFrame implements ChartFrame {
     this.inner?.setSelection(sel);
   }
 
+  /** Stub (#234 Part 1, tests first). */
+  setFocusMark(id: string | null): void {
+    void id;
+  }
+
+  /** Stub (#234 Part 1, tests first). */
+  cameraKey(k: string): void {
+    void k;
+  }
+
   resize(cssWidth: number, cssHeight: number, dpr: number): void {
     this.state.size = [cssWidth, cssHeight, dpr];
     this.inner?.resize(cssWidth, cssHeight, dpr);

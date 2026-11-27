@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -249,26 +250,42 @@ func TestV4FixtureRoundTrip(t *testing.T) {
 
 // The option tables (shape.go) equal api/fixtures/board-spec/option-keys.json, which the client's
 // suite compares with boards/options.ts: each key's type, the members of the object keys (zones'
-// items, countdown) and the keys of each kind.
+// items and countdown: required strings; the geomap's location, size and view: typed, required or
+// optional, by v7), the nullable keys (v7) and the keys of each kind.
 func TestOptionKeys(t *testing.T) {
 	var want struct {
-		Types   map[string]string   `json:"types"`
-		Members map[string][]string `json:"members"`
-		Kinds   map[string][]string `json:"kinds"`
+		Types         map[string]string              `json:"types"`
+		Members       map[string][]string            `json:"members"`
+		Kinds         map[string][]string            `json:"kinds"`
+		Nullable      []string                       `json:"nullable"`
+		ObjectMembers map[string]map[string][]string `json:"objectMembers"`
 	}
 	if err := json.Unmarshal(fixture(t, "option-keys.json"), &want); err != nil {
 		t.Fatal(err)
 	}
 	names := map[kind]string{kString: "string", kBool: "bool", kNumber: "number", kArray: "array", kObject: "object"}
+	presence := map[bool]string{true: "required", false: "optional"}
 	types := map[string]string{}
 	members := map[string][]string{}
+	objectMembers := map[string]map[string][]string{}
+	nullable := []string{}
 	for _, f := range optionFields {
 		types[f.name] = names[f.t.kind]
+		if f.t.nullable {
+			nullable = append(nullable, f.name)
+		}
 		shape := f.t.shape
 		if f.t.kind == kArray && f.t.elem != nil {
 			shape = f.t.elem.shape
 		}
 		if len(shape) == 0 {
+			continue
+		}
+		if _, typed := want.ObjectMembers[f.name]; typed {
+			objectMembers[f.name] = map[string][]string{}
+			for _, m := range shape {
+				objectMembers[f.name][m.name] = []string{names[m.t.kind], presence[m.required]}
+			}
 			continue
 		}
 		for _, m := range shape {
@@ -283,6 +300,12 @@ func TestOptionKeys(t *testing.T) {
 	}
 	if !reflect.DeepEqual(members, want.Members) {
 		t.Errorf("option members = %v, want %v", members, want.Members)
+	}
+	if !reflect.DeepEqual(objectMembers, want.ObjectMembers) {
+		t.Errorf("option object members = %v, want %v", objectMembers, want.ObjectMembers)
+	}
+	if !reflect.DeepEqual(nullable, want.Nullable) {
+		t.Errorf("nullable options = %v, want %v", nullable, want.Nullable)
 	}
 	kinds := map[string][]string{}
 	for _, k := range visKinds {
@@ -367,9 +390,6 @@ const v6CanonicalSHA256 = "f34068a04a37a48064fc82720a092473249c985e3cfd9e0f30f81
 // Only p-5 has a query; the fixture is valid, canonical and readable by this version only; v5
 // upcasts unchanged.
 func TestV6BoardListFixture(t *testing.T) {
-	if BoardSchemaVersion != 6 {
-		t.Errorf("BoardSchemaVersion = %d, want 6", BoardSchemaVersion)
-	}
 	raw := fixture(t, "v6-board-list.json")
 	b, err := ParseNewBoard(raw)
 	if err != nil {
@@ -416,5 +436,100 @@ func TestV6BoardListFixture(t *testing.T) {
 	}
 	if _, err := DecodeBoardUpTo(raw, 6, 5); !errors.Is(err, ErrSchemaTooNew) {
 		t.Errorf("DecodeBoardUpTo(v6, 6, 5) = %v, want ErrSchemaTooNew", err)
+	}
+}
+
+// unit:board-spec-geomap (#234 Part 1 §3.4, §3.5, T24 §5.15, T11-016): the geomap version. The
+// fixture is valid and readable by this version only; parse, marshal and parse again give equal
+// values, with every member key in lower case and present once; a null groupBy or view is stored
+// absent; v6 upcasts unchanged.
+func TestV7GeomapFixture(t *testing.T) {
+	if BoardSchemaVersion != 7 {
+		t.Errorf("BoardSchemaVersion = %d, want 7", BoardSchemaVersion)
+	}
+	raw := fixture(t, "v7-geomap.json")
+	b, err := ParseNewBoard(raw)
+	if err != nil {
+		t.Fatalf("ParseNewBoard: %v", err)
+	}
+	if k := b.Panels[0].Vis.Kind; k != "geomap" {
+		t.Errorf("panel 0 kind = %q, want geomap (itest:board-spec-old-binary)", k)
+	}
+	out, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := ParseBoard(out)
+	if err != nil {
+		t.Fatalf("ParseBoard(marshal): %v", err)
+	}
+	if !reflect.DeepEqual(again, b) {
+		t.Errorf("ParseBoard(Marshal(board)) = %+v, want %+v", again, b)
+	}
+	var m struct {
+		Panels []struct {
+			Vis struct {
+				Options map[string]json.RawMessage `json:"options"`
+			} `json:"vis"`
+		} `json:"panels"`
+	}
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatal(err)
+	}
+	keysOf := func(i int, key string) []string {
+		var o map[string]json.RawMessage
+		if err := json.Unmarshal(m.Panels[i].Vis.Options[key], &o); err != nil {
+			t.Fatalf("panel %d %s: %v", i, key, err)
+		}
+		ks := make([]string, 0, len(o))
+		for k := range o {
+			ks = append(ks, k)
+		}
+		slices.Sort(ks)
+		return ks
+	}
+	for _, c := range []struct {
+		panel int
+		key   string
+		want  []string
+	}{
+		{1, "location", []string{"lat", "lon", "mode"}},
+		{1, "size", []string{"by", "max", "min"}},
+		{1, "view", []string{"lat", "lon", "zoom"}},
+		{3, "location", []string{"field", "mode"}},
+		{4, "location", []string{"field", "gazetteer", "mode"}},
+		{5, "location", []string{"country", "field", "gazetteer", "mode"}},
+	} {
+		if got := keysOf(c.panel, c.key); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("panel %d %s keys = %v, want %v", c.panel, c.key, got, c.want)
+		}
+	}
+	if n := len(m.Panels[2].Vis.Options); n != 0 {
+		t.Errorf("panel 2 options = %v, want none (null is stored absent)", m.Panels[2].Vis.Options)
+	}
+	o := b.Panels[1].Vis.Options
+	if o == nil || o.View == nil || *o.View != (GeoView{Lat: 50, Lon: 5, Zoom: 4}) {
+		t.Errorf("panel 1 view = %+v", o)
+	} else if o.Size == nil || *o.Size.By != "fixed" || *o.Size.Min != 6 || *o.Size.Max != 30 ||
+		*o.Colour != "state" || *o.GroupBy != "env" || *o.Symbol != "diamond" || *o.Cluster || *o.WheelZoom ||
+		o.Location == nil || o.Location.Mode != "coords" || *o.Location.Lat != "lat" || *o.Location.Lon != "lon" {
+		t.Errorf("panel 1 options = %+v", *o)
+	}
+	if l := b.Panels[5].Vis.Options.Location; l == nil || *l.Country != "GB" || *l.Gazetteer != "region" || *l.Field != "r" {
+		t.Errorf("panel 5 location = %+v", l)
+	}
+	v6 := fixture(t, "v6-board-list.json")
+	up, err := DecodeBoardUpTo(v6, 6, 7)
+	if err != nil {
+		t.Fatalf("DecodeBoardUpTo(v6-board-list, 6, 7): %v", err)
+	}
+	if got, want := canon(t, up), canon(t, v6); !bytes.Equal(got, want) {
+		t.Errorf("DecodeBoardUpTo(v6-board-list, 6, 7) = %s, want %s", got, want)
+	}
+	if _, err := DecodeBoard(v6, 6); err != nil {
+		t.Errorf("DecodeBoard(v6, 6) = %v", err)
+	}
+	if _, err := DecodeBoardUpTo(raw, 7, 6); !errors.Is(err, ErrSchemaTooNew) {
+		t.Errorf("DecodeBoardUpTo(v7, 7, 6) = %v, want ErrSchemaTooNew", err)
 	}
 }

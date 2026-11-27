@@ -8,6 +8,7 @@
  */
 import type { DataPanelSpec, DataVisKind, PanelVisKind, VisOptions } from '../api/types';
 import type { Reducer } from '../data/frames';
+import type { GeomapOptions } from '../vis/geo/frame';
 // A cycle with `spec.ts`, safe: neither module reads the other's bindings while it loads.
 import { optionValueValid } from './spec';
 
@@ -170,6 +171,17 @@ export interface BarchartOptions {
 }
 
 export { optionValueValid };
+
+/** Stub (#234 Part 1, tests first). */
+export const OPTION_NULLABLE: readonly OptionKey[] = [];
+/** Stub (#234 Part 1, tests first). */
+export const OPTION_OBJECT_MEMBERS = {};
+
+/** Stub (#234 Part 1, tests first). */
+export function geomapOptions(o: VisOptions | undefined): GeomapOptions {
+  void o;
+  return {} as GeomapOptions;
+}
 
 /**
  * The options of `o` that `kind` allows with a valid value (`optionValueValid`, T22 §6.1, plan

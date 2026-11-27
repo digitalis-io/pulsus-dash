@@ -14,6 +14,19 @@ const BARS: VisSpec = {
   categoryLabel: 'level',
   categoryOrder: [],
 };
+const GEO: VisSpec = {
+  kind: 'geomap',
+  title: 'Map',
+  unit: { kind: 'none' },
+  view: null,
+  motion: 'ease',
+  size: { by: 'value', min: 4, max: 20 },
+  colour: 'group',
+  symbol: 'circle',
+  labels: 'auto',
+  cluster: true,
+  wheelZoom: true,
+};
 const D: FrameData = {
   kind: 'series',
   series: [
@@ -293,5 +306,67 @@ describe('RoutingEngine (D-ROUTE)', () => {
     // No hover shown: nothing on unbind.
     f.dispose();
     expect(hovers).toEqual([h, null]);
+  });
+
+  it('geomap: setFocusMark and cameraKey forwarded, the focus mark replayed on a rebind, the geo events forwarded (ADR-0027 §7)', async () => {
+    const b = backend();
+    const c2d = fakeEngine();
+    const e = new RoutingEngine(() => Promise.resolve(b), c2d);
+    const host = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    host.append(canvas);
+    const f = e.createFrame(canvas, INIT);
+    f.setSpec(LINE_A);
+    f.setData(D);
+    await flush();
+    expect(b.inner.frames).toHaveLength(1);
+    // A line frame: both are no-ops there, and the focus mark is kept for a rebind.
+    f.setFocusMark('a');
+    // The kind swap: the geomap goes to Canvas 2D, which gets the focus mark.
+    f.setSpec(GEO);
+    const inner = c2d.frames[0];
+    if (inner === undefined) throw new Error('not bound');
+    expect(inner.last('setFocusMark')).toEqual(['a']);
+    f.cameraKey('in');
+    f.setFocusMark(null);
+    expect(inner.calls.filter((c) => c.method === 'cameraKey' || c.method === 'setFocusMark')).toEqual([
+      { method: 'setFocusMark', args: ['a'] },
+      { method: 'cameraKey', args: ['in'] },
+      { method: 'setFocusMark', args: [null] },
+    ]);
+    const seen: unknown[] = [];
+    f.on('geoCommit', (x) => seen.push(['commit', x]));
+    f.on('geoBrush', (x) => seen.push(['brush', x]));
+    f.on('geoMarks', (x) => seen.push(['marks', x]));
+    const commit: FrameEvents['geoCommit'] = {
+      view: { lat: 1, lon: 2, zoom: 3 },
+      bounds: { west: -10, south: -5, east: 10, north: 5 },
+      gesture: 'keys',
+    };
+    const brush: FrameEvents['geoBrush'] = { keys: ['k01'] };
+    const marks: FrameEvents['geoMarks'] = {
+      level: 2,
+      marks: [{ id: 'k01', kind: 'marker', keys: ['k01'], inView: true }],
+    };
+    inner.emit('geoCommit', commit);
+    inner.emit('geoBrush', brush);
+    inner.emit('geoMarks', marks);
+    expect(seen).toEqual([
+      ['commit', commit],
+      ['brush', brush],
+      ['marks', marks],
+    ]);
+  });
+
+  it('geomap: a frame with no focus mark replays none', () => {
+    const c2d = fakeEngine();
+    const e = new RoutingEngine(() => Promise.resolve(backend()), c2d);
+    const f = e.createFrame(document.createElement('canvas'), INIT);
+    f.setSpec(GEO);
+    expect(c2d.frames[0] === undefined ? [] : methods(c2d.frames[0])).toEqual([
+      'setSpec',
+      'setEvents',
+      'setSelection',
+    ]);
   });
 });

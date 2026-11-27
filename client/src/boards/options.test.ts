@@ -11,6 +11,8 @@ import {
   optionValueValid,
   OPTION_KEYS,
   OPTION_MEMBERS,
+  OPTION_NULLABLE,
+  OPTION_OBJECT_MEMBERS,
   OPTION_ORDER,
   OPTION_TYPES,
   PENDING_KINDS,
@@ -72,15 +74,33 @@ describe('unit:board-options', () => {
       types: Record<string, string>;
       members: Record<string, string[]>;
       kinds: Record<string, string[]>;
+      nullable: string[];
+      objectMembers: Record<string, Record<string, [string, 'required' | 'optional']>>;
     };
     expect(OPTION_ORDER).toEqual(Object.keys(f.types));
     expect(OPTION_TYPES).toEqual(f.types);
     expect(OPTION_MEMBERS).toEqual(f.members);
     expect(OPTION_KEYS).toEqual(f.kinds);
+    // Board spec v7 (#234 Part 1): the geomap's nullable keys and its object members.
+    expect([...OPTION_NULLABLE]).toEqual(f.nullable);
+    expect(OPTION_OBJECT_MEMBERS).toEqual(f.objectMembers);
+    expect(Object.keys(f.objectMembers)).toEqual(['location', 'size', 'view']);
+    expect(f.kinds['geomap']).toEqual([
+      'reducer',
+      'labels',
+      'location',
+      'size',
+      'colour',
+      'groupBy',
+      'symbol',
+      'cluster',
+      'wheelZoom',
+      'view',
+    ]);
     // Every kind's keys are in OPTION_ORDER order.
     for (const [kind, keys] of Object.entries(OPTION_KEYS))
       expect(keys, kind).toEqual(OPTION_ORDER.filter((k) => keys.includes(k)));
-    expect([...PENDING_KINDS].sort()).toEqual(['pie'] satisfies PanelVisKind[]);
+    expect([...PENDING_KINDS].sort()).toEqual(['geomap', 'pie'] satisfies PanelVisKind[]);
   });
 });
 

@@ -127,6 +127,9 @@ export type FrameData =
       readonly coverage: Coverage;
     };
 
+/** Stub (#234 Part 1, tests first). */
+export const EMPTY_BASEMAP = undefined;
+
 /** The most rows a `categories` frame holds (T22-006, T22 §5.1). */
 export const MAX_CATEGORIES = 200;
 

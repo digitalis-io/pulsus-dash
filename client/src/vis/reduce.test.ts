@@ -40,6 +40,8 @@ import {
   tooSmallText,
 } from './reduce';
 import type { Thresholds } from './thresholds';
+import { geoRowSet } from './geo/frame';
+import { Cap as geoCap, G as geoG, gazT, opts as geoOpts } from './geo/fixtures/series';
 
 const NONE: Unit = { kind: 'none' };
 const K = fkey(0xabc);
@@ -508,5 +510,58 @@ describe('unit:category-table', () => {
     ]);
     expect(csvFileName('CPU % host')).toBe('CPU___host.csv');
     expect(csvFileName('')).toBe('panel.csv');
+  });
+});
+
+describe('unit:geo-coverage', () => {
+  const gaz = gazT();
+  const query: Completeness = {
+    ...COMPLETE,
+    truncated: true,
+    warnings: ['shard 3 timed out', 'series limit 500 reached'],
+  };
+
+  it('G: the §10.4 meter line, counted before the cap', () => {
+    const s = geoRowSet(geoG(), 'instant', geoOpts(), null, gaz, query);
+    expect(s.coverage).toMatchObject({
+      total: 10,
+      drawn: 10,
+      outside: 0,
+      duplicates: 1,
+      conflicts: 1,
+      baseline: null,
+      geo: {
+        notPlaced: 3,
+        ambiguous: 1,
+        locationsUnavailable: 0,
+        outsideMap: 1,
+        noValue: 2,
+        infinite: 1,
+        outOfRange: 1,
+      },
+    });
+    expect(s.coverage.query).toBe(query);
+    expect(coverageText(s.coverage)).toBe(
+      'truncated · limited (2 warnings) · 3 not placed · 1 ambiguous · 1 outside the map · ' +
+        '4 without a usable value (2 missing, 1 infinite, 1 out of range) · ' +
+        '1 duplicate series combined; 1 conflicts (max kept)',
+    );
+    const unavailable = geoRowSet(geoG(), 'instant', geoOpts(), null, null, COMPLETE);
+    expect(unavailable.coverage.geo?.locationsUnavailable).toBe(8);
+  });
+
+  it('Cap: c0000 and c5002 kept, c0001–c4998 shown, c4999–c5001 capped', () => {
+    const s = geoRowSet(geoCap(), 'instant', geoOpts(), null, gaz, COMPLETE);
+    const draw = new Map(s.rows.map((r) => [r.key, r.draw]));
+    expect(draw.get('c0000')).toBe('shown');
+    expect(draw.get('c5002')).toBe('shown');
+    expect(s.rows.filter((r) => r.draw === 'shown')).toHaveLength(5000);
+    expect(s.rows.filter((r) => r.draw === 'capped').map((r) => r.key)).toEqual([
+      'c4999',
+      'c5000',
+      'c5001',
+    ]);
+    expect(s.coverage).toMatchObject({ total: 5003, drawn: 5000, keptMin: true, keptMax: true });
+    expect(coverageText(s.coverage)).toBe('showing 5,000 of 5,003; kept min, max');
   });
 });

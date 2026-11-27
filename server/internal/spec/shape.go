@@ -35,11 +35,13 @@ const (
 	kRawObject
 )
 
-// valueType is the expected type of a value: an object of a shape, or an array of elem.
+// valueType is the expected type of a value: an object of a shape, or an array of elem; JSON null
+// is accepted when nullable (board spec v7: the geomap's groupBy and view).
 type valueType struct {
-	kind  kind
-	shape []field
-	elem  *valueType
+	kind     kind
+	shape    []field
+	elem     *valueType
+	nullable bool
 }
 
 // field is one key of an object shape, in table order.

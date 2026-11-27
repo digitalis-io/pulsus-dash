@@ -25,7 +25,15 @@
     "countdown": "object",
     "query": "string",
     "tag": "string",
-    "limit": "number"
+    "limit": "number",
+    "location": "object",
+    "size": "object",
+    "colour": "string",
+    "groupBy": "string",
+    "symbol": "string",
+    "cluster": "bool",
+    "wheelZoom": "bool",
+    "view": "object"
   },
   "members": {
     "zones": ["tz", "label"],
@@ -42,6 +50,28 @@
     "pie": ["reducer", "categoryBy", "sort", "donut", "labels", "parts"],
     "text": ["mode", "content", "language"],
     "clock": ["zones", "hourCycle", "seconds", "date", "countdown"],
-    "boardList": ["sort", "mode", "query", "tag", "limit"]
+    "boardList": ["sort", "mode", "query", "tag", "limit"],
+    "geomap": ["reducer", "labels", "location", "size", "colour", "groupBy", "symbol", "cluster", "wheelZoom", "view"]
+  },
+  "nullable": ["groupBy", "view"],
+  "objectMembers": {
+    "location": {
+      "mode": ["string", "required"],
+      "lat": ["string", "optional"],
+      "lon": ["string", "optional"],
+      "field": ["string", "optional"],
+      "gazetteer": ["string", "optional"],
+      "country": ["string", "optional"]
+    },
+    "size": {
+      "by": ["string", "optional"],
+      "min": ["number", "optional"],
+      "max": ["number", "optional"]
+    },
+    "view": {
+      "lat": ["number", "required"],
+      "lon": ["number", "required"],
+      "zoom": ["number", "required"]
+    }
   }
 }

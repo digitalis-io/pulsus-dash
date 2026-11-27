@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { BoardSpec, PanelSpec } from '../api/types';
 import { messages } from '../i18n/messages.en-GB';
-import { fieldMessage } from './fieldMessages';
+import { fieldMessage, saveFieldMessage } from './fieldMessages';
 import { GRID_LIMITS } from './layout';
-import { OPTION_ORDER } from './options';
+import { geomapOptions, OPTION_ORDER } from './options';
 import { boardListOptions } from '../widgets/boardList/options';
 import {
   canonicalJson,
@@ -61,6 +61,183 @@ function panel(id: string, [x, y, w, h]: readonly number[]): PanelSpec {
     vis: { kind: 'line' },
   };
 }
+
+describe('unit:board-spec-geomap (TS)', () => {
+  const geomap = (options: unknown, thresholds?: unknown) => ({
+    title: 'B',
+    panels: [
+      {
+        id: 'p-1',
+        title: 'A',
+        grid: { x: 0, y: 0, w: 6, h: 8 },
+        query: { lang: 'promql', text: 'up' },
+        vis: { kind: 'geomap', options, ...(thresholds === undefined ? {} : { thresholds }) },
+      },
+    ],
+    sections: [],
+  });
+  const O = '/panels/0/vis/options';
+
+  it('defaults by geomapOptions', () => {
+    const d = {
+      location: { mode: 'auto' },
+      reducer: 'last',
+      size: { by: 'value', min: 4, max: 20 },
+      colour: 'group',
+      groupBy: null,
+      symbol: 'circle',
+      labels: 'auto',
+      cluster: true,
+      wheelZoom: true,
+      view: null,
+    };
+    expect(geomapOptions({})).toEqual(d);
+    expect(geomapOptions(undefined)).toEqual(d);
+    expect(geomapOptions({ size: { min: 6 }, groupBy: null, view: null })).toEqual({
+      ...d,
+      size: { by: 'value', min: 6, max: 20 },
+    });
+    expect(
+      geomapOptions({
+        location: { mode: 'lookup', field: 'r', gazetteer: 'region', country: 'GB' },
+        reducer: 'max',
+        size: { by: 'fixed', min: 6, max: 30 },
+        colour: 'state',
+        groupBy: 'env',
+        symbol: 'diamond',
+        labels: 'none',
+        cluster: false,
+        wheelZoom: false,
+        view: { lat: 50, lon: 5, zoom: 4 },
+      }),
+    ).toEqual({
+      location: { mode: 'lookup', field: 'r', gazetteer: 'region', country: 'GB' },
+      reducer: 'max',
+      size: { by: 'fixed', min: 6, max: 30 },
+      colour: 'state',
+      groupBy: 'env',
+      symbol: 'diamond',
+      labels: 'none',
+      cluster: false,
+      wheelZoom: false,
+      view: { lat: 50, lon: 5, zoom: 4 },
+    });
+  });
+
+  it('the v7 fixture is valid; null is a value of groupBy and view only', () => {
+    const x = fixture('v7-geomap.json') as BoardSpec;
+    expect(checkBoardSpec(x)).toEqual([]);
+    expect(x.panels[0]?.vis.kind).toBe('geomap');
+    expect(JSON.parse(canonicalJson(x))).toEqual(x);
+    expect(checkBoardSpec(geomap({}))).toEqual([]);
+    expect(checkBoardSpec(geomap({ groupBy: null, view: null }))).toEqual([]);
+    // Null is only a value of groupBy and view.
+    expect(checkBoardSpec(geomap({ symbol: null }))).toEqual([
+      { pointer: `${O}/symbol`, messageKey: 'board.json.null' },
+    ]);
+    expect(checkBoardSpec(geomap({ view: { lat: 0, lon: 0, zoom: null } }))).toEqual([
+      { pointer: `${O}/view/zoom`, messageKey: 'board.json.null' },
+    ]);
+  });
+
+  it('geomap rows match the server, and their keys have en-GB text', () => {
+    const rows = cases.filter((c) => c.name.startsWith('geomap-'));
+    expect(rows.map((c) => c.name)).toEqual([
+      'geomap-size-min',
+      'geomap-size-order',
+      'geomap-colour-state',
+      'geomap-groupby',
+      'geomap-view-zoom',
+      'geomap-view-lon',
+      'geomap-depth',
+      'geomap-location',
+      'geomap-labels',
+    ]);
+    for (const c of rows) {
+      expect(checkBoardSpec(c.spec), c.name).toEqual(
+        c.fields.map((f) => ({ pointer: f.pointer, messageKey: f.message_key })),
+      );
+      for (const f of c.fields) {
+        expect(messages, f.message_key).toHaveProperty(`field.${f.message_key}`);
+      }
+    }
+  });
+
+  it('the option rules, as the server', () => {
+    const at = (key: string, value: unknown, th?: unknown) =>
+      checkBoardSpec(geomap({ [key]: value }, th));
+    const bad = (key: string) => [{ pointer: `${O}/${key}`, messageKey: `board.options.${key}.invalid` }];
+    const th = { direction: 'above', steps: [{ value: 1, state: 'watch', label: '' }] };
+    expect(at('colour', 'state', th)).toEqual([]);
+    expect(at('colour', 'state')).toEqual(bad('colour'));
+    expect(at('colour', 'pink', th)).toEqual(bad('colour'));
+    for (const size of [{ min: 2 }, { min: 40, max: 40 }, { by: 'fixed' }, { max: 4 }, {}])
+      expect(at('size', size), JSON.stringify(size)).toEqual([]);
+    for (const size of [{ min: 1 }, { min: 5, max: 4 }, { max: 41 }, { min: 30 }, { by: 'area' }])
+      expect(at('size', size), JSON.stringify(size)).toEqual(bad('size'));
+    for (const view of [
+      { lat: 85.0511, lon: -180, zoom: 0 },
+      { lat: -85.0511, lon: 179.999, zoom: 14 },
+    ])
+      expect(at('view', view), JSON.stringify(view)).toEqual([]);
+    for (const view of [
+      { lat: 85.06, lon: 0, zoom: 1 },
+      { lat: 0, lon: 180, zoom: 1 },
+      { lat: 0, lon: -180.1, zoom: 1 },
+      { lat: 0, lon: 0, zoom: -1 },
+      { lat: 0, lon: 0, zoom: 15 },
+    ])
+      expect(at('view', view), JSON.stringify(view)).toEqual(bad('view'));
+    for (const location of [
+      { mode: 'auto' },
+      { mode: 'coords', lat: 'lat', lon: 'lon' },
+      { mode: 'geohash', field: 'gh' },
+      { mode: 'lookup', field: 'iata', gazetteer: 'iata' },
+      { mode: 'lookup', field: 'r', gazetteer: 'region', country: 'GB' },
+    ])
+      expect(at('location', location), JSON.stringify(location)).toEqual([]);
+    for (const location of [
+      { mode: 'auto', field: 'x' },
+      { mode: 'coords', lat: 'lat' },
+      { mode: 'coords', lat: '1x', lon: 'lon' },
+      { mode: 'geohash' },
+      { mode: 'lookup', field: 'x' },
+      { mode: 'lookup', field: 'x', gazetteer: 'moon' },
+      { mode: 'lookup', field: 'x', gazetteer: 'iata', country: 'GB' },
+      { mode: 'lookup', field: 'x', gazetteer: 'region', country: 'gb' },
+      { mode: 'map' },
+    ])
+      expect(at('location', location), JSON.stringify(location)).toEqual(bad('location'));
+    expect(at('location', { lat: 'x' })).toEqual([
+      { pointer: `${O}/location/mode`, messageKey: 'board.json.required' },
+    ]);
+    expect(at('groupBy', 'env')).toEqual([]);
+    expect(at('groupBy', '')).toEqual(bad('groupBy'));
+    expect(at('symbol', 'star')).toEqual(bad('symbol'));
+    expect(at('labels', 'none')).toEqual([]);
+    expect(at('cluster', 'yes')).toEqual([{ pointer: `${O}/cluster`, messageKey: 'board.json.type' }]);
+    for (const key of ['tilt', 'projection', 'perspective', 'shadow', '3d', 'depth'])
+      expect(at(key, 1), key).toEqual([{ pointer: `${O}/${key}`, messageKey: 'board.json.unknownKey' }]);
+  });
+
+  it('the save text: the old server’s unsupported kind on a geomap panel only (§4.5)', () => {
+    const spec = geomap({}) as BoardSpec;
+    expect(
+      saveFieldMessage(spec, { pointer: '/panels/0/vis/kind', messageKey: 'board.vis.kind.invalid' }),
+    ).toBe('This server does not support map panels yet');
+    expect(
+      saveFieldMessage(spec, {
+        pointer: '/panels/0/vis/options/size',
+        messageKey: 'board.options.size.invalid',
+      }),
+    ).toBe(fieldMessage('board.options.size.invalid'));
+    expect(fieldMessage('board.options.size.invalid')).not.toBe(fieldMessage('board.json.invalid'));
+    const line = { ...spec, panels: spec.panels.map((p) => ({ ...p, vis: { kind: 'line' } })) } as BoardSpec;
+    expect(
+      saveFieldMessage(line, { pointer: '/panels/0/vis/kind', messageKey: 'board.vis.kind.invalid' }),
+    ).toBe(fieldMessage('board.vis.kind.invalid'));
+  });
+});
 
 describe('unit:board-spec (TS)', () => {
   it('v1 fixtures round-trip', () => {
@@ -401,12 +578,15 @@ describe('unit:board-spec (TS)', () => {
 
   it('every option key has text', () => {
     const catalogue = new Set<string>(Object.values(messages));
-    expect(OPTION_ORDER).toHaveLength(26);
-    // The widget keys (T24 §5.1): content has a byte bound, seconds and date no rule.
+    expect(OPTION_ORDER).toHaveLength(34);
+    // The widget keys (T24 §5.1): content has a byte bound, seconds and date no rule; the geomap's
+    // cluster and wheelZoom (T24 §5.15) none either.
     const keyOf: Partial<Record<string, string | null>> = {
       content: 'content.tooLong',
       seconds: null,
       date: null,
+      cluster: null,
+      wheelZoom: null,
     };
     for (const k of OPTION_ORDER) {
       const rule = keyOf[k] === undefined ? `${k}.invalid` : keyOf[k];

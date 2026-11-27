@@ -132,6 +132,42 @@ type Options struct {
 	Query *string  `json:"query,omitempty"`
 	Tag   *string  `json:"tag,omitempty"`
 	Limit *float64 `json:"limit,omitempty"` // a JSON number; the rules pass requires an integer 1–50
+	// Geomap (v7, T24 §5.15): where a series is, the marker sizes, the colour, the groups, the
+	// symbol, clustering, wheel zoom and the stored view. A null groupBy or view decodes to nil.
+	Location  *GeoLocation `json:"location,omitempty"`
+	Size      *GeoSize     `json:"size,omitempty"`
+	Colour    *string      `json:"colour,omitempty"`
+	GroupBy   *string      `json:"groupBy,omitempty"`
+	Symbol    *string      `json:"symbol,omitempty"`
+	Cluster   *bool        `json:"cluster,omitempty"`
+	WheelZoom *bool        `json:"wheelZoom,omitempty"`
+	View      *GeoView     `json:"view,omitempty"`
+}
+
+// GeoLocation is a geomap's location option (T24 §5.11 LocationOption): Mode auto, coords (Lat and
+// Lon label keys), geohash (Field) or lookup (Field, Gazetteer and, for region only, Country).
+type GeoLocation struct {
+	Mode      string  `json:"mode"`
+	Lat       *string `json:"lat,omitempty"`
+	Lon       *string `json:"lon,omitempty"`
+	Field     *string `json:"field,omitempty"`
+	Gazetteer *string `json:"gazetteer,omitempty"`
+	Country   *string `json:"country,omitempty"`
+}
+
+// GeoSize is a geomap's marker size: By value or fixed, the radii Min and Max in CSS px (defaults
+// value, 4 and 20).
+type GeoSize struct {
+	By  *string  `json:"by,omitempty"`
+	Min *float64 `json:"min,omitempty"`
+	Max *float64 `json:"max,omitempty"`
+}
+
+// GeoView is a geomap's stored view (ADR-0027): the centre and the zoom.
+type GeoView struct {
+	Lat  float64 `json:"lat"`
+	Lon  float64 `json:"lon"`
+	Zoom float64 `json:"zoom"`
 }
 
 // Zone is one zone of a clock: TZ is "" (the Context zone) or an IANA name; Label "" shows the

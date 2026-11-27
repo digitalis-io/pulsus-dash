@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { VisSpec } from '../engine/api';
 import {
+  EMPTY_BASEMAP,
   EMPTY_COVERAGE,
   emptyFrameData,
   seriesName,
@@ -153,5 +154,43 @@ describe('unit:frame-data-categories', () => {
       categories: [],
       coverage: EMPTY_COVERAGE,
     });
+  });
+});
+
+describe('unit:frame-validate (geomap, ADR-0027)', () => {
+  const GEO: VisSpec = {
+    kind: 'geomap',
+    title: 'Map',
+    unit: { kind: 'none' },
+    view: null,
+    motion: 'ease',
+    size: { by: 'value', min: 4, max: 20 },
+    colour: 'group',
+    symbol: 'circle',
+    labels: 'auto',
+    cluster: true,
+    wheelZoom: true,
+  };
+  const series: FrameData = { kind: 'series', series: [] };
+
+  it('a geomap needs geo data; its rows are planGeo’s to validate', () => {
+    expect(validateFrameData(GEO, series)).toEqual({ code: 'kind' });
+    const empty = emptyFrameData(GEO);
+    expect(validateFrameData(GEO, empty)).toBeNull();
+    expect(empty).toEqual({
+      kind: 'geo',
+      geo: {
+        rows: [],
+        groups: [],
+        coverage: EMPTY_COVERAGE,
+        groupBy: null,
+        seq: 0,
+        shown: new Uint32Array(0),
+        basemap: EMPTY_BASEMAP,
+      },
+    });
+    expect(EMPTY_BASEMAP).toEqual({ countries: [], coast: [], border: [] });
+    // Other kinds refuse geo data.
+    expect(validateFrameData(LINE, empty)).toEqual({ code: 'kind' });
   });
 });
