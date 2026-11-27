@@ -18,6 +18,7 @@ import {
   withoutSectionOverrides,
   withSectionOverride,
   withVar,
+  withVarValues,
   type BoardParams,
   type ParamError,
 } from './boardParams';
@@ -40,12 +41,18 @@ export interface BoardParamsState {
 
 export function useBoardParams(
   sectionIds: readonly string[],
-  _defined?: ReadonlySet<string>,
+  /** The board's defined variables (spec v9): read with the `$` escape (plan #289 §4.1). */
+  defined?: ReadonlySet<string>,
 ): BoardParamsState {
   const { search, rest } = useTimeContext();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const params = useMemo(() => readBoardParams(rest), [rest]);
+  // The names, not the set's identity, key the read: a caller may pass a new set each render.
+  const definedKey = [...(defined ?? [])].join('\u0000');
+  const params = useMemo(
+    () => readBoardParams(rest, new Set(definedKey === '' ? [] : definedKey.split('\u0000'))),
+    [rest, definedKey],
+  );
 
   const go = useCallback(
     (next: readonly SearchParamPair[], replace: boolean): void => {
@@ -89,7 +96,11 @@ export function useBoardParams(
     go(withoutSectionOverrides(rest), true);
   }, [go, rest]);
 
-  const setVarValues = useCallback(() => null, []);
+  const setVarValues = useCallback(
+    (name: string, values: readonly string[] | null) =>
+      budgeted(withVarValues(rest, name, values), values === null),
+    [budgeted, rest],
+  );
 
   return { params, setVar, setVarValues, setFilter, setSectionOverride, clearSectionOverrides };
 }

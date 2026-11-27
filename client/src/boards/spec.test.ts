@@ -839,7 +839,7 @@ describe('unit:board-spec-variables (TS)', () => {
       (_, i) => '\u{1F600}'.repeat(80) + String(i).padStart(3, '0'),
     );
     let n = 2 + 199 + es.reduce((a, e) => a + 2 + new TextEncoder().encode(e).length, 0);
-    for (let i = 0; n < 65_536; i++, n++) es[i % 200] += 'z';
+    for (let i = 0; n < 65_536; i++, n++) es[i % 200] = `${es[i % 200] ?? ''}z`;
     const spec = {
       title: 'B',
       panels: [],

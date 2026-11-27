@@ -14,16 +14,25 @@ import type { LogqlPlannedQuery } from '../../data/decode';
 import type { FieldError, VarValue } from '../types';
 import {
   formatDuration,
-  legacyText,
   MAX_RAW_BYTES,
   MAX_SENT_BYTES,
-  MAX_VALUE_BYTES,
   MAX_VARS,
   NO_WINDOW_MESSAGE,
   rangeMacros,
   rateWindowMs,
-  utf8Length,
 } from './plan';
+import {
+  checkValue,
+  rangeMessage,
+  RegexString,
+  renderValue,
+  Tracker,
+  unrepresentable,
+  unrepresentableMessage,
+  WHERE,
+  type Ctx,
+  type Refusal,
+} from './vars';
 
 export interface LogsPlanInputs {
   readonly query: string;
@@ -262,24 +271,29 @@ function macrosAt(stepMs: number, rangeMs: number): Macros {
 interface Substitution {
   readonly size: number;
   readonly missing: readonly string[];
-  readonly unrepresentable: readonly string[];
+  /** Row 7b and T07-031 (plan #289 §3.4), in the order found. */
+  readonly refusals: readonly Refusal[];
   /** A range macro is referenced (#291). */
   readonly rangeMacro: boolean;
   readonly bytes: Uint8Array;
   readonly segs: readonly Segment[];
 }
 
-/** One scan of the raw bytes by the LogQL lexical rules (plan #116 §4.2). */
+/**
+ * One scan of the raw bytes by the LogQL lexical rules (plan #116 §4.2) and the contexts of plan
+ * #289 §3.4; `keepMacros` leaves every macro as written (the value route).
+ */
 function substitute(
   raw: Uint8Array,
-  vars: ReadonlyMap<string, Uint8Array>,
+  vars: ReadonlyMap<string, VarValue>,
   m: Macros,
   build: boolean,
+  keepMacros = false,
 ): Substitution {
   const parts: Uint8Array[] = [];
   const segs: Segment[] = [];
   const missing: string[] = [];
-  const unrepresentable: string[] = [];
+  const refusals: Refusal[] = [];
   let rangeMacro = false;
   let size = 0;
   let copyFrom = 0;
@@ -309,63 +323,103 @@ function substitute(
     }
     size += to - copyFrom;
   };
+  const t = new Tracker(true);
+  let sctx: Ctx = { kind: 'none', where: WHERE.topLevel };
+  const strings = { rx: null as RegexString | null };
+  const open = (st: LexState, at: number): void => {
+    sctx = t.string();
+    strings.rx = sctx.kind === 're' ? new RegexString(st === 'dq' ? '"' : '', at + 1) : null;
+  };
+  const closeString = (at: number): void => {
+    if (strings.rx !== null) refusals.push(...strings.rx.close(raw, at, MAX_EXPANDED_BYTES));
+    strings.rx = null;
+    t.endString();
+  };
   let st: LexState = 'none';
   for (let i = 0; i < raw.length;) {
-    const c = raw[i];
+    const c = raw[i] ?? 0;
     if (c === DOLLAR) {
       const ref = reference(raw, i);
       if (ref === null) {
+        if (st === 'none') t.byte(c);
         i++;
         continue;
       }
+      const ctx = st === 'none' ? t.ref() : sctx;
+      const name = ref.name;
       let value: Uint8Array | null = null;
-      let isVar = false;
-      if (ref.name === '__interval') value = m.interval;
-      else if (ref.name === '__rate_interval') value = m.rateInterval;
-      else if (ref.name === '__range' || ref.name === '__range_s' || ref.name === '__range_ms') {
-        value = ref.name === '__range' ? m.range : ref.name === '__range_s' ? m.rangeS : m.rangeMs;
+      let v: VarValue | undefined;
+      if (MACROS.has(name) && keepMacros) {
+        // Left as written.
+      } else if (name === '__interval') value = m.interval;
+      else if (name === '__rate_interval') value = m.rateInterval;
+      else if (name === '__range' || name === '__range_s' || name === '__range_ms') {
+        value = name === '__range' ? m.range : name === '__range_s' ? m.rangeS : m.rangeMs;
         rangeMacro = true;
-      } else if (!ref.name.startsWith('__') && ref.name.length <= MAX_NAME_LEN) {
-        value = vars.get(ref.name) ?? null;
-        isVar = value !== null;
-        if (value === null && !missing.includes(ref.name)) missing.push(ref.name);
+      } else if (!name.startsWith('__') && name.length <= MAX_NAME_LEN) {
+        v = vars.get(name);
+        if (v === undefined && !missing.includes(name)) missing.push(name);
+      }
+      let structured = false;
+      if (v !== undefined) {
+        const text = renderValue(v, ctx);
+        if (text === null) {
+          refusals.push({ name, at: i, where: ctx.where });
+          value = new Uint8Array(0);
+        } else {
+          value = encoder.encode(text);
+          structured = typeof v !== 'string';
+          if (!representable(value, st)) refusals.push({ name, at: i, where: '' });
+        }
       }
       if (value === null) {
         i = ref.end;
         continue;
       }
-      if (isVar && !representable(value, st) && !unrepresentable.includes(ref.name))
-        unrepresentable.push(ref.name);
+      const string = strings.rx;
+      if (string !== null) string.add(raw, i, ref.end, name, decoder.decode(value), structured);
       flush(i);
-      const v = st === 'dq' ? encodeDQ(value) : value;
+      const w = st === 'dq' ? encodeDQ(value) : value;
       if (build) {
         segs.push({
           sentFrom: size,
-          sentLen: v.length,
+          sentLen: w.length,
           rawFrom: i,
           rawLen: ref.end - i,
           kind: 'insert',
         });
-        parts.push(v);
+        parts.push(w);
       }
-      size += v.length;
+      size += w.length;
       i = ref.end;
       copyFrom = ref.end;
       continue;
     }
     if (st === 'none') {
-      if (c === DQUOTE) st = 'dq';
-      else if (c === BACKTICK) st = 'bq';
+      if (c === DQUOTE) {
+        st = 'dq';
+        open(st, i);
+      } else if (c === BACKTICK) {
+        st = 'bq';
+        open(st, i);
+      } else t.byte(c);
     } else if (st === 'dq') {
       if (c === BACKSLASH) {
         // The escaped byte is skipped: a $ there is not a reference.
         i += 2;
         continue;
       }
-      if (c === DQUOTE || c === LF) st = 'none';
-    } else if (c === BACKTICK) st = 'none';
+      if (c === DQUOTE || c === LF) {
+        closeString(i);
+        st = 'none';
+      }
+    } else if (c === BACKTICK) {
+      closeString(i);
+      st = 'none';
+    }
     i++;
   }
+  if (strings.rx !== null) closeString(raw.length);
   flush(raw.length);
   let bytes = new Uint8Array(0);
   if (build) {
@@ -376,8 +430,16 @@ function substitute(
       o += p.length;
     }
   }
-  return { size, missing, unrepresentable, rangeMacro, bytes, segs };
+  return { size, missing, refusals, rangeMacro, bytes, segs };
 }
+
+const MACROS: ReadonlySet<string> = new Set([
+  '__interval',
+  '__rate_interval',
+  '__range',
+  '__range_s',
+  '__range_ms',
+]);
 
 const unhex = (b: number | undefined): number => {
   if (b === undefined) return -1;
@@ -618,12 +680,9 @@ function checkInputs(i: LogsPlanInputs, rawBytes: number): LogsStubPlanError | n
         'field.pattern',
         'a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$',
       );
-    if (utf8Length(legacyText(i.vars[n])) > MAX_VALUE_BYTES)
-      return inputError(
-        `/vars/${pointerToken(n)}`,
-        'field.range',
-        'a variable value must be UTF-8 and at most 4096 bytes',
-      );
+    const v = i.vars[n] ?? '';
+    if (!checkValue(v))
+      return inputError(`/vars/${pointerToken(n)}`, 'field.range', rangeMessage(v));
   }
   return null;
 }
@@ -640,7 +699,7 @@ function concat(...ps: Uint8Array[]): Uint8Array {
 
 interface Substituted {
   readonly raw: Uint8Array;
-  readonly vars: ReadonlyMap<string, Uint8Array>;
+  readonly vars: ReadonlyMap<string, VarValue>;
   readonly sub: Substitution;
 }
 
@@ -652,11 +711,7 @@ function prepareSubstitute(i: LogsPlanInputs): Substituted | LogsStubPlanError {
   const raw = encoder.encode(i.query);
   const bad = checkInputs(i, raw.length);
   if (bad !== null) return bad;
-  const vars = new Map(
-    Object.entries(i.vars).map(
-      ([k, v]) => [k, encoder.encode(typeof v === 'string' ? v : '')] as const,
-    ),
-  );
+  const vars = new Map(Object.entries(i.vars));
   const count = substitute(raw, vars, PLACEHOLDERS, false);
   if (count.missing.length > 0)
     return namesError(
@@ -664,11 +719,12 @@ function prepareSubstitute(i: LogsPlanInputs): Substituted | LogsStubPlanError {
       'variable.missing',
       `no value for variable $${count.missing.join(', $')}`,
     );
-  if (count.unrepresentable.length > 0)
+  const refused = unrepresentable(count.refusals);
+  if (refused.names.length > 0)
     return namesError(
-      count.unrepresentable,
+      refused.names,
       'variable.unrepresentable',
-      `the value of variable $${count.unrepresentable.join(', $')} cannot be written where it is referenced`,
+      unrepresentableMessage(refused.names, refused.where),
     );
   if (count.rangeMacro && (i.rangeMs ?? 0) <= 0)
     return inputError('/query', 'query.no_window', NO_WINDOW_MESSAGE);

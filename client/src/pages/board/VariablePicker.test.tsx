@@ -2,7 +2,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import axe from 'axe-core';
-import { useState as useStateOf } from 'react';
+import { useEffect, useState as useStateOf } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { BoardVariable } from '../../api/types';
 import { resolveVariables, type VariableList } from '../../boards/resolveVariables';
@@ -38,7 +38,10 @@ const ready = (values: readonly string[]): VariableList => ({
   truncated: false,
 });
 
-let setList: (l: VariableList) => void = () => undefined;
+const listSetter: { set: (l: VariableList) => void } = { set: () => undefined };
+const setList = (l: VariableList): void => {
+  listSetter.set(l);
+};
 
 function Host({
   def,
@@ -50,7 +53,9 @@ function Host({
   onRetry: () => void;
 }) {
   const [list, set] = useStateOf(initial);
-  setList = set;
+  useEffect(() => {
+    listSetter.set = set;
+  }, [set]);
   const params = useBoardParams([], new Set([def.name]));
   const lists = new Map<string, VariableList>(list === undefined ? [] : [[def.name, list]]);
   const state = resolveVariables([def], params.params.vars, lists).get(def.name) ?? {
@@ -87,7 +92,9 @@ function mount(def: BoardVariable, list: VariableList | undefined, search = '') 
     }).rest;
     return readBoardParams(rest, new Set([def.name])).vars.get(def.name) ?? [];
   };
-  const chip = () => screen.getByRole('button', { name: new RegExp(`^Variable ${def.label}: `) });
+  // The chip is behind the open popover (aria-hidden) too.
+  const chip = () =>
+    screen.getByRole('button', { name: new RegExp(`^Variable ${def.label}: `), hidden: true });
   const open = async () => {
     await user.click(chip());
     return screen.findByRole('dialog', { name: `Variable ${def.label}` });
@@ -119,7 +126,9 @@ describe('unit:variable-picker', () => {
     await m.user.click(m.option('a'));
     await m.user.click(m.option('b'));
     await m.user.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(m.address()).toEqual(['a', 'b']);
+    await waitFor(() => {
+      expect(m.address()).toEqual(['a', 'b']);
+    });
     expect(m.router.state.location.search).toContain('var-node=a&var-node=b');
   });
 
@@ -131,7 +140,9 @@ describe('unit:variable-picker', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
-    expect(m.address()).toEqual([]);
+    await waitFor(() => {
+      expect(m.address()).toEqual([]);
+    });
   });
 
   it('shows 200 matches, then the rest as a count', async () => {
@@ -150,7 +161,9 @@ describe('unit:variable-picker', () => {
     expect(m.chip()).toHaveAccessibleName('Variable Environment: a');
     await m.open();
     await m.user.click(m.option('b'));
-    expect(m.address()).toEqual(['b']);
+    await waitFor(() => {
+      expect(m.address()).toEqual(['b']);
+    });
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
@@ -160,7 +173,9 @@ describe('unit:variable-picker', () => {
     const m = mount(NODE, ready(['a', 'b']), '&var-node=b');
     await m.open();
     await m.user.click(screen.getByRole('button', { name: 'Reset to default' }));
-    expect(m.address()).toEqual([]);
+    await waitFor(() => {
+      expect(m.address()).toEqual([]);
+    });
   });
 
   it('a custom value is tagged, kept through a search, and removed alone', async () => {
@@ -172,7 +187,9 @@ describe('unit:variable-picker', () => {
     expect(m.option('zz, custom')).toBeInTheDocument();
     await m.user.click(m.option('zz, custom'));
     await m.user.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(m.address()).toEqual(['a']);
+    await waitFor(() => {
+      expect(m.address()).toEqual(['a']);
+    });
   });
 
   it('a value no longer listed after a refetch shows as custom', async () => {
@@ -223,11 +240,15 @@ describe('unit:variable-picker', () => {
     expect(document.activeElement).toBe(apply);
     screen.getByRole('searchbox').focus();
     await m.user.keyboard('{Control>}{Enter}{/Control}');
-    expect(m.address()).toEqual(['a']);
+    await waitFor(() => {
+      expect(m.address()).toEqual(['a']);
+    });
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).toBeNull();
     });
-    expect(document.activeElement).toBe(m.chip());
+    await waitFor(() => {
+      expect(document.activeElement).toBe(m.chip());
+    });
   });
 
   it('a listed $__all literal next to All', async () => {
@@ -236,8 +257,12 @@ describe('unit:variable-picker', () => {
     expect(m.checked('All')).toBe(true);
     await m.user.click(m.option('$__all'));
     await m.user.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(m.address()).toEqual(['$$__all']);
-    expect(m.address().map(decodeValue)).toEqual([{ value: '$__all' }]);
+    await waitFor(() => {
+      expect(m.address()).toEqual(['$$__all']);
+    });
+    await waitFor(() => {
+      expect(m.address().map(decodeValue)).toEqual([{ value: '$__all' }]);
+    });
     await m.open();
     expect(m.checked('$__all')).toBe(true);
     expect(m.checked('All')).toBe(false);
@@ -245,14 +270,16 @@ describe('unit:variable-picker', () => {
 
   it('a 200-character literal starting with $ round-trips to the panels', async () => {
     const lit = '$' + 'q'.repeat(199);
-    const m = mount(NODE, ready([lit, 'b']));
+    // The first listed value, b, is selected; choosing the literal and dropping b leaves it.
+    const m = mount(NODE, ready(['b', lit]));
     await m.open();
-    await m.user.click(m.option('b'));
     await m.user.click(m.option(lit));
     await m.user.click(m.option('b'));
     await m.user.click(screen.getByRole('button', { name: 'Apply' }));
-    expect(m.address()).toEqual(['$' + lit]);
-    expect([...('$' + lit)].length).toBe(201);
+    await waitFor(() => {
+      expect(m.address()).toEqual(['$' + lit]);
+    });
+    expect(Array.from('$' + lit).length).toBe(201);
     expect(JSON.parse(screen.getByTestId('value').textContent)).toEqual({ values: [lit] });
     await m.open();
     expect(m.checked(lit)).toBe(true);
@@ -276,7 +303,10 @@ describe('unit:variable-picker', () => {
     expect(m.option('All')).not.toHaveAttribute('aria-disabled', 'true');
     await m.user.click(m.option('All'));
     expect(m.checked('All')).toBe(true);
-    expect(m.checked('n199')).toBe(false);
+    await m.user.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() => {
+      expect(m.address()).toEqual(['$__all']);
+    });
   });
 
   it('a non-ASCII selection one row short of 65 536 bytes disables the other rows', async () => {

@@ -43,7 +43,7 @@ export function TextEditorBody({
 }: WidgetEditorBodyProps) {
   const o = useMemo(() => textOptions(panel.vis.options), [panel.vis.options]);
   const live = useMemo(() => widgetVisErrors(panel), [panel]);
-  const vars = textVars(useContext(BoardRunContext).vars, o);
+  const vars = textVars(useContext(BoardRunContext).displayVars, o);
   const deferredOptions = useDeferredValue(o);
   const deferredVars = useDeferredValue(vars);
   const errorAt = (suffix: string): string | null => {

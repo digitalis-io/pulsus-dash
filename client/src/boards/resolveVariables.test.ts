@@ -148,10 +148,10 @@ describe('unit:resolve-variables', () => {
       (_, i) => '\u{1F600}'.repeat(80) + String(i).padStart(3, '0'),
     );
     let n = selectionBytes(es);
-    for (let i = 0; n < 65_536; i++, n++) es[i % 200] += 'z';
+    for (let i = 0; n < 65_536; i++, n++) es[i % 200] = `${es[i % 200] ?? ''}z`;
     expect(selectionBytes(es)).toBe(65_536);
     expect(one(NODE, es, ready([]))?.kind).toBe('ready');
-    es[0] += 'z';
+    es[0] = `${es[0] ?? ''}z`;
     expect(selectionBytes(es)).toBe(65_537);
     expect(one(NODE, es, ready([]))?.kind).toBe('tooMany');
     expect(selectionBytes(['é'])).toBe(6);

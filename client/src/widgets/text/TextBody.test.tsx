@@ -76,6 +76,9 @@ async function fresh(mode: 'ok' | 'pending' | 'reject' = 'ok') {
     <run.BoardRunContext.Provider
       value={{
         vars,
+        states: new Map(),
+        displayVars: vars,
+        labels: new Map(),
         widths: {
           get: () => null,
           set: () => undefined,

@@ -258,7 +258,7 @@ describe('board params: multi-value variables', () => {
   it('applies the 200 code-point limit to the decoded value', () => {
     const literal = '$' + 'y'.repeat(199);
     const param = encodeValue(literal);
-    expect([...param].length).toBe(201);
+    expect(Array.from(param).length).toBe(201);
     const got = readBoardParams([['var-n', param]], defined).vars.get('n') ?? [];
     expect(got.map(decodeValue)).toEqual([{ value: literal }]);
     // An undefined variable is read raw: 201 code points are over its limit.

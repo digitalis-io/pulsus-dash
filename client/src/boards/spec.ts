@@ -11,6 +11,7 @@
  * a duplicate key, and an integer written as `1e2` or `6.0` (the server rejects those; the client
  * only ever sends `JSON.stringify` output).
  */
+import { checkVariables } from './variablesSpec';
 import type {
   BoardSpec,
   ClockZone,
@@ -223,6 +224,23 @@ const tBoard = obj([
   opt('time', obj([req('from', tString), req('to', tString)])),
   // Board spec v4 (plan #215, T24-029): tags.
   opt('tags', { kind: 'array', elem: tString }),
+  // Board spec v9 (plan #289 §3.1): variables; which optional keys a kind takes is the rules pass's.
+  opt('variables', {
+    kind: 'array',
+    elem: obj([
+      req('name', tString),
+      req('label', tString),
+      req('kind', tString),
+      opt('query', obj([req('lang', tString), req('text', tString)])),
+      opt('values', { kind: 'array', elem: tString }),
+      opt('multi', tBool),
+      opt('includeAll', tBool),
+      opt('allValue', tString),
+      opt('default', { kind: 'array', elem: tString }),
+      opt('sort', tString),
+      opt('refresh', tString),
+    ]),
+  }),
 ]);
 
 /** Collects field errors in document order, at most `MAX_FIELD_ERRORS`. */
@@ -668,6 +686,13 @@ function checkRules(c: Collector, b: BoardSpec): void {
       return null;
     });
   });
+  checkVariables(
+    (pointer, key) => {
+      c.add(pointer, key);
+    },
+    str,
+    b.variables ?? [],
+  );
   const total = b.panels.length + b.sections.reduce((n, s) => n + s.panels.length, 0);
   if (total > MAX_PANELS) c.add('/panels', 'board.panels.tooMany');
   panels('/panels', b.panels);

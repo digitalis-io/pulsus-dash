@@ -83,6 +83,7 @@ import {
   type LogsPlanInputs,
   type LogsStubPlanError,
 } from './stub/logsPlan';
+import { planVariableQuery } from './stub/variableValues';
 import {
   ApiError,
   BoardConflictError,
@@ -786,14 +787,28 @@ export class StubApi implements Api {
     }, signal);
   }
 
+  /** The stub's label values for a variable query planned by the mirror (plan #289 §3.5). */
   variableValues(
     tenant: string,
-    _req: VariableValuesRequest,
+    req: VariableValuesRequest,
     signal?: AbortSignal,
   ): Promise<VariableValues> {
     return settle(() => {
+      const plan = planVariableQuery(req.lang, req.query, req.vars ?? {});
+      if (isPlanError(plan) || isLogsPlanError(plan)) throw toApiError(plan);
+      if (plan.match !== null) {
+        const reserved = reservedIn(plan.match);
+        if (reserved !== null) throw reservedRefusal(reserved);
+      }
       this.checkTenant(tenant);
-      return { planned: { label: '', match: null }, values: [], truncated: false };
+      const all =
+        req.lang === 'logql'
+          ? (STUB_LOG_LABEL_VALUES[plan.label] ?? [])
+          : plan.label === '__name__'
+            ? STUB_PROM_METRIC_NAMES
+            : STUB_PROM_LABEL_VALUES;
+      const limit = req.limit ?? 1000;
+      return { planned: plan, values: all.slice(0, limit), truncated: all.length > limit };
     }, signal);
   }
 

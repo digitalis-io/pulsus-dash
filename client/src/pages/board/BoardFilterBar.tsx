@@ -1,8 +1,9 @@
 /**
- * The toolbar's left side (plan #61 Part C §4.3, Appendix C-A §A.9; SRF-017 subset): a chip per
- * variable the board's queries reference, a chip per `label=value` filter and `+ Filter`. Values
- * live in the board URL only (`useBoardParams`), so they are never saved, Copy link carries them
- * and Back undoes them. No panel query reads them yet (#64).
+ * The toolbar's left side (plan #61 Part C §4.3, Appendix C-A §A.9; SRF-017 subset; plan #289
+ * §4.4): a picker chip per defined variable but constants (spec order), a text chip per variable
+ * the queries reference and the board does not define, a chip per `label=value` filter and
+ * `+ Filter`. Values live in the board URL only (`useBoardParams`), so they are never saved, Copy
+ * link carries them and Back undoes them.
  */
 import { useState } from 'react';
 import { DialogTrigger, Heading } from 'react-aria-components';
@@ -20,6 +21,10 @@ import {
   type ParamError,
 } from '../../state/boardParams';
 import type { BoardParamsState } from '../../state/useBoardParams';
+import type { BoardVariable } from '../../api/types';
+import { customList } from '../../boards/resolveVariables';
+import type { VariableLists } from '../../boards/useVariableLists';
+import { VariablePicker } from './VariablePicker';
 import styles from './Board.module.css';
 
 const message = (e: ParamError | null): string | null => (e === null ? null : t(e));
@@ -161,17 +166,47 @@ function AddFilterForm({ state, close }: { state: BoardParamsState; close: () =>
   );
 }
 
+const NO_DEFS: readonly BoardVariable[] = [];
+const NO_LISTS: VariableLists = { states: new Map(), lists: new Map(), retry: () => undefined };
+
 export function BoardFilterBar({
   variables,
+  defined = NO_DEFS,
+  lists = NO_LISTS,
   state,
 }: {
-  /** The board's variables, in first-reference order (`boardVariables(draft)`). */
+  /**
+   * The variables the board's queries reference and it does not define, in first-reference order:
+   * each a text chip (a plain string, as before spec v9).
+   */
   variables: readonly string[];
+  /** The board's defined variables (spec v9, plan #289 §4.4): a picker chip each but constants. */
+  defined?: readonly BoardVariable[];
+  lists?: VariableLists;
   state: BoardParamsState;
 }) {
   const { vars, filters } = state.params;
+  const labelOf = (name: string): string => {
+    const d = defined.find((x) => x.name === name);
+    return d === undefined || d.label === '' ? name : d.label;
+  };
   return (
     <div role="group" aria-label={t('filters.group')} className={cx(styles['filterBar'])}>
+      {defined
+        .filter((d) => d.kind !== 'constant')
+        .map((d) => (
+          <VariablePicker
+            key={`def-${d.name}`}
+            def={d}
+            state={lists.states.get(d.name) ?? { kind: 'loading' }}
+            list={d.kind === 'custom' ? customList(d) : lists.lists.get(d.name)}
+            labelOf={labelOf}
+            onCommit={(encoded) => state.setVarValues(d.name, encoded)}
+            onRetry={() => {
+              lists.retry(d.name);
+            }}
+          />
+        ))}
       {variables.map((name) => {
         const current = vars.get(name)?.[0];
         const shown = current ?? t('filters.notSet');

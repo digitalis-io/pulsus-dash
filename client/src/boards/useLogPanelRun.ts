@@ -39,7 +39,8 @@ import {
 } from './panelRun';
 import { isAbort, missingOf, type PanelRun, type PanelRunInput } from './usePanelRun';
 import { useQueryLanguage } from './useQueryLanguage';
-import { panelVars, referencedVariables } from './variableRefs';
+import { variableBlock } from './variableBlock';
+import { panelVars } from './variableRefs';
 
 const NO_DIAGNOSTICS: readonly Diagnostic[] = Object.freeze([]);
 const NO_NAMES: readonly string[] = Object.freeze([]);
@@ -47,7 +48,7 @@ const NO_RETRY = (): void => undefined;
 
 export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const api = useApi();
-  const { vars, timeReady } = useContext(BoardRunContext);
+  const { vars, states, labels, timeReady } = useContext(BoardRunContext);
   const { window, refreshEpoch } = useTimeContext();
   const { tenant, panel, text, enabled, widthPx } = a;
   const runSeq = a.runSeq ?? 0;
@@ -55,7 +56,11 @@ export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const { fromMs, toMs } = window;
   const { lang } = useQueryLanguage(active ? 'logql' : null);
 
-  const hint = useMemo(() => referencedVariables(text).filter((n) => !vars.has(n)), [text, vars]);
+  const block = useMemo(
+    () => variableBlock(text, vars, states, labels),
+    [text, vars, states, labels],
+  );
+  const hint = block.missing;
   const refusedEarly = useMemo(() => refusalOf(text), [text]);
   const pre: PanelState | null = !active
     ? null
@@ -65,11 +70,14 @@ export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
         ? 'empty'
         : refusedEarly !== null
           ? 'refused'
-          : hint.length > 0
-            ? 'variable'
-            : null;
-  // Nothing is sent while inactive, blocked or before the board's time is set (§4.6).
-  const runnable = active && pre === null && timeReady;
+          : block.tooMany !== null
+            ? 'variableTooMany'
+            : hint.length > 0
+              ? 'variable'
+              : null;
+  // Nothing is sent while inactive, blocked, a variable loads (plan #289 §4.4) or before the
+  // board's time is set (§4.6).
+  const runnable = active && pre === null && !block.loading && timeReady;
   const path = logPanelPath(panel.vis.kind);
   const sentPairs = useMemo(() => panelVars(text, vars), [text, vars]);
   const sent = useMemo(() => Object.fromEntries(sentPairs), [sentPairs]);
@@ -209,6 +217,7 @@ export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       text,
       blocked,
       missing,
+      tooMany: block.tooMany,
       refusal,
       ready,
       outcome,
@@ -225,6 +234,7 @@ export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       text,
       blocked,
       missing,
+      block.tooMany,
       refusal,
       ready,
       outcome,
