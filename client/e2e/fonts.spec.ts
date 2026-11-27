@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { STAT_FONT } from '../src/engine/canvas2d/layout.ts';
-import { frame, galleryReady, GALLERY_URL, open, ORIGIN, T } from './helpers.ts';
+import { frame, galleryReady, GALLERY_URL, open, ORIGIN } from './helpers.ts';
 
 declare global {
   interface Window {
@@ -93,14 +93,21 @@ test.describe('e2e:font-origin', () => {
       await held;
       await route.continue();
     });
-    await page.clock.setFixedTime(T);
+    // No fake clock: it replaces the User Timing API the draws are measured with. The gallery's
+    // window is absolute.
     await page.goto(GALLERY_URL);
     await expect(page.locator('html')).toHaveAttribute('data-platform', 'apple');
     const stat = frame(page, 'stat');
     await expect(stat).toHaveAttribute('data-frame-ready', 'true');
     const id = (await stat.getAttribute('data-frame-id')) ?? '';
     expect(id).not.toBe('');
-    const before = await stat.screenshot();
+    // The canvas's pixels (a screenshot would wait for the held font).
+    const pixels = (): Promise<string> =>
+      stat
+        .locator('canvas')
+        .first()
+        .evaluate((c) => (c as HTMLCanvasElement).toDataURL());
+    const before = await pixels();
     await page.evaluate((f) => {
       void document.fonts.load(f).then(() => {
         window.__interAt = performance.now();
@@ -122,7 +129,6 @@ test.describe('e2e:font-origin', () => {
     expect(await page.evaluate((f) => document.fonts.check(f), STAT_FONT)).toBe(true);
     expect(inter.length).toBeGreaterThan(0);
     for (const u of inter) expect(new URL(u).origin).toBe(ORIGIN);
-    const after = await stat.screenshot();
-    expect(after.equals(before), 'the stat redrew in Inter').toBe(false);
+    expect(await pixels(), 'the stat redrew in Inter').not.toBe(before);
   });
 });

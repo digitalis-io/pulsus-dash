@@ -6,6 +6,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { colour } from '../src/styles/tokens.ts';
 import { deleteBoard } from './boardApi.ts';
+import { HTTP_BFF } from './bff.ts';
 import { createTextBoard, EXPLORE_RESULT, LOGS_RESULT, open, openUserMenu } from './helpers.ts';
 
 type Theme = 'dark' | 'light';
@@ -16,6 +17,8 @@ declare global {
     __escAt?: number | undefined;
     __goneAt?: number | undefined;
     __goneNextFrame?: boolean | undefined;
+    __exitAt?: number | undefined;
+    __exitAnims?: number[] | undefined;
     __firstOpacity?: string;
   }
   interface Element {
@@ -94,18 +97,23 @@ async function setLight(page: Page): Promise<void> {
 
 const userPopover = (page: Page): Locator => page.locator('[data-trigger="MenuTrigger"]');
 
-/** Presses Tab until `target` (or an element inside it) has focus. */
-async function tabTo(page: Page, target: Locator, max = 80): Promise<void> {
-  for (let i = 0; i < max; i++) {
-    await page.keyboard.press('Tab');
-    if (
-      await target.evaluate(
-        (e) => e === document.activeElement || e.contains(document.activeElement),
-      )
-    )
-      return;
-  }
-  throw new Error('Tab never reached the target');
+/**
+ * Moves focus to `target` with the keyboard: focus lands on it, Shift+Tab leaves it and Tab comes
+ * back, so the focus is a keyboard focus (`:focus-visible`, React Aria's `data-focus-visible`).
+ */
+async function tabTo(page: Page, target: Locator): Promise<void> {
+  await target.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(target).toBeFocused();
+}
+
+/** Under forced colours, `l`'s background settles on the system Highlight (never transparent). */
+async function expectHighlight(page: Page, l: Locator, what: string): Promise<void> {
+  const want = await highlight(page);
+  expect(want, 'Highlight').not.toBe(TRANSPARENT);
+  // Colours transition over `motion.quick`: poll until the forced colour has settled.
+  await expect.poll(() => css(l, 'background-color'), { message: what }).toBe(want);
 }
 
 async function minBox(l: Locator, what: string): Promise<void> {
@@ -177,7 +185,7 @@ test.describe('kit chrome (#282)', () => {
     if (await forcedActive(page)) await opaque('forced colours');
   });
 
-  test('e2e:kit-shapes', async ({ page, request }, info) => {
+  test('e2e:kit-shapes', async ({ page }) => {
     test.setTimeout(120_000);
     const theme: Theme = 'dark';
     await open(page, '/t/demo/boards');
@@ -212,11 +220,7 @@ test.describe('kit chrome (#282)', () => {
         expectColour(await css(label, 'color'), tok(theme, 'text-on-accent'), `${state} label`);
       }
       await page.emulateMedia({ forcedColors: 'active' });
-      if (await forcedActive(page)) {
-        const bg = await css(row, 'background-color');
-        expect(bg, `${state} forced row`).not.toBe(TRANSPARENT);
-        expect(bg, `${state} forced row`).toBe(await highlight(page));
-      }
+      if (await forcedActive(page)) await expectHighlight(page, row, `${state} forced row`);
       await page.emulateMedia({ forcedColors: 'none' });
     };
     await current('expanded');
@@ -245,10 +249,7 @@ test.describe('kit chrome (#282)', () => {
     }
     await page.emulateMedia({ forcedColors: 'active' });
     if (await forcedActive(page)) {
-      const sel = group.locator('[aria-checked="true"]');
-      const bg = await css(sel, 'background-color');
-      expect(bg).not.toBe(TRANSPARENT);
-      expect(bg).toBe(await highlight(page));
+      await expectHighlight(page, group.locator('[aria-checked="true"]'), 'forced segment');
     }
     await page.emulateMedia({ forcedColors: 'none' });
 
@@ -261,36 +262,6 @@ test.describe('kit chrome (#282)', () => {
     // The panel editor's Select trigger.
     const editor = await openPanelEditor(page);
     await minBox(editor.getByRole('button', { name: /Visualisation$/ }), 'Select trigger');
-
-    // A text widget's TextArea: rows tall, vertical resize, and a drag grows it.
-    const uid = await createTextBoard(
-      request,
-      `kit-shapes ${info.project.name} ${String(Date.now())}`,
-      [{ id: 'p-1', title: 'Notes', content: 'One', grid: [0, 0, 6, 8] }],
-    );
-    try {
-      await open(page, `/t/demo/board/${uid}`);
-      await page.getByRole('button', { name: 'Edit board' }).click();
-      await page.getByRole('button', { name: 'Panel menu: Notes' }).click();
-      await page.getByRole('menuitem', { name: 'Edit panel' }).click();
-      const text = page.getByRole('dialog', { name: 'Edit text panel' });
-      const area = text.getByRole('textbox', { name: 'Content' });
-      await area.fill('1\n2\n3\n4\n5');
-      expect(await css(area, 'resize')).toBe('vertical');
-      const lh = parseFloat(await css(area, 'line-height'));
-      const box = await area.boundingBox();
-      if (box === null) throw new Error('the text area has no box');
-      expect(box.height).toBeGreaterThanOrEqual(3 * lh);
-      await area.scrollIntoViewIfNeeded();
-      const b = (await area.boundingBox()) ?? box;
-      await page.mouse.move(b.x + b.width - 3, b.y + b.height - 3);
-      await page.mouse.down();
-      await page.mouse.move(b.x + b.width - 3, b.y + b.height + 60, { steps: 6 });
-      await page.mouse.up();
-      expect((await area.boundingBox())?.height ?? 0).toBeGreaterThan(b.height);
-    } finally {
-      await deleteBoard(request, uid);
-    }
   });
 
   test('e2e:kit-focus', async ({ page }) => {
@@ -320,18 +291,14 @@ test.describe('kit chrome (#282)', () => {
     expectColour(await css(item, 'background-color'), tok(theme, 'accent-fill'), 'menu item');
     expectColour(await css(item, 'color'), tok(theme, 'text-on-accent'), 'menu item text');
     await page.emulateMedia({ forcedColors: 'active' });
-    if (await forcedActive(page)) {
-      const bg = await css(item, 'background-color');
-      expect(bg).not.toBe(TRANSPARENT);
-      expect(bg).toBe(await highlight(page));
-    }
+    if (await forcedActive(page)) await expectHighlight(page, item, 'forced menu item');
     await page.emulateMedia({ forcedColors: 'none' });
     await page.keyboard.press('Escape');
 
     await open(page, EXPLORE_RESULT);
     const group = page.getByRole('radiogroup', { name: 'Visualisation' });
     await group.waitFor();
-    await tabTo(page, group);
+    await tabTo(page, group.locator('[aria-checked="true"]'));
     const seg = group.locator('[data-focus-visible]');
     await expect(seg).toHaveCount(1);
     await expectRing(seg, theme, '1px', 'segmented item');
@@ -358,6 +325,12 @@ test.describe('kit chrome (#282)', () => {
         'animationstart',
         (e) => {
           const el = e.target as Element;
+          if (el.matches('[data-trigger="MenuTrigger"][data-exiting]')) {
+            window.__exitAt = performance.now();
+            window.__exitAnims = el
+              .getAnimations()
+              .map((a) => Number(a.effect?.getTiming().duration ?? NaN));
+          }
           el.__anims ??= el
             .getAnimations()
             .map((a) => Number(a.effect?.getTiming().duration ?? NaN));
@@ -422,14 +395,19 @@ test.describe('kit chrome (#282)', () => {
         window.__escAt = undefined;
         window.__goneAt = undefined;
         window.__goneNextFrame = undefined;
+        window.__exitAt = undefined;
+        window.__exitAnims = undefined;
       });
       await page.keyboard.press('Escape');
       await expect(pop).toHaveCount(0);
       if (reduce) {
         await expect.poll(() => page.evaluate(() => window.__goneNextFrame)).toBe(true);
       } else {
-        const gone = await page.evaluate(() => (window.__goneAt ?? NaN) - (window.__escAt ?? NaN));
-        expect(gone, 'popover gone after Escape (ms)').toBeLessThanOrEqual(150);
+        // The exit is one 100 ms fade, and the popover is gone 150 ms after it starts (measured
+        // from the fade, not the key press: a loaded host delays the key's handling, not the exit).
+        expect(await page.evaluate(() => window.__exitAnims ?? null)).toEqual([100]);
+        const gone = await page.evaluate(() => (window.__goneAt ?? NaN) - (window.__exitAt ?? NaN));
+        expect(gone, 'popover gone after its exit starts (ms)').toBeLessThanOrEqual(150);
       }
 
       await page.getByRole('button', { name: 'New board' }).click();
@@ -453,5 +431,42 @@ test.describe('kit chrome (#282)', () => {
     };
     await run(false);
     await run(true);
+  });
+});
+
+// Boards made through the API are served by the http build (the stub build has its seeded data).
+test.describe('kit chrome on the http build (#282)', () => {
+  test.use({ baseURL: HTTP_BFF });
+
+  test('e2e:kit-shapes: the text widget TextArea', async ({ page, request }, info) => {
+    test.setTimeout(120_000);
+    // A text widget's TextArea: rows tall, vertical resize, and a drag grows it.
+    const uid = await createTextBoard(
+      request,
+      `kit-shapes ${info.project.name} ${String(Date.now())}`,
+      [{ id: 'p-1', title: 'Notes', content: 'One', grid: [0, 0, 6, 8] }],
+    );
+    try {
+      await open(page, `/t/demo/board/${uid}`);
+      await page.getByRole('button', { name: 'Edit board' }).click();
+      await page.getByRole('button', { name: 'Panel menu: Notes' }).click();
+      await page.getByRole('menuitem', { name: 'Edit panel' }).click();
+      const text = page.getByRole('dialog', { name: 'Edit text panel' });
+      const area = text.getByRole('textbox', { name: 'Content' });
+      await area.fill('1\n2\n3\n4\n5');
+      expect(await css(area, 'resize')).toBe('vertical');
+      const lh = parseFloat(await css(area, 'line-height'));
+      await area.scrollIntoViewIfNeeded();
+      const b = await area.boundingBox();
+      if (b === null) throw new Error('the text area has no box');
+      expect(b.height).toBeGreaterThanOrEqual(3 * lh);
+      await page.mouse.move(b.x + b.width - 3, b.y + b.height - 3);
+      await page.mouse.down();
+      await page.mouse.move(b.x + b.width - 3, b.y + b.height + 60, { steps: 6 });
+      await page.mouse.up();
+      expect((await area.boundingBox())?.height ?? 0).toBeGreaterThan(b.height);
+    } finally {
+      await deleteBoard(request, uid);
+    }
   });
 });
