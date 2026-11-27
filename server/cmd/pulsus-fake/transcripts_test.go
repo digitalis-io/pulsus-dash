@@ -42,11 +42,15 @@ func TestE2ETranscripts(t *testing.T) {
 		"logs-checkout-volume-brushed", "logs-label-values-app", "logs-labels", "logs-metric-checkout",
 		"logs-paging-1", "logs-paging-2", "logs-paging-volume", "logs-parse-error", "logs-slow-volume",
 		"logs-slow", "logs-too-broad", "logs-truncated-volume", "logs-truncated",
-		"metadata", "metric-names", "parse-error-nopos", "parse-error-position", "runtimeinfo",
+		"metadata", "metric-names",
+		// The range store's set (#304 §A.4): generated waves.
+		"overscan-slow", "overscan-spike", "overscan-wave",
+		"parse-error-nopos", "parse-error-position", "runtimeinfo",
 		"scalar", "slow-final-chromium", "slow-final-firefox", "slow-final-webkit", "slow",
 		"too-broad", "truncated",
 		// The panel units set (#290 §5 E1–E2).
 		"units-rx-bytes", "units-uptime",
+		"zoom-wave",
 	}
 	if !slices.Equal(names, want) {
 		t.Errorf("transcripts %v, want %v", names, want)

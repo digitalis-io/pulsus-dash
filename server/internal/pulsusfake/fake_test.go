@@ -3,6 +3,7 @@ package pulsusfake
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -252,5 +253,27 @@ func TestMaxRecords(t *testing.T) {
 	r := f.Requests()
 	if len(r) != 2 || r[0].Transcript != "ok" || r[1].Transcript != "ok" || r[0].Form.Get("start") != "1" || r[1].Form.Get("start") != "2" {
 		t.Errorf("Requests() = %+v, want the two ok records", r)
+	}
+}
+
+// The generated wave (#304 §A.4) is a function of time only: two grids over the same times agree,
+// the spike lands at its time only, and Labels name the series.
+func TestGenerateWave(t *testing.T) {
+	g := Generate{Fn: "wave", Labels: []map[string]string{{"team": "a"}, {"team": "b"}}, Spike: &Spike{AtS: 3600, Value: 1000}}
+	body := func(start, end, step int) string {
+		r := httptest.NewRequest(http.MethodPost, "/api/v1/query_range", strings.NewReader(
+			fmt.Sprintf("query=x&start=%d&end=%d&step=%d", start, end, step)))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		_ = r.ParseForm()
+		return generated(r, g)
+	}
+	whole := body(0, 7200, 15)
+	for _, want := range []string{`{"metric":{"team":"a"},"values":[[0,"1"],[15,"1"]`, `[3600,"1001"]`, `{"metric":{"team":"b"},"values":[[0,"2"]`, `[3660,"1.1"]`} {
+		if !strings.Contains(whole, want) {
+			t.Errorf("body lacks %s: %.300s", want, whole)
+		}
+	}
+	if part := body(3600, 3660, 15); !strings.Contains(part, `[[3600,"1001"],[3615,"1"],[3630,"1"],[3645,"1"],[3660,"1.1"]]`) {
+		t.Errorf("a part differs from the whole: %s", part)
 	}
 }

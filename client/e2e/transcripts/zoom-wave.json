@@ -1,0 +1,10 @@
+{
+  "name": "zoom-wave",
+  "provenance": {"synthetic": "the wave for the zoom ladder cases (#304 Part B)"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query_prefix": "zoom_wave"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-zoom-wave"},
+    "generate": {"series": 1, "fn": "wave"}
+  }
+}

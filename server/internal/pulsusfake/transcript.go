@@ -34,10 +34,13 @@ type Provenance struct {
 // form's query byte for byte, and every Form entry. The form is the request's query string and
 // form body together, so a match holds for a GET and its POST fallback alike.
 type Match struct {
-	Method string            `json:"method"`
-	Paths  []string          `json:"paths"`
-	Query  *string           `json:"query,omitempty"`
-	Form   map[string]string `json:"form,omitempty"` // each key's first form value must equal
+	Method string   `json:"method"`
+	Paths  []string `json:"paths"`
+	Query  *string  `json:"query,omitempty"`
+	// QueryPrefix (exclusive with Query) matches every query that starts with it (#304: many
+	// panels of distinct texts on one generated transcript).
+	QueryPrefix *string           `json:"query_prefix,omitempty"`
+	Form        map[string]string `json:"form,omitempty"` // each key's first form value must equal
 }
 
 // Response is what the fake answers. Body is served byte for byte as it appears in the file;
@@ -52,6 +55,24 @@ type Response struct {
 	Hang          bool              `json:"hang"`
 	HangAfterBody bool              `json:"hang_after_body,omitempty"`
 	BodyText      *string           `json:"body_text,omitempty"`
+	// Generate (exclusive with Body and BodyText) answers a query_range on the request's own
+	// grid from a function of time only, so buckets fetched apart equal one request (#304 §A.4).
+	Generate *Generate `json:"generate,omitempty"`
+}
+
+// Generate is a synthetic matrix (#304 §A.4): Series series (or one per Labels entry), series i
+// at t_s valued 1 + i + ((t_s / 60) mod 60) / 10, plus Spike.Value at t_s = Spike.AtS.
+type Generate struct {
+	Series int                 `json:"series,omitempty"`
+	Fn     string              `json:"fn"`
+	Labels []map[string]string `json:"labels,omitempty"`
+	Spike  *Spike              `json:"spike,omitempty"`
+}
+
+// Spike adds Value to every series at one time.
+type Spike struct {
+	AtS   int64   `json:"at_s"`
+	Value float64 `json:"value"`
 }
 
 //go:embed testdata/*.json
@@ -90,6 +111,12 @@ func Load(fsys fs.FS) ([]Transcript, error) {
 			return nil, fmt.Errorf("pulsusfake: %s: match needs a method and paths", n)
 		case t.Response.BodyText != nil && len(t.Response.Body) > 0:
 			return nil, fmt.Errorf("pulsusfake: %s: response sets both body and body_text", n)
+		case t.Match.Query != nil && t.Match.QueryPrefix != nil:
+			return nil, fmt.Errorf("pulsusfake: %s: match sets both query and query_prefix", n)
+		case t.Response.Generate != nil && (t.Response.BodyText != nil || len(t.Response.Body) > 0):
+			return nil, fmt.Errorf("pulsusfake: %s: response sets generate with a body", n)
+		case t.Response.Generate != nil && t.Response.Generate.Fn != "wave":
+			return nil, fmt.Errorf("pulsusfake: %s: generate fn must be wave", n)
 		}
 		seen[t.Name] = true
 		out = append(out, t)
@@ -120,6 +147,9 @@ func (t Transcript) matches(method, p string, form url.Values) bool {
 		}
 	}
 	query, hasQuery := form["query"]
+	if t.Match.QueryPrefix != nil {
+		return hasQuery && strings.HasPrefix(query[0], *t.Match.QueryPrefix)
+	}
 	if t.Match.Query == nil {
 		return true
 	}

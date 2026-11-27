@@ -5,12 +5,14 @@ package pulsusfake
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -117,9 +119,12 @@ func (f *Fake) replay(w http.ResponseWriter, r *http.Request, rec *Recorded, res
 		w.Header().Set(k, v)
 	}
 	w.WriteHeader(resp.Status)
-	if resp.BodyText != nil {
+	switch {
+	case resp.Generate != nil:
+		_, _ = io.WriteString(w, generated(r, *resp.Generate))
+	case resp.BodyText != nil:
 		_, _ = io.WriteString(w, *resp.BodyText)
-	} else {
+	default:
 		_, _ = w.Write(resp.Body)
 	}
 	if resp.HangAfterBody {
@@ -167,6 +172,52 @@ func (f *Fake) generate(w http.ResponseWriter, r *http.Request, rec *Recorded) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, body)
 	f.update(rec, func(x *Recorded) { x.Completed = true })
+}
+
+// generated is the matrix body of g on the request's grid (start, end and step in seconds).
+func generated(r *http.Request, g Generate) string {
+	num := func(k string) float64 {
+		v, err := strconv.ParseFloat(r.Form.Get(k), 64)
+		if err != nil {
+			return 0
+		}
+		return v
+	}
+	start, end, step := num("start"), num("end"), num("step")
+	if step <= 0 {
+		step = 15
+	}
+	labels := g.Labels
+	if len(labels) == 0 {
+		for i := range max(g.Series, 1) {
+			labels = append(labels, map[string]string{"series": strconv.Itoa(i)})
+		}
+	}
+	var b strings.Builder
+	b.WriteString(`{"status":"success","data":{"resultType":"matrix","result":[`)
+	for i, ls := range labels {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		m, _ := json.Marshal(ls) // a map of strings always marshals
+		b.WriteString(`{"metric":`)
+		b.Write(m)
+		b.WriteString(`,"values":[`)
+		for k := 0; start+float64(k)*step <= end && k < 11001; k++ {
+			ts := int64(start + float64(k)*step)
+			v := 1 + float64(i) + float64((ts/60)%60)/10
+			if g.Spike != nil && ts == g.Spike.AtS {
+				v += g.Spike.Value
+			}
+			if k > 0 {
+				b.WriteByte(',')
+			}
+			fmt.Fprintf(&b, "[%d,%q]", ts, strconv.FormatFloat(v, 'g', -1, 64))
+		}
+		b.WriteString("]}")
+	}
+	b.WriteString("]}}")
+	return b.String()
 }
 
 func (f *Fake) cancelled(rec *Recorded) {

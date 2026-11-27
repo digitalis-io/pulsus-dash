@@ -1,0 +1,10 @@
+{
+  "name": "overscan-wave",
+  "provenance": {"synthetic": "a function of time only, so buckets fetched apart equal one request (#304 §A.4)"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query_prefix": "overscan_wave"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-overscan-wave"},
+    "generate": {"series": 2, "fn": "wave"}
+  }
+}
