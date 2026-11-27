@@ -428,6 +428,25 @@ describe('board variables (plan #289 §4.4)', () => {
     }
   });
 
+  // Review r1: a name a variable query uses and the board does not define is a legacy chip, and its
+  // URL value goes into the list request.
+  it('a legacy name of a variable query has a chip and its URL value', async () => {
+    const node = CLICKHOUSE.variables?.[0] as BoardVariable;
+    const spec: BoardSpec = {
+      ...CLICKHOUSE,
+      variables: [
+        { ...node, query: { lang: 'promql', text: 'label_values(up{job="$job"}, instance)' } },
+      ],
+    };
+    const b = openVariablesBoard(spec, '&var-job=api');
+    await ready(...ALL_PANELS);
+    expect(screen.getByRole('button', { name: 'Variable job: api' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(b.values).toHaveBeenCalled();
+    });
+    expect(b.values.mock.calls[0]?.[1].vars).toEqual({ job: 'api' });
+  });
+
   // unit:variable-too-many (SRF-017, plan #289 §4.2 step 3).
   it('201 values block the $node panels and the dependent list; 200 run', async () => {
     const node = CLICKHOUSE.variables?.[0] as BoardVariable;

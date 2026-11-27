@@ -42,6 +42,7 @@ interface Call {
 function mount(
   defs: readonly BoardVariable[],
   address: ReadonlyMap<string, readonly string[]> = new Map(),
+  legacy: readonly string[] = [],
 ) {
   const api = new StubApi();
   const calls: Call[] = [];
@@ -77,7 +78,14 @@ function mount(
     const [tenant, setTenant] = useState('demo');
     out.setAddress = setAddr;
     out.setTenant = setTenant;
-    const l = useVariableLists({ tenant, uid: 'b-1', defs, address: addr, timeReady: true });
+    const l = useVariableLists({
+      tenant,
+      uid: 'b-1',
+      defs,
+      address: addr,
+      legacy,
+      timeReady: true,
+    });
     out.lists = l;
     return <p>{[...l.states].map(([n, s]) => `${n}:${s.kind}`).join(' ')}</p>;
   }
@@ -249,6 +257,44 @@ describe('unit:variable-lists', () => {
     await waitFor(() => {
       expect(calls).toHaveLength(2);
     });
+  });
+
+  it('a legacy reference takes its URL value, and a new value refetches (review r1)', async () => {
+    const J = q('j', 'label_values(up{job="$job"}, instance)');
+    const { calls, out } = mount([J], new Map([['job', ['api']]]), ['job']);
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    expect(calls[0]?.req.vars).toEqual({ job: 'api' });
+    act(() => {
+      out.setAddress(new Map([['job', ['web']]]));
+    });
+    await waitFor(() => {
+      expect(calls).toHaveLength(2);
+    });
+    expect(calls[1]?.req.vars).toEqual({ job: 'web' });
+    // Without a value the list waits for it, unfetched.
+    act(() => {
+      out.setAddress(new Map());
+    });
+    await waitFor(() => {
+      expect(out.lists?.states.get('j')).toEqual({ kind: 'waiting', on: 'job' });
+    });
+    expect(calls).toHaveLength(2);
+  });
+
+  it('the language is part of the key (review r1)', async () => {
+    const first = mount([q('l', 'label_values(a)')]);
+    await waitFor(() => {
+      expect(first.calls).toHaveLength(1);
+    });
+    const keys = first.queryClient
+      .getQueryCache()
+      .getAll()
+      .map((x) => x.queryKey);
+    expect(keys).toContainEqual(
+      expect.arrayContaining(['varValues', 'l', 'promql', 'label_values(a)']),
+    );
   });
 
   it('unmount aborts the request in flight', async () => {

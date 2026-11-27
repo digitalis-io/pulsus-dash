@@ -62,6 +62,7 @@ import { invalidateBoardLists } from '../../boards/queries';
 import { checkBoardSpec } from '../../boards/spec';
 import { tagError } from '../../boards/tags';
 import { boardVariables } from '../../boards/variables';
+import { referencedVariables } from '../../boards/variableRefs';
 import { WidgetRegistryContext, type WidgetDef } from '../../widgets/registry';
 import { isDataPanel, isWidgetPanel } from '../../widgets/spec';
 import { t } from '../../i18n/t';
@@ -604,7 +605,14 @@ function BoardEditor({
   // their text chip and plain string; the defined ones resolve from the URL, the default and their
   // lists, and every panel reads their values, states and labels.
   // Keyed by the names, so a draft edit that keeps them renders no panel (#111).
-  const legacyKey = boardVariables(s.draft)
+  // The variable queries' references count too (#289 review r1): a name they use that the board
+  // does not define is a legacy chip, and its URL value goes into their list requests.
+  const legacyKey = [
+    ...new Set([
+      ...boardVariables(s.draft),
+      ...defs.flatMap((d) => (d.query === undefined ? [] : referencedVariables(d.query.text))),
+    ]),
+  ]
     .filter((n) => !definedNames.has(n))
     .join(' ');
   const legacy = useMemo(() => (legacyKey === '' ? [] : legacyKey.split(' ')), [legacyKey]);

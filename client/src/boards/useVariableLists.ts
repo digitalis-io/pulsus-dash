@@ -1,7 +1,7 @@
 /**
  * The value lists of a board's variables and their states (plan #289 §4.3, SRF-017): a custom
  * variable's values, sorted, without a request; a query variable's from `POST /variables/values`
- * (one TanStack query each, `['varValues', tenant, uid, name, text, varsJson, fromMs, toMs]`),
+ * (one TanStack query each, `['varValues', tenant, uid, name, lang, text, varsJson, fromMs, toMs]`),
  * fetched in spec order: a key exists only once the variables its query references are ready, so a
  * dependent fetches after them and again whenever their values change. `refresh: load` keeps the
  * window of the first ready render; `timeChange` follows the window. A new key or an unmount
@@ -79,7 +79,8 @@ export function useVariableLists(i: VariableListsInput): VariableLists {
       }
       if (def.kind !== 'query' || def.query === undefined || !timeReady) continue;
       // Step 0 of §4.2: no key while a referenced variable is not ready.
-      const before = resolveVariables(defs.slice(0, k), address, lists);
+      // The earlier variables and the names the board does not define (their URL values).
+      const before = resolveVariables(defs.slice(0, k), address, lists, legacy);
       if (dependencyBlock(def, before) !== null) continue;
       const ready = new Map<string, VarValue>();
       for (const [n, st] of before) if (st.kind === 'ready') ready.set(n, st.value);
@@ -92,6 +93,7 @@ export function useVariableLists(i: VariableListsInput): VariableLists {
         tenant,
         uid,
         def.name,
+        lang,
         text,
         JSON.stringify(sent),
         w.fromMs,

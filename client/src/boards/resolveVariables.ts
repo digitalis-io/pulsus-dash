@@ -176,10 +176,11 @@ export function resolveVariables(
   lists: ReadonlyMap<string, VariableList>,
   legacy: readonly string[] = [],
 ): Map<string, VarState> {
+  // The names the board does not define first: a variable query may reference them.
+  const defined = new Set(defs.map((d) => d.name));
   const out = new Map<string, VarState>();
-  for (const def of defs) out.set(def.name, resolveOne(def, out, address, lists.get(def.name)));
   for (const name of legacy) {
-    if (out.has(name)) continue;
+    if (defined.has(name)) continue;
     const v = address.get(name)?.[0];
     out.set(
       name,
@@ -188,5 +189,6 @@ export function resolveVariables(
         : { kind: 'ready', value: v, display: v, selection: { values: [v] } },
     );
   }
+  for (const def of defs) out.set(def.name, resolveOne(def, out, address, lists.get(def.name)));
   return out;
 }
