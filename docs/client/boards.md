@@ -571,7 +571,8 @@ editor preview render the body without the frame, so they never report a second 
 
 **The quick presets.** The header's time control shows the 15m, 1h, 6h, 24h and 7d presets inline
 from 1280 px wide (IA-020 as amended): a SegmentedControl named "Quick range", each option named by
-its full range ("Last 1 hour"). The current range's preset is checked, none for any other range;
+its visible label, then its full range ("1h (Last 1 hour)", so the name starts with what is shown,
+WCAG 2.5.3). The current range's preset is checked, none for any other range;
 choosing one sets `from=now-<range>&to=now`. The trigger still opens the time range dialog.
 
 ### The editor's Thresholds and Legend

@@ -329,7 +329,8 @@ and `elevation.1`, primary `accent-fill` with `text-on-accent`, ghost transparen
 28 × 28 ghost buttons, radius 6. The segmented control is a `field` track (radius 6) with an
 `accent-fill` thumb (radius `xs`) 2 px inside its edge (items ≥ 24 px); its `value` may be `null`
 (no option selected, as the header's inline presets for any other range), and an option's
-`ariaLabel` names it when its label is an abbreviation ("1h" is "Last 1 hour"). Text fields, select triggers and text areas are `field` with a
+`ariaLabel` names it when its label is an abbreviation, starting with the label (WCAG 2.5.3: "1h"
+is "1h (Last 1 hour)"). Text fields, select triggers and text areas are `field` with a
 `border-field` boundary (≥ 3:1, VL-009), radius 6, 28 px high (text areas at least, `rows` tall).
 The checkbox is a 16 px `xs` box, `accent-fill` when checked. Popovers, menus, listboxes,
 tooltips and the Inspector take the `material-menu` material with `elevation.2` (opaque `surface-1`

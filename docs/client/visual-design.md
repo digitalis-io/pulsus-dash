@@ -48,7 +48,7 @@ token-lint](README.md#tokens-and-token-lint)).
 | `material-bar` | `#15171CE6` | `#FFFFFFD9` | the header's material |
 | `material-menu` | `#1E2127EB` | `#FAFBFCE6` | popovers, menus, listboxes, tooltips, the Inspector |
 | `surface-float` | `#15171CF0` | `#FFFFFFF0` | the geomap overlay only |
-| `failing-glow` | `#E0457B26` | `#B8285C1A` | a failing board panel's glow only (a state token: only `theme/stateEncoding.module.css` uses it, as `--state-glow`) |
+| `failing-glow` | `#E0457B26` | `#B8285C1A` | a failing board panel's glow only (a state colour, used only by `elevation.state`) |
 
 Every key differs between the themes, and the light values are designed, not inverted. Series,
 level, state, ramp, syntax, map, `brush`, `selection` and `pattern-ink` are unchanged.
@@ -73,7 +73,7 @@ every state pair needs new state colours and is tracked in #284.
 | `font.family` | adds `ui-apple`: `-apple-system, BlinkMacSystemFont, "Inter Variable", system-ui, sans-serif` |
 | `font.weight` | adds `bold` 700 |
 | `font.tracking` | `lg` −0.011 em, `xl` −0.017 em, `display` −0.022 em (`--tracking-*`); Inter only, 0 on Apple systems |
-| `elevation` | `1`, `2`, `3` (`--elevation-*`): a 1 px top highlight, an ambient and (2, 3) a key shadow. Part 2a: `card` (the top highlight, a 1 px `hairline` ring, an ambient and a soft 6/18 px shadow) and `state` (the ring in `--state-colour` and an 8/32 px glow in `--state-glow`; only with a StateEncoding class that defines `--state-glow`, today only `failing`) |
+| `elevation` | `1`, `2`, `3` (`--elevation-*`): a 1 px top highlight, an ambient and (2, 3) a key shadow. Part 2a: `card` (the top highlight, a 1 px `hairline` ring, an ambient and a soft 6/18 px shadow) and `state` (a 1 px ring in `failing` and an 8/32 px glow in `failing-glow`; only on a failing board panel). The state colours are named in the token itself: a custom property's `var()` is resolved on the element that declares it (the root), so a token cannot pick up a `--state-colour` set later on the panel |
 | `material` | `filter`: `blur(24px) saturate(180%)` (`--material-filter`) |
 | `motion` | adds `quick` 100 ms and `easing-in` `cubic-bezier(0.4, 0, 1, 1)`; reduced motion sets every duration to 0 ms |
 
