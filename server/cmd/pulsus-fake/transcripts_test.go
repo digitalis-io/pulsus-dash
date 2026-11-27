@@ -24,6 +24,8 @@ func TestE2ETranscripts(t *testing.T) {
 	}
 	// Load sorts by file name.
 	want := []string{
+		// The board bar chart set (plan #173 Part 3b §3.2).
+		"bars-by-version-base", "bars-by-version", "bars-keys", "bars-many", "bars-trunc", "bars-warn",
 		// The board LogQL frame panel's kind probe (plan #67 §5.3).
 		"board-logs-probe-checkout",
 		"counter-rate", "counter-raw", "empty", "gauge-range", "histogram",

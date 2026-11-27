@@ -42,7 +42,9 @@ import {
 } from '../../test/exploreTestKit';
 import { fakeEditorSource } from '../../test/fakeEditor';
 import { F } from '../../test/fakePromSource';
-import { installResizeObserver, resizeAll } from '../../test/fakeResizeObserver';
+import { installResizeObserver, resizeAll, resizeOf } from '../../test/fakeResizeObserver';
+import { fkey } from '../../test/categoryFixtures';
+import { BARS_Q, BY_VERSION_RANGE } from '../../test/exploreBarsKit';
 import { G2, H1 } from '../../test/histogramFixtures';
 import { locationOf } from '../../test/renderApp';
 import { fromRange } from '../../vis/autovis';
@@ -1028,5 +1030,72 @@ describe('unit:explore-tenant-canvas (T25 §8)', () => {
     const selections = (after?.calls ?? []).filter((c) => c.method === 'setSelection');
     expect(selections.length).toBeGreaterThan(0);
     expect(selections.every((c) => c.args[0] === null)).toBe(true);
+  });
+});
+
+describe('Explore bar chart (#173 Part 3b §4.4)', () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
+      () =>
+        ({
+          font: '',
+          measureText: (s: string) => ({ width: 6 * Array.from(s).length }),
+        }) as unknown as CanvasRenderingContext2D,
+    );
+  });
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it('vis=barchart draws the bar chart with its meter; a click inspects, never filters', async () => {
+    const { api, engine, router } = openExplore(url(BARS_Q, '&vis=barchart'));
+    spyRange(api, [BY_VERSION_RANGE]);
+    await ready();
+    const host = await waitFor(() => {
+      const c = document.querySelector('[data-category-chart]');
+      expect(c).not.toBeNull();
+      return c as Element;
+    });
+    const c = host.querySelector('[data-category-cell]');
+    act(() => {
+      if (c !== null) resizeOf(c, 600, 240);
+    });
+    await waitFor(() => {
+      expect(document.querySelector('[data-coverage-meter]')).toHaveTextContent('100 %');
+    });
+    const f = engine.frames.at(-1);
+    act(() => {
+      f?.emit('mark', {
+        source: 'pointer',
+        key: fkey(3),
+        index: 0,
+        xCss: 300,
+        yCss: 28,
+        rows: [{ key: fkey(3), name: '2.31', colourIndex: null, value: 120 }],
+      });
+    });
+    expect(document.querySelector('[data-mark-tooltip]')).toHaveTextContent(
+      'Filters apply on boards',
+    );
+    act(() => {
+      f?.emit('pick', { keys: [fkey(3)], gesture: 'click', source: 'pointer' });
+    });
+    const aside = await screen.findByRole('complementary', { name: 'Query result' });
+    // The heading is the origin's title (T25 §4.2); the bar is its value and labels.
+    expect(aside.querySelector('[data-inspector-value]')).toHaveTextContent('120');
+    expect(aside.querySelector('[data-section="labels"]')).toHaveTextContent('2.31');
+    expect(new URLSearchParams(router.state.location.search).getAll('f')).toEqual([]);
+  });
+
+  it('vis=auto on a range answer without a reducer stays a line', async () => {
+    const { api, engine } = openExplore(url(BARS_Q));
+    spyRange(api, [BY_VERSION_RANGE]);
+    await ready();
+    await waitFor(() => {
+      expect(lastSpec(engine)?.kind).toBe('line');
+    });
+    expect(document.querySelector('[data-category-chart]')).toBeNull();
+    expect(screen.getByRole('radio', { name: 'Auto (Line)' })).toBeInTheDocument();
   });
 });

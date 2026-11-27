@@ -6,16 +6,45 @@ value, a threshold state and a baseline. Everything that is not drawing is a pur
 function of the client (`client/src/vis/reduce.ts`), so it is tested without a canvas and shared by
 every renderer.
 
-**Status (#173 Part 3a).** The transforms, the bar chart's model and fit (`client/src/vis/barchart.ts`),
-the Canvas 2D bars ([charts](charts.md#bar-chart-adr-0028)), `CategoryChart` and the coverage
-meter are in place, and the chart gallery draws five bar charts. No board or Explore surface
-offers the bar chart yet: a board panel of kind `barchart` or `pie` is stored (board spec v3) but
-sends no query and shows "This chart type isn't available in this version yet."
-([pending kinds](boards.md#pending-kinds)), and no auto-vis `available` set holds `barchart`.
-Part 3a adds the interactions at unit and component level: the keys and the brush
-([charts](charts.md#bar-chart-adr-0028)), the pick decision `barAction`, the tooltip lines, the
-table view `PanelTable`, the focusable `tooSmall` notice and the baseline helpers; only the
-gallery's bar charts use them. Part 3b opens the bar chart on boards and Explore.
+**Status (#173 Part 3b).** The transforms, the bar chart's model and fit (`client/src/vis/barchart.ts`),
+the Canvas 2D bars ([charts](charts.md#bar-chart-adr-0028)), `CategoryChart`, the coverage meter
+and the interactions (Part 3a: the keys and the brush, `barAction`, the tooltip lines, the table
+view `PanelTable`, the `tooSmall` notice and the baseline helpers) are in place. Part 3b opens the
+bar chart on boards ([bar chart panels](boards.md#bar-chart-panels-173-part-3b)) and on Explore
+([`vis=barchart`](explore.md#the-bar-chart-visbarchart-173-part-3b)), and runs the baseline. A pie
+panel is stored (board spec v3) but sends no query and shows "This chart type isn't available in
+this version yet."
+
+## The panel view (`boards/panelRun.ts`)
+
+A saved bar chart is a **`category` view**: `{kind: 'category', model, baselineFailed, lang}`
+(`categoryView(result, {title, rateApplied, panelVis, lang, baseline})`). Its model is
+`barchartModel(result, {title, rateApplied, options: panelVis.options, thresholds:
+panelVis.thresholds ?? null, base})`, with `base` the baseline result when the run has one, and
+`baselineFailed` true when the baseline run failed. The cache key is every model input: the result
+and the baseline (object identity, `WeakMap`s), then
+`JSON.stringify([title, rateApplied, options ?? null, thresholds ?? null])`; nothing else is read
+(no theme, no size). The view's `data-panel-state` is `frame` and its `data-panel-vis` `barchart`.
+
+**Auto-vis by surface.** A board `auto` panel calls `autoVis` with the default set
+(`SHIPPED_VIS`), on the stored spec and on the editor's draft, so it never becomes a `category`
+view; Explore passes `EXPLORE_VIS` (`SHIPPED_VIS` ∪ {barchart}) and row 11 can fire there
+(T22 §4.5).
+
+**The key's `baselineMs`.** The panel run key is
+`['data', 'panel', tenant, id, text, vars, kind, stepMs, fromMs, toMs, baselineMs]` (11 elements;
+`PANEL_KEY_HEAD` stays 7). `baselineMs` is `OFFSET_MS[baselineOffset(vis.options, ghost)]` for a
+bar chart and null otherwise, so a ghost toggle or an offset edit is a new key whose placeholder is
+the previous outcome. The outcome's `baseline` is the shifted result, `'failed'`, or absent (no
+baseline run).
+
+**The linked cancellation.** With a `baselineMs`, `usePromPanelRun`'s query function makes one
+`AbortController` for the run, aborted when the query's signal aborts; the main request and the
+shifted one both use its signal. The main request's failure aborts the run (so the baseline stops)
+and rejects with its own error; the baseline's failure resolves `'failed'`, never failing the
+panel. `Promise.all` therefore settles with the main request's error first, and a baseline that
+settles after the run aborted resolves an unread promise. See
+[Boards › The baseline run](boards.md#the-baseline-run).
 
 ## The pipeline
 
@@ -123,8 +152,8 @@ text is a status line.
 distinct keys is a bar chart when it is instant with at most one sample per series, or a range
 result on a panel with an explicit `options.reducer` (`reducer: true`). The row picks `barchart`
 only when the caller's `available` set has it; the default, `SHIPPED_VIS` (line, bars, heatmap,
-stat), does not, so boards and Explore keep their choice until Part 3 passes the board set and
-`reducer`.
+stat), does not, so boards keep their choice (T22 §4.5, owner). Explore passes `EXPLORE_VIS`
+(Part 3b), which has it.
 
 ## Options and defaults
 
@@ -242,8 +271,9 @@ without its window and `window` the window the rows were reduced over.
 k, value: null }` (remove) when the board's filters already hold {k, v}, else `{ key: k, value: v }`.
 Without a pair, and on Explore, it is null. `barHint(row, { model, surface })` says why a click
 does not filter: on Explore `Filters apply on boards`; on a board without a pair `Can't filter: no
-category label` or `Can't filter: <label> missing on this series`; else null. Part 3b's surfaces
-apply the action.
+category label` or `Can't filter: <label> missing on this series`; else null. The board panel and
+Explore apply the action (Part 3b; [Boards](boards.md#the-panel-body),
+[Explore](explore.md#the-bar-chart-visbarchart-173-part-3b)).
 
 ### Tooltip lines
 
@@ -301,7 +331,7 @@ The gallery keeps one table flag per bar chart.
 
 `baselineOffset(options, ghost)` is `options.baselineOffset`, else `1d` with the ghost on, else
 null (no baseline run). `OFFSET_MS` holds 1 h, 1 d, 7 d and 28 d in ms; `shiftWindow(w, offset)`
-moves both ends of the window back by it. Part 3b runs the shifted query.
+moves both ends of the window back by it. Part 3b runs the shifted query (`usePanelRun`, above).
 
 ## Baseline delta (T22-012)
 
@@ -367,6 +397,14 @@ Part 3a: `client/src/vis/barAction.test.ts` (`unit:bar-action`),
 (`unit:panel-table`, `-active`, `-button`), `client/src/charts/CategoryChart.test.tsx`
 (`unit:category-chart-table`, `unit:category-tiny` (table)), `client/src/dev/GalleryPage.test.tsx`
 and `client/src/boards/baseline.test.ts` (`unit:baseline-window`).
+Part 3b: `client/src/boards/panelRun.test.ts` (`unit:panel-view-category`, the model cache, the
+surfaces case of `unit:autovis-table`, the 11-element key), `client/src/boards/boardRun.test.tsx`
+(`unit:panel-run-baseline`, `unit:panel-run-cancel`), `client/src/pages/board/BoardPanelsBars.test.tsx`
+(the board and full-screen actions, the `unit:category-duplicates` selection),
+`BoardPanelsMenu.test.tsx` (the toggles), `PanelEditorKinds.test.tsx` (the editor),
+`BoardPage.test.tsx` (a stored `auto` panel stays a line), `pages/explore/ResultCard.test.tsx` and
+`MetricsPage.test.tsx` (Explore), and the e2e spec `e2e/panels-categorical.spec.ts`
+([Build and CI](../development/build-and-ci.md)).
 The builders `byVersion`, `many`, `threeKeys` and the `barchart-dupes` series are in
 `client/src/dev/categorySynth.ts`, shared with the gallery and re-exported by
 `client/src/test/categoryFixtures.ts`.
@@ -375,8 +413,9 @@ The builders `byVersion`, `many`, `threeKeys` and the `barchart-dupes` series ar
 
 - [T22](../../designs/technical/T22-value-categorical-and-table-panels.md): T22-003, T22-004
   (names, visible labels), T22-005, T22-006 (cap, drawn cap, `tooSmall`, meter), T22-007 (the
-  filter decision), T22-011 (tooltip lines), T22-012 (the baseline window), T22-013 (rows, CSV and
-  the table view), T22-014 (facts), §4.1, §4.3, §4.5 row 11, §5.1, §5.2, §6.1, §10.3.
+  filter decision), T22-011 (tooltip lines), T22-012 (the baseline window and run), T22-013 (rows,
+  CSV and the table view), T22-014 (facts), §4.1, §4.2, §4.3, §4.5 row 11 (by surface), §5.1,
+  §5.2, §6.1, §10.3.
 - [ADR-0029](../../designs/adr/0029-bar-chart-keys-and-brush.md) (the keys and the brush).
 - [T25](../../designs/technical/T25-inspector-and-pivots.md) T25-002 (the `mark` target).
 - [ADR-0028](../../designs/adr/0028-chart-seam-bar-chart.md) (the bar chart seam, the extent and

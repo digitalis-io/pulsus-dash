@@ -1,0 +1,25 @@
+{
+  "name": "bars-by-version-base",
+  "provenance": {
+    "synthetic": "the bar chart's baseline run of bars_by_version: the window one day earlier, half the values"
+  },
+  "match": {
+    "method": "POST",
+    "paths": [
+      "/api/v1/query_range"
+    ],
+    "query": "bars_by_version",
+    "form": {
+      "start": "1767139200",
+      "end": "1767142800"
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Pulsus-Query-Id": "fake-bars-by-version-base-1"
+    },
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"version":"2.29"},"values":[[1767139200,"20"],[1767141000,"20"],[1767142800,"20"]]},{"metric":{"version":"2.30"},"values":[[1767139200,"3.5"],[1767141000,"3.5"],[1767142800,"3.5"]]},{"metric":{"version":"2.31"},"values":[[1767139200,"60"],[1767141000,"60"],[1767142800,"60"]]},{"metric":{"version":"2.32"},"values":[[1767139200,"1.5"],[1767141000,"1.5"],[1767142800,"1.5"]]},{"metric":{"version":"2.33"},"values":[[1767139200,"7.5"],[1767141000,"7.5"],[1767142800,"7.5"]]}]}}
+  }
+}

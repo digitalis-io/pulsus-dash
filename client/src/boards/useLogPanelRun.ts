@@ -116,7 +116,15 @@ export function useLogPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const runKey = useMemo(
     () =>
       runnable && path !== 'stream' && stepMs !== null
-        ? panelRunKey(tenant, panel.id, { text, vars: varsJson }, path, stepMs, { fromMs, toMs })
+        ? panelRunKey(
+            tenant,
+            panel.id,
+            { text, vars: varsJson },
+            path,
+            stepMs,
+            { fromMs, toMs },
+            null,
+          )
         : null,
     [runnable, path, stepMs, tenant, panel.id, text, varsJson, fromMs, toMs],
   );

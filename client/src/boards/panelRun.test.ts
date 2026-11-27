@@ -9,7 +9,11 @@ import { logFrame, pageRows, seriesResult, streamsResult } from '../test/logFram
 import { fromInstant, fromRange } from '../vis/autovis';
 import { R_A, R_H1 } from '../test/rangeFixtures';
 import { fromLogqlPlanned } from './logPanel';
+import { BY_VERSION, instant, range as catRange } from '../test/categoryFixtures';
+import { fitBarchart } from '../vis/barchart';
+import type { ExploreResult } from '../vis/autovis';
 import {
+  categoryView,
   panelFrame,
   positionText,
   panelIdleKey,
@@ -26,25 +30,27 @@ const R = { text: 'up', vars: '[]' };
 
 describe('panelRunKey and sameExceptWindow', () => {
   it('panelRunKey and sameExceptWindow', () => {
-    const k = panelRunKey('demo', 'p-1', R, 'range', 5000, W);
-    expect(k).toEqual(['data', 'panel', 'demo', 'p-1', 'up', '[]', 'range', 5000, 1, 2]);
+    const k = panelRunKey('demo', 'p-1', R, 'range', 5000, W, null);
+    expect(k).toEqual(['data', 'panel', 'demo', 'p-1', 'up', '[]', 'range', 5000, 1, 2, null]);
     expect(PANEL_KEY_HEAD).toBe(7);
     expect(panelIdleKey('demo', 'p-1', 'up')).toEqual(['data', 'panel', 'demo', 'p-1', 'up', null]);
     const heads = [
-      panelRunKey('other', 'p-1', R, 'range', 5000, W),
-      panelRunKey('demo', 'p-2', R, 'range', 5000, W),
-      panelRunKey('demo', 'p-1', { ...R, text: 'x' }, 'range', 5000, W),
-      panelRunKey('demo', 'p-1', { ...R, vars: '[["a","b"]]' }, 'range', 5000, W),
-      panelRunKey('demo', 'p-1', R, 'instant', 5000, W),
+      panelRunKey('other', 'p-1', R, 'range', 5000, W, null),
+      panelRunKey('demo', 'p-2', R, 'range', 5000, W, null),
+      panelRunKey('demo', 'p-1', { ...R, text: 'x' }, 'range', 5000, W, null),
+      panelRunKey('demo', 'p-1', { ...R, vars: '[["a","b"]]' }, 'range', 5000, W, null),
+      panelRunKey('demo', 'p-1', R, 'instant', 5000, W, null),
     ];
     for (const h of heads) {
       expect(sameExceptWindow(k, h)).toBe(false);
       expect(sameKey(k, h)).toBe(false);
     }
     const windows = [
-      panelRunKey('demo', 'p-1', R, 'range', 30000, W),
-      panelRunKey('demo', 'p-1', R, 'range', 5000, { fromMs: 0, toMs: 2 }),
-      panelRunKey('demo', 'p-1', R, 'range', 5000, { fromMs: 1, toMs: 3 }),
+      panelRunKey('demo', 'p-1', R, 'range', 30000, W, null),
+      panelRunKey('demo', 'p-1', R, 'range', 5000, { fromMs: 0, toMs: 2 }, null),
+      panelRunKey('demo', 'p-1', R, 'range', 5000, { fromMs: 1, toMs: 3 }, null),
+      // A ghost toggle (#173 Part 3b §4.2): the previous outcome is the placeholder.
+      panelRunKey('demo', 'p-1', R, 'range', 5000, W, 86_400_000),
     ];
     for (const w of windows) {
       expect(sameExceptWindow(k, w)).toBe(true);
@@ -53,7 +59,10 @@ describe('panelRunKey and sameExceptWindow', () => {
     const idle = panelIdleKey('demo', 'p-1', 'up');
     expect(sameExceptWindow(k, idle)).toBe(false);
     expect(sameExceptWindow(idle, idle)).toBe(false);
-    expect(sameKey(k, panelRunKey('demo', 'p-1', R, 'range', 5000, W))).toBe(true);
+    expect(sameKey(k, panelRunKey('demo', 'p-1', R, 'range', 5000, W, null))).toBe(true);
+    const ghost = panelRunKey('demo', 'p-1', R, 'range', 5000, W, 86_400_000);
+    expect(ghost).toHaveLength(11);
+    expect(ghost[10]).toBe(86_400_000);
   });
 });
 
@@ -392,5 +401,118 @@ describe('barchart boundary (#173 Part 2)', () => {
       'T',
     );
     expect(view).toMatchObject({ kind: 'frame', vis: 'line', spec: { kind: 'line' } });
+  });
+});
+
+/** `byVersion` on a range grid: each series constant at its value (T22 §10.2). */
+const rangeByVersion = (scale = 1): ExploreResult =>
+  catRange(
+    BY_VERSION.map((v) => ({ labels: v.labels, values: [1, 2, 3].map(() => v.value * scale) })),
+  );
+
+function catOutcome(result: ExploreResult, baseline?: ExploreResult | 'failed') {
+  return {
+    key: [],
+    planned: { ...R_A.planned, rateApplied: false, histogram: false },
+    result,
+    ...(baseline === undefined ? {} : { baseline }),
+  };
+}
+
+describe('unit:autovis-table (surfaces, #173 Part 3b)', () => {
+  it('a board `auto` panel keeps the default set: never a category view', () => {
+    const ranged = panelView(
+      { ...BASE, outcome: catOutcome(rangeByVersion()) },
+      { kind: 'auto', options: { reducer: 'max' } },
+      'T',
+    );
+    expect(ranged).toMatchObject({ kind: 'frame', vis: 'line' });
+    const inst = panelView(
+      { ...BASE, outcome: catOutcome(instant(BY_VERSION)) },
+      { kind: 'auto' },
+      'T',
+    );
+    expect(inst).toMatchObject({ kind: 'frame', vis: 'line' });
+  });
+});
+
+describe('unit:panel-view-category', () => {
+  it('a saved bar chart is a category view, with its baseline', () => {
+    const r = rangeByVersion();
+    const v = panelView({ ...BASE, outcome: catOutcome(r) }, { kind: 'barchart' }, 'T');
+    expect(v).toMatchObject({ kind: 'category', baselineFailed: false, lang: 'promql' });
+    if (v.kind !== 'category') throw new Error('not a category view');
+    expect(v.model.all.map((x) => x.name)).toEqual(['2.31', '2.29', '2.33', '2.30', '2.32']);
+    expect(v.model.baseline).toBeNull();
+
+    const half = rangeByVersion(0.5);
+    const b = panelView({ ...BASE, outcome: catOutcome(r, half) }, { kind: 'barchart' }, 'T');
+    if (b.kind !== 'category') throw new Error('not a category view');
+    expect(b.model.all.find((x) => x.name === '2.31')?.baseline).toBe(60);
+    expect(b.baselineFailed).toBe(false);
+
+    const failed = panelView(
+      { ...BASE, outcome: catOutcome(r, 'failed') },
+      { kind: 'barchart' },
+      'T',
+    );
+    expect(failed).toMatchObject({ kind: 'category', baselineFailed: true });
+    if (failed.kind !== 'category') throw new Error('not a category view');
+    expect(failed.model.all.every((x) => x.baseline === null)).toBe(true);
+  });
+
+  it('LogQL: the series phase and a series answer are category views', () => {
+    const series = streamRun(PAGER, st({ phase: 'series', series: SER }));
+    expect(panelView(series, { kind: 'barchart' }, 'S')).toMatchObject({
+      kind: 'category',
+      lang: 'logql',
+      baselineFailed: false,
+    });
+    const frame = frameRun({ logKind: 'series', result: fromRange(SER) });
+    expect(panelView(frame, { kind: 'barchart' }, 'S')).toMatchObject({
+      kind: 'category',
+      lang: 'logql',
+    });
+  });
+
+  it('a stored pie stays unavailable', () => {
+    expect(panelView({ ...BASE, blocked: 'kindUnavailable' }, { kind: 'pie' }, 'T')).toMatchObject({
+      kind: 'message',
+      state: 'kindUnavailable',
+    });
+  });
+});
+
+describe('model cache (unit:panel-view-category)', () => {
+  it('every model input is in the cache key', () => {
+    const r = rangeByVersion() as Exclude<ExploreResult, { kind: 'string' }>;
+    const o = {
+      rateApplied: false,
+      panelVis: { kind: 'barchart' } as const,
+      lang: 'promql' as const,
+      baseline: undefined,
+    };
+    const modelOf = (title: string, panelVis: Parameters<typeof categoryView>[1]['panelVis']) => {
+      const v = categoryView(r, { ...o, title, panelVis });
+      expect(v.kind).toBe('category');
+      if (v.kind !== 'category') throw new Error('not a category view');
+      return v.model;
+    };
+    const a = modelOf('A', o.panelVis);
+    const b = modelOf('B', o.panelVis);
+    expect(b).not.toBe(a);
+    expect(b.spec.title).toBe('B');
+    const fit = fitBarchart(b, { width: 600, height: 240 }, (x) => 6 * x.length);
+    expect(fit.facts.subject).toBe('B');
+    const th = {
+      kind: 'barchart' as const,
+      thresholds: {
+        direction: 'above' as const,
+        steps: [{ value: 50, state: 'watch' as const, label: '' }],
+      },
+    };
+    const c = modelOf('B', th);
+    expect(c).not.toBe(b);
+    expect(modelOf('B', th)).toBe(c);
   });
 });

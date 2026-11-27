@@ -1,0 +1,21 @@
+{
+  "name": "bars-warn",
+  "provenance": {
+    "synthetic": "byVersion with one warning: the coverage meter reads limited (1 warning)"
+  },
+  "match": {
+    "method": "POST",
+    "paths": [
+      "/api/v1/query_range"
+    ],
+    "query": "bars_warn"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Pulsus-Query-Id": "fake-bars-warn-1"
+    },
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"version":"2.29"},"values":[[1767225600,"40"],[1767227400,"40"],[1767229200,"40"]]},{"metric":{"version":"2.30"},"values":[[1767225600,"7"],[1767227400,"7"],[1767229200,"7"]]},{"metric":{"version":"2.31"},"values":[[1767225600,"120"],[1767227400,"120"],[1767229200,"120"]]},{"metric":{"version":"2.32"},"values":[[1767225600,"3"],[1767227400,"3"],[1767229200,"3"]]},{"metric":{"version":"2.33"},"values":[[1767225600,"15"],[1767227400,"15"],[1767229200,"15"]]}]},"warnings":["series limit reached"]}
+  }
+}

@@ -1,7 +1,7 @@
 /**
  * The baseline run's window (plan #173 Part 3a §3.8; T22-012): the offset a bar chart's baseline
  * uses, the option else 1 d while the ghost is on, and the Context window shifted back by it. The
- * shifted run itself starts in #173 Part 3b.
+ * shifted run itself is `usePanelRun`'s (#173 Part 3b).
  */
 import type { VisOptions } from '../api/types';
 import type { TimeWindow } from '../engine/api';

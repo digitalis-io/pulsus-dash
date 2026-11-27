@@ -207,14 +207,11 @@ describe('panel runs', () => {
     expect(panelState('Broken')).toBe('langFailed');
   });
 
-  it('pending kinds show their message and send no query (#173 Part 1)', async () => {
-    const t = openBoard([
-      panel('p-1', 'Versions', 'sum by (version) (up)', 'barchart'),
-      panel('p-2', 'Share', 'sum by (version) (up)', 'pie'),
-    ]);
-    await ready('Versions', 'Share');
-    show('Versions', 'Share');
-    for (const title of ['Versions', 'Share']) {
+  it('pending kinds show their message and send no query (#173 Part 1; pie only since Part 3b)', async () => {
+    const t = openBoard([panel('p-2', 'Share', 'sum by (version) (up)', 'pie')]);
+    await ready('Share');
+    show('Share');
+    for (const title of ['Share']) {
       expect(
         await within(panelOf(title)).findByText(
           "This chart type isn't available in this version yet.",
