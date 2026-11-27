@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.18-rc · 2026-11-26 |
+| **Version** | 1.19-rc · 2026-11-27 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md), [ADR-0032](../adr/0032-selection-dims-as-one-layer.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -273,6 +273,10 @@ be drawn on data. With `prefers-reduced-motion`, transitions and crossfades MUST
 particles MUST be replaced by static dashes whose thickness encodes traffic, and the alert pulse MUST
 become a static double ring.
 
+*v1 (#304, [ADR-0039](../adr/0039-data-crossfade-on-the-seam.md)):* the data crossfade is the series
+`FrameData`'s `transition: 'crossfade'`, faded over 150 ms in both engines; `ChartFrame` strips it
+under reduced motion.
+
 Theme and density are token sets (dark default; light from M-UI5; wall high-contrast from M-UI6;
 Comfortable and Compact density, Wall ×1.6 from M-UI6), switched by the `Prefs` message. The
 palette validator (`xtask palette-check`) checks every palette in every theme for CVD
@@ -285,6 +289,12 @@ distinguishability (deuteranopia, protanopia, tritanopia), the series palette fo
 maps each to exactly one meaning and to one single-weight line icon set in the M9 atlas.
 
 ### 4.3 Axis system
+
+**v1 note (#304, [ADR-0038](../adr/0038-page-range-store-and-scope-lease.md)).** A line frame may hold
+more than its window (the held span of the range store); its series `FrameData` then carries `fit`,
+and the line's auto value domain and its summary's min, max and last use only the samples with
+`fit.fromMs ≤ t ≤ fit.toMs`. During a gesture `fit` is unchanged, so the auto axis is steady
+(T02-011); a commit brings a new one.
 
 This serves the patterns in [05 §1.1](../product/05-visualisation-catalogue.md#11-axes-as-a-design-tool)
 (Table 5-2), with a first-class axis model of ids, alignment and binding. It is the engine side
@@ -858,3 +868,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.16-rc | 2026-11-26 | #68 Part C2c1: §4.5 Overlays row: engine line frames draw the threshold lines and the event lines (with the event label band), as Canvas 2D strokes them; their labels with the engine's text mark (#69) |
 | 1.17-rc | 2026-11-26 | #256 ([ADR-0031](../adr/0031-gpu-engine-default-renderer.md)): §0 line frames are drawn by the engine by default; Canvas 2D draws the other kinds until #69 and every fallback |
 | 1.18-rc | 2026-11-26 | #68 Part C2c2: §4.2 cross-cutting **Emphasis**: the selection on the engine line mark, one decimation drawn in lane passes in Canvas 2D's per-series order (ADR-0025 decision 4), the unmatched series through one dim layer composited once at `dimmed` ([ADR-0032](../adr/0032-selection-dims-as-one-layer.md)); the interval band in the layer overlay |
+| 1.19-rc | 2026-11-27 | #304 ([ADR-0038](../adr/0038-page-range-store-and-scope-lease.md), [ADR-0039](../adr/0039-data-crossfade-on-the-seam.md)): §4.3 v1 note (the line's auto-fit over `fit`); T02-007 v1 (the data crossfade as `transition: 'crossfade'` in both engines, reduced motion cuts) |

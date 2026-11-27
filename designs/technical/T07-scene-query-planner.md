@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.14-rc · 2026-11-27 |
+| **Version** | 1.15-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -447,6 +447,13 @@ remote query, and MUST physicalise only the tiles that are missing.
 
 ### 4.6 Passes, progressive refinement and cancellation
 
+**v1 note (#304).** The passes are planned in the client's range store over the server's grid: P2
+coarse is a separate request at width / 4 for a cold line view (skipped when equal to the fine
+step), P3 fine follows when the view has been unchanged for 120 ms (T07-011), P4 is the flank
+prefetch and the zoom-out ladder a P5-like Background pass. A view change cancels every job with no
+wanted bucket at once; there is no linger (T07-010's 150 ms is a may-keep). The scheduler holds at
+most 6 board range requests in flight (ADR-0038 decision 9).
+
 ```
  pass:   P0 cached ──► P1 local ⚡ ──► P2 coarse ☁ ──► P3 fine ✓/☁ ──► P4 flank (±1 window) ──► P5 approach
  prio:   —            —             Interactive      Refine           Prefetch                Prefetch
@@ -498,6 +505,13 @@ result is reused only within its window epoch: the board marks every panel query
 stale (without refetching) when it opens and whenever the resolved window changes, so a time change
 re-queries the visible panels once, a return to an earlier window included, and the others when
 they scroll in (IA-020).
+
+*v1 (#304, [ADR-0038](../adr/0038-page-range-store-and-scope-lease.md)):* a visible line panel
+prefetches one window either side (P4, Prefetch priority) once its visible run is fresh, and, after
+them, a zoom-out ladder of 3× and 9× the window at their own steps (a P5-like Background pass).
+Store-backed panels are fresh per bucket, not per window epoch: a return to an earlier window is
+painted from held data without a query; a relative refresh refetches only the volatile buckets;
+Refresh now refetches every held bucket.
 
 #### T07-013 — Changes re-plan only dependents
 **MUST** — A change to a Context member or a Board variable MUST re-bind only the viewports the
@@ -1177,3 +1191,4 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.12-rc | 2026-11-23 | #121: §0 Reserved names row: the LogQL `#` refusal (`query.invalid`) precedes the reserved-selector check, and the no-dispatch guarantee is unchanged; §4.1 Classify: LogQL has no comments, and the selector reader skips no text |
 | 1.13-rc | 2026-11-27 | #291: §4.1 Bind and Classify leave the range macros as placeholders; Plan substitutes the range macros (`$__range`, `$__range_s`, `$__range_ms`) from the request window, with the rounding rule; a request without a window refuses them (`query.no_window`) |
 | 1.14-rc | 2026-11-27 | #303: T07-003 rounds the step to the nearest `NICE` entry (midpoint rule) instead of up, and §4.3 `resolve` with it; T07-003 v1 note: the PromQL range grid (`PromGrid`: fine pass, 15 s scrape floor, no level prediction) and the rate window `max(step + S, 4 × S)` (was `max(4 × step, step + S, 4 × S)`); the log routes keep #62's grid |
+| 1.15-rc | 2026-11-27 | #304 ([ADR-0038](../adr/0038-page-range-store-and-scope-lease.md)): T07-012 v1 (line panels prefetch one window either side, then the 3×/9× zoom-out ladder; store-backed freshness per bucket); §4.6 v1 note (P2 coarse at width / 4, P3 fine after 120 ms, P4 flanks, the ladder as P5, no linger, cap 6) |
