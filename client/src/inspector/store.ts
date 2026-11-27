@@ -57,11 +57,13 @@ export function inspectorReducer(s: InspectorState, a: InspectorAction): Inspect
     case 'push':
       // A stale entry (an older request, a second press in one tick, a closed sheet) does nothing.
       if (s.req === null || a.seq !== s.seq || a.depth !== s.nav.length) return s;
-      return { ...s, nav: [...s.nav, a.view], selection: a.view.selection };
+      // A push or a pop shows its view: a collapsed sheet expands, so its heading can take focus
+      // (T25-008, T25 §4.8; as a new target does, T25-013).
+      return { ...s, nav: [...s.nav, a.view], selection: a.view.selection, collapsed: false };
     case 'pop': {
       if (s.req === null || !(a.to >= 0 && a.to < s.nav.length)) return s;
       const nav = s.nav.slice(0, a.to);
-      return { ...s, nav, selection: nav.at(-1)?.selection ?? s.req.selection };
+      return { ...s, nav, selection: nav.at(-1)?.selection ?? s.req.selection, collapsed: false };
     }
   }
 }

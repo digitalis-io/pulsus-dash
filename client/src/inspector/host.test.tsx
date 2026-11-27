@@ -464,6 +464,20 @@ describe('unit:inspector-nav (host)', () => {
     expect(steps).toEqual(['pop:e8', 'pop:other (3)', 'clearSelection', 'close', 'post']);
   });
 
+  it('collapsed at a deeper view: Esc pops, expands the sheet and focuses the parent heading (review r1)', () => {
+    const { h } = open([]);
+    fireEvent.click(entry('e8'));
+    fireEvent.click(entry('{env="e8", lat="11", lon="11", pod="b"}'));
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse Inspector' }));
+    expect(h.aside()).toHaveAttribute('data-collapsed');
+    esc(screen.getByRole('button', { name: 'Expand Inspector' }));
+    expect(h.aside()).not.toHaveAttribute('data-collapsed');
+    expect(heading()).toHaveTextContent('e8');
+    expect(document.activeElement).toBe(heading());
+    expect(crumbs()).toEqual(['other (3)', 'e8']);
+    expect(h.selection()).toBe('q08,q10|null|null');
+  });
+
   it('a pre step runs before the pop; a crumb pops to its depth', () => {
     const { h, log } = open(['clearSearch']);
     fireEvent.click(entry('e8'));

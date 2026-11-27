@@ -304,11 +304,12 @@ state, never new requests, so there is nothing to race.
 - **State.** `InspectorState.nav` holds `NavView`s `{target, selection, title}` (§5); [] at rest. The
   **top** is the last of `nav`, else `req.target`.
 - **Push.** `push {seq, depth, view}` applies iff a request is open, `seq` equals the state's `seq`
-  and `depth` equals `nav.length`: `nav` gains the view and the selection becomes its selection.
+  and `depth` equals `nav.length`: `nav` gains the view, the selection becomes its selection and a collapsed sheet expands.
   Anything else is a no-op, so a stale entry (an older request, a double press in one tick) does
   nothing.
-- **Pop.** `pop {to}` (`to < nav.length`) keeps `nav.slice(0, to)`, and the selection becomes the new
-  top's (`req.selection` at `to` 0).
+- **Pop.** `pop {to}` (`to < nav.length`) keeps `nav.slice(0, to)`, the selection becomes the new
+  top's (`req.selection` at `to` 0) and a collapsed sheet expands, so the new heading can take
+  focus (T25-008).
 - **Reset.** `inspect`, `close`, a matching `originChanged` and `reset` empty `nav`.
 - **Content.** The sheet renders `inspectorModel({...req, target: top}, env)`. With `nav` non-empty
   it shows "Back to ‹previous title›" (a `pop` to `nav.length − 1`) and a breadcrumb `<nav
@@ -523,4 +524,4 @@ None blocking. The translucent material is new; switching to opaque `surface-1` 
 | 1.7-rc | 2026-11-26 | #173 Part 3a (T22 I1), per T25-002: §5 `InspectorTarget` gains `{type:'mark'; target: InspectTarget}` with its `selectionOf`, `pivotInstant`, `visOf` and `inspectorModel` cases; T25-007: an owner marked `data-escape-ladder` (the bar chart's mirror listbox, [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md)) is not skipped; §4.2 gains the barchart row (click, Enter/Space, brush → `select` source `brush`) |
 | 1.8-rc | 2026-11-26 | #68 Part C2c2, per T25-002: T25-006's line rule: the unmatched series are dimmed together, one layer composited once at `dimmed` ([ADR-0032](../adr/0032-selection-dims-as-one-layer.md)); §10 `unit:selection-draw`'s line row likewise (bars unchanged) |
 | 1.9-rc | 2026-11-27 | #234 Part 3 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1b, the geomap host): §5 `registerMembers` is a per-`panelId` stack with own-entry disposers (the top live entry answers); `resolveMembers` answers `geo:` run ids from the open request's geo target |
-| 1.10-rc | 2026-11-27 | #234 Part 4 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1b, the navigation stack): §5 `inspectorModel` takes the view's `depth` (the §4.9 level prefix needs it) and the sheet renders the top view at `nav.length`; §4.8 records that the host answers `geo:` member ids from the request's top view with `resolveGeoMembers` (pure), replacing a per-frame registration; §5's `resolveMembers` comment likewise |
+| 1.10-rc | 2026-11-27 | #234 Part 4 ([T24](T24-geo-schematic-and-widget-panels.md) part E step 1b, the navigation stack): §5 `inspectorModel` takes the view's `depth` (the §4.9 level prefix needs it) and the sheet renders the top view at `nav.length`; §4.8 records that the host answers `geo:` member ids from the request's top view with `resolveGeoMembers` (pure), replacing a per-frame registration; §5's `resolveMembers` comment likewise; a push or a pop expands a collapsed sheet (code review r1) |

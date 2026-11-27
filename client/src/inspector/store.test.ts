@@ -38,6 +38,14 @@ describe('unit:inspector-nav (reducer)', () => {
     expect(root.nav).toEqual([]);
     expect(root.selection).toBe(s0.req?.selection);
     expect(topOf(root)).toBe(s0.req?.target);
+    // A push or a pop shows its view: a collapsed sheet expands (review r1).
+    const folded = inspectorReducer(s2, { type: 'toggleCollapsed' });
+    expect(folded.collapsed).toBe(true);
+    expect(inspectorReducer(folded, { type: 'pop', to: 1 }).collapsed).toBe(false);
+    const foldedA = inspectorReducer(s1, { type: 'toggleCollapsed' });
+    expect(
+      inspectorReducer(foldedA, { type: 'push', seq: s0.seq, depth: 1, view: B }).collapsed,
+    ).toBe(false);
     // Out of range: unchanged.
     expect(inspectorReducer(s2, { type: 'pop', to: 2 })).toBe(s2);
     expect(inspectorReducer(s2, { type: 'pop', to: -1 })).toBe(s2);
