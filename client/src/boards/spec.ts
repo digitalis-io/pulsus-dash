@@ -1,8 +1,8 @@
 /**
- * Board spec v7 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2, v3 by plan #173
+ * Board spec v8 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2, v3 by plan #173
  * Part 1 §3.2–3.4, v4 by plan #215 §3.7: tags, accepted and kept; v5 by plan #198 Part 1 §4.1:
  * widgets, query optional, text and clock; v6 by plan #216 Part 1 §4.1: the board list; v7 by plan
- * #234 Part 1 §3.3: the geomap): the
+ * #234 Part 1 §3.3: the geomap; v8, the units version, by #290 §3.1: `vis.unit`): the
  * server's validator
  * (`server/internal/spec/shape.go`, `validate.go`) ported to parsed JSON, canonical JSON and panel
  * ids. The two are held together by the shared fixtures `api/fixtures/board-spec/`.
@@ -24,6 +24,7 @@ import type {
 import { isWidgetKind } from '../widgets/spec';
 import { FILTER_LABEL } from '../state/boardParams';
 import { MAX_THRESHOLD_STEPS } from '../vis/thresholds';
+import { isUnitSuffix, UNIT_IDS } from '../vis/units';
 import { fits, overlaps } from './layout';
 import {
   BOARD_LIMIT,
@@ -149,6 +150,8 @@ const visShape = [
     obj([req('direction', tString), req('steps', { kind: 'array', elem: obj(stepShape) })]),
   ),
   opt('legend', obj([req('mode', tString)])),
+  // Board spec v8 (#290): the unit, an id and an optional suffix.
+  opt('unit', obj([req('id', tString), opt('suffix', tString)])),
   opt('options', { kind: 'rawObject' }),
 ];
 
@@ -457,11 +460,31 @@ function checkRules(c: Collector, b: BoardSpec): void {
         oneOf(LEGEND_MODES, 'board.legend.mode.invalid'),
       );
     }
+    if (v.unit !== undefined) unit(`${pointer}/unit`, v.unit, widget);
     if (v.options !== undefined && VIS_KINDS.includes(v.kind)) {
       options(`${pointer}/options`, v.kind, v.options);
       if (v.kind === 'geomap') {
         geomapOptions(`${pointer}/options`, v.options, (th?.steps.length ?? 0) > 0);
       }
+    }
+  };
+  // The unit (`validate.go` `unit`, #290 §3.1), after the legend: a widget has none; the id is
+  // one of UNIT_IDS; a suffix with custom only, of 1 to 16 code points, no White_Space or Cc.
+  const unit = (
+    pointer: string,
+    u: NonNullable<PanelSpec['vis']['unit']>,
+    widget: boolean,
+  ): void => {
+    if (widget) {
+      c.add(pointer, 'board.json.unknownKey');
+      return;
+    }
+    str(`${pointer}/id`, u.id, oneOf(UNIT_IDS, 'board.unit.id.invalid'));
+    const bad = 'board.unit.suffix.invalid';
+    if (u.id === 'custom' && u.suffix === undefined) c.add(pointer, bad);
+    else if (u.id !== 'custom' && u.suffix !== undefined) c.add(`${pointer}/suffix`, bad);
+    else if (u.suffix !== undefined) {
+      str(`${pointer}/suffix`, u.suffix, (s) => (isUnitSuffix(s) ? null : bad));
     }
   };
   // The option values (`validate.go` `options`, plan #173 Part 1 §3.4): each present key in

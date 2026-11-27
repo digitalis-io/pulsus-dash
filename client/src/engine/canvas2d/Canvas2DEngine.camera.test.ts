@@ -112,15 +112,35 @@ describe('camera', () => {
     expect(winOf(last(h))).toEqual(w);
   });
 
-  it('Ctrl+wheel commits both axes', () => {
+  it('Ctrl+wheel zooms time only; Ctrl+Shift+wheel zooms values', () => {
     const h = setup();
     const p = at(last(h), 0.3);
     expect(wheel(h.canvas, p.x, p.y, { deltaY: -100, ctrlKey: true }).defaultPrevented).toBe(true);
     h.flush();
+    expect(last(h).valueAxis?.manual).toBe(false);
     h.advance(300);
     expect(h.commit).toHaveLength(1);
     expect(h.commit[0]?.window).not.toBeNull();
-    expect(h.commit[0]?.value).not.toBeNull();
+    expect(h.commit[0]?.value).toBeNull();
+    wheel(h.canvas, p.x, p.y, { deltaY: -100, ctrlKey: true, shiftKey: true });
+    h.flush();
+    expect(last(h).valueAxis?.manual).toBe(true);
+  });
+
+  it('a plain wheel is left to the page and asks for the zoom hint', () => {
+    const h = setup();
+    const s0 = last(h);
+    const p = at(s0, 0.3);
+    const hints: null[] = [];
+    h.frame.on('wheelHint', (ev) => hints.push(ev));
+    const e = wheel(h.canvas, p.x, p.y, { deltaY: -100, ctrlKey: false });
+    const swipe = wheel(h.canvas, p.x, p.y, { deltaX: 40, ctrlKey: false });
+    h.flush();
+    h.advance(300);
+    expect([e.defaultPrevented, swipe.defaultPrevented]).toEqual([false, false]);
+    expect(last(h)).toEqual(s0);
+    expect(h.commit).toHaveLength(0);
+    expect(hints).toEqual([null, null]);
   });
 
   it('pinch zooms time only', () => {
@@ -139,12 +159,15 @@ describe('camera', () => {
     expect(h.commit[0]?.value).toBeNull();
   });
 
-  it('⌘+wheel zooms both', () => {
+  it('⌘+wheel zooms time', () => {
     const h = setup();
-    const p = at(last(h), 0.3);
-    wheel(h.canvas, p.x, p.y, { deltaY: -2.5, metaKey: true });
+    const s0 = last(h);
+    const p = at(s0, 0.3);
+    expect(wheel(h.canvas, p.x, p.y, { deltaY: -100, metaKey: true }).defaultPrevented).toBe(true);
     h.flush();
-    expect(last(h).valueAxis?.manual).toBe(true);
+    const s = last(h);
+    expect(s.toMs - s.fromMs).toBeLessThan(s0.toMs - s0.fromMs);
+    expect(s.valueAxis?.manual).toBe(false);
   });
 
   it('Safari gesture zooms time', () => {

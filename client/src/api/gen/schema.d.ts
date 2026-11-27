@@ -767,7 +767,12 @@ export interface components {
             kind: "auto" | "line" | "bars" | "heatmap" | "stat" | "logs" | "barchart" | "pie" | "text" | "clock" | "boardList" | "geomap";
             thresholds?: components["schemas"]["Thresholds"];
             legend?: components["schemas"]["Legend"];
+            unit?: components["schemas"]["PanelUnit"];
             options?: components["schemas"]["VisOptions"];
+        };
+        PanelUnit: {
+            id: string;
+            suffix?: string;
         };
         VisOptions: {
             /** @enum {string} */

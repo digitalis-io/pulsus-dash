@@ -727,3 +727,81 @@ describe('section ids', () => {
     expect(nextId(spec, 'p')).toBe(nextPanelId(spec));
   });
 });
+
+// unit:board-spec-units (#290 §3.1; VIZ-057, T11-016): the units version.
+describe('unit:board-spec-units (TS)', () => {
+  it("the v8 fixture is valid, and its canonical form is the server's", () => {
+    const x = fixture('v8-units.json') as BoardSpec;
+    expect(checkBoardSpec(x)).toEqual([]);
+    const c = canonicalJson(x);
+    expect(JSON.parse(c)).toEqual(x);
+    // The Go suite (board_test.go v8CanonicalSHA256) holds the same hash: byte-equal forms.
+    expect(createHash('sha256').update(c, 'utf8').digest('hex')).toBe(
+      '0dc7aaa6d4ab4a6d652ea4c75e083402ad220143b036f79b565f083920c77dd7',
+    );
+    expect(x.panels[0]?.vis).toHaveProperty('unit');
+  });
+
+  it('unit rows match the server, and their keys have en-GB text', () => {
+    const rows = cases.filter((c) => c.name.startsWith('unit-'));
+    expect(rows.map((c) => c.name)).toEqual([
+      'unit-widget',
+      'unit-id',
+      'unit-custom-no-suffix',
+      'unit-suffix-not-custom',
+      'unit-suffix-space',
+      'unit-suffix-long',
+      'unit-suffix-nbsp',
+      'unit-suffix-ideographic',
+      'unit-suffix-nel',
+      'unit-suffix-17-astral',
+    ]);
+    for (const c of rows) {
+      expect(checkBoardSpec(c.spec), c.name).toEqual(
+        c.fields.map((f) => ({ pointer: f.pointer, messageKey: f.message_key })),
+      );
+      for (const f of c.fields) {
+        expect(messages, f.message_key).toHaveProperty(`field.${f.message_key}`);
+      }
+    }
+  });
+
+  it('a suffix of 16 code points is valid', () => {
+    const spec = {
+      title: 'B',
+      panels: [
+        {
+          id: 'p-1',
+          title: 'A',
+          grid: { x: 0, y: 0, w: 6, h: 8 },
+          query: { lang: 'promql', text: 'up' },
+          vis: { kind: 'line', unit: { id: 'custom', suffix: '\u{1D465}'.repeat(16) } },
+        },
+      ],
+      sections: [],
+    };
+    expect(checkBoardSpec(spec)).toEqual([]);
+  });
+
+  it('the save text: an old server refuses vis.unit', () => {
+    const spec = fixture('v8-units.json') as BoardSpec;
+    expect(
+      saveFieldMessage(spec, {
+        pointer: '/panels/0/vis/unit',
+        messageKey: 'board.json.unknownKey',
+      }),
+    ).toBe('This server does not support panel units yet');
+    expect(
+      saveFieldMessage(spec, {
+        pointer: '/sections/0/panels/0/vis/unit',
+        messageKey: 'board.json.unknownKey',
+      }),
+    ).toBe('This server does not support panel units yet');
+    expect(
+      saveFieldMessage(spec, {
+        pointer: '/panels/0/vis/unit/id',
+        messageKey: 'board.unit.id.invalid',
+      }),
+    ).toBe('Unknown unit');
+  });
+});

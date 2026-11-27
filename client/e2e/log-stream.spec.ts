@@ -7,6 +7,8 @@
  * keeps the top row.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { colour, size } from '../src/styles/tokens.ts';
+import { LOGS_RESULT, open } from './helpers.ts';
 import {
   MAX_ENTRIES,
   atRest,
@@ -21,6 +23,9 @@ import {
   wheel,
   type BenchConfig,
 } from './logStreamBench.ts';
+
+/** A wrapped row's cap: 100 lines of `size.log-row` (24 px since #282 Part 2a: 2 400 px). */
+const MAX_ROW_PX = 100 * size['log-row'];
 
 const E2_VIEW = { cap: 2_000, margin: 200, maxPx: 8_000_000, hardPx: 12_000_000 };
 const E7_VIEW = { cap: 2_000, margin: 200, maxPx: 40_000, hardPx: 1_000_000_000 };
@@ -192,7 +197,7 @@ test.describe('e2e:log-stream', () => {
     expect(await row.locator('[data-log-line]').evaluate((e) => e.textContent.length)).toBe(400);
     const h = (await row.boundingBox())?.height ?? 0;
     expect(h).toBeGreaterThanOrEqual(40);
-    expect(h).toBeLessThanOrEqual(2_000);
+    expect(h).toBeLessThanOrEqual(MAX_ROW_PX);
   });
 
   // Soft assertions: each of E5's checks is observed on its own (D13).
@@ -213,7 +218,8 @@ test.describe('e2e:log-stream', () => {
     await atRest(page);
     const { listHeight, rows } = await rowBoxes(page);
     expect.soft(listHeight, 'list height').toBeLessThanOrEqual(8_000_000);
-    for (const r of rows) expect.soft(r.height, `row ${String(r.ord)}`).toBeLessThanOrEqual(2_000);
+    for (const r of rows)
+      expect.soft(r.height, `row ${String(r.ord)}`).toBeLessThanOrEqual(MAX_ROW_PX);
     const rects = await page.evaluate(() => {
       const r = document.querySelector('[aria-posinset="30000"]')?.getBoundingClientRect();
       const b = document.querySelector('[data-log-scroller]')?.getBoundingClientRect();
@@ -305,7 +311,7 @@ test.describe('e2e:log-stream', () => {
       const { listHeight, rows } = await rowBoxes(page);
       expect.soft(listHeight, `step ${String(step)}: list height`).toBeLessThanOrEqual(40_000);
       for (const r of rows) {
-        expect.soft(r.height, `row ${String(r.ord)} height`).toBeLessThanOrEqual(2_000);
+        expect.soft(r.height, `row ${String(r.ord)} height`).toBeLessThanOrEqual(MAX_ROW_PX);
         expect
           .soft(r.scrollHeight, `row ${String(r.ord)} scrolls inside`)
           .toBeGreaterThan(r.clientHeight);
@@ -432,4 +438,43 @@ test.describe('e2e:log-stream', () => {
       await context.close();
     }
   });
+});
+
+/** `rgb(r, g, b)` of a `#RRGGBB` token, as computed styles print it. */
+function rgb(hex: string): string {
+  const b = (i: number): number => parseInt(hex.slice(i, i + 2), 16);
+  return `rgb(${String(b(1))}, ${String(b(3))}, ${String(b(5))})`;
+}
+
+// e2e:log-tags (#282 Part 2a §4.7; VIZ-067 kept, VL-009): 24 px rows with a tinted level tag.
+test('e2e:log-tags', async ({ page }) => {
+  await open(page, LOGS_RESULT);
+  const row = page.locator('[data-log-row][data-level="error"]').first();
+  await expect(row).toBeVisible();
+  expect((await row.boundingBox())?.height).toBe(24);
+  const tag = row.locator('[data-log-glyph]');
+  await expect(tag).toHaveText('ERR');
+  const s = await tag.evaluate((e) => {
+    const c = getComputedStyle(e);
+    const b = getComputedStyle(e, '::before');
+    return {
+      radius: c.borderTopLeftRadius,
+      colour: c.color,
+      tint: b.backgroundColor,
+      a: b.opacity,
+    };
+  });
+  expect(s.radius).toBe('3px');
+  expect(s.colour).toBe(rgb(colour.dark.text));
+  expect(s.tint).toBe(rgb(colour.dark['level-error']));
+  expect(s.a).toBe('0.18');
+  const scroller = page.locator('[data-log-row]').first().locator('xpath=../..');
+  expect(await scroller.evaluate((e) => getComputedStyle(e).borderTopWidth)).toBe('0px');
+  await page.emulateMedia({ forcedColors: 'active' });
+  if (await page.evaluate(() => matchMedia('(forced-colors: active)').matches)) {
+    expect(await tag.evaluate((e) => getComputedStyle(e).borderTopColor)).not.toBe(
+      'rgba(0, 0, 0, 0)',
+    );
+    expect(await tag.evaluate((e) => getComputedStyle(e).borderTopStyle)).toBe('solid');
+  }
 });

@@ -44,6 +44,7 @@ import { useTimeContext } from '../../state/useTimeContext';
 import { autoVis, chooseVis, EXPLORE_VIS, type VisParam } from '../../vis/autovis';
 import { barchartModel } from '../../vis/barchart';
 import { canIsolate, framePlan } from '../../vis/framePlan';
+import { panelUnits } from '../../vis/units';
 import styles from '../pages.module.css';
 import { QueryCard } from './QueryCard';
 import { QueryStatus, statusView } from './QueryStatus';
@@ -192,7 +193,7 @@ export function MetricsPage() {
     return framePlan(vis, shown.result, {
       isolatedKey,
       title: t('explore.result.title'),
-      rateApplied: shown.planned.rateApplied,
+      units: panelUnits(undefined, vis, shown.planned.rateApplied),
     });
   }, [shown, vis, isolatedKey]);
   // The bar chart's model (#173 Part 3b §4.4): Explore has no options, thresholds or baseline.
@@ -200,7 +201,7 @@ export function MetricsPage() {
     if (vis !== 'barchart' || shown === null || shown.result.kind === 'string') return null;
     return barchartModel(shown.result, {
       title: t('explore.result.title'),
-      rateApplied: shown.planned.rateApplied,
+      unit: panelUnits(undefined, 'barchart', shown.planned.rateApplied).value,
       options: undefined,
       thresholds: null,
     });

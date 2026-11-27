@@ -8,7 +8,7 @@
  * bands that `mark` and `pick` hit; the frame copies the data's coverage into the summary.
  */
 import { size, space } from '../../styles/tokens';
-import { formatCompact, formatValue } from '../../i18n/format';
+import { formatCompact, formatValue, tickBase } from '../../i18n/format';
 import { StateEncoding } from '../../theme/stateEncoding';
 import type {
   BarchartSpec,
@@ -72,7 +72,7 @@ function valueDomain(
   const horizontal = spec.orientation === 'horizontal';
   const length = horizontal ? plot.width : plot.height;
   const gap = horizontal ? H_TICK_GAP : LABEL_HEIGHT;
-  const base = spec.unit.kind === 'bytes' ? 1024 : 1000;
+  const base = tickBase(spec.unit);
   const r = spec.valueRange;
   if (r !== undefined) {
     const tol = 1e-9 * (r.max - r.min);

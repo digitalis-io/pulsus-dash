@@ -27,6 +27,18 @@ backdrop = "#05060899"
 # the 1 px top highlight and the two shadow layers of the elevation tokens, the accent as a fill
 # (buttons, the current row, the segmented thumb, the focused menu row) and the two materials.
 sidebar = "#121418"
+# The sidebar and header material (#282 follow-up): a gradient a shade lighter than the canvas,
+# its soft 6 % inner edge, the row hover (5 %), the current row (at least 3:1 from both gradient
+# stops, `text` at least 4.5:1 on it) and the solid current row while the sidebar has focus.
+sidebar-top = "#17191E"
+sidebar-bottom = "#13151A"
+sidebar-edge = "#FFFFFF0F"
+row-hover = "#FFFFFF0D"
+row-selected = "#4F6A94"
+text-on-row-selected = "#E9EBEF"
+# The quiet header controls: one track for the time and refresh group, its raised thumb.
+segment-track = "#FFFFFF0A"
+segment-thumb = "#353A43"
 control = "#23272E"
 control-hover = "#2A2F37"
 control-pressed = "#31363F"
@@ -36,6 +48,11 @@ border-control = "#FFFFFF29"
 # surface beneath (VL-009).
 border-field = "#6A717C"
 highlight = "#FFFFFF0F"
+# The card's depth inside its one edge (cards and board panels): a top sheen over `surface-1` that
+# fades within a panel header, a 1 px inner top highlight and a 1 px inner bottom shade.
+card-sheen = "#FFFFFF09"
+card-highlight = "#FFFFFF0F"
+card-shade = "#0000001F"
 shadow-ambient = "#00000066"
 shadow-key = "#0000008C"
 accent-fill = "#2B68D6"
@@ -88,6 +105,9 @@ map-border = "#FFFFFF1F"
 # T22-004).
 pattern-ink = "#0B0D10A6"
 category-other = "#8A919C"
+# A failing board panel's glow (#282 Part 2a, VL-004 as amended): failing at 15 %. A state token:
+# only theme/stateEncoding.module.css uses it.
+failing-glow = "#E0457B26"
 
 [color.light]
 canvas = "#F2F3F6"
@@ -108,6 +128,15 @@ unknown = "#7A818C"
 backdrop = "#1B1E2540"
 # The visual refresh (#282, VL-001 as amended): see color.dark.
 sidebar = "#EBEDF1"
+# The sidebar and header material: see color.dark.
+sidebar-top = "#E8EAEE"
+sidebar-bottom = "#E4E6EB"
+sidebar-edge = "#1C22330F"
+row-hover = "#1C22330D"
+row-selected = "#5274AD"
+text-on-row-selected = "#FFFFFF"
+segment-track = "#1C22330D"
+segment-thumb = "#FFFFFF"
 control = "#FFFFFF"
 control-hover = "#F6F7F9"
 control-pressed = "#ECEEF1"
@@ -116,6 +145,10 @@ border-control = "#1C22333D"
 # Field boundaries: at least 3:1 from the fill and every surface beneath (VL-009).
 border-field = "#7D8490"
 highlight = "#FFFFFF99"
+# The card's depth (see the dark table); `surface-1` is white here, so the sheen is clear.
+card-sheen = "#FFFFFF00"
+card-highlight = "#FFFFFFB3"
+card-shade = "#0000000A"
 shadow-ambient = "#141A2414"
 shadow-key = "#141A2426"
 accent-fill = "#185FCC"
@@ -168,6 +201,8 @@ map-border = "#0B0D1029"
 # T22-004).
 pattern-ink = "#FFFFFFB3"
 category-other = "#6B7280"
+# A failing board panel's glow (#282 Part 2a): failing at 10 %.
+failing-glow = "#B8285C1A"
 
 # Spacing scale (px).
 [space]
@@ -187,7 +222,7 @@ category-other = "#6B7280"
 # Component and layout sizes (px). Sidebar widths are VL-017's. `chart*` sizes are the chart
 # frame heights, axis tick length, line width and minimum brush drag (#58).
 [size]
-sidebar-expanded = 240
+sidebar-expanded = 212
 sidebar-collapsed = 56
 crumb-max = 160
 tenant-badge = 32
@@ -197,8 +232,11 @@ header = 56
 control = 28
 target-min = 24
 icon = 16
-avatar = 28
-page-padding = 24
+avatar = 24
+page-padding = 20
+# The content's top padding and the board's panel gap (#282 Part 2a, VL-017 as amended).
+page-padding-top = 12
+board-gap = 12
 chart = 240
 chart-stat = 120
 chart-tick = 4
@@ -211,16 +249,18 @@ chart-dash-gap = 4
 # Boards (plan #61 Part B): 12 columns of 40 px rows; the panel header (the drag handle in Edit).
 board-cols = 12
 board-row = 40
-board-panel-header = 40
+board-panel-header = 36
 # A board panel's legend is a table from this stack height, compact below (#64 Part B §4.5).
 board-legend-table-min = 240
 # The fixed-size editing window (kit ModalDialog size "editor", #90).
 dialog-editor-width = 800
 dialog-editor-height = 720
-# The log stream (#66 Part B): a row (one line without wrap), a sentinel row and the level bar.
-log-row = 20
+# The log stream (#66 Part B): a row (one line without wrap), a sentinel row and the level bar;
+# the level tag, 4 px inside a 24 px row (#282 Part 2a).
+log-row = 24
 log-sentinel = 40
 log-level-bar = 3
+log-tag = 16
 # The Log lines card of Explore › Logs (#66 Part C): the list's height.
 log-stream = 560
 # The Inspector (T25 §4.4): the sheet's width, its collapsed tab and its inset from the content.
@@ -233,19 +273,25 @@ table-row = 28
 list-row = 36
 list-chip = 20
 
-# The radius scale (VL-019 as amended, #282): fields and tooltips; menu items and the checkbox;
-# cards, popovers, menus and the Inspector; dialogs; capsules (buttons, the segmented control,
-# the header's controls).
+# The radius scale (VL-019 as amended, #282 Part 2a; no capsules): controls, fields and tooltips;
+# menu items, segments, chips and the checkbox; cards, panels, popovers, menus and the Inspector;
+# dialogs; tags (state, log level and list tags).
 [radius]
 default = 6
 xs = 4
-md = 10
-lg = 14
-pill = 9999
+md = 8
+lg = 10
+tag = 3
 
-# Alphas (0..1): unselected marks while a selection is relevant (T25-006).
+# Alphas (0..1): unselected marks while a selection is relevant (T25-006); the tint of tags and
+# chips and the stat sparkline's area at its top (#282 Part 2a).
 [opacity]
 dimmed = 0.35
+# The sidebar's row icons in the accent.
+icon = 0.85
+tag = 0.18
+chip = 0.12
+area = 0.28
 
 [border]
 hairline = 1
@@ -263,6 +309,9 @@ sm = 12
 md = 13
 lg = 16
 xl = 20
+# The page title (#282 Part 2a), the header bar's title.
+title = 22
+bar-title = 15
 display = 32
 
 [font.weight]
@@ -292,10 +341,20 @@ normal = 1.5
 1 = "inset 0 1px 0 var(--highlight), 0 1px 2px var(--shadow-ambient)"
 2 = "inset 0 1px 0 var(--highlight), 0 2px 6px var(--shadow-ambient), 0 12px 32px var(--shadow-key)"
 3 = "inset 0 1px 0 var(--highlight), 0 4px 12px var(--shadow-ambient), 0 24px 64px var(--shadow-key)"
+# Cards and board panels (#282 Part 2a): the inner top highlight and bottom shade, a hairline ring
+# (the card's one edge: a card has no border of its own) and a soft key shadow.
+card = "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--hairline), 0 1px 2px var(--shadow-ambient), 0 6px 18px var(--shadow-ambient)"
+# A failing board panel only: a ring in `failing` and a glow in `failing-glow`. A custom property's
+# var() is resolved where it is declared (here, the root), so the state colours are named directly.
+state = "inset 0 1px 0 var(--card-highlight), inset 0 -1px 0 var(--card-shade), 0 0 0 1px var(--failing), 0 1px 2px var(--shadow-ambient), 0 8px 32px var(--failing-glow)"
 
 # The materials' backdrop filter (header, menus, popovers, tooltips, the Inspector; VL-017).
 [material]
 filter = "blur(24px) saturate(180%)"
+# A card's surface sheen (cards and board panels), over `surface-1`; plain `surface-1` under
+# reduced transparency and forced colours. It fades out within a panel header's height: a chart
+# canvas paints opaque `surface-1` below it, so a longer sheen would show a seam there.
+card = "linear-gradient(180deg, var(--card-sheen), transparent var(--size-board-panel-header))"
 
 # Durations (ms) and easing. Reduced motion sets every duration to 0 ms.
 [motion]
@@ -305,5 +364,18 @@ fast = 150
 standard = 250
 # The Inspector opening (T25 §4.4).
 float-open = 200
+# A modal dialog zooming open from its origin, and closing back to it (#282).
+zoom-open = 400
+zoom-close = 200
+# The shared selection indicators sliding between rows and segments, hover fills, the sidebar
+# collapsing and expanding, and popovers and menus opening from their trigger. The spring is an
+# ease-out without overshoot: nothing bounces (VL-014).
+slide = 220
+hover = 120
+sidebar = 240
+pop-open = 180
+pop-close = 120
+easing-spring = "cubic-bezier(0.22, 1, 0.36, 1)"
+easing-zoom = "cubic-bezier(0.16, 1, 0.3, 1)"
 easing-out = "cubic-bezier(0.2, 0, 0, 1)"
 easing-in = "cubic-bezier(0.4, 0, 1, 1)"

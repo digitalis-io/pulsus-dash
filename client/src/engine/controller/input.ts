@@ -75,6 +75,35 @@ export function wheelIntent(
   return null;
 }
 
+/** `Ctrl` or `⌘` is held: a time chart zooms only with it (a plain wheel scrolls the page). */
+export function hasZoomModifier(e: Pick<WheelEvent, 'ctrlKey' | 'metaKey'>): boolean {
+  return e.ctrlKey || e.metaKey;
+}
+
+/**
+ * The wheel rows of §4.1 for a time chart: null without `Ctrl`/`⌘` (the page scrolls). With it, a
+ * pinch zooms time; otherwise the modifier is the gate and the rest maps as `wheelIntent` without
+ * it: vertical zooms time, `Shift` zooms values, a mostly horizontal swipe pans time.
+ */
+export function timeWheelIntent(
+  e: Pick<WheelEvent, 'deltaX' | 'deltaY' | 'deltaMode' | 'shiftKey' | 'ctrlKey' | 'metaKey'>,
+  plot: PlotRect,
+): WheelIntent | null {
+  if (!hasZoomModifier(e)) return null;
+  if (isPinch(e)) return wheelIntent(e, plot);
+  return wheelIntent(
+    {
+      deltaX: e.deltaX,
+      deltaY: e.deltaY,
+      deltaMode: e.deltaMode,
+      shiftKey: e.shiftKey,
+      ctrlKey: false,
+      metaKey: false,
+    },
+    plot,
+  );
+}
+
 /** The time of the last wheel event that no chart consumed, for the scroll latch (§4.4). */
 export interface WheelLatch {
   lastPageWheel(): number;

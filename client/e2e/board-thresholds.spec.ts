@@ -9,6 +9,15 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
 import { BOARDS_API, createBoard, deleteBoard, type PanelInput } from './boardApi.ts';
+import { colour } from '../src/styles/tokens.ts';
+
+type SeriesKey = `series-${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8}`;
+
+/** `rgb(r, g, b)` of a `#RRGGBB` token, as computed styles print it. */
+function rgb(hex: string): string {
+  const b = (i: number): number => parseInt(hex.slice(i, i + 2), 16);
+  return `rgb(${String(b(1))}, ${String(b(3))}, ${String(b(5))})`;
+}
 
 const FROM = '2026-01-01T00:00:00.000Z';
 const TO = '2026-01-01T01:00:00.000Z';
@@ -66,8 +75,8 @@ type Band = 'spark' | 'value';
 
 /**
  * Ink in a band of the panel's visible canvas: pixels whose largest RGB channel difference from
- * the pixel at (2, 2) is over 48. `spark`: CSS x ∈ [12, w − 12], y ∈ [h − 40, h − 8]; `value`:
- * the same x, y ∈ [8, h − 48].
+ * the pixel at (2, 2) is over 48. `spark`: CSS x ∈ [0, w], y ∈ [72, h]; `value`: x ∈ [12, w − 12],
+ * y ∈ [8, 64] (#282 Part 2a).
  */
 async function bandInk(page: Page, title: string, band: Band): Promise<number> {
   const canvas = panel(page, title).locator('[data-chart-frame] canvas').first();
@@ -78,10 +87,12 @@ async function bandInk(page: Page, title: string, band: Band): Promise<number> {
     const w = c.clientWidth;
     const h = c.clientHeight;
     const bg = ctx.getImageData(2 * dpr, 2 * dpr, 1, 1).data;
-    const x0 = Math.round(12 * dpr);
-    const y0 = Math.round((b === 'spark' ? h - 40 : 8) * dpr);
-    const bw = Math.round((w - 24) * dpr);
-    const bh = Math.round((b === 'spark' ? 32 : h - 56) * dpr);
+    // #282 Part 2a §4.4: the sparkline spans the tile under the 72 px head; the value sits top
+    // left in the head (its 40 px line from y 8).
+    const x0 = Math.round((b === 'spark' ? 0 : 12) * dpr);
+    const y0 = Math.round((b === 'spark' ? 72 : 8) * dpr);
+    const bw = Math.round((b === 'spark' ? w : w - 24) * dpr);
+    const bh = Math.round((b === 'spark' ? h - 72 : 56) * dpr);
     if (bw <= 0 || bh <= 0) return 0;
     const d = ctx.getImageData(x0, y0, bw, bh).data;
     let n = 0;
@@ -132,6 +143,29 @@ test.describe('e2e:board-thresholds (fake)', () => {
     // The 4-row panel: a compact legend, reached by keyboard from its header.
     const compact = short.locator('[data-panel-legend="compact"]');
     await expect(compact.locator('[data-legend-item]')).toHaveCount(3);
+    // e2e:legend-chips (#282 Part 2a §4.5): each item is a 24 px chip tinted with its series colour.
+    const items = compact.locator('[data-legend-item]');
+    for (let i = 0; i < 3; i++) {
+      const item = items.nth(i);
+      const n = await item.getAttribute('data-series');
+      expect(n, `item ${String(i)} data-series`).not.toBeNull();
+      const chip = await item.evaluate((e) => {
+        const s = getComputedStyle(e);
+        const b = getComputedStyle(e, '::before');
+        return {
+          height: e.getBoundingClientRect().height,
+          radius: s.borderTopLeftRadius,
+          tint: b.backgroundColor,
+          opacity: b.opacity,
+        };
+      });
+      expect(chip.height, `item ${String(i)} height`).toBeGreaterThanOrEqual(24);
+      expect(chip.radius, `item ${String(i)} radius`).toBe('4px');
+      expect(chip.tint, `item ${String(i)} tint`).toBe(
+        rgb(colour.dark[`series-${n ?? ''}` as SeriesKey]),
+      );
+      expect(chip.opacity, `item ${String(i)} opacity`).toBe('0.12');
+    }
     await short.getByRole('button', { name: 'Panel menu: Short' }).focus();
     // Until focus is on a legend item: Firefox also stops on the scrolling list itself.
     for (let i = 0; i < 60; i++) {

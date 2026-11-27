@@ -486,7 +486,7 @@
   height: calc(var(--space-6) + var(--space-1));
   padding: 0 var(--space-3);
   border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--space-8);
+  border-radius: var(--radius-xs);
   background: var(--surface-2);
   color: var(--text);
   font-size: var(--font-size-md);

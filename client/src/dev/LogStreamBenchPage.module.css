@@ -2,7 +2,9 @@
 
 .page {
   box-sizing: border-box;
-  height: calc(100vh - var(--size-header) - var(--size-page-padding) * 2);
+  height: calc(
+    100vh - var(--size-header) - var(--size-page-padding-top) - var(--size-page-padding)
+  );
   min-height: 0;
 }
 

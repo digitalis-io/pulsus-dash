@@ -20,6 +20,22 @@ import { seriesColourIndex } from './palette';
 const K = (i: number): string => `00000000000000${i.toString(16).padStart(2, '0')}`;
 const STATE = ['ok', 'watch', 'degraded', 'failing', 'unknown'] as const;
 
+/**
+ * A 300 × 160 stat's sparkline of 1, 3, 2 across the window (#282 Part 2a §4.4): the rect is
+ * y 72..160; max at 73.5, min at 138; the area closes down to y 160 at both ends, then the line.
+ */
+const SPARK_OPS = [
+  ['moveTo', 0, 138],
+  ['lineTo', 150, 73.5],
+  ['lineTo', 300, 105.75],
+  ['lineTo', 300, 160],
+  ['lineTo', 0, 160],
+  ['moveTo', 0, 138],
+  ['lineTo', 150, 73.5],
+  ['lineTo', 300, 105.75],
+  ['stroke'],
+];
+
 function show(
   h: Harness,
   spec: VisSpec,
@@ -275,18 +291,14 @@ describe('engine', () => {
     const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
     show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
     const ops = h.layer().ops.filter((o) => ['moveTo', 'lineTo', 'stroke'].includes(o.op));
-    expect(ops.map((o) => [o.op, ...o.args])).toEqual([
-      ['moveTo', 12, 152],
-      ['lineTo', 150, 120],
-      ['lineTo', 288, 136],
-      ['stroke'],
-    ]);
+    // #282 Part 2a: full width under the 72 px head; the area's path, then the line's.
+    expect(ops.map((o) => [o.op, ...o.args])).toEqual(SPARK_OPS);
     const stroke = h.layer().calls('stroke')[0];
     expect(stroke?.strokeStyle).toBe(
       colour.dark[`series-${String(seriesColourIndex(s) + 1)}` as keyof typeof colour.dark],
     );
     const value = h.layer().calls('fillText')[0];
-    expect(value?.args).toEqual(['2', 150, 60]);
+    expect(value?.args).toEqual(['2', 12, 28]);
   });
 
   it('stat sparkline joins its finite points across absent ones', () => {
@@ -298,13 +310,9 @@ describe('engine', () => {
     const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
     show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
     const ops = h.layer().ops.filter((o) => ['moveTo', 'lineTo', 'stroke', 'arc'].includes(o.op));
-    expect(ops.map((o) => [o.op, ...o.args])).toEqual([
-      ['moveTo', 12, 152],
-      ['lineTo', 150, 120],
-      ['lineTo', 288, 136],
-      ['stroke'],
-    ]);
-    expect(h.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 60]);
+    // #282 Part 2a: full width under the 72 px head; the area's path, then the line's.
+    expect(ops.map((o) => [o.op, ...o.args])).toEqual(SPARK_OPS);
+    expect(h.layer().calls('fillText')[0]?.args).toEqual(['2', 12, 28]);
   });
 
   it('stat sparkline of one finite point is a dot', () => {
@@ -317,14 +325,14 @@ describe('engine', () => {
     const layer = h.layer();
     expect(layer.calls('lineTo')).toHaveLength(0);
     expect(layer.calls('arc').map((o) => o.args)).toEqual([
-      [150, 136, size['chart-line'], 0, 2 * Math.PI],
+      [150, 105.75, size['chart-line'], 0, 2 * Math.PI],
     ]);
     const fill = layer.ops.filter((o) => o.op === 'fill');
     expect(fill).toHaveLength(1);
     expect(fill[0]?.fillStyle).toBe(
       colour.dark[`series-${String(seriesColourIndex(s) + 1)}` as keyof typeof colour.dark],
     );
-    expect(layer.calls('fillText')[0]?.args).toEqual(['3', 150, 60]);
+    expect(layer.calls('fillText')[0]?.args).toEqual(['3', 12, 28]);
   });
 
   it('stat sparkline scales to the finite points inside the window', () => {
@@ -336,12 +344,8 @@ describe('engine', () => {
     const spec: VisSpec = { kind: 'stat', title: 'T', unit: { kind: 'none' } };
     show(h, spec, seriesData(s), { fromMs: W0, toMs: W0 + 60 * MIN }, [300, 160, 1]);
     const ops = h.layer().ops.filter((o) => ['moveTo', 'lineTo', 'stroke'].includes(o.op));
-    expect(ops.map((o) => [o.op, ...o.args])).toEqual([
-      ['moveTo', 12, 152],
-      ['lineTo', 150, 120],
-      ['lineTo', 288, 136],
-      ['stroke'],
-    ]);
+    // #282 Part 2a: full width under the 72 px head; the area's path, then the line's.
+    expect(ops.map((o) => [o.op, ...o.args])).toEqual(SPARK_OPS);
   });
 
   it('stat sparkline: one visible point is a dot at mid-height', () => {
@@ -358,7 +362,7 @@ describe('engine', () => {
         .layer()
         .calls('arc')
         .map((o) => o.args),
-    ).toEqual([[150, 136, size['chart-line'], 0, 2 * Math.PI]]);
+    ).toEqual([[150, 105.75, size['chart-line'], 0, 2 * Math.PI]]);
   });
 
   it('stat without sparkline: scalar; short frame', () => {
@@ -372,15 +376,15 @@ describe('engine', () => {
       [300, 160, 1],
     );
     expect(scalar.layer().calls('stroke')).toHaveLength(0);
-    expect(scalar.layer().calls('fillText')[0]?.args).toEqual(['7', 150, 80]);
+    expect(scalar.layer().calls('fillText')[0]?.args).toEqual(['7', 12, 28]);
     const short = harness(Canvas2DEngine);
     const s = seriesFrame(K(3), [0, 1_000, 2_000], [1, 3, 2]);
     show(short, spec, seriesData(s), { fromMs: 0, toMs: 2_000 }, [300, 100, 1]);
     expect(short.layer().calls('stroke')).toHaveLength(0);
-    expect(short.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 50]);
+    expect(short.layer().calls('fillText')[0]?.args).toEqual(['2', 12, 28]);
   });
 
-  it('stat graphMode none (#297): the value alone at mid-height, no sparkline', () => {
+  it('stat graphMode none (#297): the value alone top left, no sparkline', () => {
     const h = harness(Canvas2DEngine);
     const W0 = Date.UTC(2026, 10, 19, 12);
     const MIN = 60_000;
@@ -390,7 +394,7 @@ describe('engine', () => {
     const layer = h.layer();
     expect(layer.calls('stroke')).toHaveLength(0);
     expect(layer.calls('arc')).toHaveLength(0);
-    expect(layer.calls('fillText')[0]?.args).toEqual(['2', 150, 80]);
+    expect(layer.calls('fillText')[0]?.args).toEqual(['2', 12, 28]);
     // `sparkline`, as absent, draws it.
     const spark = harness(Canvas2DEngine);
     show(
@@ -401,7 +405,7 @@ describe('engine', () => {
       [300, 160, 1],
     );
     expect(spark.layer().calls('stroke')).toHaveLength(1);
-    expect(spark.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 60]);
+    expect(spark.layer().calls('fillText')[0]?.args).toEqual(['2', 12, 28]);
   });
 
   it('a restored 2D context is repainted (#296): the value and the sparkline again', () => {
@@ -418,7 +422,7 @@ describe('engine', () => {
     h.canvas.dispatchEvent(new Event('contextrestored'));
     expect(h.queued()).toBe(1);
     h.flush();
-    expect(h.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 60]);
+    expect(h.layer().calls('fillText')[0]?.args).toEqual(['2', 12, 28]);
     expect(h.layer().calls('stroke')).toHaveLength(1);
     expect(h.visible().calls('drawImage')).toHaveLength(1);
     expect(h.drawn.length).toBe(drawn + 1);
@@ -428,7 +432,7 @@ describe('engine', () => {
     h.layerCanvas().dispatchEvent(new Event('contextrestored'));
     expect(h.queued()).toBe(1);
     h.flush();
-    expect(h.layer().calls('fillText')[0]?.args).toEqual(['2', 150, 60]);
+    expect(h.layer().calls('fillText')[0]?.args).toEqual(['2', 12, 28]);
     expect(h.layer().calls('stroke')).toHaveLength(1);
     expect(h.visible().calls('drawImage')).toHaveLength(1);
     expect(h.drawn.length).toBe(drawn + 2);
@@ -919,5 +923,21 @@ describe('unit:frame-coverage', () => {
     const line = harness(Canvas2DEngine);
     show(line, LINE_NONE, seriesData(seriesFrame(K(1), [0, 1], [1, 2])), { fromMs: 0, toMs: 1 });
     expect(line.a11y.at(-1)).not.toHaveProperty('coverage');
+  });
+});
+
+// #290 §4.2 (issue acceptance 2): the value axis in bytes per second, ticks on powers of 1024.
+describe('axis labels in the panel unit', () => {
+  it('bytes per second: 0 B/s to 3 MiB/s', () => {
+    const h = harness(Canvas2DEngine);
+    const w = { fromMs: 0, toMs: 3_600_000 };
+    const spec: VisSpec = { kind: 'line', title: 'T', unit: { kind: 'bytes', perSecond: true } };
+    show(h, spec, seriesData(seriesFrame(K(1), [0, 3_600_000], [0, 3145728])), w, [1118, 240, 1]);
+    const axis = h
+      .layer()
+      .calls('fillText')
+      .filter((o) => o.textAlign === 'right')
+      .map((o) => o.args[0]);
+    expect(axis).toEqual(['0 B/s', '1 MiB/s', '2 MiB/s', '3 MiB/s']);
   });
 });

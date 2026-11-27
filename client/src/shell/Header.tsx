@@ -36,8 +36,10 @@ export function Header() {
         {routeId === 'board' && uid !== undefined && <BoardStar tenant={tenant} uid={uid} />}
       </div>
       <div className={cx(styles['right'])}>
-        <TimeRangePicker />
-        <RefreshControl />
+        <div className={cx(styles['timeGroup'])}>
+          <TimeRangePicker />
+          <RefreshControl />
+        </div>
         <UserMenu />
       </div>
     </header>

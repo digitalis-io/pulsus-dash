@@ -123,10 +123,26 @@ dropped (`1234` at 4 → `1.234k`, `123.456` at 5 → `123.46`, `6.9999999999999
 | Unit | Examples |
 |---|---|
 | `none` | `0`, `0.0123`, `1.2k`, `-1.2k`, `1P` (SI prefixes k, M, G, T, P from 1 000; none below 1) |
-| `suffix` | `1.2k rps` |
-| `time` (`base` ns, us, ms or s) | `150 ns`, `120 ms`, `2.84 s`, `1 min`; the largest of ns, µs, ms, s, min, h, d whose value is at least 1; `0` → `0 s` |
-| `bytes` | `512 B`, `1023 B`, `1 KiB`, `1.5 GiB` (IEC, ×1 024) |
+| `plain` (#290) | `2026`, `1234567`, `0.0123`: three significant digits or the rounded integer, no prefix |
+| `suffix` | `1.2k rps`, `12.5 /s`, `1.2k req/s` |
+| `time` (`base` ns, us, ms or s) | `150 ns`, `120 ms`, `2.84 s`, `1 min`, `7.77 d`; the largest of ns, µs, ms, s, min, h, d whose value is at least 1; `0` → `0 s` |
+| `bytes` (`prefix` absent or `iec`) | `512 B`, `1023 B`, `1 KiB`, `1.5 GiB` (IEC: B, KiB, MiB, GiB, TiB, PiB, ×1 024) |
+| `bytes`, `prefix: 'si'` (#290) | `1.5 MB`, `999.5` → `1 kB` (SI: B, kB, MB, GB, TB, PB, ×1 000) |
+| `bits`, `prefix` `si` or `iec` (#290) | `1.25 Gb` (b, kb, Mb, Gb, Tb, Pb); `1 Mib` (b, Kib, Mib, Gib, Tib, Pib) |
+| `perSecond: true` on bytes or bits (#290) | `/s` on every scale: `1.5 KiB/s`, `1.5 kB/s`, `1.25 Gb/s`, `0.5 B/s`, `0 B/s`, `-1.5 MiB/s` |
 | `percent` / `percentunit` | `38 %` from 38 / from 0.38 |
+
+Below 1, bytes and bits are `${sig(v)} B` or `b` with the per-second tail (`0.5 B/s`).
+`tickBase(unit)` is the base of the value ticks: 1 024 for IEC bytes (the default) and IEC bits, so
+an axis of 0 to 3 MiB/s reads `0 B/s`, `1 MiB/s`, `2 MiB/s`, `3 MiB/s`; 1 000 for everything else.
+Canvas 2D's line, bars and bar-chart axes call it, and so does the Rust port (`dash_units::tick_base`,
+used by `dash-axes`). `unitLabel(unit)` is the panel header's unit chip: the suffix; `s`, `ms`,
+`µs`, `ns`; `B`, `B/s`, `b`, `b/s`; `%`; none for `none` and `plain`.
+
+**Rate promotion (T22-017, #290).** `rated(unit)` in `src/vis/units.ts` is the unit of a query the
+planner rated: `none` becomes `/s`; a suffix not ending in `/s` gains it (`req` → `req/s`); bytes and
+bits become per second; time, percent and plain are kept. Boards resolve a panel's stored unit with
+it ([Boards › Panel units](boards.md#panel-units-290)).
 
 A value that rounds up to the next unit is carried (`999.6 ms` → `1 s`, `59.99 s` → `1 min`,
 `1048575 B` → `1 MiB`). `NaN` is `—`, infinities `+Inf` and `-Inf`.
@@ -135,7 +151,8 @@ A value that rounds up to the next unit is carried (`999.6 ms` → `1 s`, `59.99
 `percentunit`, seconds for `time`) is c ≥ 1e21 or 0 < c < 1e−12, it is written as
 `toPrecision(digits)` in exponent form plus the base tail, as `formatCompact` does: `1e21` →
 `1e+21` (was `1000000P`), `2.5e22` → `2.5e+22`, `1e-4` ns → `1e-13 s` (was `0.0001 ns`), `1e22` B →
-`1e+22 B` (was `8881784 PiB`), `5e21` rps → `5e+21 rps`. Every other output is unchanged
+`1e+22 B` (was `8881784 PiB`), `5e21` rps → `5e+21 rps`, `1e22` bits → `1e+22 b`, `1e22` bytes per
+second → `1e+22 B/s`, `1e22` plain → `1e+22`. Every other output is unchanged
 (`1e19` percentunit stays `1e+21 %`, `1e-13` stays `1e-13`). Axis tick labels follow, so a value
 axis of such ticks can be narrower; the Rust port (`dash-units` `format_value`, three digits only)
 matches byte for byte on `engine/fixtures/format.json`, and `dash-axes` on `layout.json`. `formatHourMinute` and
@@ -150,7 +167,9 @@ and the unit's tail. It never truncates.
 | `none` | v | (none) | `0.000015` → `15µ`; `-1234` → `-1.23k`; `999600` → `1M` |
 | `suffix` | v | ` <suffix>` | `-0.00002` rps → `-20µ rps` |
 | `percent` / `percentunit` | v / v · 100 | ` %` | `1234567` → `1.23M %` |
-| `bytes` | v | ` B` | `1536` → `1.54k B` (SI, exact in value) |
+| `plain` | v | (none) | `1536` → `1.54k` |
+| `bytes` | v | ` B`, ` B/s` | `1536` → `1.54k B` (SI, exact in value); per second `1.54k B/s` |
+| `bits` | v | ` b`, ` b/s` | `1500` → `1.5k b` |
 | `time` | v in seconds | ` s` | ms `-3590000` → `-3.59k s` |
 
 Zero is `0` plus the tail; `NaN` and infinities are as `formatValue`. Outside
@@ -264,16 +283,20 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
   merged cell is missing (no fill) when any merged bucket's count is missing (NaN); hover and the
   a11y summary read the raw buckets. A NaN cell is never filled and has no hover row (#63,
   [T02 §4.4](../../designs/technical/T02-vis-engine.md#44-lod-decimation-and-precision) gaps rule).
-- **Stat.** The formatted value, centred, in 32 px semibold. With series data whose first series has
-  at least one finite value in the window, and a frame at least 104 px tall (`SPARK_MIN_H`), a
-  **sparkline** runs under it: the rect `{ x: 12, y: h − 8 − 32, width: w − 24, height: 32 }`, the
-  window across it, the min to max of the series' finite values inside the window from its bottom to its top (mid-height when they
-  are equal), in the series colour, 1.5 px with round joins. It is a trend glyph: it joins the
-  finite points inside the window across absent and non-finite ones (a sparse series on the step
-  grid is mostly absent points), and a single finite point is a dot of radius 1.5 px. The value
-  then sits at `(h − 32 − 8) / 2`. A scalar, a series with no finite value in the window, a
-  shorter frame or a spec with `graphMode: 'none'` draws the value alone, centred, as before. The
-  board sets `graphMode: 'none'` from the panel's `options.graphMode` (`boards/panelRun.ts`,
+- **Stat** (#282 Part 2a, [Panels › Stat tiles](panels.md#stat-tiles-282-part-2a)). The formatted
+  value in 32 px semibold, left-aligned at x 12, its middle at y = min(28, h / 2); the DOM subline
+  (the threshold text) sits under it, and the head is `STAT_HEAD` = 72 px. With series data whose
+  first series has at least one finite value in the window, and a frame at least 104 px tall
+  (`SPARK_MIN_H`), a **sparkline** runs under the head: the rect `{ x: 0, y: 72, width: w,
+  height: h − 72 }`, the window across it; the finite values' max is at `y + 1.5` and their min at
+  `y + 0.75 × height` (the middle of that band when they are equal), in the series colour, 1.5 px
+  with round joins. It is a trend glyph: it joins the finite points inside the window across
+  absent and non-finite ones (a sparse series on the step grid is mostly absent points), and a
+  single finite point is a dot of radius 1.5 px. Under the line an area from the first to the last
+  finite point, closed straight down to the rect's bottom, fades from `opacity.area` to clear. A
+  scalar, a series with no finite value in the window, a shorter frame or a spec with
+  `graphMode: 'none'` draws the value alone, in the same place. The board sets `graphMode: 'none'`
+  from the panel's `options.graphMode` (`boards/panelRun.ts`,
   [T22 §5.1](../../designs/technical/T22-value-categorical-and-table-panels.md#51-seam-types-every-field-readonly-in-the-files));
   absent and `sparkline` leave it absent, which draws the sparkline (#297,
   [ADR-0037](../../designs/adr/0037-stat-graph-mode-none.md)).
@@ -437,12 +460,12 @@ which drops a running gesture when the stage is withdrawn and restores the commi
 
 | Input (where) | Action | Commit |
 |---|---|---|
-| Wheel (plot) | Zoom time about the pointer | `{ window, gesture: 'wheel' }` after 300 ms idle |
-| Pinch: `Ctrl`+wheel with a fractional `deltaY` (plot) | Zoom time about the pointer | As wheel |
+| Plain wheel, no `Ctrl`/`⌘` (plot) | Not consumed: the page or board scrolls; the frame emits `wheelHint` and shows "Hold Ctrl to zoom" ("Hold ⌘ to zoom" on Apple platforms) | — |
+| `Ctrl`/`⌘`+wheel (plot) | Zoom time about the pointer | `{ window, gesture: 'wheel' }` after 300 ms idle |
+| Pinch: `Ctrl`+wheel with a fractional `deltaY` (plot) | Zoom time about the pointer (pinch rate) | As wheel |
 | Safari `gesturestart` / `gesturechange` / `gestureend` (plot) | Zoom time about the pointer by `lastScale / scale`; `Ctrl` wheels between start and end are ignored | As wheel |
-| `Shift`+wheel (plot) | Zoom values about the pointer (line, bars); heatmap: consumed, no change | `{ value, gesture: 'wheel' }` |
-| `Ctrl`/`⌘`+wheel with whole-number steps, or `⌘` (plot) | Zoom time and values about the pointer (heatmap: time only) | `{ window, value }` |
-| Horizontal two-finger swipe, `|deltaX| > |deltaY|` (plot) | Pan time | `{ window, gesture: 'wheel' }` |
+| `Ctrl`/`⌘`+`Shift`+wheel (plot) | Zoom values about the pointer (line, bars); heatmap: consumed, no change | `{ value, gesture: 'wheel' }` |
+| `Ctrl`/`⌘`+horizontal swipe, `|deltaX| > |deltaY|` (plot) | Pan time | `{ window, gesture: 'wheel' }` |
 | Wheel anywhere else | Not consumed: the page scrolls | — |
 | Left or middle drag of 4 px or more (plot, x-axis band) | Pan time; the content follows the pointer | `{ window, gesture: 'pan' }` (plot) or `'axis'` (band) on release |
 | Left drag of 4 px or more (y-axis band; line, bars) | Pan values, from the auto domain when unpinned | `{ value, gesture: 'axis' }` on release |
@@ -454,9 +477,10 @@ which drops a running gesture when the stage is withdrawn and restores the commi
 | `Escape` on the slider, `pointercancel`, `lostpointercapture` during a press | Cancel: the view and value range are restored, no commit, no box | — |
 | Left press with `Ctrl` and not `⌘` (macOS secondary click), touch pointers | Ignored | — |
 
-The pinch test is a heuristic (owner-delegated decision of 2026-11-21): a mouse that reports
-fractional `Ctrl`+wheel steps zooms time only, and a pinch with whole-number steps zooms both axes.
-Both outcomes are accepted and pinned by `input.test.ts`. Every consumed wheel and handled press
+A time chart zooms only with `Ctrl`/`⌘` held (owner decision 2026-11-27, `timeWheelIntent` in
+`controller/input.ts`), so a plain wheel scrolls the page; the geomap keeps its own wheel
+(`wheelIntent`). The pinch test (fractional `Ctrl`+wheel steps) only picks the pinch zoom rate; both
+zoom time. Every consumed wheel and handled press
 calls `preventDefault()` (no page scroll, browser zoom, text selection or middle-button
 autoscroll); a wheel during a press is consumed and ignored.
 
@@ -468,6 +492,11 @@ autoscroll); a wheel during a press is consumed and ignored.
 | `DRAG_MIN_PX` | 4 px (`size.chart-brush-min`) |
 | `PAGE_WHEEL_LATCH_MS` | 300 ms (the scroll latch) |
 
+The zoom hint (`charts/WheelHint.tsx`) is centred over the chart for `WHEEL_HINT_MS` (1.2 s), at
+most once per `WHEEL_HINT_GAP_MS` (3 s) on the page; it fades with `--motion-standard` (no fade
+under reduced motion), ignores the pointer and is `aria-hidden`. Its text goes to a polite live
+region once per session.
+
 Zones: the **plot** (edges included), the **x-axis band** below the plot within its x range, the
 **y-axis band** left of the plot within its y range (line and bars only). The canvas carries the
 zone under the pointer in `data-zone` and the press in progress in `data-gesture` (`pan`, `box`,
@@ -476,7 +505,7 @@ zone under the pointer in `data-zone` and the press in progress in `data-gesture
 
 ### Wheel and page scroll
 
-A wheel over a plot is consumed unless the page saw an unconsumed wheel in the last 300 ms: then a
+A plain wheel is never consumed (see above). A `Ctrl`/`⌘`+wheel over a plot is consumed unless the page saw an unconsumed wheel in the last 300 ms: then a
 scroll already in progress keeps scrolling as it passes over a chart. This holds while the chart's
 own wheel gesture is still pending too (zoom, scroll the page elsewhere, come back within 300 ms:
 the page keeps scrolling, and the pending zoom commits as usual). One passive `wheel` listener
@@ -812,7 +841,7 @@ disabled, and a caller's `caption` and `closeLabel` (#216 Part 2a: the Board lis
 `/t/:tenant/dev/gallery` (development and stub builds only: the route is in the router only when
 `import.meta.env.DEV` or `VITE_API_MODE` is not `http`, so `http` builds contain neither the route
 nor its chunk; CI checks the `http` build's manifest). There is no navigation entry. The page draws
-sixteen charts: eleven frames from seeded synthetic data for the current window (`src/dev/synth.ts`,
+eighteen charts: thirteen frames from seeded synthetic data for the current window (`src/dev/synth.ts`,
 `src/dev/gallery.ts`, seed `GALLERY_SEED` = 20261120 plus the entry index; keys from a development
 FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 
@@ -829,6 +858,8 @@ FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 | `stat-sparkline` | p99 latency with a sparkline, 1 series × 120 points (ms) |
 | `line-extreme` | Values near the largest finite number, 1 series × 1 440 points mapped onto [−MAX, MAX] (#97) |
 | `line-events` | Request rate with deploy and change markers, 1 series × 1 440 points (`rps`): a deploy at 30 % of the window, and a config and a feature flag change 30 s apart at 70 %, gathered into a `+2` chip (#64 Part C) |
+| `line-bytes-rate` | Network receive rate, 1 series × 1 440 points in bytes per second (synthetic base 2.5 MiB/s, amplitude 0.8 MiB/s, both scaled by the series' seeded factor), on IEC ticks: `0 B/s`, `512 KiB/s`, `1 MiB/s` … (#290) |
+| `stat-uptime` | Uptime, 671 000 s → `7.77 d` (#290) |
 
 and five bar charts (#173 Part 2, `src/dev/galleryBars.ts`), each a `barchartModel` in
 `CategoryChart`, horizontal, its canvas `--size-chart` high with the meter line below:
@@ -849,7 +880,8 @@ The same window always gives the same pixels; the gallery is the corpus of
 `bench:frame-interim-line` ([Build, test and CI](../development/build-and-ci.md)).
 The minimum value band (#93) widened the band of the line, bars and heatmap charts, so their
 baselines were re-baselined once under the `golden-update` label; stat is unchanged. The two #64 Part B
-entries, `line-extreme` (#97) and `line-events` (#64 Part C) got their baselines from CI under the same label. They are not Rust parity fixtures:
+entries, `line-extreme` (#97) and `line-events` (#64 Part C) got their baselines from CI under the same label;
+`line-bytes-rate` and `stat-uptime` (#290) got theirs in the pinned e2e container. They are not Rust parity fixtures:
 `scripts/engine-fixtures.ts` selects `PARITY_LINE_IDS` (`line-1`, `line-50`, `line-gaps`,
 `line-600`) and projects each summary to its parity fields, so `engine/fixtures/` is unchanged. The
 script (and `scripts/threshold-draw-probe.ts`) load a CSS module as a class-name proxy, so

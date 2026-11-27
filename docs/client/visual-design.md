@@ -1,17 +1,22 @@
 # Visual design: tokens, materials and the kit's look
 
-The visual refresh of #282 (Part 1: tokens, shell and kit). The direction is **"a calm instrument in
-a finished case"**: graphite neutrals, one blue accent, depth from light (lifted surfaces, a 1 px
-top highlight and soft shadows) instead of boxes and dashed borders, translucency only where
-content passes beneath, capsule buttons and a segmented control, menus that highlight the row in
-the accent, and the platform UI face on Apple systems. Data colours, marks, layout sizes and the
-information architecture do not change.
+The visual refresh of #282. Part 1 set the tokens, the shell and the kit: **"a calm instrument in a
+finished case"**: graphite neutrals, one blue accent, depth from light (lifted surfaces, a 1 px top
+highlight and soft shadows) instead of boxes and dashed borders, translucency only where content
+passes beneath, menus that highlight the row in the accent, and the platform UI face on Apple
+systems. Part 2a is the owner's second direction (2026-11-27): **compact radii and a dense layout**
+(3–10 px corners and no capsules, a 212 px sidebar, 12/20 px padding, 12 px gaps, 36 px panel
+headers, 24 px log rows), with boldness from depth instead: elevated cards, a failing panel's ring
+and glow, tinted tags and chips, a 22 px bold title, and a stat tile with its value top left over a
+shaded, full-bleed sparkline. Series, state and level colours and the information architecture do
+not change.
 
 It implements [VL-001, VL-004, VL-010, VL-011, VL-014, VL-016, VL-017 and
 VL-019](../../designs/product/08-visual-language.md) as amended by #282, the kit rules of
 [T08](../../designs/technical/T08-dom-component-kit.md) (T08-007, T08-019, T08-022) and
-[ADR-0035](../../designs/adr/0035-platform-ui-face.md) (the platform UI face). Part 2 (board
-chrome, tables, Explore and the log stream) restyles those surfaces on these tokens only.
+[ADR-0035](../../designs/adr/0035-platform-ui-face.md) (the platform UI face). Part 2a restyles the
+board chrome, stat tiles, legend chips, tables, Explore, the log stream and the boards list; Part 2b
+(the line chart in both engines) follows.
 
 ## Tokens
 
@@ -27,22 +32,28 @@ token-lint](README.md#tokens-and-token-lint)).
 | `surface-1` | `#15171C` | `#FFFFFF` | cards, the header and every material's opaque fallback |
 | `surface-2` | `#1D2026` | `#EEF0F3` | empty states, inner wells |
 | `surface-hover` | `#262A31` | `#E5E8ED` | row and ghost hover |
-| `sidebar` | `#121418` | `#EBEDF1` | the source list (opaque, never a material) |
+| `sidebar` | `#121418` | `#EBEDF1` | the sidebar's base colour (now drawn by the two stops below) |
+| `sidebar-top`, `sidebar-bottom` | `#17191E`, `#13151A` | `#E8EAEE`, `#E4E6EB` | the sidebar's vertical gradient (a shade off the canvas: lighter in dark, darker in light); the header bar is `sidebar-top` |
+| `sidebar-edge` | `#FFFFFF0F` | `#1C22330F` | the soft 6 % inner edge between the sidebar and the content, and under the header bar |
+| `row-hover` | `#FFFFFF0D` | `#1C22330D` | sidebar rows, ghost buttons and the header segments on hover (5 %) |
+| `row-selected`, `text-on-row-selected` | `#4F6A94`, `#E9EBEF` | `#5274AD`, `#FFFFFF` | the sidebar's current-row indicator, a muted accent: ≥ 3:1 from both gradient stops (dark 3.2 and 3.3, light 3.9 and 3.8), its text ≥ 4.5:1 (4.6, 4.7) |
+| `segment-track`, `segment-thumb` | `#FFFFFF0A`, `#353A43` | `#1C22330D`, `#FFFFFF` | the segmented track and the header's time track; the raised thumb |
 | `control`, `control-hover`, `control-pressed` | `#23272E`, `#2A2F37`, `#31363F` | `#FFFFFF`, `#F6F7F9`, `#ECEEF1` | default buttons |
-| `field` | `#111317` | `#FCFCFD` | text fields, select triggers, the checkbox box, the segmented track, the header capsules |
-| `border-control` | `#FFFFFF29` | `#1C22333D` | control, popover, dialog and capsule edges |
+| `field` | `#111317` | `#FCFCFD` | text fields, select triggers, the checkbox box, the segmented track, the header controls |
+| `border-control` | `#FFFFFF29` | `#1C22333D` | control, popover, dialog and header control edges |
 | `border-field` | `#6A717C` | `#7D8490` | field boundaries: at least 3:1 from the fill and every surface beneath (VL-009) |
 | `hairline` | `#FFFFFF14` | `#1C223314` | separators, card edges |
 | `highlight` | `#FFFFFF0F` | `#FFFFFF99` | the elevation tokens' 1 px top highlight |
 | `shadow-ambient`, `shadow-key` | `#00000066`, `#0000008C` | `#141A2414`, `#141A2426` | the elevation tokens' shadows (hue-free) |
 | `text`, `text-muted` | `#E9EBEF`, `#9AA1AC` | `#1B1E25`, `#565E6B` | text |
 | `accent`, `focus` | `#4D9BFF` | `#185FCC` | links, row icons, the focus ring |
-| `accent-fill`, `accent-pressed` | `#2B68D6`, `#255CC0` | `#185FCC`, `#1552B3` | primary buttons, the current sidebar row, the segmented thumb, the focused menu row, the avatar, the skip link |
+| `accent-fill`, `accent-pressed` | `#2B68D6`, `#255CC0` | `#185FCC`, `#1552B3` | primary buttons, the current sidebar row while the sidebar has keyboard focus, the app glyph, the focused menu row, the avatar, the skip link |
 | `text-on-accent` | `#F5F8FF` | `#FFFFFF` | text and icons on `accent-fill` (never on `accent`) |
 | `backdrop` | `#05060899` | `#1B1E2540` | the modal overlay (no blur) |
-| `material-bar` | `#15171CE6` | `#FFFFFFD9` | the header's material |
+| `material-bar` | `#15171CE6` | `#FFFFFFD9` | unused since the header bar took the sidebar's material |
 | `material-menu` | `#1E2127EB` | `#FAFBFCE6` | popovers, menus, listboxes, tooltips, the Inspector |
 | `surface-float` | `#15171CF0` | `#FFFFFFF0` | the geomap overlay only |
+| `failing-glow` | `#E0457B26` | `#B8285C1A` | a failing board panel's glow only (a state colour, used only by `elevation.state`) |
 
 Every key differs between the themes, and the light values are designed, not inverted. Series,
 level, state, ramp, syntax, map, `brush`, `selection` and `pattern-ink` are unchanged.
@@ -60,14 +71,16 @@ every state pair needs new state colours and is tracked in #284.
 | Scale | Values |
 |---|---|
 | `space` | adds `0-5` = 2 px (insets inside a control) to 4, 8, 12, 16, 20, 24, 32, 40, 48, 64 |
-| `size` | `control` 28 px (was 32; `target-min` stays 24), `focus-ring` 3 px, `focus-offset` 1 px |
-| `radius` | `xs` 4 (menu items, the checkbox), `default` 6 (fields, tooltips), `md` 10 (cards, popovers, menus, the Inspector, the geomap overlay), `lg` 14 (dialogs), `pill` 9999 (buttons, the segmented control, the header capsules). `radius.float` is gone |
+| `size` | `control` 28 px (was 32; `target-min` stays 24), `focus-ring` 3 px, `focus-offset` 1 px. Part 2a: `sidebar-expanded` 212 (was 240), `page-padding` 20 (was 24), `page-padding-top` 12, `board-gap` 12 (was `space-4`), `board-panel-header` 36 (was 40), `log-row` 24 (was 20), `log-tag` 16 |
+| `radius` | `tag` 3 (state, log level and list tags), `xs` 4 (menu items, segments, chips, the checkbox), `default` 6 (buttons, icon buttons, the segmented track, fields, tooltips, the header controls), `md` 8 (cards, board panels, popovers, menus, the Inspector, the geomap overlay), `lg` 10 (dialogs). No capsule: `pill` is gone (Part 2a), as `float` before it |
+| `opacity` | `dimmed` 0.35, `icon` 0.85 (the sidebar's accent icons); Part 2a: `tag` 0.18 and `chip` 0.12 (the tint pattern), `area` 0.28 (the stat sparkline's area at its top) |
+| `font.size` | adds `title` 22 (the page title, Part 2a) and `bar-title` 15 (the header bar's title) |
 | `font.family` | adds `ui-apple`: `-apple-system, BlinkMacSystemFont, "Inter Variable", system-ui, sans-serif` |
 | `font.weight` | adds `bold` 700 |
 | `font.tracking` | `lg` −0.011 em, `xl` −0.017 em, `display` −0.022 em (`--tracking-*`); Inter only, 0 on Apple systems |
-| `elevation` | `1`, `2`, `3` (`--elevation-*`): a 1 px top highlight, an ambient and (2, 3) a key shadow |
+| `elevation` | `1`, `2`, `3` (`--elevation-*`): a 1 px top highlight, an ambient and (2, 3) a key shadow. Part 2a: `card` (the top highlight, a 1 px `hairline` ring, an ambient and a soft 6/18 px shadow) and `state` (a 1 px ring in `failing` and an 8/32 px glow in `failing-glow`; only on a failing board panel). The state colours are named in the token itself: a custom property's `var()` is resolved on the element that declares it (the root), so a token cannot pick up a `--state-colour` set later on the panel |
 | `material` | `filter`: `blur(24px) saturate(180%)` (`--material-filter`) |
-| `motion` | adds `quick` 100 ms and `easing-in` `cubic-bezier(0.4, 0, 1, 1)`; reduced motion sets every duration to 0 ms |
+| `motion` | adds `quick` 100 ms and `easing-in` `cubic-bezier(0.4, 0, 1, 1)`; `slide` 220 ms and `easing-spring` `cubic-bezier(0.22, 1, 0.36, 1)` (an ease-out with no overshoot) for the sliding indicators, `hover` 120 ms for hover fills, `sidebar` 240 ms for collapsing and expanding, `pop-open` 180 ms and `pop-close` 120 ms for popovers and menus; reduced motion sets every duration to 0 ms |
 
 The generator accepts strings in `font.family`, `elevation`, `material` and `motion` only without
 `;`, `{`, `}`, `<`, `>` or `\`, and a tracking value only within ±0.05 em; otherwise it exits 2
@@ -78,11 +91,14 @@ naming the key. In Rust, `font::tracking::LG` is an `f32`, `elevation::E_1` and
 
 | Surface | Elevation | Material | Radius |
 |---|---|---|---|
-| Default and primary buttons, the segmented thumb, cards | `elevation-1` | — | `pill`, `pill`, `md` |
+| Default and primary buttons, the segmented thumb, the app glyph | `elevation-1` | — | `default`, `xs` |
+| Cards, board panels, the boards list table | `elevation-card`: one edge, its hairline ring (no border of their own), with a 1 px inner top highlight (`card-highlight`) and bottom shade (`card-shade`); the surface is `material-card` (a `card-sheen` top sheen fading within 36 px) over `surface-1`. Reduced transparency: plain `surface-1`; forced colours: a 1 px `CanvasText` border, plain `surface-1` | `material-card` | `md` |
+| A failing stat panel | `elevation-state` (failing ring and glow) | — | `md` |
+| A dragged board panel | `elevation-3` | — | `md` |
 | Popovers, menus, listboxes, tooltips, the Inspector | `elevation-2` | `material-menu` | `md` (tooltips `default`) |
 | Modal dialogs | `elevation-3` | — (`surface-1`; the overlay is `backdrop`, unblurred) | `lg` |
-| The header | — | `material-bar` | — |
-| The sidebar | — | none: opaque `sidebar` | — |
+| The header bar | — (a 1 px `sidebar-edge` below, no blur) | none: opaque `sidebar-top`, continuous with the sidebar | — |
+| The sidebar | — (a 1 px inset `sidebar-edge` on the right) | none: the `sidebar-top` to `sidebar-bottom` gradient | — |
 
 A material's base rule is opaque `surface-1`. Inside
 `@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))` it takes the
@@ -91,34 +107,38 @@ implement `prefers-reduced-transparency` (Safari, Firefox) still show the materi
 `@media (prefers-reduced-transparency: reduce), (forced-colors: active)` rule sets it back to opaque
 `surface-1` with both filters `none`. The prefixed declaration comes first: the minifier keeps the
 last of the pair and adds the other where its targets need it. `unit:material-fallback`
-(`scripts/material-fallback.test.ts`) checks the header, popover, tooltip and Inspector modules for
-this shape; `e2e:kit-materials` requires the material in Chromium, Firefox and WebKit, and the
-opaque surface under an emulated `reduce` (Chromium) and under forced colours.
+(`scripts/material-fallback.test.ts`) checks the popover, tooltip and Inspector modules for
+this shape; `e2e:kit-materials` requires the popover material in Chromium, Firefox and WebKit, the
+opaque surface under an emulated `reduce` (Chromium) and under forced colours, and the header bar
+opaque `sidebar-top` with no blur.
 
 **Fallbacks.** Without `backdrop-filter`, under reduced transparency, or under forced colours, every
 material is opaque `surface-1` in both themes. Forced colours also drop the shadows; borders and
-focus rings remain. The accent-filled states (the current sidebar row, the segmented thumb, the
-focused menu and listbox row, the selected time preset, the checked box) use
+focus rings remain. The selection states (the sidebar's current-row indicator, the segmented thumb
+and selected item, the focused menu and listbox row, the checked box) use
 `forced-color-adjust: none` with `Highlight` and `HighlightText`.
 
 ## The kit and the shell
 
 | Component | Rest | States |
 |---|---|---|
-| Button | `control`, 1 px `border-control`, `pill`, 28 px high, 13 px medium, `elevation-1` | hover `control-hover`, pressed `control-pressed` over `motion.quick`; disabled muted, no shadow |
+| Button | `control`, 1 px `border-control`, `default` (6 px), 28 px high, 13 px medium, `elevation-1` | hover `control-hover`, pressed `control-pressed` over `motion.quick`; disabled muted, no shadow |
 | Button primary | `accent-fill`, no border, `text-on-accent` | pressed `accent-pressed` |
-| Button ghost, IconButton | transparent, no border or shadow; IconButton 28 × 28, `pill` | hover `surface-hover`, pressed `control-pressed` |
-| SegmentedControl | `field` track, 1 px `border-control`, `pill`, 28 px | the selected item is an `accent-fill` thumb (`pill`, `elevation-1`, `text-on-accent`) 2 px in from the track's outer edge; items at least 24 px |
+| Button ghost, IconButton | transparent, no border or shadow; IconButton 28 × 28, `default` | hover `row-hover`, pressed `control-pressed` |
+| SegmentedControl | `segment-track`, no border, `default`, 28 px; `tone="toolbar"` drops the track (inside the header's time track) | one raised thumb (`segment-thumb`, `xs`, `elevation-1`) slides under the selected item (`text`, medium), 2 px in from the track's edge; until it is placed, the item draws the fill itself; items at least 24 px. A `null` value selects none; an option's `ariaLabel` names a short label |
 | TextField, Select trigger, TextArea | `field`, 1 px `border-field`, radius `default`, 28 px (TextArea: at least 28, its `rows` tall, vertical resize) | focus: the global ring at offset 0; invalid: dashed `text` border |
 | Checkbox | 16 px box, `xs`, `field`, 1 px `border-field`; the label row at least 24 px | checked `accent-fill` with a `text-on-accent` tick; the ring on the box |
 | Menu, Select listbox | padding 4 px, rows 28 px, `xs`, 13 px regular; hairline separators inset 8 px | the focused row `accent-fill` with `text-on-accent` (the check too), no outline |
 | Tooltip | `material-menu`, `default`, `elevation-2`, 12 px | — |
-| Modal dialog | `surface-1`, 1 px `border-control`, `lg`, `elevation-3`; title 16 px semibold, `tracking-lg` | — |
-| Card | `surface-1`, 1 px `hairline`, `md`, `elevation-1`; title 13 px semibold | — |
-| EmptyState | `surface-2`, no border, `md`; title 13 px semibold, body muted | — |
-| Sidebar | `sidebar`, a right hairline; rows 28 px, `default`, 8 px inset, no gap; icons `accent`, labels `text` 13 px | hover `surface-hover`; the current row (expanded and collapsed) `accent-fill`, its icon and label `text-on-accent`, semibold, no inset bar |
-| Header | `material-bar`, a bottom hairline; title 16 px semibold, `tracking-lg`; breadcrumb 13 px muted | the time-range trigger and the refresh control are 28 px `field` capsules with a `border-control` edge |
-| User menu avatar, skip link, selected time preset | `accent-fill`, `text-on-accent` | — |
+| Modal dialog | `surface-1`, 1 px `border-control`, `lg` (10 px), `elevation-3`; title 16 px semibold, `tracking-lg` | — |
+| Card | `material-card` over `surface-1`, no border, `md`, `elevation-card`, padding 12 px; title 13 px semibold | forced colours: a `CanvasText` border |
+| EmptyState | `surface-2`, no border, `md`, padding 16 px; title 13 px semibold, body muted | — |
+| StateGlyph `tag` | 20 px high, padding 0 4 px, `tag` (3 px), the tint pattern in `--state-colour`; the glyph in the state colour, the label 11 px semibold in `text` | forced colours: a `CanvasText` border, no tint |
+| Sidebar | the `sidebar-top` to `sidebar-bottom` gradient, a soft inset `sidebar-edge` on the right; the top block is the app glyph in a 24 px `accent-fill` square, the org 13 px semibold and the tenant 12 px muted; rows 28 px, `default`, 8 px inset, no gap, the icon 12 px in (so it stays put as the sidebar collapses), 16 px icons `accent` at 85 %, labels `text` 13 px regular; section labels 11 px semibold `text-muted`, 16 px above and 4 px below, no dividers; the footer's Admin, data-source status (a state dot and 11 px muted text) and Collapse sidebar are rows of the same kind, set apart by space | hover `row-hover` over `motion.hover`; the current row (expanded and collapsed) is one shared `row-selected` indicator, its icon and label `text-on-row-selected`, that slides between rows; `accent-fill` with `text-on-accent` while the sidebar holds keyboard focus; forced colours `Highlight` and `HighlightText` |
+| Header | `sidebar-top`, a 1 px `sidebar-edge` below, 20 px inline padding; title 15 px semibold; breadcrumb 13 px muted | the quick presets (from 1280 px), the time-range trigger, refresh and the interval are borderless 24 px segments in one 28 px `segment-track` (6 px corners); the presets' thumb slides; the avatar is 24 px with a subtle `border-control` ring |
+| The board's second row | the time line in 12 px muted; filter chips borderless on `segment-track`, Add filter and Share ghost buttons | Edit board stays the one primary button |
+| Content (`main`) | padding 12 px above, 20 px at the sides and below | — |
+| User menu avatar, skip link | `accent-fill`, `text-on-accent` | — |
 
 **Focus.** `:focus-visible` and the kit's `data-focus-visible` draw a `size.focus-ring` (3 px)
 solid `focus` outline at `size.focus-offset` (1 px), following `border-radius`; fields use offset
@@ -129,15 +149,19 @@ module, on React Aria's `data-entering` and `data-exiting`):
 
 | Surface | Enter | Exit |
 |---|---|---|
-| Popover, menu, listbox | `motion.fast` (150 ms): opacity and `scale(0.98)` to 1 from `--trigger-anchor-point`, `easing-out` | `motion.quick` (100 ms) opacity, `easing-in` |
+| Popover, menu, listbox | `motion.pop-open` (180 ms): opacity and `scale(0.92)` to 1 from `--trigger-anchor-point`, `easing-zoom` (the dialog zoom's curve) | `motion.pop-close` (120 ms): opacity and `scale(0.96)`, `easing-in` |
 | Tooltip | 100 ms opacity | 100 ms opacity |
 | Modal | `motion.float-open` (200 ms): opacity and an 8 px rise, `easing-out`; the overlay fades over 200 ms | `motion.fast` (150 ms) opacity |
-| Controls | colour and background over `motion.quick` | — |
+| Controls | colour and background over `motion.hover` (hover fills fade in over 120 ms) | — |
+| Sidebar current row, segmented selection | one shared element slides to the new row or segment on `transform` over `motion.slide` (220 ms), `easing-spring`; the segmented thumb is a FLIP from the old segment's offset and width | — |
+| Sidebar collapse and expand | the grid column's width over `motion.sidebar` (240 ms), `easing-out`; labels fade in as it widens, fade out (`data-leaving`) as it narrows, then leave the DOM | — |
 
 Under reduced motion there is no animation, so React Aria mounts and unmounts a popover or dialog
-on the same frame (VL-016). Nothing bounces (VL-014).
+on the same frame (VL-016); the indicators jump, the sidebar snaps. Nothing bounces (VL-014). The
+sidebar's width is the one animation outside `transform` and `opacity`: the content column reflows
+with it.
 
-**Known browser difference.** In WebKit a popover leaves without its 100 ms fade: React Aria looks
+**Known browser difference.** In WebKit a popover leaves without its 120 ms exit: React Aria looks
 for an exit animation as it sets `data-exiting`, before WebKit has started the CSS animation, finds
 none and unmounts at once. The popover is still gone within 150 ms of Escape, which
 `e2e:kit-motion` checks there; Chromium and Firefox fade.
@@ -159,12 +183,43 @@ it on chart init (`document.fonts.load(STAT_FONT)`) and redraws once it arrives;
 loads for data. Every font stays same-origin (ADR-0016). `e2e:font-origin` covers the Apple leg
 with a faked `navigator.platform`.
 
+## The tint pattern (Part 2a)
+
+Tags and chips are tinted with a token colour at a token opacity. CSS has no token-safe way to mix
+them: `color-mix()` is a colour function, which `ci:token-lint` reports as a colour literal, and a
+`#RRGGBBAA` per tint would be new tokens for every series and level. So the tint is a pseudo-element
+in the token colour, faded with `opacity`:
+
+```css
+.x { position: relative; isolation: isolate; }
+.x::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+             background: var(--tint); opacity: var(--opacity-tag); }   /* chips: --opacity-chip */
+@media (forced-colors: active) { .x { border: var(--border-hairline) solid CanvasText; } .x::before { display: none; } }
+```
+
+`--tint` is set per variant: `--state-colour` (the state tag), `--level-<level>` (log level tags) or
+`--series-N` (legend chips, from `data-series`). Labels on a tint are always `text` (or
+`text-muted`); state-coloured text on a tint would fall below 4.5:1 (light `watch`/`unknown`, dark
+`failing`/`unknown`), so a state shows only its glyph in the state colour. `unit:ui-token-contrast`
+checks these composites: a state tag's glyph ≥ 3:1 and its `text` label ≥ 4.5:1 on `surface-1` +
+state at `opacity.tag`; `text` ≥ 4.5:1 on every level tag; `text` and `text-muted` ≥ 4.5:1 and the
+`watch`, `degraded` and `failing` glyphs ≥ 3:1 on `surface-1` + `series-1…8` at `opacity.chip`; the
+board status glyph (`failing`) ≥ 3:1 on `canvas`.
+
+## The radius scale (`unit:radius-scale`)
+
+`scripts/radius-scale.test.ts` parses every `src/**/*.css` except the generated `tokens.css` and
+checks each `border-radius*` value: it may only be made of `0`, `50%` (dots), `inherit`,
+`var(--radius)` and `var(--radius-xs|md|lg|tag)`, alone or in a `calc()` of these. A capsule
+(`var(--radius-pill)`, `9999px`) or a corner from another scale (`var(--space-8)`) fails the test
+with its file, line and value.
+
 ## The `shadow-token` lint (VL-004)
 
 `npm run token-lint` checks every `box-shadow` outside the generated files: the value is split on
 top-level commas, and a shadow is a drop shadow when it has no `inset` keyword and its third
 component is not the literal `0`. A drop shadow is allowed only as the whole value
-`var(--elevation-1|2|3)`, or `none`. Inset bars (`inset 2px 0 0 var(--accent)`) and spread-only
+`var(--elevation-1|2|3|card|state)`, or `none`. Inset bars (`inset 2px 0 0 var(--accent)`) and spread-only
 rings (`0 0 0 var(--size-focus-ring) var(--selection)`) pass. A finding reads `drop shadows come
 only from the elevation tokens (VL-004)`. Visualisations never have shadows.
 
@@ -186,11 +241,12 @@ A visual change is shown to the owner before merge as before and after screensho
 repository: Chromium at 1440 × 900 on the stub build with the suite's fixed time, of the boards
 list, board b-1 (view and Edit), Explore Metrics and Logs with a result, the New board dialog and
 the user menu open, each in dark and light (14 per set), once from the base build and once from the
-branch build. Only the committed goldens hold images.
+branch build. Part 1's set was `shots`; Part 2a's is `shots-2` (`before` and `after`), captured the
+same way. Only the committed goldens hold images.
 
 ## Tests
 
 `unit:tokens-gen`, `unit:ui-token-contrast`, `unit:shadow-token`, `unit:material-fallback`,
-`ci:token-lint`, `unit:platform-face`, `e2e:font-origin` (Apple legs), `e2e:theme`,
+`unit:radius-scale`, `ci:token-lint`, `unit:platform-face`, `e2e:font-origin` (Apple legs), `e2e:theme`,
 `e2e:kit-materials`, `e2e:kit-shapes`, `e2e:kit-focus`, `e2e:kit-motion` (`e2e/kit-chrome.spec.ts`),
 and the client and engine goldens.

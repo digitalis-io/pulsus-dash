@@ -18,6 +18,7 @@ widget never reaches anything on this page.
 | `src/boards/visibility.ts`, `panelWidths.ts` | the shared viewport tracker; the panel width store |
 | `src/boards/boardTime.ts` | `boardTimeInit`, `isTimeReady` (first open) |
 | `src/boards/boardEvents.ts` | `useBoardEvents`, `BoardEventsContext`, `NO_EVENTS`, `toMarkers` (event markers) |
+| `src/boards/boardHealth.ts` | `BoardHealthContext`, `useBoardHealthStore`, `useReportHealth` (the health status line, [below](#panel-chrome-and-the-health-status-line-282-part-2a)) |
 | `src/boards/exploreLink.ts` | `exploreHref` |
 | `src/boards/useQueryLanguage.ts` | one `LANGUAGES[id]()` per language per page load; `null` loads none |
 | `src/pages/board/PanelFrame.tsx`, `PanelNotices.tsx`, `PanelEditor.tsx` | the panel chrome (a widget's `WidgetFrame`, else `DataPanelFrame`), the completeness badge, the editor |
@@ -157,12 +158,14 @@ query error arrive as byte offsets into the raw text (the server maps them, ADR-
 diagnostics use the identity map (T09-009). The line is 1-based, split on `\n`; the column counts
 code points.
 
-`framePlan` is computed once per result, vis, rate and isolated series (`panelRun.ts` caches it in a
-`WeakMap` keyed by the result, `${vis}|${rateApplied}|${isolatedKey ?? ''}`), so a panel's
-remounts, full screen and the preview reuse the same frame data.
+`framePlan` is computed once per result, vis, units and isolated series (`panelRun.ts` caches it
+in a `WeakMap` keyed by the result, `${vis}|${JSON.stringify(units)}|${isolatedKey ?? ''}`), so a
+panel's remounts, full screen and the preview reuse the same frame data, and a unit edit plans
+afresh.
 
 `panelView(run, panel.vis, title)` takes the panel's whole `vis`. A frame view also carries the
-result (`result`, for the legend and isolation), `rateApplied`, the panel's `thresholds`
+result (`result`, for the legend and isolation), its resolved `units` ([below](#panel-units-290)),
+the panel's `thresholds`
 (`panel.vis.thresholds ?? null`) and `legend` (`panel.vis.legend?.mode ?? 'table'`). On line and
 bars its spec has `thresholds = thresholdLines(thresholds, spec.unit)` (the seam lines of
 [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)); heatmap and stat specs
@@ -474,6 +477,63 @@ error as "This server does not support map panels yet" under the status line
 Visualisation field (`kindFieldMessage`). Every other field error, one under a geomap's
 options included, keeps its own text: a v7 server never reports `geomap` as an invalid kind.
 
+### Panel units (#290)
+
+Board spec v8, the units version ([the boards API](../server/boards-api.md#panel-units-v8)), stores
+one unit per data panel in `vis.unit`: `{id}` with an id of the catalogue, or `{id: 'custom',
+suffix}`. `checkBoardSpec` checks it as the server does (the `unit-` rows of `invalid.json`,
+`v8-units.json`). The catalogue is `UNIT_CATALOGUE` in `src/vis/units.ts`, 19 ids in five groups:
+
+| Group | Ids (runtime `Unit`) |
+|---|---|
+| General | `count` (`none`, SI prefixes), `none` (`plain`), `custom` (its suffix) |
+| Time | `seconds`, `milliseconds`, `microseconds`, `nanoseconds` (`time` s, ms, us, ns) |
+| Data | `bytes` (IEC), `bytesSI`, `bits` (SI), `bitsIEC` |
+| Rate | `perSecond` (`/s`), `reqPerSecond` (`req/s`), `bytesPerSecond`, `bytesSIPerSecond`, `bitsPerSecond`, `bitsIECPerSecond` |
+| Percent | `percent` (0–100), `percentUnit` (0–1) |
+
+`unitOf(vis.unit)` is the runtime unit ([Charts › Numbers](charts.md#numbers-vl-012-t08-027)).
+Every panel plan resolves its units with one pure function, `panelUnits(vis, kind, rateApplied)`
+(T22-015), where `kind` is the drawn kind after Auto (`chooseVis`'s result, so an Auto histogram is
+a heatmap):
+
+| Stored `vis.unit` | Not a heatmap: `value` | Heatmap: `value` (bucket bounds) | `count` (heatmap counts) |
+|---|---|---|---|
+| absent | `/s` after the rate rewrite, else `none` | `none` | `/s` after the rewrite, else `none` |
+| set | `rated(unitOf(u))` after the rewrite, else `unitOf(u)` | `unitOf(u)`, never rated | `/s` after the rewrite, else `none` |
+
+`rated` (T22-017) makes `none` `/s`, a suffix `x/s`, and bytes and bits per second; time and
+percent stay. `framePlan` uses `value` on line, bars and stat and `{unit: value, countUnit: count}`
+on a heatmap; `barchartModel` (whose cache key now holds the resolved unit instead of the rate) and
+`panelGeo` use `value`. The frame view carries `units`, and `panelFrame` isolates a series with the
+same units, so a heatmap's bounds and counts survive isolation. A log volume frame (Bars on a log
+query) and the log stream ignore `vis.unit`; Explore stores no unit and resolves
+`panelUnits(undefined, vis, rateApplied)`, its output unchanged.
+
+Every surface already formats from `spec.unit`: the Canvas 2D axes (ticks by `tickBase`), the
+legend table and compact legend, the stat tile, tooltips, the frame's accessible text, the
+Inspector's value (`7.77` with the unit `d` small) and the header chip (`unitLabel`: `in B/s`).
+Thresholds stay in the raw base unit
+([ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)): a stat in seconds has a
+threshold of `604800`, labelled in the unit; the editor's placeholders use the preview's unit.
+
+**The picker.** `UnitField` (`pages/board/UnitField.tsx`) is the first field after Visualisation
+for every data kind but Logs. It is a Select of **Auto** and the catalogue under its five group
+headers (the kit `Select` takes `group` on its options and renders `ListBoxSection`s; the keyboard
+skips the headers and type-ahead works across groups). Each option reads "name · example" in its
+unit (`Bytes/s (IEC) · 1.5 KiB/s`); Custom has no example. Auto removes `vis.unit`; Custom writes
+`{id: 'custom', suffix: ''}` and shows a Suffix field, invalid until typed (1 to 16 code points, no
+spaces: "Suffix: 1 to 16 characters, no spaces", linked to the field; the draft's `checkBoardSpec`
+blocks the save). When the preview's query was rated and the rewrite changes the unit, the field
+says "Shown per second (B/s): the query is rated"; when the preview draws a heatmap (stored, or
+Auto resolving to one: the editor passes the drawn kind), it says "Bucket bounds in B, counts per
+second: the query is rated" instead, since a heatmap's bounds are never rated. A kind change keeps the unit (`withKind`).
+
+**An older server.** A server before the units version refuses `vis.unit` with
+`board.json.unknownKey` at the panel's `…/vis/unit`. The board page shows it as "This server does
+not support panel units yet" (`unitsUnsupported`, `saveFieldMessage`), and so does the panel
+editor's Unit field. A v7 binary cannot read a v8 head at all (`ErrSchemaTooNew`, 503).
+
 ## Thresholds, legends and stat tiles (#64 Part B)
 
 Board spec version 2 adds two optional members to a panel's `vis`
@@ -513,7 +573,7 @@ the stat chip and the threshold labels all use it.
 | Vis | DOM |
 |---|---|
 | line, bars | `.frameStack[data-legend]`: the chart cell, then the legend when `legend` is `table` and there are rows: `[data-panel-legend="table"]` (`SeriesTable` with Mean, Max, Last, at most `LEGEND_ROWS` = 50) or `LegendCompact` (`[data-panel-legend="compact"]`) |
-| stat | `.statStack[data-stat-stack]`: `[data-stat-chip][data-state]` (`StateGlyph`) when the panel has thresholds, the chart cell, then `[data-stat-threshold]` (with `data-crossed` when the value crossed a step) |
+| stat | `.statStack[data-stat-stack]`: the chart cell filling the body, and `[data-stat-threshold]` over it as the subline (with `data-crossed` when the value crossed a step). The chip is the header's tag, `[data-stat-chip][data-state]` (`StateGlyph` variant `tag`), when the panel has thresholds ([Panels › Stat tiles](panels.md#stat-tiles-282-part-2a)) |
 | heatmap | the chart alone: no legend; thresholds are ignored |
 
 - **Layout.** `useLegendLayout()` observes the stack's content height (one `ResizeObserver`): the
@@ -523,10 +583,11 @@ the stat chip and the threshold labels all use it.
 - **First frame (#90).** The stack is measured once when it attaches (in the commit), and a line
   or bars chart mounts only then, so the layout is final before the chart is sized. In the same
   commit the chart cell's size goes into the panel's size memo, which the chart pre-sizes from: a
-  chart under a legend, or a stat under its chip, is sized once and draws in its first frame.
-- **Compact.** One button per series (`[data-legend-item]`, at least 24 px tall, `title` = the full
-  name) with its swatch, name and last value; "Legend table" (`[data-legend-table]`) opens the same
-  table in a popover dialog named by the caption.
+  chart under a legend, or a stat's full-body chart, is sized once and draws in its first frame.
+- **Compact.** One chip per series (`[data-legend-item]`, 24 px tall, `title` = the full name,
+  `data-series` = its colour index + 1) with its swatch, name and last value; "Legend table"
+  (`[data-legend-table]`) opens the same table in a popover dialog named by the caption. The chip's
+  look is in [Panels › Legend chips](panels.md#legend-chips-282-part-2a).
 - **Isolation and sort.** `isolatedKey` and the sort are `PanelChart` state: never saved, never in
   the URL, and no request (the frame is `panelFrame(view, key)`). The isolation applies only while
   the rows still have the key.
@@ -535,11 +596,47 @@ the stat chip and the threshold labels all use it.
   the hidden state name.
 - **Stat.** `v = statValue(view.data)` (finite, else null). The chip is `unknown` for no value, the
   crossed step's state, or `ok`; the text is the crossed step (in its state's colour, `data-crossed`)
-  or the next step (muted), as `<glyph> <displayText>`.
+  or the next step (muted), as `<glyph> <displayText>`. `panelHealth(view)` is that chip state for a
+  stat frame with thresholds, else null.
+
+## Panel chrome and the health status line (#282 Part 2a)
+
+The board's look ([VL-004, VL-017 and VL-019 as amended](../../designs/product/08-visual-language.md),
+[Visual design](visual-design.md)):
+
+| Element | Look |
+|---|---|
+| Panel (`.panel`) | `surface-1`, 8 px corners, `elevation-card` (its ring replaces the border; the 1 px border is transparent and draws in `CanvasText` under forced colours) |
+| Header | 36 px (`size.board-panel-header`): the title (13 px semibold), the unit, the stat tag, the completeness badge (4 px corners); the tools fade in over `motion.quick` on hover and focus |
+| Failing stat panel | `data-stat-state="failing"` and the failing StateEncoding class: `elevation-state`, a ring and a glow in the failing colour (`failing-glow`). Under forced colours a 2 px `CanvasText` border. The ring encodes health together with the tag's glyph (VL-007); no other state has a ring |
+| Edited panel (Edit mode, `data-selected`) | a 3 px `accent` outline at 1 px offset |
+| Dragged panel | `elevation-3` |
+| Grid | 12 columns of 40 px rows with 12 px gaps (`size.board-gap`; `GAP` in `boards/layout.ts`). Saved boards keep their grid units, so an 8-row panel is 404 px tall (was 432) |
+| Page | 12 px between the bar, the status lines and the grids; notices are `surface-2` with 6 px corners, no dashed border |
+| Edit toolbar (`[role=group][data-mode="edit"]`) | a `surface-2` tray, 8 px corners, 4 px padding and gap; the Tags chips have 3 px corners |
+
+**The health status line.** In the bar, after the Context summary, `<span data-board-health>` shows
+the failing glyph ■ (`aria-hidden`, the failing colour) and "1 panel failing" or "n panels failing"
+in `text-muted` 12 px; nothing when none is failing. It is not a live region: each panel's tag
+carries its own state.
+
+Each mounted board panel (`DataPanelFrame`) calls `useReportHealth(panel.id, panelHealth(view) ===
+'failing')`: it reports when the value changes and forgets the panel on unmount. `BoardPage` owns
+`useBoardHealthStore()`: the reports are a `Map` in a ref, and the count is state that changes only
+when the number of failing panels does. So the line counts the panels **in view**: a collapsed
+section's panels are unmounted and do not count until it is expanded, and full screen and the
+editor preview render the body without the frame, so they never report a second time. A
+`PanelFrame` without the provider (outside a board) reports nothing.
+
+**The quick presets.** The header's time control shows the 15m, 1h, 6h, 24h and 7d presets inline
+from 1280 px wide (IA-020 as amended): a SegmentedControl named "Quick range", each option named by
+its visible label, then its full range ("1h (Last 1 hour)", so the name starts with what is shown,
+WCAG 2.5.3). The current range's preset is checked, none for any other range;
+choosing one sets `from=now-<range>&to=now`. The trigger still opens the time range dialog.
 
 ### The editor's Thresholds and Legend
 
-`ThresholdsField` and the Legend select follow Visualisation. Every vis edit is one `updatePanel`
+`ThresholdsField` and the Legend select follow Visualisation (and the Unit field, #290). Every vis edit is one `updatePanel`
 of a `vis` built from `panel.vis` by spread, so a kind change keeps the thresholds and the legend.
 A kind change goes through `withKind(vis, kind)`, which also keeps only the `vis.options` keys the
 new kind allows (`keepOptions`, the `OPTION_KEYS` table) and drops the `options` member when none
@@ -836,6 +933,11 @@ failing 0.05 "SLO breach").
   [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-008, T24-014, §5.2a;
   [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) VIZ-053 (the
   Text row); [T08](../../designs/technical/T08-dom-component-kit.md) T08-011.
+- Panel units (#290): [T22](../../designs/technical/T22-value-categorical-and-table-panels.md)
+  T22-015, T22-016, T22-017 and §6.2; [08 Visual language](../../designs/product/08-visual-language.md)
+  VL-012; [05 Visualisation catalogue](../../designs/product/05-visualisation-catalogue.md) VIZ-057
+  (the units subset of Table 5-10); [T08](../../designs/technical/T08-dom-component-kit.md) T08-007,
+  T08-008, T08-027; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v7 upcast).
 - Board tags (#215): [T24](../../designs/technical/T24-geo-schematic-and-widget-panels.md) T24-029
   and §5.5; [T11](../../designs/technical/T11-postgres-schema.md) T11-016 (the v3 upcast).
 - The tags field and Save blocked by an invalid editor field (#216 Part 2b):

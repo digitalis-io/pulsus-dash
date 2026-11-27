@@ -33,6 +33,8 @@ export interface SeriesTableProps {
   readonly unit: Unit;
   /** The table's caption and the scroll region's name. */
   readonly caption: string;
+  /** `hidden`: the caption is for assistive technology only (a board panel's legend). */
+  readonly captionDisplay?: 'shown' | 'hidden';
   /** The value columns after Series, in order. */
   readonly columns: readonly ValueColumn[];
   readonly maxRows: number;
@@ -101,7 +103,9 @@ export function SeriesTable(p: SeriesTableProps): JSX.Element {
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex */}
       <div className={cx(styles['tableWrap'])} tabIndex={0} role="region" aria-label={caption}>
         <table className={cx(styles['table'])}>
-          <caption>{caption}</caption>
+          <caption className={cx(p.captionDisplay === 'hidden' && styles['srOnly'])}>
+            {caption}
+          </caption>
           <thead>
             <tr>
               {selectFor !== undefined && (

@@ -1,40 +1,46 @@
+/* The refresh now and interval segments of the header's time track: borderless, 24 px. */
 .group {
   display: inline-flex;
-  align-items: stretch;
-  /* A header capsule (#282): the field fill, the control edge. */
-  height: var(--size-control);
-  border: var(--border-hairline) solid var(--border-control);
-  border-radius: var(--radius-pill);
-  background: var(--field);
+  align-items: center;
+  gap: var(--space-0-5);
 }
 
-.now {
-  height: auto;
-  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+.group .now {
+  width: var(--size-target-min);
+  min-width: var(--size-target-min);
+  height: var(--size-target-min);
+  min-height: var(--size-target-min);
+  border-radius: var(--radius-xs);
 }
 
-.divider {
-  width: var(--border-hairline);
-  background: var(--border-control);
+.group .now[data-hovered],
+.group .now[data-pressed] {
+  background: var(--row-hover);
 }
 
 .interval {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
+  gap: var(--space-1);
+  height: var(--size-target-min);
+  padding: 0 var(--space-2);
   border: none;
-  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+  border-radius: var(--radius-xs);
   background: transparent;
-  color: var(--text);
+  color: var(--text-muted);
   font: inherit;
   font-size: var(--font-size-md);
   white-space: nowrap;
   cursor: pointer;
+  transition:
+    background-color var(--motion-hover) var(--motion-easing-out),
+    color var(--motion-hover) var(--motion-easing-out);
 }
 
-.interval[data-hovered] {
-  background: var(--surface-hover);
+.interval[data-hovered],
+.interval[data-pressed] {
+  background: var(--row-hover);
+  color: var(--text);
 }
 
 .interval[data-focus-visible] {

@@ -15,15 +15,16 @@ every version, the actor of every audit event, and the owner of the starred and 
 The tables are described in [the database page](database.md#schema-migration-2), and the board
 tags cache in [migration 4](database.md#schema-migration-4).
 
-## Board spec v7
+## Board spec v8
 
-A board is a JSON object, called the spec. The server stores it with `schema_version` 7. Version 2
+A board is a JSON object, called the spec. The server stores it with `schema_version` 8. Version 2
 (#64 Part B) adds the optional `vis.thresholds` and `vis.legend` to version 1; version 3 (#173
 Part 1) adds the optional `vis.options` and the kinds `barchart` and `pie`; version 4 (#215) adds
 the optional `tags`; version 5 (#198 Part 1) adds the widgets: `query` becomes optional, and the
 kinds `text` and `clock` come with their options ([widgets](#widgets-text-and-clock-v5)); version 6
 (#216 Part 1) adds the `boardList` widget and its options ([board list](#board-list-boardlist-v6));
-version 7 (#234 Part 1) adds the `geomap` data kind and its options ([geomap](#geomap-geomap-v7)).
+version 7 (#234 Part 1) adds the `geomap` data kind and its options ([geomap](#geomap-geomap-v7));
+version 8, the units version (#290), adds the optional `vis.unit` ([panel units](#panel-units-v8)).
 Each version is otherwise the same as the one before (see
 [Versions and the upcaster](#versions-and-the-upcaster)).
 
@@ -66,6 +67,7 @@ Each version is otherwise the same as the one before (see
 | `panels[].vis` | object | `kind`: a data kind `auto`, `line`, `bars`, `heatmap`, `stat`, `logs`, `barchart`, `pie` or `geomap` (v7), or a widget `text` or `clock` (v5), or `boardList` (v6). The web client draws `barchart` (#173 Part 3b) but not `pie` or `geomap` yet: such a panel sends no query and says so ([the panel runtime](../client/boards.md#bar-chart-panels-173-part-3b), [map panels](../client/boards.md#map-panels-234-part-1)); nor `text`, `clock` and `boardList` yet ([widgets](../client/widgets.md)) |
 | `panels[].vis.thresholds` | object, optional | `direction` `above` or `below`, and `steps`: 1 to 8 objects of `value` (a number: 0, or 1e-9 ≤ \|value\| ≤ 1e15; no two equal), `state` (`watch`, `degraded` or `failing`) and `label` (at most 200 characters; `""` shows the value). Valid on every data kind; drawn on line, bars and stat. Refused on a widget |
 | `panels[].vis.legend` | object, optional | `mode` `table` or `hidden`; absent means `table`. Refused on a widget |
+| `panels[].vis.unit` | object, optional (v8) | the panel's unit, `PanelUnit`: `id` required, `suffix` with `custom` only ([below](#panel-units-v8)). Valid on every data kind; refused on a widget |
 | `panels[].vis.options` | object, optional | the kind's options, every key optional (below). `{}` is valid on every kind; `null` is refused |
 
 #### `vis.options` (v3)
@@ -234,6 +236,37 @@ order after the shared keys (`reducer`, `labels`, then `location`, `size`, `colo
 The defaults are the client's (`geomapOptions`, `client/src/boards/options.ts`); the server stores
 only the keys sent. The web client does not draw a geomap yet (#234 Parts 2–3).
 
+#### Panel units (v8)
+
+`vis.unit` is `PanelUnit`: `{"id": "<id>"}`, or `{"id": "custom", "suffix": "<suffix>"}`
+(T22-015, T22-016). The ids, in catalogue order, are those of
+`api/fixtures/board-spec/unit-ids.json` (Go `unitIDs`, the client's `UNIT_IDS`):
+
+`count`, `none`, `custom`, `seconds`, `milliseconds`, `microseconds`, `nanoseconds`, `bytes`,
+`bytesSI`, `bits`, `bitsIEC`, `perSecond`, `reqPerSecond`, `bytesPerSecond`, `bytesSIPerSecond`,
+`bitsPerSecond`, `bitsIECPerSecond`, `percent`, `percentUnit`.
+
+```json
+{ "kind": "stat", "unit": { "id": "seconds" } }
+{ "kind": "line", "unit": { "id": "custom", "suffix": "rps" } }
+```
+
+The server stores the id and the suffix and nothing else: what a unit looks like (its scales,
+`/s` after a rate rewrite, a heatmap's counts) is the client's
+([panel units](../client/boards.md#panel-units-290)). Thresholds stay in the raw base unit
+(seconds, bytes, a ratio). The rules, after the legend and before the options:
+
+| Condition | Pointer | `message_key` |
+|---|---|---|
+| a `unit` on a widget | `…/vis/unit` | `board.json.unknownKey` |
+| `id` not one of the ids above | `…/vis/unit/id` | `board.unit.id.invalid` |
+| `id` `custom` without a `suffix` | `…/vis/unit` | `board.unit.suffix.invalid` |
+| a `suffix` with any other `id` | `…/vis/unit/suffix` | `board.unit.suffix.invalid` |
+| a `suffix` of 0 or more than 16 code points (Go `utf8.RuneCountInString`; a character outside the BMP counts once), or with a Unicode `White_Space` or `Cc` code point (a space, a no-break space, U+3000, U+0085, a tab) | `…/vis/unit/suffix` | `board.unit.suffix.invalid` |
+
+A member other than `id` and `suffix`, a missing `id`, or a value that is not a string is a shape
+error (`board.json.unknownKey`, `board.json.required`, `board.json.type`) as anywhere else.
+
 ### Validation
 
 The server decodes the spec strictly before anything is written (`internal/spec`). A refused spec
@@ -288,6 +321,7 @@ Only a spec with a clean shape goes on to the rules:
 | a step state not `watch`, `degraded` or `failing` | `…/steps/<k>/state` | `board.thresholds.state.invalid` |
 | a step label over 200 characters | `…/steps/<k>/label` | `board.thresholds.label.tooLong` |
 | `legend.mode` not `table` or `hidden` | `…/vis/legend/mode` | `board.legend.mode.invalid` |
+| a `unit` against the [unit rules](#panel-units-v8) (v8) | `…/vis/unit`, `…/vis/unit/id`, `…/vis/unit/suffix` | `board.json.unknownKey`, `board.unit.id.invalid`, `board.unit.suffix.invalid` |
 | an option value outside its values (an enum, a `categoryBy` that is neither `""` nor a label name, a `min` or `max` over 1e15 in size, `orientation` `auto` off stat, `textMode` `value` with `layout` `grid`) | `…/vis/options/<key>` | `board.options.<key>.invalid` |
 | both bounds set and `min` ≥ `max` (only when `min` itself is valid) | `…/vis/options/max` | `board.options.max.invalid` |
 | `mode` not `markdown` or `code` (a board list: not one of its four modes) | `…/vis/options/mode` | `board.options.mode.invalid` |
@@ -312,7 +346,7 @@ On a create and a save, a spec that passes the rules then has its zones checked 
 `…` is `/panels/<i>`, `/sections/<j>/panels/<i>`, or `/sections/<j>` for a section. The tag rules
 come after the time and before the panels. The `query` rules come after the grid and before
 `vis.kind`. The threshold
-rules come after `vis.kind`, in this order for each step, then the legend, then the options in
+rules come after `vis.kind`, in this order for each step, then the legend, then the unit, then the options in
 the key order of the tables above (the data keys, then `mode`, `content`, `language`, `zones`,
 `hourCycle`, `countdown`, then a board list's `query`, `tag`, `limit`, then a geomap's `location`,
 `size`, `colour`, `groupBy`, `symbol`, `view`). The value range keeps a threshold far
@@ -321,8 +355,10 @@ inside the range where the value-axis ticks are safe (#97). The shared fixtures
 `v2-full.json`, `v2-threshold-bounds.json` with -1e-9, 0 and 1e-9, `v3-full.json` with every
 option key of each kind, `v4-board-tags.json` with two tags, `v5-widgets.json` with text and
 clock panels beside one data panel, `v6-board-list.json` with a board list in each mode beside
-one data panel, and `v7-geomap.json` with a geomap per option set: `{}`, every key at a non-default
-value, `null` `groupBy` and `view`, a geohash, an IATA and a region lookup), the option table `option-keys.json`, and `invalid.json` with
+one data panel, `v7-geomap.json` with a geomap per option set: `{}`, every key at a non-default
+value, `null` `groupBy` and `view`, a geohash, an IATA and a region lookup, and `v8-units.json` with
+every unit id on a line panel (`custom` with `rps`) and a unit on stat, barchart, heatmap, geomap and
+logs panels), the option table `option-keys.json`, the unit ids `unit-ids.json`, and `invalid.json` with
 one case per problem and its exact `fields`. The server's tests and the client's tests both run
 them; a case with `client_fields` (a zone that does not exist, `w-zone-unknown`) expects those on
 the client, which does not check existence.
@@ -345,26 +381,28 @@ A save of a spec whose canonical form differs from the head writes version `n + 
 head (T11-006). A save of an identical spec is a no-op: no version, no audit event, the same ETag,
 and `changed: false` in the response. Versions are never updated or deleted.
 
-Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 7 is the current
-version; a version 1 to 6 spec is a subset of it and reads unchanged (the identity upcast: versions
-1 to 7 decode unchanged). Every write stores version 7. The spec itself needs no SQL migration
+Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 8 is the current
+version; a version 1 to 7 spec is a subset of it and reads unchanged (the identity upcast: versions
+1 to 8 decode unchanged). Every write stores version 8. The spec itself needs no SQL migration
 (`schema_version` is an existing column); migration 4 adds only the tags cache the list reads. A
 spec stored by a newer server (a rolling upgrade) answers 503 `board saved by a newer server
 version`, and is never overwritten by the older server.
 
-| Server | Reads a v1 to v6 row | Reads a v7 row | Writes |
+| Server | Reads a v1 to v7 row | Reads a v8 row | Writes |
 |---|---|---|---|
-| this release | unchanged | parsed | `schema_version` 7 |
-| the previous release (v6), during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 6 |
+| this release | unchanged | parsed | `schema_version` 8 |
+| the previous release (v7), during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 7 |
 
 During a rolling upgrade (T11-015), the previous release still lists a board this release saved at
-v7 (`GET /boards`), but its `GET` and `PUT` of that board answer 503 and write nothing. A spec with
-a geomap sent to the previous release (`POST`, or `PUT` over a board it can read) is 400, the first
-field `board.vis.kind.invalid` at `/panels/<i>/vis/kind` of the first geomap: it knows no such kind
-(and does not check that kind's options), so nothing is written. The web client shows that refusal
-as "This server does not support map panels yet" ([map panels](../client/boards.md#map-panels-234-part-1)).
-The v6 → v5 upgrade behaved the same way for a board list, and v5 → v4 with `board.json.required`
-at `/panels/<i>/query` of the first widget.
+v8 (`GET /boards`), but its `GET` and `PUT` of that board answer 503 and write nothing. A spec with
+a `vis.unit` sent to the previous release (`POST`, or `PUT` over a board it can read) is 400, the
+first field `board.json.unknownKey` at `/panels/<i>/vis/unit` of the first panel with a unit: it
+knows no such key, so nothing is written. The web client shows that refusal as "This server does
+not support panel units yet" ([panel units](../client/boards.md#panel-units-290)). The v7 → v6
+upgrade behaved the same way for a geomap, with `board.vis.kind.invalid` at its `…/vis/kind`
+("This server does not support map panels yet", [map panels](../client/boards.md#map-panels-234-part-1));
+v6 → v5 for a board list, and v5 → v4 with `board.json.required` at `/panels/<i>/query` of the
+first widget.
 
 `spec.DecodeBoardUpTo(raw, version, max)` holds the rule (`version > max` is too new);
 `DecodeBoard` calls it with `BoardSchemaVersion`. The itest `TestPreviousServerRefusesNewerRow`

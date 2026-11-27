@@ -34,7 +34,7 @@ function model(
   if (r.kind === 'string') throw new Error('a gallery bar chart needs series');
   return barchartModel(r, {
     title,
-    rateApplied: false,
+    unit: { kind: 'none' },
     options: o.options,
     thresholds: o.thresholds ?? null,
   });

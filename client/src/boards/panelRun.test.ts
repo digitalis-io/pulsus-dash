@@ -12,8 +12,13 @@ import { fromLogqlPlanned } from './logPanel';
 import { BY_VERSION, instant, range as catRange } from '../test/categoryFixtures';
 import { fitBarchart } from '../vis/barchart';
 import type { ExploreResult } from '../vis/autovis';
+import { statValue } from '../data/frames';
+import { keyHash } from '../dev/keyHash';
+import { valueText } from '../engine/canvas2d/barLayout';
+import { formatValue } from '../i18n/format';
 import {
   categoryView,
+  legendRows,
   panelFrame,
   positionText,
   panelIdleKey,
@@ -555,5 +560,130 @@ describe('model cache (unit:panel-view-category)', () => {
     const c = modelOf('B', th);
     expect(c).not.toBe(b);
     expect(modelOf('B', th)).toBe(c);
+  });
+});
+
+// unit:panel-units (#290 §4.1; T22-015, T22-017): the stored unit on every frame of a panel.
+describe('unit:panel-units', () => {
+  const PER_S = { kind: 'suffix', suffix: '/s' } as const;
+  const T0 = R_A.series[0]?.timestamps[0] ?? 0;
+  const lineOf = (values: readonly number[], instanceName = 'a'): SeriesFrame => {
+    const labels = { __name__: 'rx_bytes_rate', instance: instanceName };
+    return {
+      key: keyHash(labels),
+      labels,
+      timestamps: Float64Array.from(values.map((_, i) => T0 + i * 5_000)),
+      values: Float64Array.from(values),
+    };
+  };
+  const frameOf = (v: ReturnType<typeof panelView>) => {
+    if (v.kind !== 'frame') throw new Error(`not a frame: ${v.kind}`);
+    return v;
+  };
+
+  it('a heatmap, explicit and Auto: bounds in the unit, counts per second', () => {
+    const run = { ...BASE, outcome: outcome(R_H1, { rateApplied: true }) };
+    for (const kind of ['heatmap', 'auto'] as const) {
+      const v = frameOf(panelView(run, { kind, unit: { id: 'bytes' } }, 'T'));
+      expect(v.vis, kind).toBe('heatmap');
+      expect(v.spec, kind).toMatchObject({ unit: { kind: 'bytes' }, countUnit: PER_S });
+      expect(v.units, kind).toEqual({ value: { kind: 'bytes' }, count: PER_S });
+    }
+  });
+
+  it('a stat in seconds', () => {
+    const r = fromInstant({
+      planned: R_A.planned,
+      kind: 'scalar',
+      scalar: { value: 671000, timestampMs: T0 },
+      atMs: T0,
+      completeness: R_A.completeness,
+    });
+    const v = frameOf(
+      panelView(
+        { ...BASE, outcome: { key: [], planned: R_A.planned, result: r } },
+        { kind: 'stat', unit: { id: 'seconds' } },
+        'T',
+      ),
+    );
+    expect(v.spec.unit).toEqual({ kind: 'time', base: 's' });
+    expect(formatValue(statValue(v.data), v.spec.unit)).toBe('7.77 d');
+  });
+
+  it('a line legend in bytes per second', () => {
+    const r: RangeResult = { ...R_A, series: [lineOf([0, 1048576, 2097152, 3145728])] };
+    const v = frameOf(
+      panelView(
+        { ...BASE, outcome: outcome(r) },
+        { kind: 'line', unit: { id: 'bytesPerSecond' } },
+        'T',
+      ),
+    );
+    expect(v.spec.unit).toEqual({ kind: 'bytes', perSecond: true });
+    const [row] = legendRows(v.result);
+    const cell = (x: number | null | undefined): string => formatValue(x ?? NaN, v.spec.unit);
+    expect([cell(row?.mean), cell(row?.max), cell(row?.last)]).toEqual([
+      '1.5 MiB/s',
+      '3 MiB/s',
+      '3 MiB/s',
+    ]);
+  });
+
+  it('isolation keeps the units', () => {
+    const r: RangeResult = {
+      ...R_A,
+      planned: { ...R_A.planned, rateApplied: true },
+      series: [lineOf([1, 2, 3], 'a'), lineOf([4, 5, 6], 'b')],
+    };
+    const line = frameOf(
+      panelView({ ...BASE, outcome: outcome(r) }, { kind: 'line', unit: { id: 'bytes' } }, 'T'),
+    );
+    const key = r.series[1]?.key ?? '';
+    const iso = panelFrame(line, key);
+    expect(iso.spec.unit).toEqual({ kind: 'bytes', perSecond: true });
+    expect(iso.data).toMatchObject({ kind: 'series', series: [{ key }] });
+    const heat = frameOf(
+      panelView(
+        { ...BASE, outcome: outcome(R_H1, { rateApplied: true }) },
+        { kind: 'heatmap', unit: { id: 'bytes' } },
+        'T',
+      ),
+    );
+    const isoHeat = panelFrame(heat, R_H1.series[1]?.key ?? '');
+    expect(isoHeat.spec).toMatchObject({ unit: { kind: 'bytes' }, countUnit: PER_S });
+    expect(isoHeat.spec).toMatchObject({ unit: heat.spec.unit });
+    expect(isoHeat.spec).not.toBe(heat.spec);
+  });
+
+  it('the plan cache key holds the unit', () => {
+    const r: RangeResult = { ...R_A, series: [lineOf([1, 2, 3], 'c')] };
+    const run = { ...BASE, outcome: outcome(r) };
+    const count = frameOf(panelView(run, { kind: 'line', unit: { id: 'count' } }, 'T'));
+    const bytes = frameOf(panelView(run, { kind: 'line', unit: { id: 'bytes' } }, 'T'));
+    expect(bytes.data).not.toBe(count.data);
+    expect(bytes.spec.unit).toEqual({ kind: 'bytes' });
+    const again = frameOf(panelView(run, { kind: 'line', unit: { id: 'bytes' } }, 'T'));
+    expect(again.data).toBe(bytes.data);
+  });
+
+  it('the bar-chart model follows the unit', () => {
+    const r = instant([{ labels: { version: '2.29' }, value: 0.38 }]) as Exclude<
+      ExploreResult,
+      { kind: 'string' }
+    >;
+    const o = { title: 'T', rateApplied: false, lang: 'promql' as const, baseline: undefined };
+    const modelOf = (id: 'count' | 'percentUnit') => {
+      const v = categoryView(r, { ...o, panelVis: { kind: 'barchart', unit: { id } } });
+      if (v.kind !== 'category') throw new Error('not a category view');
+      return v.model;
+    };
+    const count = modelOf('count');
+    const pct = modelOf('percentUnit');
+    expect(pct).not.toBe(count);
+    expect(pct.spec.unit).toEqual({ kind: 'percentunit' });
+    const [row] = pct.all;
+    if (row === undefined) throw new Error('no row');
+    expect(valueText(row, pct.spec)).toBe('38 %');
+    expect(modelOf('percentUnit')).toBe(pct);
   });
 });

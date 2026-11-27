@@ -27,6 +27,8 @@ describe('unit:synth', () => {
       'stat-sparkline',
       'line-extreme',
       'line-events',
+      'line-bytes-rate',
+      'stat-uptime',
     ]);
     expect(b).toEqual(a);
     for (const [i, e] of a.entries()) {

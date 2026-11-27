@@ -4,6 +4,8 @@
   display: grid;
   grid-template-columns: var(--size-sidebar) minmax(0, 1fr);
   min-height: 100vh;
+  /* The sidebar collapses and expands over 240 ms (none under reduced motion). */
+  transition: grid-template-columns var(--motion-sidebar) var(--motion-easing-out);
 }
 
 .shell[data-sidebar='collapsed'] {
@@ -19,7 +21,8 @@
 .main {
   flex: 1 1 auto;
   min-width: 0;
-  padding: var(--size-page-padding);
+  /* Dense (#282 Part 2a, VL-017 as amended): 12 px above, 20 px at the sides and below. */
+  padding: var(--size-page-padding-top) var(--size-page-padding) var(--size-page-padding);
 }
 
 .main:focus {

@@ -49,6 +49,7 @@ import { G2, H1 } from '../../test/histogramFixtures';
 import { locationOf } from '../../test/renderApp';
 import { fromRange } from '../../vis/autovis';
 import { framePlan } from '../../vis/framePlan';
+import { panelUnits } from '../../vis/units';
 
 vi.mock('../../editor/editor', () => import('../../test/fakeEditor'));
 
@@ -741,7 +742,7 @@ describe('MetricsPage state across views', () => {
     const isolated = framePlan('heatmap', fromRange(g2), {
       isolatedKey: target.key,
       title: 'Query result',
-      rateApplied: false,
+      units: panelUnits(undefined, 'heatmap', false),
     }).data;
     await waitFor(() => {
       expect(lastData(engine)).toEqual(isolated);
@@ -751,7 +752,7 @@ describe('MetricsPage state across views', () => {
     const full = framePlan('heatmap', fromRange(g2), {
       isolatedKey: null,
       title: 'Query result',
-      rateApplied: false,
+      units: panelUnits(undefined, 'heatmap', false),
     }).data;
     await waitFor(() => {
       expect(lastData(engine)).toEqual(full);

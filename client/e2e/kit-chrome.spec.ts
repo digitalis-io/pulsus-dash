@@ -1,5 +1,5 @@
 /**
- * The visual refresh's chrome (#282 Part 1): materials, shapes, focus rings and motion of the shell
+ * The visual refresh's chrome (#282 Parts 1 and 2a): materials, shapes, focus rings and motion of the shell
  * and kit (VL-014, VL-016, VL-017, VL-019 as amended; T08-007, T08-019). Colours come from the
  * generated tokens, never literals.
  */
@@ -148,19 +148,18 @@ test.describe('kit chrome (#282)', () => {
     for (const theme of ['dark', 'light'] as const) {
       await open(page, '/t/demo/boards');
       if (theme === 'light') await setLight(page);
+      // The header bar carries the sidebar's opaque material across: no blur.
       const header = page.getByRole('banner');
+      const hf = await backdrop(header);
+      expect(hf === 'none' || hf === '', `${browserName} ${theme} header filter: ${hf}`).toBe(true);
+      expectColour(await css(header, 'background-color'), tok(theme, 'sidebar-top'), 'header');
       await openUserMenu(page);
       const pop = userPopover(page);
       // Every engine can blur: the material is required in all three. A browser without the
       // reduced-transparency query (Firefox, WebKit) keeps it (VL-017 as amended).
-      for (const [name, l, material] of [
-        ['header', header, 'material-bar'],
-        ['popover', pop, 'material-menu'],
-      ] as const) {
-        expect(await backdrop(l), `${browserName} ${theme} ${name} filter`).toContain('blur(24px)');
-        expectColour(await css(l, 'background-color'), tok(theme, material), name);
-      }
-      expect(await css(pop, 'border-top-left-radius')).toBe('10px');
+      expect(await backdrop(pop), `${browserName} ${theme} popover filter`).toContain('blur(24px)');
+      expectColour(await css(pop, 'background-color'), tok(theme, 'material-menu'), 'popover');
+      expect(await css(pop, 'border-top-left-radius')).toBe('8px');
       expect(await css(pop, 'box-shadow')).not.toBe('none');
       await page.keyboard.press('Escape');
     }
@@ -171,10 +170,7 @@ test.describe('kit chrome (#282)', () => {
       await open(page, '/t/demo/boards');
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme());
       await openUserMenu(page);
-      for (const [name, l] of [
-        ['header', page.getByRole('banner')],
-        ['popover', userPopover(page)],
-      ] as const) {
+      for (const [name, l] of [['popover', userPopover(page)]] as const) {
         const f = await backdrop(l);
         expect(f === 'none' || f === '', `${what} ${name} filter: ${f}`).toBe(true);
         const bg = await css(l, 'background-color');
@@ -204,38 +200,52 @@ test.describe('kit chrome (#282)', () => {
     test.setTimeout(120_000);
     const theme: Theme = 'dark';
     await open(page, '/t/demo/boards');
-    expect(await css(page.getByRole('heading', { level: 1 }), 'font-size')).toBe('16px');
+    // The header bar's 15 px semibold title; compact radii (6 px controls, 8 px popovers, 10 px
+    // dialogs).
+    const h1 = page.getByRole('heading', { level: 1 });
+    expect(await css(h1, 'font-size')).toBe('15px');
+    expect(await css(h1, 'font-weight')).toBe('600');
     await page.getByRole('button', { name: 'New board' }).click();
     const dialog = page.getByRole('dialog', { name: 'New board' });
     await dialog.waitFor();
     for (const name of ['Create', 'Cancel']) {
       const b = dialog.getByRole('button', { name, exact: true });
-      expect(await css(b, 'border-top-left-radius'), `${name} radius`).toBe('9999px');
+      expect(await css(b, 'border-top-left-radius'), `${name} radius`).toBe('6px');
       expect((await b.boundingBox())?.height ?? 0, `${name} height`).toBeCloseTo(28, 1);
     }
     const field = dialog.getByRole('textbox', { name: 'Name' });
     expect(await css(field, 'border-top-left-radius')).toBe('6px');
     await minBox(field, 'text field');
     const modal = dialog.locator('xpath=..');
-    expect(await css(modal, 'border-top-left-radius')).toBe('14px');
+    expect(await css(modal, 'border-top-left-radius')).toBe('10px');
     expect(await css(modal, 'box-shadow')).not.toBe('none');
     expect(await css(modal, 'box-shadow')).not.toBe('');
     await page.keyboard.press('Escape');
 
-    // The sidebar's current row, expanded then collapsed.
+    // The sidebar's current row, expanded then collapsed: one shared indicator slides under it in
+    // the muted `row-selected` fill (the solid accent only while the sidebar has keyboard focus).
     const current = async (state: string): Promise<void> => {
       const row = nav(page).locator('a[aria-current="page"]');
       await expect(row).toHaveCount(1);
-      expectColour(await css(row, 'background-color'), tok(theme, 'accent-fill'), `${state} row`);
+      const indicator = nav(page).locator(':scope > span[aria-hidden="true"]');
+      await expect(nav(page)).toHaveAttribute('data-indicator', 'live');
+      expectColour(
+        await css(indicator, 'background-color'),
+        tok(theme, 'row-selected'),
+        `${state} indicator`,
+      );
+      await expect
+        .poll(async () => {
+          const [r, i] = [await row.boundingBox(), await indicator.boundingBox()];
+          return Math.abs((r?.y ?? NaN) - (i?.y ?? NaN)) <= 1;
+        }, `${state} indicator under the row`)
+        .toBe(true);
       expect(await css(row, 'box-shadow'), `${state} row shadow`).not.toContain('inset');
       const icon = row.locator('span').first();
-      expectColour(await css(icon, 'color'), tok(theme, 'text-on-accent'), `${state} icon`);
-      if (state === 'expanded') {
-        const label = row.locator('span').nth(1);
-        expectColour(await css(label, 'color'), tok(theme, 'text-on-accent'), `${state} label`);
-      }
+      await expect.poll(() => css(icon, 'color'), `${state} icon`).toBe(await css(row, 'color'));
+      expectColour(await css(row, 'color'), tok(theme, 'text-on-row-selected'), `${state} text`);
       await page.emulateMedia({ forcedColors: 'active' });
-      if (await forcedActive(page)) await expectHighlight(page, row, `${state} forced row`);
+      if (await forcedActive(page)) await expectHighlight(page, indicator, `${state} forced row`);
       await page.emulateMedia({ forcedColors: 'none' });
     };
     await current('expanded');
@@ -248,16 +258,21 @@ test.describe('kit chrome (#282)', () => {
     await open(page, EXPLORE_RESULT);
     const group = page.getByRole('radiogroup', { name: 'Visualisation' });
     await group.waitFor();
-    expect(await css(group, 'border-top-left-radius')).toBe('9999px');
+    expect(await css(group, 'border-top-left-radius')).toBe('6px');
     const radios = group.getByRole('radio');
     const n = await radios.count();
     expect(n).toBeGreaterThan(1);
     for (let i = 0; i < n; i++) {
       const r = radios.nth(i);
       await minBox(r, `segment ${String(i)}`);
+      expect(await css(r, 'border-top-left-radius'), `segment ${String(i)} radius`).toBe('4px');
       if ((await r.getAttribute('aria-checked')) === 'true') {
-        expectColour(await css(r, 'background-color'), tok(theme, 'accent-fill'), 'selected');
-        expectColour(await css(r, 'color'), tok(theme, 'text-on-accent'), 'selected text');
+        // The raised thumb slides under the selected item, which draws no fill of its own.
+        const thumb = group.locator(':scope > span[aria-hidden="true"]');
+        await expect(group).toHaveAttribute('data-thumb', '');
+        expectColour(await css(thumb, 'background-color'), tok(theme, 'segment-thumb'), 'thumb');
+        expect(await css(r, 'background-color'), 'selected').toBe(TRANSPARENT);
+        expectColour(await css(r, 'color'), tok(theme, 'text'), 'selected text');
       } else {
         expect(await css(r, 'background-color'), `segment ${String(i)}`).toBe(TRANSPARENT);
       }
@@ -403,9 +418,9 @@ test.describe('kit chrome (#282)', () => {
         expect(await pop.evaluate((e) => e.getAnimations().length)).toBe(0);
         await expect.poll(() => page.evaluate(() => window.__firstOpacity)).toBe('1');
       } else {
-        await expect.poll(() => pop.evaluate((e) => e.__anims ?? null)).toEqual([150]);
+        await expect.poll(() => pop.evaluate((e) => e.__anims ?? null)).toEqual([180]);
       }
-      expect(await pop.evaluate((e) => e.__anims ?? [])).toEqual(reduce ? [] : [150]);
+      expect(await pop.evaluate((e) => e.__anims ?? [])).toEqual(reduce ? [] : [180]);
       await page.evaluate(() => {
         window.__escAt = undefined;
         window.__goneAt = undefined;
@@ -418,7 +433,7 @@ test.describe('kit chrome (#282)', () => {
       if (reduce) {
         await expect.poll(() => page.evaluate(() => window.__goneNextFrame)).toBe(true);
       } else {
-        // The exit is one 100 ms fade, and the popover is gone 150 ms after it starts (measured
+        // The exit is one 120 ms fade and scale, and the popover is gone 150 ms after it starts (measured
         // from the fade, not the key press: a loaded host delays the key's handling, not the exit).
         // WebKit unmounts at once: React Aria finds no exit animation yet when it looks.
         const exit = await page.evaluate(() => window.__exitAnims ?? null);
@@ -428,7 +443,7 @@ test.describe('kit chrome (#282)', () => {
           );
           expect(gone, 'popover gone after Escape (ms)').toBeLessThanOrEqual(150);
         } else {
-          expect(exit).toEqual([100]);
+          expect(exit).toEqual([120]);
           const gone = await page.evaluate(
             () => (window.__goneAt ?? NaN) - (window.__exitAt ?? NaN),
           );
@@ -449,7 +464,8 @@ test.describe('kit chrome (#282)', () => {
           expect(await l.evaluate((e) => e.getAnimations().length), name).toBe(0);
           expect(await l.evaluate((e) => e.__anims ?? []), name).toEqual([]);
         } else {
-          await expect.poll(() => l.evaluate((e) => e.__anims ?? null), name).toEqual([200]);
+          // The modal zooms open over `motion.zoom-open`, the backdrop fading alongside.
+          await expect.poll(() => l.evaluate((e) => e.__anims ?? null), name).toEqual([400]);
         }
       }
       await page.keyboard.press('Escape');

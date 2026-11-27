@@ -41,6 +41,8 @@ import { locationOf, renderApp, type RenderAppOptions } from '../../test/renderA
 import { seedWith } from '../../test/seeds';
 import { fromRange } from '../../vis/autovis';
 import { framePlan } from '../../vis/framePlan';
+import { GAP } from '../../boards/layout';
+import { panelUnits } from '../../vis/units';
 
 // The panel editor's Query field loads the editor chunk: a textarea stands in (plan #64 A.5).
 vi.mock('../../editor/editor', () => import('../../test/fakeEditor'));
@@ -350,8 +352,8 @@ describe('view mode', () => {
     expect(far.getAttribute('data-grid')).toBe('0,9999,6,100');
     // One grid in both modes (#111): the same item, placed alike.
     const viewItem = far.closest<HTMLElement>('.react-grid-item');
-    expect(viewItem?.style.height).toBe('5584px');
-    expect(viewItem?.style.transform).toContain('559944px');
+    expect(viewItem?.style.height).toBe(`${String(100 * 40 + 99 * GAP)}px`);
+    expect(viewItem?.style.transform).toContain(`${String(9999 * (40 + GAP))}px`);
 
     await editMode(user);
     await waitFor(() => {
@@ -359,8 +361,8 @@ describe('view mode', () => {
     });
     const item = panelOf('p-2').closest<HTMLElement>('.react-grid-item');
     expect(item).toBe(viewItem);
-    expect(item?.style.height).toBe('5584px');
-    expect(item?.style.transform).toContain('559944px');
+    expect(item?.style.height).toBe(`${String(100 * 40 + 99 * GAP)}px`);
+    expect(item?.style.transform).toContain(`${String(9999 * (40 + GAP))}px`);
     expect(gridOf('p-2')).toBe('0,9999,6,100');
 
     const move = screen.getByRole('button', { name: 'Move or resize: p-2' });
@@ -1053,7 +1055,7 @@ function frameDataOf(r: RangeResult, vis: VisKind): FrameData {
   const plan = framePlan(vis, fromRange(r), {
     isolatedKey: null,
     title: 'Request rate',
-    rateApplied: r.planned.rateApplied,
+    units: panelUnits(undefined, vis, r.planned.rateApplied),
   });
   if (plan.data === null) throw new Error(`no frame data: ${plan.notice}`);
   return plan.data;

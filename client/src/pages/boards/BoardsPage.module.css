@@ -14,18 +14,33 @@
   display: none;
 }
 
+/* An elevated card (#282 Part 2a §4.8) with one edge, the elevation's ring, and the card sheen;
+   forced colours draw a border instead. */
 .table {
   width: 100%;
-  border: var(--border-hairline) solid var(--hairline);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   border-collapse: separate;
   border-spacing: 0;
-  background: var(--surface-1);
+  background: var(--material-card), var(--surface-1);
+  box-shadow: var(--elevation-card);
   table-layout: fixed;
 }
 
+@media (prefers-reduced-transparency: reduce) {
+  .table {
+    background: var(--surface-1);
+  }
+}
+
+@media (forced-colors: active) {
+  .table {
+    border: var(--border-hairline) solid CanvasText;
+    background: var(--surface-1);
+  }
+}
+
 .table th {
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   border-bottom: var(--border-hairline) solid var(--hairline);
   color: var(--text-muted);
   font-size: var(--font-size-sm);
@@ -34,8 +49,8 @@
 }
 
 .table td {
-  height: var(--space-12);
-  padding: 0 var(--space-4);
+  height: var(--size-list-row);
+  padding: 0 var(--space-3);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -45,8 +60,17 @@
   border-top: var(--border-hairline) solid var(--hairline);
 }
 
+.table tbody tr:hover td {
+  background: var(--surface-hover);
+}
+
 .name {
   width: 50%;
+}
+
+td.name {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
 }
 
 .meta {

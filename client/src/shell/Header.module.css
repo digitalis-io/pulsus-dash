@@ -1,3 +1,5 @@
+/* The header bar (#282 follow-up): the sidebar's material carried across, so the two read as one
+   surface; a soft 6 % edge below it instead of a border. */
 .header {
   position: sticky;
   top: 0;
@@ -8,28 +10,13 @@
   height: var(--size-header);
   min-width: 0;
   padding: 0 var(--size-page-padding);
-  border-bottom: var(--border-hairline) solid var(--hairline);
-  /* Opaque unless the browser can blur (VL-017 as amended, #282). */
-  background: var(--surface-1);
+  background: var(--sidebar-top);
+  box-shadow: 0 var(--border-hairline) 0 var(--sidebar-edge);
 }
 
-/* The material where the browser can blur (VL-017 as amended, #282). A browser without the
-   reduced-transparency query (Safari, Firefox) keeps it; an explicit `reduce` or forced colours
-   override it back to the opaque base below. */
-@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+@media (forced-colors: active) {
   .header {
-    background: var(--material-bar);
-    /* Prefixed first: the minifier keeps the last of the pair and adds what the targets need. */
-    -webkit-backdrop-filter: var(--material-filter);
-    backdrop-filter: var(--material-filter);
-  }
-}
-
-@media (prefers-reduced-transparency: reduce), (forced-colors: active) {
-  .header {
-    background: var(--surface-1);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
+    border-bottom: var(--border-hairline) solid CanvasText;
   }
 }
 
@@ -79,11 +66,11 @@
   white-space: nowrap;
   text-decoration: none;
   text-overflow: ellipsis;
+  transition: color var(--motion-hover) var(--motion-easing-out);
 }
 
 .crumbLink:hover {
   color: var(--text);
-  text-decoration: underline;
 }
 
 .crumbLink:focus-visible {
@@ -93,15 +80,27 @@
 
 .separator {
   color: var(--text-muted);
+  opacity: var(--opacity-dimmed);
+}
+
+/* The time presets, range, refresh and interval: one quiet track of borderless segments. */
+.timeGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-0-5);
+  height: var(--size-control);
+  padding: 0 var(--space-0-5);
+  border-radius: var(--radius);
+  background: var(--segment-track);
 }
 
 .title {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: var(--font-size-lg);
+  /* The bar's title: 15 px semibold, the breadcrumb muted before it. */
+  font-size: var(--font-size-bar-title);
   font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-lg);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -111,18 +110,18 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: var(--size-control);
-  height: var(--size-control);
+  width: var(--size-target-min);
+  height: var(--size-target-min);
   border: none;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius);
   background: transparent;
   color: var(--text-muted);
   font: inherit;
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-md);
   cursor: pointer;
   transition:
-    background-color var(--motion-quick) var(--motion-easing-out),
-    color var(--motion-quick) var(--motion-easing-out);
+    background-color var(--motion-hover) var(--motion-easing-out),
+    color var(--motion-hover) var(--motion-easing-out);
 }
 
 .star[data-selected] {
@@ -130,7 +129,7 @@
 }
 
 .star[data-hovered] {
-  background: var(--surface-hover);
+  background: var(--row-hover);
   color: var(--text);
 }
 

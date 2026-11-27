@@ -90,10 +90,14 @@ describe('unit:shadow-token (VL-004)', () => {
   it('reports a drop shadow that is not an elevation token', () => {
     expect(shadows('0 2px 6px var(--backdrop)')).toBe(1);
     expect(shadows('var(--elevation-1), 0 1px 2px var(--x)')).toBe(1);
+    expect(shadows('var(--elevation-4)')).toBe(1);
   });
 
   it('allows the elevation tokens, none, inset bars and spread-only rings', () => {
     expect(shadows('var(--elevation-2)')).toBe(0);
+    // #282 Part 2a: the card and the failing panel's state elevation.
+    expect(shadows('var(--elevation-card)')).toBe(0);
+    expect(shadows('var(--elevation-state)')).toBe(0);
     expect(shadows('none')).toBe(0);
     expect(shadows('inset 2px 0 0 var(--accent)')).toBe(0);
     expect(shadows('0 0 0 var(--size-focus-ring) var(--selection)')).toBe(0);

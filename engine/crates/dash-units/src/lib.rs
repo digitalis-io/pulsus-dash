@@ -1,16 +1,77 @@
 //! Units and number formatting (VL-012, T08-027): the image of the client's
 //! `client/src/i18n/format.ts` `Unit` and `formatValue`, byte for byte (plan #68 A.5).
 
-/// The unit of a chart value; the same JSON as the TS `Unit`.
+/// The unit of a chart value; the same JSON as the TS `Unit` (T22-016, #290 §3.4): absent fields
+/// take their defaults, and defaults are not written.
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Unit {
+    /// An SI-prefixed number.
     None,
-    Suffix { suffix: String },
-    Bytes,
+    /// A number with no prefix.
+    Plain,
+    Suffix {
+        suffix: String,
+    },
+    /// IEC (`prefix` absent or `iec`) or SI bytes; `/s` on every scale when per second.
+    Bytes {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prefix: Option<Prefix>,
+        #[serde(rename = "perSecond", default, skip_serializing_if = "is_false")]
+        per_second: bool,
+    },
+    /// SI or IEC bits; `/s` on every scale when per second.
+    Bits {
+        prefix: Prefix,
+        #[serde(rename = "perSecond", default, skip_serializing_if = "is_false")]
+        per_second: bool,
+    },
     Percent,
     Percentunit,
-    Time { base: TimeBase },
+    Time {
+        base: TimeBase,
+    },
+}
+
+/// The scale family of bytes and bits: powers of 1024 (`iec`) or of 1000 (`si`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Prefix {
+    Iec,
+    Si,
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if signature"
+)]
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+impl Unit {
+    /// IEC bytes, not per second: the TS `{ kind: 'bytes' }`.
+    pub fn bytes() -> Self {
+        Self::Bytes {
+            prefix: None,
+            per_second: false,
+        }
+    }
+
+    /// Whether the unit's scales are powers of 1024: IEC bytes (the default) and IEC bits.
+    fn iec(&self) -> bool {
+        match self {
+            Self::Bytes { prefix, .. } => *prefix != Some(Prefix::Si),
+            Self::Bits { prefix, .. } => *prefix == Prefix::Iec,
+            _ => false,
+        }
+    }
+}
+
+/// The base of the unit's value ticks, as the TS `tickBase`: 1024 for IEC bytes and bits, else
+/// 1000.
+pub fn tick_base(unit: &Unit) -> u32 {
+    if unit.iec() { 1024 } else { 1000 }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -229,32 +290,42 @@ const SI: [Scale; 6] = [
         text: "P",
     },
 ];
-const IEC: [Scale; 6] = [
-    Scale {
-        size: 1.0,
-        text: "B",
-    },
-    Scale {
-        size: 1024.0,
-        text: "KiB",
-    },
-    Scale {
-        size: 1_048_576.0,
-        text: "MiB",
-    },
-    Scale {
-        size: 1_073_741_824.0,
-        text: "GiB",
-    },
-    Scale {
-        size: 1_099_511_627_776.0,
-        text: "TiB",
-    },
-    Scale {
-        size: 1_125_899_906_842_624.0,
-        text: "PiB",
-    },
+
+/// A data unit's scale texts at powers of 1000 or 1024 (TS `IEC_BYTES`, `SI_BYTES`, `SI_BITS`,
+/// `IEC_BITS`).
+const IEC_BYTES: [&str; 6] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+const SI_BYTES: [&str; 6] = ["B", "kB", "MB", "GB", "TB", "PB"];
+const SI_BITS: [&str; 6] = ["b", "kb", "Mb", "Gb", "Tb", "Pb"];
+const IEC_BITS: [&str; 6] = ["b", "Kib", "Mib", "Gib", "Tib", "Pib"];
+const POW1000: [f64; 6] = [1.0, 1e3, 1e6, 1e9, 1e12, 1e15];
+const POW1024: [f64; 6] = [
+    1.0,
+    1024.0,
+    1_048_576.0,
+    1_073_741_824.0,
+    1_099_511_627_776.0,
+    1_125_899_906_842_624.0,
 ];
+
+/// `scaled` over a data unit's scales, each text followed by `tail` (`/s` or ''): the TS
+/// `scaled(abs, dataScales(unit), ' ', 3)`.
+fn scaled_data(abs: f64, texts: &[&str; 6], sizes: &[f64; 6], tail: &str) -> String {
+    let mut i = 0;
+    while i + 1 < sizes.len() && abs >= sizes[i + 1] {
+        i += 1;
+    }
+    loop {
+        let digits = sig(abs / sizes[i]);
+        if let Some(next) = sizes.get(i + 1)
+            && js_number(&digits).abs() >= js_round(next / sizes[i])
+        {
+            i += 1;
+            continue;
+        }
+        return format!("{digits} {}{tail}", texts[i]);
+    }
+}
+
 const TIME: [Scale; 7] = [
     Scale {
         size: 1e-9,
@@ -310,12 +381,35 @@ impl Unit {
     /// The tail of the out-of-range form: the unit of the converted value.
     fn base_tail(&self) -> String {
         match self {
-            Self::None => String::new(),
+            Self::None | Self::Plain => String::new(),
             Self::Suffix { suffix } => format!(" {suffix}"),
-            Self::Bytes => " B".into(),
+            Self::Bytes { .. } | Self::Bits { .. } => format!(" {}", self.data_base()),
             Self::Percent | Self::Percentunit => " %".into(),
             Self::Time { .. } => " s".into(),
         }
+    }
+
+    /// `/s` for a per-second data unit, else ''.
+    fn per_second_tail(&self) -> &'static str {
+        match self {
+            Self::Bytes {
+                per_second: true, ..
+            }
+            | Self::Bits {
+                per_second: true, ..
+            } => "/s",
+            _ => "",
+        }
+    }
+
+    /// A data unit's base symbol and its per-second tail: `B`, `B/s`, `b`, `b/s` (TS `dataBase`).
+    fn data_base(&self) -> String {
+        let symbol = if matches!(self, Self::Bits { .. }) {
+            "b"
+        } else {
+            "B"
+        };
+        format!("{symbol}{}", self.per_second_tail())
     }
 }
 
@@ -339,16 +433,24 @@ pub fn format_value(v: f64, unit: &Unit) -> String {
     if c != 0.0 && !(1e-12..1e21).contains(&c) {
         return format!("{}{}", precision3(c), unit.base_tail());
     }
-    let plain = |v: f64| if v < 1.0 { sig(v) } else { scaled(v, &SI, "") };
+    let si = |v: f64| if v < 1.0 { sig(v) } else { scaled(v, &SI, "") };
     match unit {
-        Unit::None => plain(v),
-        Unit::Suffix { suffix } => format!("{} {suffix}", plain(v)),
-        Unit::Bytes => {
+        Unit::None => si(v),
+        Unit::Plain => sig(v),
+        Unit::Suffix { suffix } => format!("{} {suffix}", si(v)),
+        Unit::Bytes { .. } | Unit::Bits { .. } => {
             if v < 1.0 {
-                format!("{} B", sig(v))
-            } else {
-                scaled(v, &IEC, " ")
+                return format!("{} {}", sig(v), unit.data_base());
             }
+            let bits = matches!(unit, Unit::Bits { .. });
+            let texts = match (bits, unit.iec()) {
+                (false, true) => &IEC_BYTES,
+                (false, false) => &SI_BYTES,
+                (true, false) => &SI_BITS,
+                (true, true) => &IEC_BITS,
+            };
+            let sizes = if unit.iec() { &POW1024 } else { &POW1000 };
+            scaled_data(v, texts, sizes, unit.per_second_tail())
         }
         Unit::Percent => format!("{} %", sig(v)),
         Unit::Percentunit => format!("{} %", sig(v * 100.0)),
@@ -370,10 +472,10 @@ const COMPACT_PREFIXES: [&str; 11] = ["p", "n", "µ", "m", "", "k", "M", "G", "T
 /// (`-88.8<prefix><tail>`), whose measured width is the narrowest value band (T02-011, #93).
 pub fn compact_samples(unit: &Unit) -> Vec<String> {
     let tail = match unit {
-        Unit::None => String::new(),
+        Unit::None | Unit::Plain => String::new(),
         Unit::Suffix { suffix } => format!(" {suffix}"),
         Unit::Percent | Unit::Percentunit => " %".to_owned(),
-        Unit::Bytes => " B".to_owned(),
+        Unit::Bytes { .. } | Unit::Bits { .. } => format!(" {}", unit.data_base()),
         Unit::Time { .. } => " s".to_owned(),
     };
     COMPACT_PREFIXES

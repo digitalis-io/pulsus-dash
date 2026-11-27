@@ -1,5 +1,5 @@
 /**
- * `golden:interim-gallery` (plan #58 §5, T05 §0): the sixteen interim Canvas 2D gallery charts in
+ * `golden:interim-gallery` (plan #58 §5, T05 §0): the eighteen interim Canvas 2D gallery charts in
  * both themes, compared with committed baselines, and `golden:greyscale` (VIZ-067, plan #173 Part 2):
  * the five bar charts with the canvas in greyscale, told apart without colour. Chromium only; the
  * baselines are generated in the pinned e2e container (`PW_UPDATE_GOLDENS=1`).

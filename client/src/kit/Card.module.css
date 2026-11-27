@@ -2,11 +2,25 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4);
-  border: var(--border-hairline) solid var(--hairline);
+  padding: var(--space-3);
+  /* One edge, the elevation's ring (#282 Part 2a), and the card sheen; no border of its own (it
+     made a second edge inside the ring). Forced colours draw a border instead. */
   border-radius: var(--radius-md);
-  background: var(--surface-1);
-  box-shadow: var(--elevation-1);
+  background: var(--material-card), var(--surface-1);
+  box-shadow: var(--elevation-card);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .card {
+    background: var(--surface-1);
+  }
+}
+
+@media (forced-colors: active) {
+  .card {
+    border: var(--border-hairline) solid CanvasText;
+    background: var(--surface-1);
+  }
 }
 
 .title {
