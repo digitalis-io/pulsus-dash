@@ -6,8 +6,8 @@
  * The stub is seeded (`pulsus-dash.stub.boards`) with 1 002 boards titled `bulk-…` and a board with
  * one search list on `bulk`, limit 50. Steps: open, Show more ×19 (1 000 rows), then 20
  * `visibilitychange` refetches (`refetchOnWindowFocus: 'always'`), each awaited through the
- * list's `data-board-list-updated` (the answer's time). `BoardListCore` marks each render
- * and measures `boardList:render` in a layout effect per commit (non-http builds); the p50, p95 and
+ * list's `data-board-list-updated` (the answer's time). With `pulsus-dash.bench.boardList` set,
+ * `BoardListCore` marks each render and measures `boardList:render` per commit (non-http builds); the p50, p95 and
  * max go to stdout and `test-results/widget-lists.json`. No samples fails the run.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -52,6 +52,7 @@ test('bench:widget-lists (report-only; LONG_TASK_GATE=enforce fails a miss)', as
   await page.addInitScript(
     (boards) => {
       localStorage.setItem('pulsus-dash.stub.boards', JSON.stringify(boards));
+      localStorage.setItem('pulsus-dash.bench.boardList', '1');
     },
     [...BULK, BOARD],
   );
