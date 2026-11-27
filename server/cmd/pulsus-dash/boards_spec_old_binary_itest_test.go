@@ -118,7 +118,7 @@ func TestBoardSpecOldBinary(t *testing.T) {
 			const tooNew = "board saved by a newer server version"
 
 			// 2 this release creates W from the newest fixture; it stores the parsed board, so a
-			// null option (v7: groupBy, view) would be read back absent.
+			// null option (v7: groupBy, view) is read back absent.
 			w := specFixture(t, newFixture)
 			parsedW, err := spec.ParseBoard(w)
 			if err != nil {
@@ -182,7 +182,13 @@ func TestBoardSpecOldBinary(t *testing.T) {
 			if after, v := headOf(vUID), versionsOf(vUID); after != before || v != 1 {
 				t.Errorf("V head %s with %d versions, want %s with 1", after, v, before)
 			}
-			canonV, err := spec.Canonical(vSpec)
+			// The previous release stored V parsed, so a null option of its fixture (v7-geomap.json:
+			// groupBy, view) is read back absent.
+			parsedV, err := spec.ParseBoard(vSpec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			canonV, err := spec.Canonical(parsedV)
 			if err != nil {
 				t.Fatal(err)
 			}
