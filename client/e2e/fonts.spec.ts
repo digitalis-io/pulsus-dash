@@ -95,7 +95,8 @@ test.describe('e2e:font-origin', () => {
     });
     // No fake clock: it replaces the User Timing API the draws are measured with. The gallery's
     // window is absolute.
-    await page.goto(GALLERY_URL);
+    // `load` would wait for the held font in WebKit.
+    await page.goto(GALLERY_URL, { waitUntil: 'domcontentloaded' });
     await expect(page.locator('html')).toHaveAttribute('data-platform', 'apple');
     const stat = frame(page, 'stat');
     await expect(stat).toHaveAttribute('data-frame-ready', 'true');
