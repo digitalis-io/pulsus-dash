@@ -307,7 +307,9 @@ S, so the tests need no seeded boards beyond the one under test. `e2e:widget-boa
 Show more to 12 with row 11 focused; `check` typed 100 ms apart sends one `q=check` request at
 least 250 ms after the last key and none for its prefixes; `2 boards` is announced once; hrefs
 carry the time; a modified click opens a new page. `e2e:widget-lists-a11y`: axe in the held,
-loaded, empty, error, stale, old-server and Edit-mode states, `Payments, this board`, the Tab
+loaded, empty, error, stale, old-server and Edit-mode states (Chromium and WebKit: in the pinned
+Firefox an axe run on this board is followed by a content-process crash, so Firefox runs the other
+steps only), `Payments, this board`, the Tab
 order, `aria-setsize` 12 and −1, focus to the empty text, and no animation on a new row under
 reduced motion.
 

@@ -150,7 +150,11 @@ test.describe('Board list widget', () => {
         });
       };
       const list = panel(page, 'Starred');
+      // In the pinned Firefox, an axe run on this board is followed by a content-process crash
+      // (SIGSEGV) on a later step; without axe the steps pass. The DOM is engine-independent, so
+      // axe runs in Chromium and WebKit, and every other step runs in all three.
       const axe = async (what: string) => {
+        if (info.project.name === 'firefox') return;
         expect(await axeSerious(page), what).toEqual([]);
       };
 
