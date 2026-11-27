@@ -23,8 +23,29 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 // `dash-module-ids` (plan #198 Part 2a §3.6): each build's module graph, workers included.
 const moduleIds = moduleGraphPlugins(`${root}node_modules/.cache/dash-build`);
 
-/** Engine modules: their chunks are `dash-engine-*` (`ci:bundle-size` engine row). */
+/** Engine modules: their chunks are `dash-engine-*` (`ci:bundle-size` engine rows). */
 const ENGINE_MODULE = /\/src\/engine\/wasm\/|dash-engine/;
+/**
+ * Plan #68 C2d2 §3.4: modules of one engine mode only. A chunk with an MT-only module is
+ * `dash-engine-mt-*`, with an ST-only one `dash-engine-st-*`, any other engine chunk (the adapter,
+ * frames, ring) `dash-engine-*`, counted in both modes' rows.
+ */
+const MT_MODULE =
+  /\/src\/engine\/wasm\/gen(?:-probe)?\/|\0virtual:dash-engine$|\/(?:render|pool)\.worker\.ts/;
+const ST_MODULE = /\/src\/engine\/wasm\/gen-st(?:-probe)?\/|\0virtual:dash-engine-st$|\/render-st\.worker\.ts/;
+
+/** `dash-engine-mt-`, `dash-engine-st-` or `dash-engine-` for an engine chunk's modules. */
+function enginePrefix(ids: readonly string[]): string {
+  if (ids.some((id) => MT_MODULE.test(id))) return 'dash-engine-mt-';
+  if (ids.some((id) => ST_MODULE.test(id))) return 'dash-engine-st-';
+  return 'dash-engine-';
+}
+
+/** The engine wasm per mode: `dash_core_st_bg.wasm` is ST's, any other MT's. */
+const wasmName = (names: readonly string[]): string =>
+  names.some((n) => n.includes('dash_core_st'))
+    ? 'assets/dash-engine-st-[hash][extname]'
+    : 'assets/dash-engine-mt-[hash][extname]';
 const pkg = JSON.parse(readFileSync(`${root}package.json`, 'utf8')) as { version: string };
 
 // The BFF the dev server proxies to (ADR-0014 §6). Never logged.
@@ -78,24 +99,28 @@ export function clientConfig(engine: (root: string) => Plugin): UserConfig {
             c.moduleIds.some((id) => EDITOR_MODULE.test(id))
               ? 'assets/editor-[hash].js'
               : c.moduleIds.some((id) => ENGINE_MODULE.test(id))
-                ? 'assets/dash-engine-[hash].js'
+                ? `assets/${enginePrefix(c.moduleIds)}[hash].js`
                 : 'assets/[name]-[hash].js',
           assetFileNames: (a) =>
             a.names.some((n) => n.endsWith('.wasm'))
-              ? 'assets/dash-engine-[hash][extname]'
+              ? wasmName(a.names)
               : 'assets/[name]-[hash][extname]',
         },
       },
     },
-    // The engine's workers (plan #68 C1 §3.5): ES modules named `dash-engine-[name]-[hash].js`.
+    // The engine's workers (plan #68 C1 §3.5): ES modules named `dash-engine-<mode>-[name]-[hash].js`
+    // (plan #68 C2d2: `mt` for the render and pool workers, `st` for the ST render worker).
     worker: {
       format: 'es',
       plugins: () => [engine(root), moduleIds.worker()],
       rolldownOptions: {
         output: {
-          entryFileNames: 'assets/dash-engine-[name]-[hash].js',
-          chunkFileNames: 'assets/dash-engine-[hash].js',
-          assetFileNames: 'assets/dash-engine-[hash][extname]',
+          entryFileNames: (c) => `assets/${enginePrefix(c.moduleIds)}[name]-[hash].js`,
+          chunkFileNames: (c) => `assets/${enginePrefix(c.moduleIds)}[hash].js`,
+          assetFileNames: (a) =>
+            a.names.some((n) => n.endsWith('.wasm'))
+              ? wasmName(a.names)
+              : 'assets/dash-engine-[hash][extname]',
         },
       },
     },

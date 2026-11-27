@@ -15,6 +15,7 @@
 //! `width_css`) for a one-sample run that no segment reaches. So every pair of consecutive finite
 //! samples with no gap between is covered by exactly the capsules a raw-point drawing has.
 
+#[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
 use crate::ColumnRanges;
@@ -328,29 +329,41 @@ fn link(cols: &[ColOut], mut f: impl FnMut(u32, bool, Drawn)) {
     }
 }
 
-/// The T2 path: P1 and P5 in parallel over series (rayon, one task per series, fixed chunking,
-/// T03-021), P2–P4 sequential per series; bit-identical to the T1 compute passes.
+/// `f(s)` for every series `s` in order: one rayon task per series with fixed chunking (T03-021)
+/// under `parallel`, else sequentially (plan #68 C2d2, `dash-core-st`); the same result either way.
+#[cfg(feature = "parallel")]
+fn per_series<T: Send>(series: usize, f: impl Fn(usize) -> T + Sync + Send) -> Vec<T> {
+    (0..series)
+        .into_par_iter()
+        .with_min_len(1)
+        .with_max_len(1)
+        .map(f)
+        .collect()
+}
+
+#[cfg(not(feature = "parallel"))]
+fn per_series<T>(series: usize, f: impl Fn(usize) -> T) -> Vec<T> {
+    (0..series).map(f).collect()
+}
+
+/// The T2 path: P1 and P5 per series (in parallel under `parallel`, [`per_series`]), P2–P4
+/// sequential per series; bit-identical to the T1 compute passes.
 pub fn decimate(input: &DecimateInput) -> Decimated {
     let n = input.n as usize;
     let series = input.offsets.len().saturating_sub(1);
     let base = |s: usize| input.offsets[s];
     // P1, with the CPU-only first/last sample indices (A.3.3).
-    let p1: Vec<SeriesP1> = (0..series)
-        .into_par_iter()
-        .with_min_len(1)
-        .with_max_len(1)
-        .map(|s| {
-            let mut cols = Vec::with_capacity(n);
-            let mut idx = Vec::with_capacity(n);
-            for c in 0..n {
-                let (lo, hi) = input.ranges.range(s, c, base(s));
-                let (co, fi, li) = reduce_column(input.values_bits, lo, hi);
-                cols.push(co);
-                idx.push((fi, li));
-            }
-            (cols, idx)
-        })
-        .collect();
+    let p1: Vec<SeriesP1> = per_series(series, |s| {
+        let mut cols = Vec::with_capacity(n);
+        let mut idx = Vec::with_capacity(n);
+        for c in 0..n {
+            let (lo, hi) = input.ranges.range(s, c, base(s));
+            let (co, fi, li) = reduce_column(input.values_bits, lo, hi);
+            cols.push(co);
+            idx.push((fi, li));
+        }
+        (cols, idx)
+    });
     let mut cols: Vec<ColOut> = Vec::with_capacity(series * n);
     let mut idx: Vec<(u32, u32)> = Vec::with_capacity(series * n);
     for (c, i) in p1 {
@@ -452,36 +465,31 @@ pub fn decimate(input: &DecimateInput) -> Decimated {
         }
     }
     // P5: spill the spans of overflow columns, in run order.
-    let spill: Vec<Vec<(u64, LineInstance)>> = (0..series)
-        .into_par_iter()
-        .with_min_len(1)
-        .with_max_len(1)
-        .map(|s| {
-            let slot = u32::from(input.colour_slots.get(s).copied().unwrap_or(0)) & INST_SLOT;
-            let lane = u32::from(input.lanes.get(s).copied().unwrap_or(0)) << INST_LANE_SHIFT;
-            let base_meta = slot | INST_CAPS | lane;
-            let mut out = Vec::new();
-            for c in 0..n {
-                let co = cols[s * n + c];
-                if co.meta & COL_CLASS != 2 || co.meta & COL_OVERFLOW == 0 {
-                    continue;
-                }
-                let (lo, hi) = input.ranges.range(s, c, base(s));
-                spill_column(
-                    input.values_bits,
-                    lo,
-                    hi,
-                    c as u32,
-                    &co,
-                    base_meta,
-                    |k, inst| {
-                        out.push((u64::from(co.span_at) + u64::from(k), inst));
-                    },
-                );
+    let spill: Vec<Vec<(u64, LineInstance)>> = per_series(series, |s| {
+        let slot = u32::from(input.colour_slots.get(s).copied().unwrap_or(0)) & INST_SLOT;
+        let lane = u32::from(input.lanes.get(s).copied().unwrap_or(0)) << INST_LANE_SHIFT;
+        let base_meta = slot | INST_CAPS | lane;
+        let mut out = Vec::new();
+        for c in 0..n {
+            let co = cols[s * n + c];
+            if co.meta & COL_CLASS != 2 || co.meta & COL_OVERFLOW == 0 {
+                continue;
             }
-            out
-        })
-        .collect();
+            let (lo, hi) = input.ranges.range(s, c, base(s));
+            spill_column(
+                input.values_bits,
+                lo,
+                hi,
+                c as u32,
+                &co,
+                base_meta,
+                |k, inst| {
+                    out.push((u64::from(co.span_at) + u64::from(k), inst));
+                },
+            );
+        }
+        out
+    });
     for list in spill {
         for (at, inst) in list {
             sink.put(at, inst);

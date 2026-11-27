@@ -6,6 +6,10 @@
 //! `-O3` optimises the module in place. The default output is the git-ignored
 //! `client/src/engine/wasm/gen/`.
 //!
+//! `--st` (plan #68 C2d2 §3.1) builds `dash-core-st`: the same crate with `--no-default-features
+//! --features st` and no `+atomics` (no shared memory, no TLS, no `build-std`: the prebuilt std),
+//! as `dash_core_st*` into `gen-st/` (`gen-st-probe/` with `--probe`).
+//!
 //! `--probe` (plan #68 C2a1 §3.5) builds the same engine with the `probe` feature
 //! (`engine_probe_input`, `engine_probe_ring_start`) into the git-ignored
 //! `client/src/engine/wasm/gen-probe/`, for the probe build of `e2e:shim-fuzz` only.
@@ -34,19 +38,29 @@ const WASM_OPT_FEATURES: [&str; 7] = [
     "--enable-reference-types",
 ];
 
+/// The wasm-bindgen `--out-name` of the single-thread engine (plan #68 C2d2 §3.1).
+pub const ST_OUT_NAME: &str = "dash_core_st";
+
+/// `dash-core-st` (plan #68 C2d2 §3.1): no `+atomics`, no shared or imported memory, no TLS
+/// exports; the module's own memory of at most 2 GiB.
+pub const ST_RUSTFLAGS: &str = "-C target-feature=+bulk-memory,+mutable-globals,+simd128 \
+-C link-arg=--max-memory=2147483648";
+
 /// The arguments of one engine build (plan #68 C2d2 §3.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BuildArgs {
     /// `cargo +nightly` arguments after the toolchain, before `--target-dir`.
     pub cargo: Vec<String>,
     pub rustflags: String,
+    /// wasm-opt's feature flags.
     pub wasm_opt: Vec<&'static str>,
     pub out_name: &'static str,
 }
 
-/// The build of `st` (stub: the MT build).
+/// The build of the threaded engine (`st` false: `build-std`, the MT flags, default features) or
+/// of `dash-core-st` (the prebuilt std, `--no-default-features --features st`, no threads in
+/// wasm-opt); `probe` adds the `probe` feature to either.
 pub fn build_args(st: bool, probe: bool) -> BuildArgs {
-    let _ = st;
     let mut cargo: Vec<String> = [
         "build",
         "--locked",
@@ -56,28 +70,42 @@ pub fn build_args(st: bool, probe: bool) -> BuildArgs {
         "wasm32-unknown-unknown",
         "--package",
         "dash-core",
-        "-Z",
-        "build-std=panic_abort,std",
     ]
     .map(String::from)
     .to_vec();
-    if probe {
-        cargo.extend(["--features".to_owned(), "probe".to_owned()]);
-    }
-    BuildArgs {
-        cargo,
-        rustflags: MT_RUSTFLAGS.to_owned(),
-        wasm_opt: WASM_OPT_FEATURES.to_vec(),
-        out_name: OUT_NAME,
+    if st {
+        let features = if probe { "st,probe" } else { "st" };
+        cargo.extend(["--no-default-features", "--features", features].map(String::from));
+        BuildArgs {
+            cargo,
+            rustflags: ST_RUSTFLAGS.to_owned(),
+            wasm_opt: WASM_OPT_FEATURES
+                .into_iter()
+                .filter(|f| *f != "--enable-threads")
+                .collect(),
+            out_name: ST_OUT_NAME,
+        }
+    } else {
+        cargo.extend(["-Z", "build-std=panic_abort,std"].map(String::from));
+        if probe {
+            cargo.extend(["--features", "probe"].map(String::from));
+        }
+        BuildArgs {
+            cargo,
+            rustflags: MT_RUSTFLAGS.to_owned(),
+            wasm_opt: WASM_OPT_FEATURES.to_vec(),
+            out_name: OUT_NAME,
+        }
     }
 }
 
-/// The default output directory: `gen/`, or `gen-probe/` for the probe build.
-pub fn default_out(root: &Path, probe: bool) -> PathBuf {
-    root.join(if probe {
-        "../client/src/engine/wasm/gen-probe"
-    } else {
-        "../client/src/engine/wasm/gen"
+/// The default output directory: `gen/`, `gen-probe/`, `gen-st/` or `gen-st-probe/`.
+pub fn default_out(root: &Path, st: bool, probe: bool) -> PathBuf {
+    root.join(match (st, probe) {
+        (false, false) => "../client/src/engine/wasm/gen",
+        (false, true) => "../client/src/engine/wasm/gen-probe",
+        (true, false) => "../client/src/engine/wasm/gen-st",
+        (true, true) => "../client/src/engine/wasm/gen-st-probe",
     })
 }
 
@@ -114,31 +142,18 @@ fn run(cmd: &mut Command) -> Result<(), String> {
 }
 
 /// Builds the engine into `out` (created; existing files replaced). `target` is the cargo
-/// target directory; `probe` adds the `probe` feature.
-pub fn build(root: &Path, out: &Path, target: &Path, probe: bool) -> Result<(), String> {
+/// target directory; `st` the single-thread engine; `probe` adds the `probe` feature.
+pub fn build(root: &Path, out: &Path, target: &Path, st: bool, probe: bool) -> Result<(), String> {
     let nightly = tool(root, "nightly")?;
+    let a = build_args(st, probe);
     let mut cargo = Command::new("cargo");
     cargo
         .current_dir(root)
         .arg(format!("+{nightly}"))
-        .args([
-            "build",
-            "--locked",
-            "--profile",
-            "wasm-release",
-            "--target",
-            "wasm32-unknown-unknown",
-            "--package",
-            "dash-core",
-            "-Z",
-            "build-std=panic_abort,std",
-            "--target-dir",
-        ])
+        .args(&a.cargo)
+        .arg("--target-dir")
         .arg(target)
-        .env("RUSTFLAGS", MT_RUSTFLAGS);
-    if probe {
-        cargo.args(["--features", "probe"]);
-    }
+        .env("RUSTFLAGS", &a.rustflags);
     for k in [
         "RUSTUP_TOOLCHAIN",
         "RUSTC",
@@ -156,15 +171,15 @@ pub fn build(root: &Path, out: &Path, target: &Path, probe: bool) -> Result<(), 
             "web",
             "--omit-default-module-path",
             "--out-name",
-            OUT_NAME,
+            a.out_name,
         ])
         .arg("--out-dir")
         .arg(out)
         .arg(&wasm))?;
-    let bg = out.join(format!("{OUT_NAME}_bg.wasm"));
+    let bg = out.join(format!("{}_bg.wasm", a.out_name));
     run(Command::new("wasm-opt")
         .arg("-O3")
-        .args(WASM_OPT_FEATURES)
+        .args(&a.wasm_opt)
         .arg(&bg)
         .arg("-o")
         .arg(&bg))

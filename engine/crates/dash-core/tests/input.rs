@@ -361,7 +361,10 @@ fn drain_batch_bad_record_skips_the_rest() {
             "{what}"
         );
         assert_eq!(out.len(), 10, "{what}: the records before it");
-        assert_eq!(out[..], ring[..10], "{what}");
+        // As logged (NaN is not equal to itself in `Decoded`).
+        let got: Vec<Value> = out.iter().map(|d| norm(&log_json(d))).collect();
+        let want: Vec<Value> = ring[..10].iter().map(|d| norm(&log_json(d))).collect();
+        assert_eq!(got, want, "{what}");
     }
     // A record cut off by the end of the batch.
     let mut out = Vec::new();

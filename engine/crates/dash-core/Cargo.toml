@@ -14,6 +14,12 @@ workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
+# Plan #68 C2d2 §3.1: `mt` (default) is the shared-memory engine with the rayon pool and the
+# parallel CPU decimation (the one switch for `dash-scales/parallel`); `st` (`dash-core-st`,
+# `--no-default-features --features st`) has neither: its own memory and sequential decimation.
+default = ["mt"]
+mt = ["dash-scales/parallel", "dep:rayon"]
+st = []
 # A test hook build of the renderer (`fail_maps_after`); never in the release engine.
 test-hooks = ["dash-gpu/test-hooks"]
 # The probe build of `e2e:shim-fuzz` (plan #68 C2a1 §3.5): `engine_probe_input` and
@@ -37,7 +43,7 @@ thiserror.workspace = true
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 dash-marks = { workspace = true, features = ["gpu"] }
 js-sys.workspace = true
-rayon.workspace = true
+rayon = { workspace = true, optional = true }
 wasm-bindgen.workspace = true
 wasm-bindgen-futures.workspace = true
 # T03 §5.6: an allow-list.

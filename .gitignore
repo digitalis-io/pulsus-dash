@@ -33,6 +33,10 @@ client/dist-probe/
 client/src/engine/wasm/gen/
 # The probe build's engine (cargo xtask build-wasm --probe, plan #68 C2a1; e2e:shim-fuzz only).
 client/src/engine/wasm/gen-probe/
+# The single-thread engine (cargo xtask build-wasm --st [--probe], plan #68 C2d2).
+client/src/engine/wasm/gen-st/
+client/src/engine/wasm/gen-st-probe/
+client/dist-release/
 # TypeScript incremental build state (tsc -b)
 *.tsbuildinfo
 test-results/

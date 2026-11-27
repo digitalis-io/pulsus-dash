@@ -25,5 +25,7 @@ export const frame_set_spec = absent;
 export const frame_set_theme = absent;
 export const pool_run = absent;
 export const pool_start = absent;
+/** The single-thread engine's input batch (plan #68 C2d2). */
+export const engine_input_batch = absent;
 /** Never constructed: `engine_start` throws first. */
 export const BootStatus = absent;

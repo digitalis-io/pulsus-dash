@@ -45,17 +45,23 @@ fn st_features() {
         let t = tree(&["--no-default-features", "--features", features]);
         assert!(t.contains("dash-core"), "{features}: {t}");
         assert!(!t.contains("rayon"), "{features}: rayon in the ST tree");
+        // dash-scales' own features show in the tree inverted on it.
+        let i = tree(&[
+            "--no-default-features",
+            "--features",
+            features,
+            "-i",
+            "dash-scales",
+        ]);
+        assert!(i.contains("dash-scales"), "{features}: {i}");
         assert!(
-            !t.contains(PARALLEL),
+            !i.contains(PARALLEL),
             "{features}: dash-scales/parallel in the ST tree"
         );
     }
-    let mt = tree(&[]);
-    assert!(mt.contains("rayon"), "the MT tree has rayon");
-    assert!(
-        mt.contains(PARALLEL),
-        "the MT tree has dash-scales/parallel"
-    );
+    assert!(tree(&[]).contains("rayon"), "the MT tree has rayon");
+    let i = tree(&["-i", "dash-scales"]);
+    assert!(i.contains(PARALLEL), "the MT tree has dash-scales/parallel");
 }
 
 #[test]
