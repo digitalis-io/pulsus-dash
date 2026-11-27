@@ -201,6 +201,12 @@ function withThresholds(spec: VisSpec, t: Thresholds | null): VisSpec {
   return { ...spec, thresholds: thresholdLines(t, spec.unit) };
 }
 
+/** A stat's graph mode `none` on its spec (T22 §5.1); `sparkline` or absent leaves it absent. */
+function withGraphMode(spec: VisSpec, panelVis: DataPanelSpec['vis']): VisSpec {
+  if (spec.kind !== 'stat' || panelVis.options?.graphMode !== 'none') return spec;
+  return { ...spec, graphMode: 'none' };
+}
+
 type FrameView = Extract<PanelView, { kind: 'frame' }>;
 
 /** A volume frame's data with one level isolated, per data and key. */
@@ -271,7 +277,7 @@ function frameView(
   const thresholds = panelVis.thresholds ?? null;
   return {
     kind: 'frame',
-    spec: withThresholds(plan.spec, thresholds),
+    spec: withGraphMode(withThresholds(plan.spec, thresholds), panelVis),
     data: plan.data,
     vis: chosen,
     result: r,
