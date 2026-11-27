@@ -112,7 +112,7 @@ func TestPromGridProperties(t *testing.T) {
 // unit:logql-step: LogGrid keeps the #62 rule (first entry of 1 s … 1 d at least range / width)
 // for the log routes, whose pages, volume and transcripts sit on it (#303 leaves it unchanged).
 func TestLogGridCases(t *testing.T) {
-	if !checkStepCases(t, loadStepCases(t, "logql-step.json", 14), LogGrid) {
+	if !checkStepCases(t, loadStepCases(t, "log-step.json", 14), LogGrid) {
 		t.Error("the corpus lacks the 14 610-day case")
 	}
 }

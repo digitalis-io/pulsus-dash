@@ -125,7 +125,7 @@ type PageCursor struct {
 // LogRangeQuery is a log query_range call.
 type LogRangeQuery struct {
 	Query     string      // sent byte for byte (T07-002)
-	Grid      Grid        // PromGrid of the request (ms): first-page bounds, metric placement
+	Grid      Grid        // LogGrid of the request (ms): first-page bounds, metric placement
 	Window    LogWindow   // Grid.Start·10⁶ ≤ LoNs, HiNs ≤ Grid.End·10⁶
 	Limit     int         // 1..MaxLogLimit
 	Direction Direction   //

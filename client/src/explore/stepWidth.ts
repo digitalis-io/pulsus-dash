@@ -3,7 +3,7 @@
  * step keeps the value, so it changes no request key; a resize to another step replaces it.
  */
 import { useState } from 'react';
-import { promGrid } from '../data/step';
+import { logGrid } from '../data/step';
 
 export interface StepWidth {
   readonly stepMs: number;
@@ -12,7 +12,7 @@ export interface StepWidth {
 }
 
 /**
- * `widthPx` null → `prev`. `promGrid(w.fromMs, w.toMs, widthPx)` null → null. The same `stepMs` as
+ * `widthPx` null → `prev`. `logGrid(w.fromMs, w.toMs, widthPx)` null → null. The same `stepMs` as
  * `prev` → `prev` (the same object). Otherwise `{ stepMs, widthPx }`.
  */
 export function stepWidth(
@@ -21,7 +21,7 @@ export function stepWidth(
   widthPx: number | null,
 ): StepWidth | null {
   if (widthPx === null) return prev;
-  const g = promGrid(w.fromMs, w.toMs, widthPx);
+  const g = logGrid(w.fromMs, w.toMs, widthPx);
   if (g === null) return null;
   if (prev?.stepMs === g.stepMs) return prev;
   return { stepMs: g.stepMs, widthPx };

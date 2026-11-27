@@ -132,7 +132,11 @@ describe('MetricsPage runs', () => {
     await waitFor(() => {
       expect(inst).toHaveLength(1);
     });
-    expect(inst[0]?.req).toEqual({ query: 'scalar(vector(1)) / 0', atMs: W0 + HOUR, stepMs: 5000 });
+    expect(inst[0]?.req).toEqual({
+      query: 'scalar(vector(1)) / 0',
+      atMs: W0 + HOUR,
+      stepMs: 15000,
+    });
     expect(rng).toHaveLength(0);
     expect(await screen.findByRole('radio', { name: 'Auto (Stat)' })).toBeChecked();
   });

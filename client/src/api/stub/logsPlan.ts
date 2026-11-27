@@ -81,7 +81,7 @@ const MAX_NAME_LEN = 64;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-/** `max(4 × step, step + 15 s, 60 s)`: PromQL's window at the same step. */
+/** `max(step + 15 s, 60 s)` (#303): PromQL's window at the same step. */
 export function logsRateWindowMs(stepMs: number): number {
   return rateWindowMs(stepMs);
 }

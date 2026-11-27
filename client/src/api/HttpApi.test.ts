@@ -124,7 +124,7 @@ describe('HttpApi queries (A.10)', () => {
   it('1-2: sends the range request and decodes the body', async () => {
     const { api: a, requests } = api(() => Promise.resolve(json(200, counterRaw)));
     const r = await a.queryRange('demo', R);
-    expect(r.stepMs).toBe(5000);
+    expect(r.stepMs).toBe(15000);
     expect(r.series).toHaveLength(2);
     const req = requests[0];
     expect(req?.method).toBe('POST');
@@ -838,7 +838,7 @@ describe('HttpApi planning (plan #112 A.7, A.11)', () => {
     const r = await a.queryRange('demo', R);
     expect(r.planned.query).toBe('sum by (job, instance) (rate(http_requests_total[5m]))');
     expect(r.planned.bytes).toBe(54);
-    expect(r.planned.stepMs).toBe(5000);
+    expect(r.planned.stepMs).toBe(15000);
     expect(r.planned.rateWindowMs).toBeUndefined();
   });
 

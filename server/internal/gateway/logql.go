@@ -84,7 +84,7 @@ func (q *dataRoutes) readLogWindow(w http.ResponseWriter, r *http.Request, dst a
 		writeReqError(w, e)
 		return logWindow{}, false
 	}
-	grid, err := pulsusdb.PromGrid(lw.from, lw.to, int(wpx))
+	grid, err := pulsusdb.LogGrid(lw.from, lw.to, int(wpx))
 	if err != nil {
 		writeReqError(w, fieldError("/from", "range.too_long", err.Error()))
 		return logWindow{}, false

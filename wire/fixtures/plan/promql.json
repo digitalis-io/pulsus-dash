@@ -4815,7 +4815,7 @@
    "planned": {
     "query": "sum by (service) (rate(http_requests_total[315s])) and on(service) pulsus_anomaly_score{signal=\"latency\"} > 0.8",
     "expanded": "sum by (service) (rate(http_requests_total[315s])) and on(service) pulsus_anomaly_score{signal=\"latency\"} > 0.8",
-    "bytes": 112,
+    "bytes": 111,
     "value_type": "vector",
     "rate_candidate": false,
     "rate_applied": false,

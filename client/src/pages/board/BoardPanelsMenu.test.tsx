@@ -102,7 +102,7 @@ describe('variables and macros', () => {
       planned.set(c[1].query, r.planned.query);
     }
     expect(planned.get('rate(x[$__rate_interval])')).toBe('rate(x[1m])');
-    expect(planned.get('avg_over_time(x[$__interval])')).toBe('avg_over_time(x[5s])');
+    expect(planned.get('avg_over_time(x[$__interval])')).toBe('avg_over_time(x[15s])');
   });
 });
 
@@ -446,7 +446,7 @@ describe('panel menu', () => {
         new ApiError('queryInvalid', 'bad', { detail: c === 'planned' ? { planned: P } : {} }),
       );
       act(() => {
-        resizeAll(200, 240);
+        resizeAll(100, 240);
       });
       await calls(t, 2);
       await waitFor(() => {
