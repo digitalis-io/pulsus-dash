@@ -1,10 +1,12 @@
 /**
- * The geo Inspector model (T24 §4.13, T25 §4.9; plan #234 Part 3 §4.5): the header, value,
- * details, labels and members of the four kinds of geo target — a marker (one row), a cluster (its
- * rows), the aggregate `other (n)` (its member groups) and a group (its rows) — and the announce
- * text. Members show entries 0–7 with their label maps; past eight, `resolve` names the run id
- * `geo:` + the target's id, which the host answers from the open request (`resolveGeoMembers`).
- * Pure; imports only the targets module of the geo code, so it stays in the board route.
+ * The geo Inspector model (T24 §4.13, T25 §4.9; plan #234 Part 3 §4.5, Part 4 §4.3): the header,
+ * value, details, labels and members of the four kinds of geo target — a marker (one row), a
+ * cluster (its rows), the aggregate `other (n)` (its member groups) and a group (its rows) — and
+ * the announce text, with `Level ‹d + 1›: ` at depth d > 0. Members show entries 0–7 with their
+ * label maps; past eight, `resolve` names the run id `geo:` + the target's id, which the host
+ * answers from the open request (`resolveGeoMembers`). Each entry's `next` is the deeper view: a
+ * cluster or group row → its marker, an aggregate entry → its group, built from the target's own
+ * snapshot. Pure; imports only the targets module of the geo code, so it stays in the board route.
  */
 import { formatValue, type Unit } from '../i18n/format';
 import { t } from '../i18n/t';
@@ -12,13 +14,14 @@ import { StateEncoding, type State } from '../theme/stateEncoding';
 import type { DrawStatus, GeoRow, GeoRowSet, ValueStatus } from '../vis/geo/frame';
 import {
   geoPlace,
+  geoTarget,
   locationDetail,
   seedOf,
   worstState,
   type GeoInspectorTarget,
 } from '../vis/geo/targets';
 import { MEMBERS_SHOWN, type MemberSection } from './members';
-import type { InspectorFact, InspectorModel, Labels } from './types';
+import type { InspectorFact, InspectorModel, Labels, NavView } from './types';
 
 const DRAW: Readonly<Record<DrawStatus, Parameters<typeof t>[0]>> = {
   shown: 'geo.draw.shown',
@@ -115,7 +118,40 @@ function spreadFacts(rows: readonly GeoRow[], unit: Unit): InspectorFact[] {
   return facts;
 }
 
-/** The members section (T25 §4.9): entries 0–7 with parallel labels; `resolve` past eight. */
+/**
+ * The view entry `i` of `g` opens (T25 §4.9): a cluster or group row → the marker of that row, an
+ * aggregate entry → its group; each selects its own rows and is titled by the entry's text. Null
+ * for a marker or an index past the entries.
+ */
+function nextView(g: GeoInspectorTarget, i: number): NavView | null {
+  const entry = g.members?.[i];
+  if (entry === undefined) return null;
+  let target: GeoInspectorTarget;
+  switch (g.kind) {
+    case 'marker':
+      return null;
+    case 'cluster':
+    case 'group': {
+      const key = g.rows[i]?.key;
+      if (key === undefined) return null;
+      target = geoTarget(g.set, g.frameSeq, { kind: 'marker', id: key, keys: [key] });
+      break;
+    }
+    case 'aggregate':
+      target = geoTarget(g.set, g.frameSeq, { kind: 'group', from: g, entry: i });
+      break;
+  }
+  return {
+    target: { type: 'geo', target },
+    selection: { keys: target.rows.map((r) => r.key), fromMs: null, toMs: null },
+    title: entry.text,
+  };
+}
+
+/**
+ * The members section (T25 §4.9): entries 0–7 with parallel labels; `resolve` past eight; `next`
+ * the deeper view of an entry.
+ */
 export function geoMembers(g: GeoInspectorTarget, panelId: string | null): MemberSection | null {
   const m = g.members;
   if (m === null) return null;
@@ -125,7 +161,7 @@ export function geoMembers(g: GeoInspectorTarget, panelId: string | null): Membe
     runs: null,
     resolve:
       m.length > MEMBERS_SHOWN && panelId !== null ? { panelId, runId: `geo:${g.id}` } : null,
-    next: null,
+    next: (i) => nextView(g, i),
   };
 }
 
@@ -142,15 +178,21 @@ type GeoParts = Omit<InspectorModel, 'pivots' | 'query' | 'actions'>;
  * The model of a geo target (T24 §4.13), without the pivots, query and actions (`inspectorModel`
  * adds them: the T25 `mark` pivots for a marker, none for the others).
  */
-export function geoModel(g: GeoInspectorTarget, unit: Unit, panelId: string | null): GeoParts {
+export function geoModel(
+  g: GeoInspectorTarget,
+  unit: Unit,
+  panelId: string | null,
+  depth = 0,
+): GeoParts {
   const base = {
     heading: g.title,
     primaryKind: 'value' as const,
     extraLabels: [],
     members: geoMembers(g, panelId),
   };
+  const level = depth > 0 ? t('inspector.level', { n: depth + 1 }) : '';
   const announce = (parts: readonly string[]): string =>
-    t('geo.inspector.announce', { text: parts.join(', ') });
+    t('geo.inspector.announce', { text: `${level}${parts.join(', ')}` });
   const worst = worstState(g.rows);
   const worstPart = worst === null ? [] : [t('geo.list.worst', { state: worst })];
   switch (g.kind) {
