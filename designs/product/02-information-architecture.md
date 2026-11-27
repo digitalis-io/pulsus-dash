@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.6-rc · 2026-11-25 |
+| **Version** | 1.7-rc · 2026-11-27 |
 | **Requirement area** | `IA` |
 | **Source draft** | plans/02-information-architecture.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [04](04-surfaces.md), [06](06-ai-copilot.md), [07](07-alerting.md), [11](11-enterprise.md), [13](13-core-flow-storyboard.md), [15](15-estate-navigation.md), [T11](../technical/T11-postgres-schema.md) |
@@ -333,13 +333,16 @@ the page header, beside a refresh control. The picker MUST offer relative ranges
 5 min, 15 min, 1 h, 6 h, 24 h and 7 d) and absolute ranges, and MUST show the time zone. The refresh
 control MUST offer refresh now, an auto-refresh interval (off by default) and LIVE
 ([03](03-interaction-model.md) INT-028). Brushing any time chart (INT-025) and the window keys (INT-032)
-MUST change the same Context window, and the picker MUST show the result. In Space scenes the Time
-Ribbon (IA-028) controls the same window.
+MUST change the same Context window, and the picker MUST show the result. From 1280 px wide the
+picker MUST also show the 15 min, 1 h, 6 h, 24 h and 7 d presets inline before its trigger (#282
+Part 2a), the current one selected and none for any other range; the dialog is unchanged. In Space
+scenes the Time Ribbon (IA-028) controls the same window.
 
 *Acceptance:* On a board and in Explore → Metrics, choosing "Last 6 hours" in the header picker
 re-queries every visible chart and updates the URL; brushing 10 minutes on any chart sets the picker
 to that absolute range; choosing a 30 s auto-refresh re-queries every visible panel every 30 s, and
-"Off" stops it.
+"Off" stops it; at 1280 px the inline "1h" preset sets the last hour and is shown selected, and at
+1279 px the presets are hidden.
 
 #### IA-021 — Left navigation sidebar
 **MUST** · M-UI1 · NOC, SRE, Platform, Engineer, Business, Support, IC, Admin
@@ -576,3 +579,4 @@ tenant table, with the acceptance unchanged.
 | 1.4-rc | 2026-11-25 | #164 ([T25](../technical/T25-inspector-and-pivots.md)): IA-026 pivot row note (per T25-010; entity set and baseline travel as `ContextSearch` members from the T12 entity-set issue and I6, named as not carried until then; acceptance C1 now, C3–C4 at delivery); IA-027 staging note (interim built-in seed in I1, the tenant table in I5, acceptance unchanged) |
 | 1.5-rc | 2026-11-25 | #181 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part B2): §4 the board pattern gains `e={entityRef,...}`, and an `entityRef` is a canonical `EntityId` (T12-010), at most 16; IA-026 entity-set note (`ContextSearch.e`; the Change feed filters by it; a non-canonical entry is never guessed); the pivot row note's entity set comes from #223 |
 | 1.6-rc | 2026-11-25 | #184 ([T24](../technical/T24-geo-schematic-and-widget-panels.md) part E step 2): §4 the board pattern gains `map={mapView}` (repeated, one per scope) and `geo={mapArea}` (at most one), with their forms and the eviction order over the 4 096-byte budget; IA-026 map-area note (a filter like `f=`, effective only while its writer has the option on; the table is unchanged) |
+| 1.7-rc | 2026-11-27 | #282 Part 2a: IA-020 adds the inline presets (15 min, 1 h, 6 h, 24 h, 7 d) from 1280 px wide; the dialog is unchanged |

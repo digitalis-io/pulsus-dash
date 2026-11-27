@@ -128,8 +128,9 @@ small cap, or very long lines filling the text cap) would load a page at one end
 
 | Topic | Rule |
 |---|---|
-| Height | without wrap every row is `size.log-row` (20 px) and never measured, so the extent is exact; with wrap rows are measured (border box, at least one line), estimated by `wrapLines` at `perLine` = ⌊line width / (`font.size.sm` × `font.advance.mono`)⌋ columns (line width: the first mounted line, before any the scroller − 240 px). An estimate is kept (`logs/estimates.ts`) while its row is held or in the slice, so an evicted row in the slice keeps its height as a placeholder, and dropped after, so the cache is bounded by the buffer and the slice however far the reader pages. A wrapped line shows at most 100 lines (2 000 px) and scrolls inside its row beyond that |
-| Gutter | a bar in the level's colour (`--level-<level>`), a three-letter glyph (`CRT ERR WRN INF DBG TRC UNK`, `aria-hidden`) and the level name for screen readers (VIZ-067: never colour alone). In forced colours the bar is `CanvasText`; the glyph still names the level (T08-019) |
+| Height | without wrap every row is `size.log-row` (24 px since #282 Part 2a) and never measured, so the extent is exact; with wrap rows are measured (border box, at least one line), estimated by `wrapLines` at `perLine` = ⌊line width / (`font.size.sm` × `font.advance.mono`)⌋ columns (line width: the first mounted line, before any the scroller − 240 px). An estimate is kept (`logs/estimates.ts`) while its row is held or in the slice, so an evicted row in the slice keeps its height as a placeholder, and dropped after, so the cache is bounded by the buffer and the slice however far the reader pages. A wrapped line shows at most 100 lines (2 000 px) and scrolls inside its row beyond that |
+| Gutter | the level tag (#282 Part 2a; `[data-log-glyph]`, `aria-hidden`): the three-letter glyph (`CRT ERR WRN INF DBG TRC UNK`) in 11 px semibold mono `text`, 16 px high (`size.log-tag`, 4 px above and below in the 24 px row), three glyphs plus 8 px wide, 3 px corners, on a tint of the level's colour (`--level-<level>`, default `--level-unknown`) at `opacity.tag` through the [tint pattern](visual-design.md#the-tint-pattern-part-2a); then the level name for screen readers (VIZ-067: never colour alone). In forced colours the tag has a `CanvasText` border and no tint; the glyph still names the level (T08-019) |
+| Row | 4 px inline padding; an inspectable row's hover is `surface-hover` with 4 px corners; the selected row is unchanged. The scroller has no border, corners or fill of its own: the card or the panel is the surface (its focus ring is kept) |
 | Timestamp | `formatLogTime(ms, tz)`: `2026-01-01 00:58:20.000` in the browser's zone (`useTimeZone()`), milliseconds truncated from the nanosecond timestamp |
 | Line | a text node in JetBrains Mono (`--font-mono`); never parsed as HTML |
 | Placement | each row's `translateY` and the list's height are set through CSSOM in layout effects (T08-023) |
@@ -154,7 +155,8 @@ small cap, or very long lines filling the text cap) would load a page at one end
 `design/tokens.toml` holds `level-critical`, `level-error`, `level-warn`, `level-info`,
 `level-debug`, `level-trace` and `level-unknown` in both themes: each is the hue of VL-002 Table
 8-1a in that theme (`critical` shares `error`'s and is told apart by its glyph and name), never a
-state colour (VL-003); and `size.log-row` (20), `size.log-sentinel` (40), `size.log-level-bar` (3).
+state colour (VL-003); and `size.log-row` (24, was 20), `size.log-tag` (16), `size.log-sentinel` (40)
+and `size.log-level-bar` (3, no longer drawn since the tag replaced the bar).
 
 ## The harness and its gates
 
