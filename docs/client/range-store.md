@@ -60,14 +60,15 @@ The panel's TanStack key is unchanged (`panelRunKey`); the store sits behind it:
 | render | the view; `initialData` = the store's assembly when every visible bucket is held and fresh, so a pan inside held data paints with no request |
 | query function | `store.load(owner, view, signal)`: resolves when every visible bucket is held and fresh; a `StoreBypass` falls back to the single request |
 | effect | `retain(owner, view)`; cleanup `release(owner)` (deferred a microtask, so a StrictMode replay cancels nothing) |
-| store event | the latest assembly goes into the key's data (flanks arriving widen the held span) |
-| placeholder | Part B's rank 0 fill when there is one, else the previous window's outcome, but only under the same scope epoch and a valid lease |
+| store event | the latest assembly goes into the key's data when its visible part changed (`Assembled.vsig`: a refetch landed); flanks alone wait for the next view, which they feed from its first frame, so a prefetch landing never clears the frame's keyboard crosshair or hover |
+| placeholder | the view's latest assembly of either rank (Part B's rank 0 fill, or its own data once held), so the panel never drops back to loading between the fill and the answer; else the previous window's outcome, but only under the same scope epoch and a valid lease |
+| a view the held data no longer satisfies | Refresh now under an absolute window keeps the key but moves the refresh epoch: the run refetches when `store.fresh(view)` is false (Explore's Run moves a local epoch the same way) |
 
 The outcome carries `result` (the **visible** slice: the legend, the table, auto-vis and every
 non-line consumer), `held` (the held span the line frame draws), `fit` (the visible grid) and
 `scope`. A line frame gets the held span with `fit`, so its auto value axis and its summary's min,
 max and last describe only the visible window (T02 §4.3 v1 note): data held off screen never moves
-the axis. The panel host carries `data-store` (`held`, `bypass` or `off`) and `data-rank`.
+the axis, and on Canvas 2D the crosshair and the hover pick only the samples inside `fit`. The panel host carries `data-store` (`held`, `bypass` or `off`) and `data-rank`.
 
 ## Assembly and presence
 
@@ -141,7 +142,7 @@ their volume.
 | Producer | When |
 |---|---|
 | the **zoom-out ladder** | after a line view's flanks are fresh: 3× and 9× the window about its centre, each at its own `promGrid` step (about one point per pixel), `background`; a level at the view's step or the previous level's is skipped |
-| **coarse first** (PRF-027) | a cold line view (nothing held at its step, no fill covering it): a run at `coarseStep` (width / 4) `interactive`, then the fine run `refine` once the view has been unchanged for 120 ms (T07-011); skipped when the coarse step equals the fine one |
+| **coarse first** (PRF-027) | a cold line view (nothing held at its step, no fill covering it): a run at `coarseStep` (width / 4) `interactive`, then the fine run `refine` once the view has been unchanged for 120 ms (T07-011); skipped when the coarse step equals the fine one. A failed coarse pass fails the load at once (its error is the panel's) |
 | the **fill** | `peekFilled`: missing visible buckets drawn from the family's other steps at their own sample times (never resampled), the step nearest the view's by ratio (a tie to the finer); a span nothing covers is a gap |
 
 A fill is **rank 0** and is the panel's placeholder; the view's own step is **rank 1**. Ranks never
