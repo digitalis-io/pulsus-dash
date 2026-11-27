@@ -659,7 +659,8 @@ Pick the unit the query's values are in: a counter of bytes is **Bytes**, a dura
   [PromQL panels](#promql-panels)), a data or count unit is shown per second: **Bytes** reads as
   bytes per second, **Count** as `/s`, a custom `req` as `req/s`. The field says so: "Shown per
   second (B/s): the query is rated". Time and percent units are not changed. A heatmap's bucket
-  bounds keep the unit; its counts are per second.
+  bounds keep the unit and its counts are per second; on a heatmap the field says "Bucket bounds in
+  B, counts per second: the query is rated".
 - **Custom** asks for a **Suffix** of 1 to 16 characters with no spaces (`rps`, `µs/op`); until it
   has one the field says "Suffix: 1 to 16 characters, no spaces" and the board cannot be saved.
 - **Thresholds** are always in the query's own unit: a stat in **Seconds** with a threshold at one

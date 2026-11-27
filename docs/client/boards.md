@@ -524,7 +524,9 @@ unit (`Bytes/s (IEC) · 1.5 KiB/s`); Custom has no example. Auto removes `vis.un
 `{id: 'custom', suffix: ''}` and shows a Suffix field, invalid until typed (1 to 16 code points, no
 spaces: "Suffix: 1 to 16 characters, no spaces", linked to the field; the draft's `checkBoardSpec`
 blocks the save). When the preview's query was rated and the rewrite changes the unit, the field
-says "Shown per second (B/s): the query is rated". A kind change keeps the unit (`withKind`).
+says "Shown per second (B/s): the query is rated"; when the preview draws a heatmap (stored, or
+Auto resolving to one: the editor passes the drawn kind), it says "Bucket bounds in B, counts per
+second: the query is rated" instead, since a heatmap's bounds are never rated. A kind change keeps the unit (`withKind`).
 
 **An older server.** A server before the units version refuses `vis.unit` with
 `board.json.unknownKey` at the panel's `…/vis/unit`. The board page shows it as "This server does

@@ -1,9 +1,10 @@
 /** `unit:unit-picker` (#290 §4.4; T22-015, T08-007, T08-008): the panel editor's unit field. */
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { DataPanelSpec } from '../../api/types';
+import type { VisKind } from '../../engine/api';
 import { UnitField } from './UnitField';
 
 type Vis = DataPanelSpec['vis'];
@@ -13,6 +14,7 @@ function mount(
   o: {
     vis?: Vis;
     rateApplied?: boolean;
+    drawnKind?: VisKind | null;
     errorAt?: (suffix: string) => string | null;
   } = {},
 ) {
@@ -23,6 +25,7 @@ function mount(
       <UnitField
         vis={vis}
         rateApplied={o.rateApplied ?? false}
+        drawnKind={o.drawnKind ?? null}
         errorAt={o.errorAt ?? (() => null)}
         readOnly={false}
         onVis={(next) => {
@@ -68,6 +71,34 @@ describe('unit:unit-picker', () => {
     expect(screen.getByText('Shown per second (B/s): the query is rated')).toBeInTheDocument();
   });
 
+  it('a rated heatmap: bucket bounds keep the unit, counts are per second', () => {
+    mount({ vis: { kind: 'heatmap', unit: { id: 'bytes' } }, rateApplied: true });
+    expect(
+      screen.getByText('Bucket bounds in B, counts per second: the query is rated'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Shown per second/)).toBeNull();
+  });
+
+  it('Auto resolving to a heatmap says the same; Auto drawing a line rates the unit', () => {
+    const vis = { kind: 'auto', unit: { id: 'count' } } as const;
+    const { unmount } = render(
+      <UnitField
+        vis={vis}
+        rateApplied
+        drawnKind="heatmap"
+        errorAt={() => null}
+        readOnly={false}
+        onVis={() => undefined}
+      />,
+    );
+    expect(
+      screen.getByText('Bucket bounds in Count (SI), counts per second: the query is rated'),
+    ).toBeInTheDocument();
+    unmount();
+    mount({ vis, rateApplied: true, drawnKind: 'line' });
+    expect(screen.getByText('Shown per second (/s): the query is rated')).toBeInTheDocument();
+  });
+
   it('no hint for a unit the rewrite keeps', () => {
     mount({ vis: { kind: 'line', unit: { id: 'seconds' } }, rateApplied: true });
     expect(screen.queryByText(/Shown per second/)).toBeNull();
@@ -86,7 +117,10 @@ describe('unit:unit-picker', () => {
     expect(document.activeElement).toHaveTextContent('Bytes (IEC) · 1.5 MiB');
     await user.keyboard('{Enter}');
     expect(calls.at(-1)).toEqual({ kind: 'line', unit: { id: 'bytes' } });
-    expect(trigger()).toHaveFocus();
+    // React Aria restores focus to the trigger once the popover has closed (a later task).
+    await waitFor(() => {
+      expect(trigger()).toHaveFocus();
+    });
     const n = calls.length;
     await user.keyboard('{Enter}');
     await screen.findByRole('listbox');

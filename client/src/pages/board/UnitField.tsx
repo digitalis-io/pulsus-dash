@@ -2,7 +2,8 @@
  * The panel editor's Unit field (#290 §4.4; T22-015, T08-007, T08-008): a Select of Auto and the
  * unit catalogue in its five groups, each option named with an example in its unit (`Bytes/s (IEC)
  * · 1.5 KiB/s`); a Suffix text field for Custom; and, when the preview's query is rated and the
- * rewrite changes the unit, the hint of the unit the panel shows. Auto removes `vis.unit`; Custom
+ * rewrite changes the unit, the hint of the unit the panel shows (on a heatmap, drawn or resolved
+ * by Auto: its bucket bounds stay in the unit and only its counts are per second). Auto removes `vis.unit`; Custom
  * writes `{id: 'custom', suffix: ''}`, invalid until a suffix is typed. The Suffix field shows the
  * server's errors at `…/vis/unit` and `…/vis/unit/suffix`, and its own check meanwhile; for any
  * other unit the Select shows the error at `…/vis/unit` (an older server's refusal).
@@ -14,7 +15,15 @@ import { t } from '../../i18n/t';
 import { cx } from '../../kit/cx';
 import { Select, type SelectOption } from '../../kit/Select';
 import { TextField } from '../../kit/TextField';
-import { isUnitSuffix, rated, UNIT_CATALOGUE, unitOf, type UnitId } from '../../vis/units';
+import type { VisKind } from '../../engine/api';
+import {
+  isUnitSuffix,
+  rated,
+  UNIT_CATALOGUE,
+  unitEntry,
+  unitOf,
+  type UnitId,
+} from '../../vis/units';
 import styles from './Board.module.css';
 
 type Vis = DataPanelSpec['vis'];
@@ -24,6 +33,11 @@ export interface UnitFieldProps {
   readonly vis: Vis;
   /** The preview's query was rated (`planned.rateApplied`): the hint shows the rated unit. */
   readonly rateApplied: boolean;
+  /**
+   * The kind the preview draws after Auto resolution (`chooseVis`), or null before it has drawn
+   * (then the stored kind decides): a heatmap's bucket bounds keep the unit (T22-015).
+   */
+  readonly drawnKind: VisKind | null;
   /** The field error under `…/vis/unit`: `suffix` is `''`, `'/id'` or `'/suffix'`. */
   readonly errorAt: (suffix: string) => string | null;
   readonly readOnly: boolean;
@@ -52,6 +66,7 @@ function options(): SelectOption<Choice>[] {
 export const UnitField = memo(function UnitField({
   vis,
   rateApplied,
+  drawnKind,
   errorAt,
   readOnly,
   onVis,
@@ -64,12 +79,20 @@ export const UnitField = memo(function UnitField({
     errorAt('/suffix') ??
     errorAt('') ??
     (custom && !isUnitSuffix(suffix) ? t('field.board.unit.suffix.invalid') : null);
+  const heatmap = (drawnKind ?? vis.kind) === 'heatmap';
   const hint = useMemo(() => {
     if (!rateApplied || unit === undefined) return null;
     const u = unitOf(unit);
+    // T22-015: a rated heatmap keeps its bucket bounds in the unit; only its counts are per second.
+    if (heatmap) {
+      const name = unitLabel(u) ?? t(unitEntry(unit.id)?.label ?? 'unit.id.count');
+      return t('editor.unit.ratedHeatmap', { unit: name });
+    }
     const r = rated(u);
-    return JSON.stringify(r) === JSON.stringify(u) ? null : (unitLabel(r) ?? '');
-  }, [rateApplied, unit]);
+    return JSON.stringify(r) === JSON.stringify(u)
+      ? null
+      : t('editor.unit.rated', { unit: unitLabel(r) ?? '' });
+  }, [rateApplied, unit, heatmap]);
   return (
     <div className={cx(styles['unitField'])}>
       <Select<Choice>
@@ -96,9 +119,7 @@ export const UnitField = memo(function UnitField({
           autoComplete="off"
         />
       )}
-      {hint !== null && (
-        <p className={cx(styles['unitHint'])}>{t('editor.unit.rated', { unit: hint })}</p>
-      )}
+      {hint !== null && <p className={cx(styles['unitHint'])}>{hint}</p>}
     </div>
   );
 });

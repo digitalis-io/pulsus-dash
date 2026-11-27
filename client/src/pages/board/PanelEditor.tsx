@@ -128,6 +128,7 @@ const VisExtras = memo(function VisExtras({
   vis,
   unit,
   rateApplied,
+  drawnKind,
   fields,
   pointer,
   readOnly,
@@ -137,6 +138,8 @@ const VisExtras = memo(function VisExtras({
   unit: Unit;
   /** The preview's query was rated: the Unit field's hint (#290 §4.4). */
   rateApplied: boolean;
+  /** The kind the preview draws after Auto (null before it has drawn): the Unit field's hint. */
+  drawnKind: VisKind | null;
   /** The field errors under the panel's `/vis`. */
   fields: readonly FieldError[];
   pointer: string;
@@ -156,6 +159,7 @@ const VisExtras = memo(function VisExtras({
           <UnitField
             vis={vis}
             rateApplied={rateApplied}
+            drawnKind={drawnKind}
             errorAt={(suffix) => errorAt(`/vis/unit${suffix}`)}
             readOnly={readOnly}
             onVis={onVis}
@@ -268,9 +272,11 @@ export function PanelEditor({
   const outcome = run.outcome;
   const visFields = useAfterFirstFrame();
   // The preview frame's unit, for the threshold label placeholders.
-  const unit = useMemo(() => {
+  const { unit, drawnKind } = useMemo(() => {
     const v = panelView(run, panel.vis, '');
-    return v.kind === 'frame' ? v.spec.unit : NO_UNIT;
+    return v.kind === 'frame'
+      ? { unit: v.spec.unit, drawnKind: v.vis }
+      : { unit: NO_UNIT, drawnKind: null };
   }, [run, panel.vis]);
   // Every vis edit: the next vis, built from `panel.vis` by spread.
   const patchVis = (next: DataPanelSpec['vis']): void => {
@@ -384,6 +390,7 @@ export function PanelEditor({
               vis={panel.vis}
               unit={stableUnit}
               rateApplied={outcome?.planned.rateApplied === true}
+              drawnKind={drawnKind}
               fields={visErrors}
               pointer={pointer}
               readOnly={readOnly}

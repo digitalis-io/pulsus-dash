@@ -117,9 +117,16 @@ test.describe('e2e:board-units (fake)', () => {
     const editor = page.getByRole('dialog', { name: 'Edit panel' });
     const unit = editor.getByRole('button', { name: /Unit$/ });
     await expect(unit).toHaveText(/Auto/);
-    await unit.click();
-    await page.getByRole('option', { name: /^Seconds · / }).click();
+    // By keyboard: Enter opens, type-ahead finds Seconds, Enter commits and focus returns to the
+    // trigger (T08-007).
+    await unit.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('listbox')).toBeVisible();
+    await page.keyboard.type('Sec');
+    await expect(page.getByRole('option', { name: /^Seconds · / })).toBeFocused();
+    await page.keyboard.press('Enter');
     await expect(unit).toHaveText(/Seconds/);
+    await expect(unit).toBeFocused();
     await editor.getByRole('button', { name: 'Done' }).click();
     await expect(editor).toBeHidden();
     await page.keyboard.press('ControlOrMeta+S');

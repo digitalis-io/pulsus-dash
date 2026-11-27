@@ -311,6 +311,7 @@ export const messages = {
   'editor.unit.option': '{name} · {example}',
   'editor.unit.suffix': 'Suffix',
   'editor.unit.rated': 'Shown per second ({unit}): the query is rated',
+  'editor.unit.ratedHeatmap': 'Bucket bounds in {unit}, counts per second: the query is rated',
   'unit.group.general': 'General',
   'unit.group.time': 'Time',
   'unit.group.data': 'Data',
