@@ -91,7 +91,9 @@ export function targetOf(
   // A legend name template (#204) names the point; else a bar by its category, a line by its labels.
   const name =
     names?.get(item.key) ??
-    (spec.kind === 'bars' ? (labels[spec.categoryLabel] ?? seriesName(labels)) : seriesName(labels));
+    (spec.kind === 'bars'
+      ? (labels[spec.categoryLabel] ?? seriesName(labels))
+      : seriesName(labels));
   return {
     type: 'point',
     vis: spec.kind === 'bars' ? 'bars' : 'line',

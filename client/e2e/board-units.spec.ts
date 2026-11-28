@@ -191,4 +191,3 @@ test.describe('e2e:board-units (fake)', () => {
     await expect(editor.getByText('Labels: __name__, instance')).toBeVisible();
   });
 });
-

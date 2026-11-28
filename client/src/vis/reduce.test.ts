@@ -580,6 +580,10 @@ describe('unit:category-legend-format', () => {
       'n2 select',
       'n1 select · job="b"',
     ]);
-    expect(markNames(rows, 'job', [], null)).toEqual(['a · instance="n1"', 'a · instance="n2"', 'b']);
+    expect(markNames(rows, 'job', [], null)).toEqual([
+      'a · instance="n1"',
+      'a · instance="n2"',
+      'b',
+    ]);
   });
 });
