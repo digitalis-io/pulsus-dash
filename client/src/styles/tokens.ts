@@ -220,7 +220,7 @@ export const size = {
   "focus-ring": 3,
   "header": 56,
   "icon": 16,
-  "inspector": 360,
+  "inspector": 720,
   "inspector-inset": 12,
   "inspector-tab": 40,
   "list-chip": 20,
