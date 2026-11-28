@@ -134,38 +134,19 @@ describe('unit:ui-token-contrast', () => {
     });
   }
 
-  // State colours as text (glyph and label, VL-003) on surface-1 and surface-2. Pairs that met
-  // 4.5:1 before the refresh must still; the others (below 4.5:1 before #282) may not fall more
-  // than 0.15 below their origin/main ratio. The strict 4.5:1 for every pair needs new state
-  // colours and is tracked in #284.
+  // State colours as text (glyph and label, VL-003; #284): every state's text variant
+  // (`<state>-text`) reaches 4.5:1 on surface-1 and surface-2; the state colour itself, for marks
+  // and fills, keeps at least 3:1 there.
   const STATES = ['ok', 'watch', 'degraded', 'failing', 'unknown'] as const;
-  /** The ratios at origin/main before #282 (surface-1, surface-2). */
-  const BEFORE: Record<Theme, Record<(typeof STATES)[number], readonly [number, number]>> = {
-    dark: {
-      ok: [7.14, 6.6],
-      watch: [10.72, 9.91],
-      degraded: [7.5, 6.92],
-      failing: [4.62, 4.27],
-      unknown: [3.78, 3.5],
-    },
-    light: {
-      ok: [4.85, 4.17],
-      watch: [4.31, 3.71],
-      degraded: [5.08, 4.37],
-      failing: [6.01, 5.17],
-      unknown: [3.93, 3.38],
-    },
-  };
   for (const theme of THEMES) {
-    it(`${theme}: state text keeps 4.5:1 where it had it, and never falls more than 0.15 (#284)`, () => {
+    it(`${theme}: state text reaches 4.5:1 on surface-1 and surface-2 (#284)`, () => {
       for (const st of STATES) {
-        (['surface-1', 'surface-2'] as const).forEach((bg, i) => {
-          const before = BEFORE[theme][st][i] ?? 0;
-          const r = ratio(stack(theme, bg, st), stack(theme, bg));
-          const min = before >= 4.5 ? 4.5 : before - 0.15;
-          expect(r, `${theme}: ${st} on ${bg} (was ${String(before)})`).toBeGreaterThanOrEqual(min);
-        });
+        atLeast(theme, [`${st}-text`], [['surface-1'], ['surface-2']], 4.5);
       }
+    });
+
+    it(`${theme}: state marks keep 3:1 on surface-1 and surface-2`, () => {
+      for (const st of STATES) atLeast(theme, [st], [['surface-1'], ['surface-2']], 3);
     });
   }
 
@@ -176,9 +157,10 @@ describe('unit:ui-token-contrast', () => {
     it(`${theme}: a state tag's glyph and label on its tint`, () => {
       for (const st of STATE_KEYS) {
         const under = tint(theme, 'surface-1', st, alphaOf('tag'));
-        expect(onTint(theme, st, under), `${theme}: ${st} glyph on its tag`).toBeGreaterThanOrEqual(
-          3,
-        );
+        expect(
+          onTint(theme, `${st}-text`, under),
+          `${theme}: ${st} glyph on its tag`,
+        ).toBeGreaterThanOrEqual(3);
         expect(
           onTint(theme, 'text', under),
           `${theme}: text on the ${st} tag`,
@@ -207,8 +189,8 @@ describe('unit:ui-token-contrast', () => {
         }
         for (const st of ['watch', 'degraded', 'failing']) {
           expect(
-            onTint(theme, st, under),
-            `${theme}: ${st} on series-${String(n)}`,
+            onTint(theme, `${st}-text`, under),
+            `${theme}: ${st}-text on series-${String(n)}`,
           ).toBeGreaterThanOrEqual(3);
         }
       }

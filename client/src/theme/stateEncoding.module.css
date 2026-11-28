@@ -1,21 +1,28 @@
 /* The only CSS that references the state colour tokens (T02-004). A state is always shown with its
-   glyph and label as well as its colour. */
+   glyph and label as well as its colour. `--state-colour` is for marks and fills (dots, tints,
+   rings); `--state-text` for glyphs, names and values drawn as text, at least 4.5:1 on surface-1
+   and surface-2 (#284). */
 .ok {
   --state-colour: var(--ok);
+  --state-text: var(--ok-text);
 }
 
 .watch {
   --state-colour: var(--watch);
+  --state-text: var(--watch-text);
 }
 
 .degraded {
   --state-colour: var(--degraded);
+  --state-text: var(--degraded-text);
 }
 
 .failing {
   --state-colour: var(--failing);
+  --state-text: var(--failing-text);
 }
 
 .unknown {
   --state-colour: var(--unknown);
+  --state-text: var(--unknown-text);
 }

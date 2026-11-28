@@ -36,8 +36,10 @@ export interface ThemeColours {
   dimmed: number;
   series: readonly string[];
   ramp: readonly string[];
-  /** Threshold lines and labels only: `StateEncoding[s].colour[t]` (T02-004, VL-003). */
+  /** State marks (threshold lines, bars, geomap marks): `StateEncoding[s].colour[t]` (T02-004, VL-003). */
   state: Readonly<Record<State, string>>;
+  /** State-coloured text (threshold labels, glyphs): `StateEncoding[s].textColour[t]` (#284). */
+  stateText: Readonly<Record<State, string>>;
   /** The geomap's basemap (T24-091): water, land, the 1 px coast and the 0.5 px borders. */
   map: {
     readonly water: string;
@@ -75,6 +77,13 @@ export function themeColours(t: ThemeName): ThemeColours {
       degraded: StateEncoding.degraded.colour[t],
       failing: StateEncoding.failing.colour[t],
       unknown: StateEncoding.unknown.colour[t],
+    },
+    stateText: {
+      ok: StateEncoding.ok.textColour[t],
+      watch: StateEncoding.watch.textColour[t],
+      degraded: StateEncoding.degraded.textColour[t],
+      failing: StateEncoding.failing.textColour[t],
+      unknown: StateEncoding.unknown.textColour[t],
     },
     map: {
       water: c['map-water'],

@@ -67,7 +67,7 @@
 }
 
 .healthGlyph {
-  color: var(--state-colour);
+  color: var(--state-text);
 }
 
 .live {
@@ -884,7 +884,7 @@
 }
 
 .legendGlyph {
-  color: var(--state-colour);
+  color: var(--state-text);
 }
 
 @media (forced-colors: active) {
@@ -939,7 +939,7 @@
 }
 
 .statThreshold[data-crossed] {
-  color: var(--state-colour);
+  color: var(--state-text);
 }
 
 /* The panel editor's Thresholds (#64 Part B §3.10): one row per step. */

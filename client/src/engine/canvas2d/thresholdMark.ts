@@ -193,8 +193,9 @@ export function layoutThresholdLabels(
 
 /**
  * The threshold mark (§4.2): each drawn line whose value maps inside the plot, dashed in its state
- * colour, then every label on a chip in its state colour, with a 1 px leader from a label that was
- * moved (or whose line is off-axis) to its line (or the plot edge). Returns the label boxes.
+ * colour, then every label on a chip in its state text colour (#284), with a 1 px leader in the state
+ * colour from a label that was moved (or whose line is off-axis) to its line (or the plot edge).
+ * Returns the label boxes.
  */
 export function drawThresholds(
   i: LayerInput,
@@ -228,10 +229,10 @@ export function drawThresholds(
   for (const it of placed) {
     const b = boxOf(plot, it);
     const mid = b.y + b.height / 2;
-    const ink = it.state === null ? colours.axisText : colours.state[it.state];
+    const ink = it.state === null ? colours.axisText : colours.stateText[it.state];
     const target = it.lineY ?? it.edge;
     if (it.state !== null && target !== null && (it.top !== it.desired || it.lineY === null)) {
-      ctx.strokeStyle = ink;
+      ctx.strokeStyle = colours.state[it.state];
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(plot.x + pad, mid);

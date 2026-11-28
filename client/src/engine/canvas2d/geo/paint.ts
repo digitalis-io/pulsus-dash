@@ -166,7 +166,7 @@ function paintCluster(ctx: Ctx2D, m: LaidMark, x: number, y: number, s: MarkPain
   ctx.lineWidth = 1;
   ctx.stroke();
   ctx.font = glyphFont(CHIP_R * 1.6);
-  ctx.fillStyle = c.state[worst];
+  ctx.fillStyle = c.stateText[worst];
   ctx.fillText(StateEncoding[worst].glyph, x + off, y - off);
 }
 

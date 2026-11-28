@@ -254,7 +254,7 @@
 }
 
 .value[data-state] {
-  color: var(--state-colour);
+  color: var(--state-text);
 }
 
 .glyph {

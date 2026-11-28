@@ -199,12 +199,53 @@ in the token colour, faded with `opacity`:
 
 `--tint` is set per variant: `--state-colour` (the state tag), `--level-<level>` (log level tags) or
 `--series-N` (legend chips, from `data-series`). Labels on a tint are always `text` (or
-`text-muted`); state-coloured text on a tint would fall below 4.5:1 (light `watch`/`unknown`, dark
-`failing`/`unknown`), so a state shows only its glyph in the state colour. `unit:ui-token-contrast`
-checks these composites: a state tag's glyph ≥ 3:1 and its `text` label ≥ 4.5:1 on `surface-1` +
-state at `opacity.tag`; `text` ≥ 4.5:1 on every level tag; `text` and `text-muted` ≥ 4.5:1 and the
-`watch`, `degraded` and `failing` glyphs ≥ 3:1 on `surface-1` + `series-1…8` at `opacity.chip`; the
-board status glyph (`failing`) ≥ 3:1 on `canvas`.
+`text-muted`); a state shows only its glyph on a tint, in its state text colour (`--state-text`,
+below). `unit:ui-token-contrast` checks these composites: a state tag's glyph (`<state>-text`)
+≥ 3:1 and its `text` label ≥ 4.5:1 on `surface-1` + state at `opacity.tag`; `text` ≥ 4.5:1 on every
+level tag; `text` and `text-muted` ≥ 4.5:1 and the `watch-text`, `degraded-text` and `failing-text`
+glyphs ≥ 3:1 on `surface-1` + `series-1…8` at `opacity.chip`; the board status glyph (`failing`)
+≥ 3:1 on `canvas`.
+
+## State text (#284)
+
+A state colour is tuned for marks and fills: threshold lines, bars, geomap marks, status dots, tag
+tints and the failing panel's ring. As text, several fell below 4.5:1 on the panel surfaces (light
+`watch` 3.78, light `unknown` 3.44, dark `unknown` 3.38 and dark `failing` 4.12 on `surface-2`, among
+others). Each state therefore has a text variant, used wherever a state colour renders as text:
+
+| Token | Dark | Light | On `surface-1` / `surface-2` (dark; light) |
+|---|---|---|---|
+| `ok-text` | `#2FB59A` | `#097A64` | 7.00 / 6.37; 5.28 / 4.62 |
+| `watch-text` | `#D9C84A` | `#7B6C01` | 10.51 / 9.57; 5.27 / 4.61 |
+| `degraded-text` | `#E8923A` | `#A5570C` | 7.35 / 6.69; 5.29 / 4.63 |
+| `failing-text` | `#EA4F83` | `#B8285C` | 5.08 / 4.62; 6.01 / 5.26 |
+| `unknown-text` | `#828998` | `#656C77` | 5.11 / 4.65; 5.30 / 4.64 |
+
+Where a state colour already reached 4.6:1 on both surfaces, its text variant is the same value;
+the others keep their state's OKLCH hue and chroma and move only in lightness (lighter in dark,
+darker in light) until both surfaces reach 4.6:1, so the hue stays recognisable. The state colours
+themselves are unchanged and keep at least 3:1 on both surfaces as marks.
+
+How to use them:
+
+- **DOM.** The `StateEncoding` class sets `--state-colour` (marks and fills) and `--state-text`
+  (text). Text in a state colour takes `color: var(--state-text)`: the state glyph and its name
+  (`StateGlyph`), a tag's glyph, the board's health glyph, a legend value's glyph, a table cell
+  beyond a threshold, the stat tile's crossed threshold line and the Inspector's state value.
+  Backgrounds and dots keep `var(--state-colour)`.
+- **Canvas.** `ThemeColours.state` is for marks and `ThemeColours.stateText` for text: threshold
+  label text (its leader line stays `state`), a bar chart's threshold and row glyphs and a geomap
+  cluster's state chip glyph. Both come from `StateEncoding` (`colour` and `textColour`), the only
+  TypeScript path to state colours (T02-004).
+- **Lint.** `ci:token-lint` treats `--<state>-text` like the state tokens: only
+  `theme/stateEncoding.module.css` may name them.
+
+Greyscale and colour-vision deficiencies: every state keeps its glyph and name beside its colour
+(VL-007), so nothing depends on the text variant's hue. Under forced colours text takes the system
+colours and tag tints are dropped, as before.
+
+`unit:ui-token-contrast` asserts every `<state>-text` at least 4.5:1 on `surface-1` and
+`surface-2`, and every state colour at least 3:1 there, in both themes.
 
 ## Chart grid, baseline and area (Part 2b)
 

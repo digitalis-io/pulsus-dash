@@ -193,7 +193,7 @@ function drawBarThresholds(
           width: w,
           height: LABEL_HEIGHT,
         };
-    ctx.fillStyle = colours.state[l.state];
+    ctx.fillStyle = colours.stateText[l.state];
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(glyph, box.x, box.y + LABEL_HEIGHT / 2);
@@ -214,7 +214,7 @@ function drawName(
 ): void {
   const { ctx, colours } = i;
   const glyph = r.state === null ? null : StateEncoding[r.state].glyph;
-  const ink = r.state === null ? null : colours.state[r.state];
+  const ink = r.state === null ? null : colours.stateText[r.state];
   ctx.textBaseline = 'middle';
   if (spec.orientation === 'horizontal') {
     if (label === null) {

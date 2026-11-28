@@ -24,6 +24,9 @@ describe('state encoding', () => {
     for (const s of states) {
       for (const theme of ['dark', 'light'] as const) {
         expect(StateEncoding[s].colour[theme], `${s} ${theme}`).toBe(colour[theme][s]);
+        expect(StateEncoding[s].textColour[theme], `${s} text ${theme}`).toBe(
+          colour[theme][`${s}-text`],
+        );
       }
     }
   });

@@ -125,4 +125,14 @@ describe('unit:state-colours (T02-004)', () => {
     expect(c.state.failing).toBe(colour.light.failing);
     expect(themeColours('dark').state.degraded).toBe(colour.dark.degraded);
   });
+
+  it('text takes the state text colours from StateEncoding (#284)', () => {
+    for (const t of ['dark', 'light'] as const) {
+      const c = themeColours(t);
+      for (const s of ['ok', 'watch', 'degraded', 'failing', 'unknown'] as const) {
+        expect(c.stateText[s]).toBe(StateEncoding[s].textColour[t]);
+        expect(c.stateText[s]).toBe(colour[t][`${s}-text`]);
+      }
+    }
+  });
 });

@@ -25,6 +25,14 @@ watch = "#D9C84A"
 degraded = "#E8923A"
 failing = "#E0457B"
 unknown = "#6B7280"
+# The state colours as text (#284): glyphs, names and values in a state's colour, each at least
+# 4.5:1 on surface-1 and surface-2; marks and fills keep the state colours above. State tokens:
+# only theme/stateEncoding uses them.
+ok-text = "#2FB59A"
+watch-text = "#D9C84A"
+degraded-text = "#E8923A"
+failing-text = "#EA4F83"
+unknown-text = "#828998"
 backdrop = "#05060899"
 # The visual refresh (#282, VL-001 as amended): the source list, controls, fields and their edges,
 # the 1 px top highlight and the two shadow layers of the elevation tokens, the accent as a fill
@@ -131,6 +139,12 @@ watch = "#8A7A0F"
 degraded = "#A85A12"
 failing = "#B8285C"
 unknown = "#7A818C"
+# The state colours as text (#284): see color.dark.
+ok-text = "#097A64"
+watch-text = "#7B6C01"
+degraded-text = "#A5570C"
+failing-text = "#B8285C"
+unknown-text = "#656C77"
 backdrop = "#1B1E2540"
 # The visual refresh (#282, VL-001 as amended): see color.dark.
 sidebar = "#EBEDF1"
