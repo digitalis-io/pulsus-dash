@@ -55,7 +55,7 @@ import { CategoryChart } from '../../charts/CategoryChart';
 import { ChartFrame, type ChartFrameProps, type FrameSize } from '../../charts/ChartFrame';
 import type { SeriesTableProps } from '../../charts/SeriesTable';
 import { SeriesTable } from '../../charts/SeriesTable';
-import { useHoveredValues } from '../../charts/readout';
+import { useHeightLock, useHoveredValues } from '../../charts/readout';
 import { statValue } from '../../data/frames';
 import type { PickEvent, ThresholdState, Unit } from '../../engine/api';
 import { nextSort, sortRows, toggleIsolation, type SortState } from '../../explore/seriesRows';
@@ -265,6 +265,9 @@ const PanelChart = memo(function PanelChart({
   const [isolatedKey, setIsolatedKey] = useState<string | null>(null);
   const [sort, setSort] = useState<SortState | null>(null);
   const [hovered, onHover] = useHoveredValues();
+  const legendRef = useRef<HTMLDivElement>(null);
+  // While hovering, the legend keeps its height: a resized chart would end its own hover.
+  useHeightLock(legendRef, hovered !== null);
   const [stackRef, layout, measured] = useLegendLayout();
   // The board's markers (plan #64 Part C §3.8): one reference for every panel.
   const { markers } = useContext(BoardEventsContext);
@@ -350,11 +353,11 @@ const PanelChart = memo(function PanelChart({
       </div>
       {legend &&
         (layout === 'table' ? (
-          <div className={cx(styles['legend'])} data-panel-legend="table">
+          <div ref={legendRef} className={cx(styles['legend'])} data-panel-legend="table">
             <SeriesTable {...table} />
           </div>
         ) : (
-          <LegendCompact table={table} />
+          <LegendCompact ref={legendRef} table={table} />
         ))}
     </div>
   );

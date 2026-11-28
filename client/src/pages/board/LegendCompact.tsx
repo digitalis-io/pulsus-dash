@@ -6,7 +6,7 @@
  * §4.5, `data-series`); a threshold state's value is `text` with its glyph and label, never
  * state-coloured text on the tint.
  */
-import type { JSX } from 'react';
+import type { JSX, Ref } from 'react';
 import { DialogTrigger } from 'react-aria-components';
 import { SeriesTable, type SeriesTableProps } from '../../charts/SeriesTable';
 import tableStyles from '../../charts/SeriesTable.module.css';
@@ -36,11 +36,17 @@ function LastValue({ table, v }: { table: SeriesTableProps; v: number | null }) 
   );
 }
 
-export function LegendCompact({ table }: { readonly table: SeriesTableProps }): JSX.Element {
+export function LegendCompact({
+  table,
+  ref,
+}: {
+  readonly table: SeriesTableProps;
+  readonly ref?: Ref<HTMLDivElement>;
+}): JSX.Element {
   const rows = table.rows.slice(0, table.maxRows);
   const hovered = table.hovered ?? null;
   return (
-    <div className={cx(styles['legendCompact'])} data-panel-legend="compact">
+    <div ref={ref} className={cx(styles['legendCompact'])} data-panel-legend="compact">
       {hovered !== null && (
         <span className={cx(styles['legendAt'])} data-hovered-label="">
           {hovered.label}

@@ -265,3 +265,9 @@
 .table tr[data-row-selected] {
   background: var(--selection);
 }
+
+/* "Value at hh:mm" over the Last column while the crosshair hovers: one line, muted. */
+.hoveredLabel {
+  color: var(--text-muted);
+  white-space: nowrap;
+}

@@ -466,7 +466,8 @@ under the crosshair (`[data-hover-time]`, kept within the plot's width). `ChartF
 reports each hover and its end; `useHoveredValues` turns it into the legend's hovered values (the
 board legend table, the compact legend and the Explore series table): the **Last** column shows the
 value at the crosshair under a "Value at hh:mm" header (`[data-hovered-label]`), a series with no
-sample there shows `—`, and the column reverts to Last when the hover ends. A heatmap's Explore table
+sample there shows `—`, and the column reverts to Last when the hover ends. A board legend holds its height while the chart is hovered
+(`useHeightLock`), since a rewrapped legend would resize the chart and so end its hover. A heatmap's Explore table
 keeps Last (its hover rows are buckets, not series).
 
 The card shows the time and the rows sorted by value

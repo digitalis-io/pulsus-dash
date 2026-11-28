@@ -136,7 +136,9 @@ export function SeriesTable(p: SeriesTableProps): JSX.Element {
                       }}
                     >
                       {c.id === 'last' && hovered !== null ? (
-                        <span data-hovered-label="">{hovered.label}</span>
+                        <span className={cx(styles['hoveredLabel'])} data-hovered-label="">
+                          {hovered.label}
+                        </span>
                       ) : (
                         t(`explore.table.${c.id}`)
                       )}

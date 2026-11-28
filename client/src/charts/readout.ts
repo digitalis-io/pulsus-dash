@@ -154,3 +154,21 @@ export function useHoveredValues(): [HoveredValues | null, (h: HoverEvent | null
   );
   return [hovered, onHover];
 }
+
+/**
+ * Holds `ref`'s element at its current height while `active` (a legend beside a hovered chart):
+ * the hovered values may rewrap it, and the chart it shares a stack with would resize and so end
+ * its own hover.
+ */
+export function useHeightLock(ref: RefObject<HTMLElement | null>, active: boolean): void {
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el === null || !active) return;
+    el.style.height = px(el.offsetHeight);
+    el.style.overflow = 'hidden';
+    return () => {
+      el.style.height = '';
+      el.style.overflow = '';
+    };
+  }, [ref, active]);
+}
