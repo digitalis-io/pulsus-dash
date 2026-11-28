@@ -1,10 +1,10 @@
 {
   "name": "overscan-spike",
-  "provenance": {"synthetic": "the wave with a spike of 1000 at 2026-03-01T01:30:00Z, in the right flank of 00:00-01:00 (#304 §A.4)"},
+  "provenance": {"synthetic": "the wave with a spike of 1000 at 2025-06-01T01:30:00Z, in the right flank of 00:00-01:00 (#304 §A.4)"},
   "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query_prefix": "overscan_spike"},
   "response": {
     "status": 200,
     "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-overscan-spike"},
-    "generate": {"series": 1, "fn": "wave", "spike": {"at_s": 1772328600, "value": 1000}}
+    "generate": {"series": 1, "fn": "wave", "spike": {"at_s": 1748741400, "value": 1000}}
   }
 }

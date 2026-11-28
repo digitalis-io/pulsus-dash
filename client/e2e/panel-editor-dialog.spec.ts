@@ -537,7 +537,10 @@ test.describe('panel editor dialog', () => {
     const second = await runQuery(page);
     expect(first.f1.body).toBe('Loading');
     expect(second.f1.body).toBe('Loading');
-    const marks = await marksSince(page, first.t0);
+    // One entry per run: a cold line view asks coarse first, then fine (#304, PRF-027).
+    const marks = (await marksSince(page, first.t0)).filter(
+      (m, i, all) => i === 0 || all[i - 1]?.query !== m.query,
+    );
     expect(marks.map((m) => m.query)).toEqual([`${P1_TEXT} * 2`, `${P1_TEXT} * 3`]);
     // The first run's answer would have come 1.5 s after it: by then the preview still waits
     // for the second (the first was aborted, so nothing drew it).

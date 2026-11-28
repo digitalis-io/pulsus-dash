@@ -14,7 +14,8 @@ import { fakeRequests, type FakeRequest } from './fake.ts';
 const HOUR = 3_600_000;
 const DAY = 86_400_000;
 /** The days of this spec: March 2026, well before the e2e clock. */
-const BASE = Date.UTC(2026, 2, 2);
+// June 2025: no other spec's windows (the fake is shared, and these runs span many buckets).
+const BASE = Date.UTC(2025, 5, 2);
 const iso = (ms: number): string => new Date(ms).toISOString();
 
 function boardUrl(uid: string, from: number, to: number, refresh = 'off'): string {
@@ -201,8 +202,8 @@ test.describe('e2e:board-overscan (fake)', () => {
   test('O4 axis fit: a spike in a flank does not move the axis', async ({ page, request }) => {
     test.setTimeout(90_000);
     const t0 = Date.now();
-    // The transcript's spike is at 2026-03-01T01:30:00Z, in the right flank of 00:00-01:00.
-    const from = Date.UTC(2026, 2, 1);
+    // The transcript's spike is at 2025-06-01T01:30:00Z, in the right flank of 00:00-01:00.
+    const from = Date.UTC(2025, 5, 1);
     const uid = await createBoard(request, `O4 ${crypto.randomUUID()}`, [
       line('p-1', 'Spike', 'overscan_spike', [0, 0, 12, 6]),
     ]);
