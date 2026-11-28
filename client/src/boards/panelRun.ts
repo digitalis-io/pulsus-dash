@@ -477,6 +477,8 @@ export function panelView(run: PanelRun, panelVis: DataPanelSpec['vis'], title: 
       units: VOLUME_UNITS,
       thresholds,
       legend: panelVis.legend?.mode ?? 'table',
+      // The levels are the series (`{{level}}` names them, #204).
+      legendFormat: panelVis.legendFormat ?? null,
       volume: true,
     };
   }
