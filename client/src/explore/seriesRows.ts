@@ -31,7 +31,7 @@ export interface SortState {
 /** The rows the table shows at most: the engine's series cap. */
 export const TABLE_ROWS = MAX_SERIES;
 
-export function seriesRows(r: ExploreResult): SeriesRow[] {
+export function seriesRows(r: ExploreResult, _format: string | null = null): SeriesRow[] {
   switch (r.kind) {
     case 'string':
       return [];

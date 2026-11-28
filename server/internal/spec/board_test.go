@@ -129,8 +129,16 @@ func TestUpcasterAcceptsV1Unchanged(t *testing.T) {
 			if got, want := canon(t, b9), canon(t, raw); !bytes.Equal(got, want) {
 				t.Errorf("DecodeBoard(raw, 9) = %s, want %s", got, want)
 			}
-			if _, err := DecodeBoard(raw, 10); !errors.Is(err, ErrSchemaTooNew) {
-				t.Errorf("DecodeBoard(raw, 10) = %v, want ErrSchemaTooNew", err)
+			// Version 10 adds vis.legendFormat, the legend-name version (#204): the identity again.
+			b10, err := DecodeBoard(raw, 10)
+			if err != nil {
+				t.Fatalf("DecodeBoard(raw, 10): %v", err)
+			}
+			if got, want := canon(t, b10), canon(t, raw); !bytes.Equal(got, want) {
+				t.Errorf("DecodeBoard(raw, 10) = %s, want %s", got, want)
+			}
+			if _, err := DecodeBoard(raw, 11); !errors.Is(err, ErrSchemaTooNew) {
+				t.Errorf("DecodeBoard(raw, 11) = %v, want ErrSchemaTooNew", err)
 			}
 			if _, err := DecodeBoard(raw, 0); !errors.Is(err, ErrSchemaVersion) {
 				t.Errorf("DecodeBoard(raw, 0) = %v, want ErrSchemaVersion", err)
@@ -177,8 +185,8 @@ func TestDecodeBoardUpTo(t *testing.T) {
 	if got, want := canon(t, b), canon(t, raw); !bytes.Equal(got, want) {
 		t.Errorf("DecodeBoardUpTo(raw, 2, 2) = %s, want %s", got, want)
 	}
-	if BoardSchemaVersion != 9 {
-		t.Errorf("BoardSchemaVersion = %d, want 9", BoardSchemaVersion)
+	if BoardSchemaVersion != 10 {
+		t.Errorf("BoardSchemaVersion = %d, want 10", BoardSchemaVersion)
 	}
 }
 
@@ -653,9 +661,6 @@ func largeDefault(total int) []string {
 // The fixture holds a query, a custom and a constant variable; it is valid and readable by this
 // version only, round-trips canonically, and v8 upcasts unchanged.
 func TestV9VariablesFixture(t *testing.T) {
-	if BoardSchemaVersion != 9 {
-		t.Errorf("BoardSchemaVersion = %d, want 9", BoardSchemaVersion)
-	}
 	raw := fixture(t, "v9-variables.json")
 	b, err := ParseNewBoard(raw)
 	if err != nil {
@@ -725,5 +730,57 @@ func TestVariableQueryReferences(t *testing.T) {
 		if !errors.As(err, &ve) || len(ve.Fields) != 1 || ve.Fields[0] != (FieldError{Pointer: "/variables/1/query", MessageKey: "board.variable.query.order"}) {
 			t.Errorf("%s: %v, want query.order", text, err)
 		}
+	}
+}
+
+// v10CanonicalSHA256 is the SHA-256 of v10-legend-format.json's canonical form; boards/spec.test.ts
+// holds the same value, so the two canonical forms are byte-equal.
+const v10CanonicalSHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
+
+// unit:board-spec-legend-format (#204; T22-001, T11-016): board spec v10, the legend-name version.
+// The fixture holds vis.legendFormat on line, bars, stat, barchart, heatmap and a section's line
+// (its first panel has one, for itest:board-spec-old-binary); it is valid and readable by this
+// version only, round-trips canonically, and v9 upcasts unchanged.
+func TestV10LegendFormatFixture(t *testing.T) {
+	if BoardSchemaVersion != 10 {
+		t.Errorf("BoardSchemaVersion = %d, want 10", BoardSchemaVersion)
+	}
+	raw := fixture(t, "v10-legend-format.json")
+	b, err := ParseNewBoard(raw)
+	if err != nil {
+		t.Fatalf("ParseNewBoard: %v", err)
+	}
+	c := canon(t, b)
+	if want := canon(t, raw); !bytes.Equal(c, want) {
+		t.Errorf("Canonical(board) = %s\nwant Canonical(raw) = %s", c, want)
+	}
+	h := ContentHash(c)
+	if got := hex.EncodeToString(h[:]); got != v10CanonicalSHA256 {
+		t.Errorf("ContentHash = %s, want %s", got, v10CanonicalSHA256)
+	}
+	again, err := ParseBoard(c)
+	if err != nil {
+		t.Fatalf("ParseBoard(canonical): %v", err)
+	}
+	if !reflect.DeepEqual(again, b) {
+		t.Errorf("ParseBoard(Canonical(board)) = %+v, want %+v", again, b)
+	}
+	if len(b.Panels) == 0 || b.Panels[0].Vis.LegendFormat == nil {
+		t.Fatalf("panel 0 has no vis.legendFormat (itest:board-spec-old-binary)")
+	}
+	v9 := fixture(t, "v9-variables.json")
+	up, err := DecodeBoardUpTo(v9, 9, 10)
+	if err != nil {
+		t.Fatalf("DecodeBoardUpTo(v9-variables, 9, 10): %v", err)
+	}
+	parsed9, err := ParseBoard(v9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := canon(t, up), canon(t, parsed9); !bytes.Equal(got, want) {
+		t.Errorf("DecodeBoardUpTo(v9-variables, 9, 10) = %s, want %s", got, want)
+	}
+	if _, err := DecodeBoardUpTo(raw, 10, 9); !errors.Is(err, ErrSchemaTooNew) {
+		t.Errorf("DecodeBoardUpTo(v10, 10, 9) = %v, want ErrSchemaTooNew", err)
 	}
 }

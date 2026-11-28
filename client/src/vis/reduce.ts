@@ -205,6 +205,7 @@ export function markNames(
   rows: readonly { key: string; labels: Labels }[],
   label: string | null,
   aggregates: readonly string[] = [],
+  _format: string | null = null,
 ): string[] {
   const groups = <T>(list: readonly T[]): Map<T, number[]> => {
     const m = new Map<T, number[]>();

@@ -830,6 +830,7 @@ export interface components {
             thresholds?: components["schemas"]["Thresholds"];
             legend?: components["schemas"]["Legend"];
             unit?: components["schemas"]["PanelUnit"];
+            legendFormat?: string;
             options?: components["schemas"]["VisOptions"];
         };
         PanelUnit: {

@@ -145,4 +145,38 @@ describe('unit:series-rows', () => {
     ]);
     expect(nextSort(null, 'mean')).toEqual({ column: 'mean', direction: 'descending' });
   });
+
+  // #204: a legend name template names the rows; their keys stay the series identity, so two
+  // series with one rendered name stay two rows and sort apart by key.
+  it('a legend name template names the rows, keyed by series', () => {
+    const series = fixture([
+      { labels: { __name__: 'up', instance: 'n2', job: 'b' }, values: [1, 1] },
+      { labels: { __name__: 'up', instance: 'n1', job: 'b' }, values: [2, 2] },
+      { labels: { __name__: 'up', instance: 'n1', job: 'a' }, values: [3, 3] },
+    ]);
+    const r = {
+      kind: 'series' as const,
+      source: 'range' as const,
+      series,
+      stepMs: 1,
+      completeness: EMPTY_COMPLETENESS,
+    };
+    const rows = seriesRows(r, '{{instance}} select');
+    expect(rows.map((x) => [x.key, x.name])).toEqual([
+      [series[0]?.key, 'n2 select'],
+      [series[1]?.key, 'n1 select'],
+      [series[2]?.key, 'n1 select'],
+    ]);
+    expect(new Set(rows.map((x) => x.key)).size).toBe(3);
+    expect(keys(sortRows(rows, { column: 'series', direction: 'ascending' }))).toEqual([
+      series[1]?.key,
+      series[2]?.key,
+      series[0]?.key,
+    ]);
+    expect(seriesRows(r, null).map((x) => x.name)).toEqual([
+      'up{instance="n2", job="b"}',
+      'up{instance="n1", job="b"}',
+      'up{instance="n1", job="a"}',
+    ]);
+  });
 });

@@ -57,7 +57,12 @@ export function hoverItemOf(
  * The target of an item: a time chart's point or bucket, or a geomap mark (T24 §5.14): a
  * snapshot of the frame's rows, a `marker` for a row key and a `cluster` for `cluster:` + seed.
  */
-export function targetOf(spec: VisSpec, data: FrameData, item: HoverItem): InspectorTarget {
+export function targetOf(
+  spec: VisSpec,
+  data: FrameData,
+  item: HoverItem,
+  _names: ReadonlyMap<string, string> | null = null,
+): InspectorTarget {
   if (item.kind === 'geo') {
     const geo = data.kind === 'geo' ? data.geo : null;
     const kind = item.id.startsWith('cluster:') ? ('cluster' as const) : ('marker' as const);
@@ -99,6 +104,7 @@ export function targetOf(spec: VisSpec, data: FrameData, item: HoverItem): Inspe
 export function statTarget(
   spec: Extract<VisSpec, { kind: 'stat' }>,
   data: FrameData,
+  _names: ReadonlyMap<string, string> | null = null,
 ): Extract<InspectorTarget, { type: 'value' }> {
   if (data.kind === 'scalar') {
     return {

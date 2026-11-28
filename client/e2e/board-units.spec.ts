@@ -149,4 +149,46 @@ test.describe('e2e:board-units (fake)', () => {
       page.getByRole('dialog', { name: 'Edit panel' }).getByRole('button', { name: /Unit$/ }),
     ).toHaveText(/Seconds/);
   });
+
+  // #204: the legend name template names the series in the legend, the tooltip and the crosshair
+  // text; the editor's Legend name field holds it and lists the result's labels.
+  test('e2e:board-units legend name template', async ({ page, request }, info) => {
+    test.setTimeout(120_000);
+    uid = await createBoard(request, `U4 ${info.project.name} ${crypto.randomUUID()}`, [
+      {
+        id: 'p-1',
+        title: 'Received',
+        text: 'rx_bytes_rate',
+        grid: [0, 0, 8, 10],
+        vis: { kind: 'line', unit: { id: 'bytesPerSecond' }, legendFormat: '{{instance}} rx' },
+      },
+    ]);
+    await page.goto(boardUrl(uid));
+    const rx = panel(page, 'Received');
+    await expect(rx.locator('[data-frame-ready="true"]')).toHaveCount(1);
+    const table = rx.locator('[data-panel-legend="table"]').getByRole('table');
+    await expect(table.locator('tbody tr')).toHaveCount(1);
+    await expect(table.locator('tbody tr')).toContainText('a:9100 rx');
+    await expect(table.locator('tbody tr')).not.toContainText('rx_bytes_rate{');
+    const frame = rx.locator('[data-chart-frame]');
+    const plot = await plotOf(frame);
+    const box = await frame.boundingBox();
+    if (box === null) throw new Error('no box');
+    const at = Date.parse('2026-01-01T00:40:00.000Z');
+    const x = plotX(box.x, plot, at, Date.parse(FROM), Date.parse(TO));
+    await page.mouse.move(x, box.y + plot.y + plot.height * 0.5);
+    const tip = frame.locator('[data-chart-tooltip]');
+    await expect(tip).toBeVisible();
+    await expect(tip.locator('[data-name]').first()).toHaveText('a:9100 rx');
+    await expect(rx.getByRole('slider')).toHaveAttribute('aria-valuetext', /a:9100 rx/);
+    await page.getByRole('button', { name: 'Edit board' }).click();
+    await expect(page.locator('.react-grid-item')).toHaveCount(1);
+    await page.getByRole('button', { name: 'Panel menu: Received' }).click();
+    await page.getByRole('menuitem', { name: 'Edit panel' }).click();
+    const editor = page.getByRole('dialog', { name: 'Edit panel' });
+    const name = editor.getByRole('textbox', { name: 'Legend name' });
+    await expect(name).toHaveValue('{{instance}} rx');
+    await expect(editor.getByText('Labels: __name__, instance')).toBeVisible();
+  });
 });
+

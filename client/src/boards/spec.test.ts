@@ -922,3 +922,69 @@ describe('unit:board-spec variable query references (TS)', () => {
     }
   });
 });
+
+// unit:board-spec-legend-format (#204; T22-001, T11-016): the legend-name version.
+describe('unit:board-spec-legend-format (TS)', () => {
+  it("the v10 fixture is valid, and its canonical form is the server's", () => {
+    const x = fixture('v10-legend-format.json') as BoardSpec;
+    expect(checkBoardSpec(x)).toEqual([]);
+    const c = canonicalJson(x);
+    expect(JSON.parse(c)).toEqual(x);
+    // The Go suite (board_test.go v10CanonicalSHA256) holds the same hash: byte-equal forms.
+    expect(createHash('sha256').update(c, 'utf8').digest('hex')).toBe(
+      '0000000000000000000000000000000000000000000000000000000000000000',
+    );
+    expect(x.panels[0]?.vis).toHaveProperty('legendFormat');
+  });
+
+  it('legend name rows match the server, and their keys have en-GB text', () => {
+    const rows = cases.filter((c) => c.name.startsWith('legend-format-'));
+    expect(rows.map((c) => c.name)).toEqual([
+      'legend-format-widget',
+      'legend-format-empty',
+      'legend-format-long',
+      'legend-format-257-astral',
+      'legend-format-type',
+    ]);
+    for (const c of rows) {
+      expect(checkBoardSpec(c.spec), c.name).toEqual(
+        c.fields.map((f) => ({ pointer: f.pointer, messageKey: f.message_key })),
+      );
+      for (const f of c.fields) {
+        expect(messages, f.message_key).toHaveProperty(`field.${f.message_key}`);
+      }
+    }
+  });
+
+  it('a template of 256 code points is valid', () => {
+    const spec = {
+      title: 'B',
+      panels: [
+        {
+          id: 'p-1',
+          title: 'A',
+          grid: { x: 0, y: 0, w: 6, h: 8 },
+          query: { lang: 'promql', text: 'up' },
+          vis: { kind: 'line', legendFormat: '\u{1D465}'.repeat(256) },
+        },
+      ],
+      sections: [],
+    };
+    expect(checkBoardSpec(spec)).toEqual([]);
+  });
+
+  it('the save text: an old server refuses vis.legendFormat', () => {
+    const spec = fixture('v10-legend-format.json') as BoardSpec;
+    for (const pointer of ['/panels/0/vis/legendFormat', '/sections/0/panels/0/vis/legendFormat']) {
+      expect(saveFieldMessage(spec, { pointer, messageKey: 'board.json.unknownKey' })).toBe(
+        'This server does not support legend names yet',
+      );
+    }
+    expect(
+      saveFieldMessage(spec, {
+        pointer: '/panels/0/vis/legendFormat',
+        messageKey: 'board.legendFormat.invalid',
+      }),
+    ).toBe('Use 1 to 256 characters.');
+  });
+});

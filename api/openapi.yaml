@@ -787,6 +787,10 @@ components:
         thresholds: { $ref: '#/components/schemas/Thresholds' }
         legend: { $ref: '#/components/schemas/Legend' }
         unit: { $ref: '#/components/schemas/PanelUnit' }
+        # Board spec v10, the legend-name version (#204): the series display name template, with
+        # {{label}} replaced by the series' label value. 1 to 256 code points
+        # (board.legendFormat.invalid); a widget has none (board.json.unknownKey). Server rules.
+        legendFormat: { type: string }
         options: { $ref: '#/components/schemas/VisOptions' }
     # Board spec v8, the units version (#290, T22 §6.2): the panel's unit. The ids equal
     # api/fixtures/board-spec/unit-ids.json (board.unit.id.invalid); a suffix only with custom, of 1

@@ -94,7 +94,9 @@ type Vis struct {
 	Thresholds *Thresholds `json:"thresholds,omitempty"`
 	Legend     *Legend     `json:"legend,omitempty"`
 	Unit       *PanelUnit  `json:"unit,omitempty"`
-	Options    *Options    `json:"options,omitempty"`
+	// LegendFormat is a data panel's series name template (board spec v10, #204).
+	LegendFormat *string  `json:"legendFormat,omitempty"`
+	Options      *Options `json:"options,omitempty"`
 }
 
 // PanelUnit is a panel's unit (board spec v8, the units version; T22-015, T22-016): an ID of

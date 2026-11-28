@@ -49,6 +49,29 @@ describe('unit:inspect-target', () => {
     expect(t).toMatchObject({ type: 'point', vis: 'bars', name: 'error' });
   });
 
+  // #204: the Inspector names a point or a stat by the legend name template; labels and key stay.
+  it('a legend name template names the point and the stat', () => {
+    const labels = { instance: 'n1', job: 'a' };
+    const names = new Map([[K1, 'n1 select']]);
+    const line: VisSpec = { kind: 'line', title: 'T', unit: NONE };
+    const p = targetOf(line, series(labels), { kind: 'point', key: K1, tMs: 0, value: 1 }, names);
+    expect(p).toMatchObject({ type: 'point', key: K1, labels, name: 'n1 select' });
+    const bars: VisSpec = {
+      kind: 'bars',
+      title: 'T',
+      unit: NONE,
+      stacking: 'normal',
+      categoryLabel: 'instance',
+      categoryOrder: [],
+    };
+    expect(
+      targetOf(bars, series(labels), { kind: 'point', key: K1, tMs: 0, value: 1 }, names),
+    ).toMatchObject({ name: 'n1 select' });
+    const stat = { kind: 'stat', title: 'S', unit: NONE } as const;
+    expect(statTarget(stat, series(labels), names)).toMatchObject({ key: K1, name: 'n1 select' });
+    expect(statTarget(stat, series(labels), null)).toMatchObject({ name: seriesName(labels) });
+  });
+
   it('heatmap: bucket bounds and the next column start', () => {
     const spec: VisSpec = {
       kind: 'heatmap',

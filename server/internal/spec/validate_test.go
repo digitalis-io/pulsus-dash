@@ -604,3 +604,39 @@ func TestUnitSuffix(t *testing.T) {
 		})
 	}
 }
+
+// unit:board-spec-legend-format (#204): a legend name template is 1 to 256 code points; a code
+// point outside the BMP counts once; any text is allowed (braces that are no placeholder stay
+// literal when rendered).
+func TestLegendFormat(t *testing.T) {
+	board := func(kind, format string) []byte {
+		f, _ := json.Marshal(format)
+		return []byte(`{"title":"B","panels":[{"id":"p-1","title":"A","grid":{"x":0,"y":0,"w":6,"h":8},` +
+			`"query":{"lang":"promql","text":"up"},"vis":{"kind":"` + kind + `","legendFormat":` + string(f) + `}}],"sections":[]}`)
+	}
+	const bad = "/panels/0/vis/legendFormat board.legendFormat.invalid"
+	for _, tc := range []struct{ name, kind, format, want string }{
+		{"256 ascii", "line", strings.Repeat("a", 256), ""},
+		{"257 ascii", "line", strings.Repeat("a", 257), bad},
+		{"256 astral", "bars", strings.Repeat("\U0001D465", 256), ""},
+		{"257 astral", "bars", strings.Repeat("\U0001D465", 257), bad},
+		{"empty", "stat", "", bad},
+		{"template", "barchart", "{{instance}} select", ""},
+		{"literal braces", "heatmap", "{x} }}{{ {{}}", ""},
+		{"tab and newline", "geomap", "a\tb\nc", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseNewBoard(board(tc.kind, tc.format))
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("ParseNewBoard = %v, want ok", err)
+				}
+				return
+			}
+			got := fieldsOf(t, err)
+			if len(got) != 1 || got[0].Pointer+" "+got[0].MessageKey != tc.want {
+				t.Errorf("fields = %v, want [%s]", got, tc.want)
+			}
+		})
+	}
+}
