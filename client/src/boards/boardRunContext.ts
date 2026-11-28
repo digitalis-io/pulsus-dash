@@ -5,11 +5,19 @@
  * import each other.
  */
 import { createContext } from 'react';
+import type { VarValue } from '../api/types';
 import type { WidthStore } from './panelWidths';
 import type { VisibilityTracker } from './visibility';
 
 export interface BoardRun {
-  readonly vars: ReadonlyMap<string, string>;
+  /** Each variable's value as a panel sends it (plan #289 §4.4): ready variables only. */
+  readonly vars: ReadonlyMap<string, VarValue>;
+  /** Each variable's state (`resolveVariables`): what blocks a panel that references it. */
+  readonly states: ReadonlyMap<string, { readonly kind: string }>;
+  /** Each variable's chip text (the value, `first +N` or "All"): a Markdown text's values. */
+  readonly displayVars: ReadonlyMap<string, string>;
+  /** Each defined variable's label ('' falls back to the name). */
+  readonly labels: ReadonlyMap<string, string>;
   readonly widths: WidthStore;
   readonly visibility: VisibilityTracker;
   /** §4.6: false until the board's time is initialised. */
@@ -35,6 +43,9 @@ const NO_WIDTHS: WidthStore = Object.freeze({
 
 export const BoardRunContext = createContext<BoardRun>({
   vars: new Map(),
+  states: new Map(),
+  displayVars: new Map(),
+  labels: new Map(),
   widths: NO_WIDTHS,
   visibility: ALWAYS_VISIBLE_TRACKER,
   timeReady: true,

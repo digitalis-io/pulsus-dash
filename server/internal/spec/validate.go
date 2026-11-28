@@ -192,6 +192,7 @@ func (b Board) Validate() error {
 		v.str("/time/to", b.Time.To, valid)
 	}
 	v.tags(b.Tags)
+	v.variables(b.Variables)
 	total := len(b.Panels)
 	for _, s := range b.Sections {
 		total += len(s.Panels)

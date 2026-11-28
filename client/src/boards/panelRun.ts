@@ -106,6 +106,8 @@ export const LEGEND_ROWS = 50;
 export type PanelState =
   | 'empty'
   | 'variable'
+  /** A referenced variable's selection is over 200 values or 65 536 bytes (plan #289 §4.2). */
+  | 'variableTooMany'
   | 'notMetric'
   | 'logs'
   /** A kind this version does not draw yet (`PENDING_KINDS`, plan #173 Part 1): no query. */
@@ -414,6 +416,8 @@ export function panelView(run: PanelRun, panelVis: DataPanelSpec['vis'], title: 
         'variable',
         t('panel.variable', { names: run.missing.map((n) => `$${n}`).join(', ') }),
       );
+    case 'variableTooMany':
+      return message('variableTooMany', t('panel.variableTooMany', { label: run.tooMany ?? '' }));
     case 'langFailed':
       return message('langFailed', t('panel.langFailed'));
     case 'refused':

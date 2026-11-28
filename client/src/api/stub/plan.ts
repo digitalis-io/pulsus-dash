@@ -10,7 +10,21 @@
 import type { PlannedQuery, PromMetadata } from '../../data/decode';
 import type { QueryShape, ValueType } from '../../editor/lang/types';
 import { kindOfType, metricKind, type MetricKind } from '../../explore/metricKind';
-import type { FieldError } from '../types';
+import type { FieldError, VarValue } from '../types';
+
+import type { RegexString } from './vars';
+import {
+  anyStructured,
+  checkValue,
+  mirror,
+  NO_TRACKER,
+  rangeMessage,
+  unrepresentable,
+  unrepresentableMessage,
+  WHERE,
+  type Ctx,
+  type Refusal,
+} from './varsCore';
 
 export const MAX_RAW_BYTES = 131_072,
   MAX_SENT_BYTES = 65_536,
@@ -28,7 +42,7 @@ export const WARN_TYPES_UNAVAILABLE =
 
 export interface PlanInputs {
   readonly query: string;
-  readonly vars: Readonly<Record<string, string>>;
+  readonly vars: Readonly<Record<string, VarValue>>;
   readonly kind: 'range' | 'instant';
   readonly stepMs: number;
   readonly rate: boolean;
@@ -261,8 +275,8 @@ interface Substitution {
   readonly size: number;
   /** Row 7: distinct, first-reference order. */
   readonly missing: readonly string[];
-  /** Row 7b: distinct, first-reference order. */
-  readonly unrepresentable: readonly string[];
+  /** Row 7b and T07-031 (plan #289 §3.4), in the order found. */
+  readonly refusals: readonly Refusal[];
   readonly macro: boolean;
   /** A range macro is referenced (#291). */
   readonly rangeMacro: boolean;
@@ -512,18 +526,34 @@ export function endCommentsAtCR(text: string): string {
   return out + text.slice(from);
 }
 
-/** One scan of the raw bytes (plan #112 §4.2); `build` false only counts the output. */
+/**
+ * One scan of the raw bytes (plan #112 §4.2) with the contexts of plan #289 §3.4; `build` false
+ * only counts the output; `keepMacros` leaves every macro as written (the value route).
+ */
 function substitute(
   raw: Uint8Array,
-  vars: ReadonlyMap<string, Uint8Array>,
+  vars: ReadonlyMap<string, VarValue>,
   m: Macros,
   build: boolean,
+  keepMacros = false,
 ): Substitution {
   const parts: Uint8Array[] = [];
   const segs: Segment[] = [];
   const missing: string[] = [];
-  const unrepresentable: string[] = [];
+  const refusals: Refusal[] = [];
   const memo = new ValueMemo();
+  // Each reference's rendering per context kind, encoded once: the memo keys on its identity.
+  const renders = new Map<string, Uint8Array | null>();
+  const render = (name: string, v: VarValue, c: Ctx): Uint8Array | null => {
+    const key = `${typeof v === 'string' ? 'none' : c.kind}:${name}`;
+    let r = renders.get(key);
+    if (r === undefined) {
+      const text = typeof v === 'string' ? v : (mod?.renderValue(v, c) ?? null);
+      r = text === null ? null : encoder.encode(text);
+      renders.set(key, r);
+    }
+    return r;
+  };
   let size = 0;
   let macro = false;
   let rangeMacro = false;
@@ -554,38 +584,71 @@ function substitute(
     }
     size += to - copyFrom;
   };
+  // The contexts matter only for a structured value: without one, no mirror is loaded.
+  const mod = anyStructured(vars) ? mirror() : null;
+  const t = mod === null ? NO_TRACKER : new mod.Tracker(false);
+  let sctx: Ctx = { kind: 'none', where: WHERE.topLevel };
+  const strings = { rx: null as RegexString | null };
+  const open = (st: LexState, at: number): void => {
+    sctx = t.string();
+    strings.rx =
+      mod !== null && sctx.kind === 're'
+        ? new mod.RegexString(st === 'dq' ? '"' : st === 'sq' ? "'" : '', at + 1)
+        : null;
+  };
+  const closeString = (at: number): void => {
+    if (strings.rx !== null) refusals.push(...strings.rx.close(raw, at, MAX_EXPANDED_BYTES));
+    strings.rx = null;
+    t.endString();
+  };
   let st: LexState = 'none';
   for (let i = 0; i < raw.length;) {
-    const c = raw[i];
+    const c = raw[i] ?? 0;
     if (c === DOLLAR) {
       const ref = reference(raw, i);
       if (ref === null) {
+        if (st === 'none') t.byte(c);
         i++;
         continue;
       }
+      const ctx: Ctx =
+        st === 'none' ? t.ref() : st === 'comment' ? { kind: 'none', where: WHERE.comment } : sctx;
+      const name = ref.name;
       let value: Uint8Array | null = null;
-      let isVar = false;
-      if (ref.name === '__interval') {
+      let v: VarValue | undefined;
+      if (MACROS.has(name) && keepMacros) {
+        // Left as written.
+      } else if (name === '__interval') {
         value = m.interval;
         macro = true;
-      } else if (ref.name === '__rate_interval') {
+      } else if (name === '__rate_interval') {
         value = m.rateInterval;
         macro = true;
-      } else if (ref.name === '__range' || ref.name === '__range_s' || ref.name === '__range_ms') {
-        value = ref.name === '__range' ? m.range : ref.name === '__range_s' ? m.rangeS : m.rangeMs;
+      } else if (name === '__range' || name === '__range_s' || name === '__range_ms') {
+        value = name === '__range' ? m.range : name === '__range_s' ? m.rangeS : m.rangeMs;
         rangeMacro = true;
-      } else if (!ref.name.startsWith('__') && ref.name.length <= MAX_NAME_LEN) {
-        value = vars.get(ref.name) ?? null;
-        isVar = value !== null;
-        if (value === null && !missing.includes(ref.name)) missing.push(ref.name);
+      } else if (!name.startsWith('__') && name.length <= MAX_NAME_LEN) {
+        v = vars.get(name);
+        if (v === undefined && !missing.includes(name)) missing.push(name);
+      }
+      let structured = false;
+      if (v !== undefined) {
+        value = render(name, v, ctx);
+        if (value === null) {
+          refusals.push({ name, at: i, where: ctx.where });
+          value = new Uint8Array(0);
+        } else {
+          structured = typeof v !== 'string';
+          // A macro's text is a duration: only a value is checked (row 7b).
+          if (!memo.representable(value, st)) refusals.push({ name, at: i, where: '' });
+        }
       }
       if (value === null) {
         i = ref.end;
         continue;
       }
-      // A macro's text is a duration: only a value is checked (row 7b).
-      if (isVar && !memo.representable(value, st) && !unrepresentable.includes(ref.name))
-        unrepresentable.push(ref.name);
+      const string = strings.rx;
+      if (string !== null) string.add(raw, i, ref.end, name, decoder.decode(value), structured);
       flush(i);
       // Counting only measures the value: nothing is built before the cap is checked.
       const n = memo.len(value, st);
@@ -609,9 +672,16 @@ function substitute(
       i += 2;
       continue;
     }
-    st = nextState(st, c ?? 0);
+    const next = nextState(st, c);
+    if (st === 'none') {
+      if (next === 'dq' || next === 'sq' || next === 'bq') open(next, i);
+      else if (next === 'comment') t.end();
+      else t.byte(c);
+    } else if ((st === 'dq' || st === 'sq' || st === 'bq') && next === 'none') closeString(i);
+    st = next;
     i++;
   }
+  if (strings.rx !== null) closeString(raw.length);
   flush(raw.length);
   let bytes = new Uint8Array(0);
   if (build) {
@@ -622,10 +692,30 @@ function substitute(
       o += p.length;
     }
   }
-  return { size, missing, unrepresentable, macro, rangeMacro, bytes, segs };
+  return { size, missing, refusals, macro, rangeMacro, bytes, segs };
 }
 
+const MACROS: ReadonlySet<string> = new Set([
+  '__interval',
+  '__rate_interval',
+  '__range',
+  '__range_s',
+  '__range_ms',
+]);
+
 const pointerToken = (s: string): string => s.replace(/~/g, '~0').replace(/\//g, '~1');
+
+/** Row 7b and T07-031 (plan #289 §3.4): one field per name. */
+export function unrepresentableError(names: readonly string[], where: string): StubPlanError {
+  return {
+    status: 400,
+    message: unrepresentableMessage(names, where),
+    fields: names.map((n) => ({
+      pointer: `/vars/${pointerToken(n)}`,
+      messageKey: 'variable.unrepresentable',
+    })),
+  };
+}
 
 /** Row 9: the substituted text over the processing cap; no plan. */
 const PROCESSING_CAP: StubPlanError = {
@@ -665,12 +755,9 @@ function checkInputs(i: PlanInputs, rawBytes: number): StubPlanError | null {
         'field.pattern',
         'a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$',
       );
-    if (utf8Length(i.vars[n] ?? '') > MAX_VALUE_BYTES)
-      return inputError(
-        `/vars/${pointerToken(n)}`,
-        'field.range',
-        'a variable value must be UTF-8 and at most 4096 bytes',
-      );
+    const v = i.vars[n] ?? '';
+    if (!checkValue(v))
+      return inputError(`/vars/${pointerToken(n)}`, 'field.range', rangeMessage(v));
   }
   return null;
 }
@@ -704,7 +791,7 @@ export function prepare(i: PlanInputs): Prepared | StubPlanError {
   const raw = encoder.encode(i.query);
   const bad = checkInputs(i, raw.length);
   if (bad !== null) return bad;
-  const vars = new Map(Object.entries(i.vars).map(([k, v]) => [k, encoder.encode(v)] as const));
+  const vars = new Map(Object.entries(i.vars));
   const count = substitute(raw, vars, PLACEHOLDERS, false);
   if (count.missing.length > 0) {
     return {
@@ -716,16 +803,8 @@ export function prepare(i: PlanInputs): Prepared | StubPlanError {
       })),
     };
   }
-  if (count.unrepresentable.length > 0) {
-    return {
-      status: 400,
-      message: `the value of variable $${count.unrepresentable.join(', $')} cannot be written where it is referenced`,
-      fields: count.unrepresentable.map((n) => ({
-        pointer: `/vars/${pointerToken(n)}`,
-        messageKey: 'variable.unrepresentable',
-      })),
-    };
-  }
+  const refused = unrepresentable(count.refusals);
+  if (refused.names.length > 0) return unrepresentableError(refused.names, refused.where);
   if (count.macro && i.stepMs === 0)
     return inputError(
       '/step_ms',

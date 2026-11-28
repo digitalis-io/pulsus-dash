@@ -12,6 +12,7 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/keyhash"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 	logplan "github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/logs"
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 )
 
 // The LogQL query routes (plan #65 Part B §4.1, plan #116 §4.4): POST /api/dash/v1/query/logql/range
@@ -22,12 +23,12 @@ import (
 // logCommon, logRangeRequest and logVolumeRequest have pointer fields so a missing field is
 // detected; logCommon's fields are promoted, so both bodies are flat JSON objects.
 type logCommon struct {
-	Query     *string           `json:"query"`
-	From      *int64            `json:"from"`
-	To        *int64            `json:"to"`
-	WidthPx   *int64            `json:"width_px"`
-	TimeoutMs *int64            `json:"timeout_ms"`
-	Vars      map[string]string `json:"vars"`
+	Query     *string  `json:"query"`
+	From      *int64   `json:"from"`
+	To        *int64   `json:"to"`
+	WidthPx   *int64   `json:"width_px"`
+	TimeoutMs *int64   `json:"timeout_ms"`
+	Vars      vars.Map `json:"vars"`
 }
 
 // rawQuery is readBody's UTF-8 pointer: bad bytes in the query are /query, else /vars.
@@ -48,7 +49,7 @@ const defaultLogLimit = 1000
 type logWindow struct {
 	tenant   string
 	query    string
-	vars     map[string]string
+	vars     vars.Map
 	from, to int64
 	grid     pulsusdb.Grid
 	timeout  time.Duration

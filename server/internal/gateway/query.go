@@ -17,6 +17,7 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/gateway/api"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 	promplan "github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/prom"
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 )
 
 // Bounds of the query routes (plan #62 §3.4, A.2; the query and its variables are checked by
@@ -68,21 +69,21 @@ func dataRequestCtxFrom(ctx context.Context, t core.TenantCtx) *core.RequestCtx 
 
 // rangeRequest and instantRequest have pointer fields so a missing field is detected.
 type rangeRequest struct {
-	Query     *string           `json:"query"`
-	From      *int64            `json:"from"`
-	To        *int64            `json:"to"`
-	WidthPx   *int64            `json:"width_px"`
-	TimeoutMs *int64            `json:"timeout_ms"`
-	Vars      map[string]string `json:"vars"`
-	Rate      *bool             `json:"rate"`
+	Query     *string  `json:"query"`
+	From      *int64   `json:"from"`
+	To        *int64   `json:"to"`
+	WidthPx   *int64   `json:"width_px"`
+	TimeoutMs *int64   `json:"timeout_ms"`
+	Vars      vars.Map `json:"vars"`
+	Rate      *bool    `json:"rate"`
 }
 
 type instantRequest struct {
-	Query     *string           `json:"query"`
-	At        *int64            `json:"at"`
-	TimeoutMs *int64            `json:"timeout_ms"`
-	Vars      map[string]string `json:"vars"`
-	StepMs    *int64            `json:"step_ms"`
+	Query     *string  `json:"query"`
+	At        *int64   `json:"at"`
+	TimeoutMs *int64   `json:"timeout_ms"`
+	Vars      vars.Map `json:"vars"`
+	StepMs    *int64   `json:"step_ms"`
 }
 
 // queryHolder is a body with a query member, for readBody's UTF-8 pointer.
@@ -108,6 +109,13 @@ func readBody(w http.ResponseWriter, r *http.Request, dst any) *reqError {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
+		var ve *vars.TypeError
+		if errors.As(err, &ve) {
+			if ve.Name == "" {
+				return fieldError("/vars", "field.type", "wrong type")
+			}
+			return fieldError("/vars"+pointerOf(ve.Name), "field.type", "wrong type")
+		}
 		var te *json.UnmarshalTypeError
 		if errors.As(err, &te) && te.Field != "" {
 			// The decoder's dotted path ("vars.a") as a JSON pointer ("/vars/a").

@@ -6328,6 +6328,2346 @@
      }
     ]
    }
+  },
+  {
+   "name": "M01 multi in a regex matcher",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{instance=~\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a:1",
+       "b.2"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{instance=~\"(?-i:(?:a:1|b\\\\.2))\"})",
+    "expanded": "sum(up{instance=~\"(?-i:(?:a:1|b\\\\.2))\"})",
+    "bytes": 40,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "M02 multi in an equality matcher",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{instance=\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in equality match)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M03 one hostile value in an equality matcher",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{instance=\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"}"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{instance=\"a\\\"}\"})",
+    "expanded": "sum(up{instance=\"a\\\"}\"})",
+    "bytes": 24,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "M04 All in a regex matcher",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{instance=~\"$n\"})",
+    "vars": {
+     "n": {
+      "all": ".+"
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{instance=~\".+\"})",
+    "expanded": "sum(up{instance=~\".+\"})",
+    "bytes": 23,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "M05 All in an equality matcher",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{instance=\"$n\"})",
+    "vars": {
+     "n": {
+      "all": ".+"
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in equality match)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M06 multi in a grouping",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum by ($g) (up)",
+    "vars": {
+     "g": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $g cannot be written where it is referenced (in top level)",
+    "fields": [
+     {
+      "pointer": "/vars/g",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M07 a duration at the top level",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(rate(x_total[5m] offset $d))",
+    "vars": {
+     "d": {
+      "values": [
+       "5m"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(rate(x_total[5m] offset 5m))",
+    "expanded": "sum(rate(x_total[5m] offset 5m))",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "M08 query text at the top level",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up) + $n",
+    "vars": {
+     "n": {
+      "values": [
+       "x) or vector(1"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in top level)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M14a an identifier at the top level (atan2)",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "up $op up",
+    "vars": {
+     "op": {
+      "values": [
+       "atan2"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $op cannot be written where it is referenced (in top level)",
+    "fields": [
+     {
+      "pointer": "/vars/op",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M14b an identifier at the top level (and)",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "up $op up",
+    "vars": {
+     "op": {
+      "values": [
+       "and"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $op cannot be written where it is referenced (in top level)",
+    "fields": [
+     {
+      "pointer": "/vars/op",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M14c an identifier at the top level (bool)",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "up $op up",
+    "vars": {
+     "op": {
+      "values": [
+       "bool"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $op cannot be written where it is referenced (in top level)",
+    "fields": [
+     {
+      "pointer": "/vars/op",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M14d an identifier at the top level (or)",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "up $op up",
+    "vars": {
+     "op": {
+      "values": [
+       "or"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $op cannot be written where it is referenced (in top level)",
+    "fields": [
+     {
+      "pointer": "/vars/op",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M14e an identifier at the top level (job)",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "up $op up",
+    "vars": {
+     "op": {
+      "values": [
+       "job"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $op cannot be written where it is referenced (in top level)",
+    "fields": [
+     {
+      "pointer": "/vars/op",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M15 a duration and a keyword at the top level",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(rate(x_total[5m] offset $d))",
+    "vars": {
+     "d": {
+      "values": [
+       "5m and"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $d cannot be written where it is referenced (in top level)",
+    "fields": [
+     {
+      "pointer": "/vars/d",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M09 a comment",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up) # $n",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in comment)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M10 a function argument",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "label_replace(up,\"d\",\"$n\",\"s\",\"(.*)\")",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in function argument)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M11 a backtick regex",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{instance=~`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\\b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{instance=~`(?-i:(?:a\\\\b))`})",
+    "expanded": "sum(up{instance=~`(?-i:(?:a\\\\b))`})",
+    "bytes": 35,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "M12 a dot is literal",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{instance=~\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "node.1"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{instance=~\"(?-i:(?:node\\\\.1))\"})",
+    "expanded": "sum(up{instance=~\"(?-i:(?:node\\\\.1))\"})",
+    "bytes": 39,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "M13 a legacy string is written as today",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{instance=~\"$n\"})",
+    "vars": {
+     "n": "a.b|c"
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{instance=~\"a.b|c\"})",
+    "expanded": "sum(up{instance=~\"a.b|c\"})",
+    "bytes": 26,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "M16 two refusals name the first place",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{a=\"$x\"}) + $y",
+    "vars": {
+     "x": {
+      "values": [
+       "a",
+       "b"
+      ]
+     },
+     "y": {
+      "values": [
+       "atan2"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $x, $y cannot be written where it is referenced (in equality match)",
+    "fields": [
+     {
+      "pointer": "/vars/x",
+      "message_key": "variable.unrepresentable"
+     },
+     {
+      "pointer": "/vars/y",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M17 single quotes",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{instance='$n'})",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{instance='a\\'b'})",
+    "expanded": "sum(up{instance='a\\'b'})",
+    "bytes": 24,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "M18 an equality string after a negation",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{instance!=\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{instance!=\"a\"})",
+    "expanded": "sum(up{instance!=\"a\"})",
+    "bytes": 22,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "M19 a negated regex",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{instance!~\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{instance!~\"(?-i:(?:a|b))\"})",
+    "expanded": "sum(up{instance!~\"(?-i:(?:a|b))\"})",
+    "bytes": 34,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "M20 a string at the top level",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up) + \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in top level)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "M21 a comment between the operator and the string",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{a=~ # x=\n\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{a=~ # x=\n\"(?-i:(?:a|b))\"})",
+    "expanded": "sum(up{a=~ # x=\n\"(?-i:(?:a|b))\"})",
+    "bytes": 33,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R01a a reference in a regex class",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"[$n]\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a-z"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex class)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R01b a reference in a quantifier brace",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"x{$n}\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "2"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex class)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R02 a quantifier after the group",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"$n+\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "ab"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?-i:(?:ab))+\"})",
+    "expanded": "sum(up{x=~\"(?-i:(?:ab))+\"})",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R03a text before the group",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"x$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"x(?-i:(?:a|b))\"})",
+    "expanded": "sum(up{x=~\"x(?-i:(?:a|b))\"})",
+    "bytes": 28,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R03b an alternation after the group",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"$n|y\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?-i:(?:a|b))|y\"})",
+    "expanded": "sum(up{x=~\"(?-i:(?:a|b))|y\"})",
+    "bytes": 29,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R04 anchors around the group",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"^$n$\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b.c"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"^(?-i:(?:a|b\\\\.c))$\"})",
+    "expanded": "sum(up{x=~\"^(?-i:(?:a|b\\\\.c))$\"})",
+    "bytes": 33,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R05 a reference after a regex escape",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"(\\\\$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex escape)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R06a a case-insensitive template, one value",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"(?i)$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "node"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?i)(?-i:(?:node))\"})",
+    "expanded": "sum(up{x=~\"(?i)(?-i:(?:node))\"})",
+    "bytes": 32,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R06b a case-insensitive template, two values",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"(?i)$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "node",
+       "db"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?i)(?-i:(?:node|db))\"})",
+    "expanded": "sum(up{x=~\"(?i)(?-i:(?:node|db))\"})",
+    "bytes": 35,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R07a a reference in quoted text",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"\\\\Q$n\\\\E\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex quoted text)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R07b a quoted-text end in a value",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"\\\\Q$n\\\\E\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\\Eb",
+       "c"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex quoted text)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R08 a reference after a POSIX class",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"[[:alpha:]$n]\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex class)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R09 a reference after a backreference",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"\\\\1$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "server_only": true,
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R10 an unbalanced group",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"($n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "server_only": true,
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R11 a legacy class before a value",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"$l$n\"})",
+    "vars": {
+     "l": "[",
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex class)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R12 a closed class before a value",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"[]a]$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"[]a](?-i:(?:b))\"})",
+    "expanded": "sum(up{x=~\"[]a](?-i:(?:b))\"})",
+    "bytes": 29,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a PromQL equality matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=\"a\\\"b\"})",
+    "expanded": "sum(up{x=\"a\\\"b\"})",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a PromQL equality matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=`a\"b`})",
+    "expanded": "sum(up{x=`a\"b`})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a PromQL equality matcher, single-quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x='$n'})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x='a\"b'})",
+    "expanded": "sum(up{x='a\"b'})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a PromQL regex matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?-i:(?:a\\\"b))\"})",
+    "expanded": "sum(up{x=~\"(?-i:(?:a\\\"b))\"})",
+    "bytes": 28,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a PromQL regex matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~`(?-i:(?:a\"b))`})",
+    "expanded": "sum(up{x=~`(?-i:(?:a\"b))`})",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a PromQL equality matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=\"a'b\"})",
+    "expanded": "sum(up{x=\"a'b\"})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a PromQL equality matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=`a'b`})",
+    "expanded": "sum(up{x=`a'b`})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a PromQL equality matcher, single-quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x='$n'})",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x='a\\'b'})",
+    "expanded": "sum(up{x='a\\'b'})",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a PromQL regex matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?-i:(?:a'b))\"})",
+    "expanded": "sum(up{x=~\"(?-i:(?:a'b))\"})",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a PromQL regex matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~`(?-i:(?:a'b))`})",
+    "expanded": "sum(up{x=~`(?-i:(?:a'b))`})",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H03 '`' in a PromQL equality matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=\"a`b\"})",
+    "expanded": "sum(up{x=\"a`b\"})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H03 '`' in a PromQL equality matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "H03 '`' in a PromQL equality matcher, single-quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x='$n'})",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x='a`b'})",
+    "expanded": "sum(up{x='a`b'})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H03 '`' in a PromQL regex matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?-i:(?:a`b))\"})",
+    "expanded": "sum(up{x=~\"(?-i:(?:a`b))\"})",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H03 '`' in a PromQL regex matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "H04 '}' in a PromQL equality matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=\"a}b\"})",
+    "expanded": "sum(up{x=\"a}b\"})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a PromQL equality matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=`a}b`})",
+    "expanded": "sum(up{x=`a}b`})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a PromQL equality matcher, single-quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x='$n'})",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x='a}b'})",
+    "expanded": "sum(up{x='a}b'})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a PromQL regex matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?-i:(?:a\\\\}b))\"})",
+    "expanded": "sum(up{x=~\"(?-i:(?:a\\\\}b))\"})",
+    "bytes": 29,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a PromQL regex matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~`(?-i:(?:a\\}b))`})",
+    "expanded": "sum(up{x=~`(?-i:(?:a\\}b))`})",
+    "bytes": 28,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a PromQL equality matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=\"a,b\"})",
+    "expanded": "sum(up{x=\"a,b\"})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a PromQL equality matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=`a,b`})",
+    "expanded": "sum(up{x=`a,b`})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a PromQL equality matcher, single-quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x='$n'})",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x='a,b'})",
+    "expanded": "sum(up{x='a,b'})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a PromQL regex matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?-i:(?:a,b))\"})",
+    "expanded": "sum(up{x=~\"(?-i:(?:a,b))\"})",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a PromQL regex matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~`(?-i:(?:a,b))`})",
+    "expanded": "sum(up{x=~`(?-i:(?:a,b))`})",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a PromQL equality matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=\"a|b\"})",
+    "expanded": "sum(up{x=\"a|b\"})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a PromQL equality matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=`a|b`})",
+    "expanded": "sum(up{x=`a|b`})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a PromQL equality matcher, single-quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x='$n'})",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x='a|b'})",
+    "expanded": "sum(up{x='a|b'})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a PromQL regex matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?-i:(?:a\\\\|b))\"})",
+    "expanded": "sum(up{x=~\"(?-i:(?:a\\\\|b))\"})",
+    "bytes": 29,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a PromQL regex matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~`(?-i:(?:a\\|b))`})",
+    "expanded": "sum(up{x=~`(?-i:(?:a\\|b))`})",
+    "bytes": 28,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a PromQL equality matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=\"a\\nb\"})",
+    "expanded": "sum(up{x=\"a\\nb\"})",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a PromQL equality matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=`a\nb`})",
+    "expanded": "sum(up{x=`a\nb`})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a PromQL equality matcher, single-quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x='$n'})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x='a\\nb'})",
+    "expanded": "sum(up{x='a\\nb'})",
+    "bytes": 17,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a PromQL regex matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?-i:(?:a\\nb))\"})",
+    "expanded": "sum(up{x=~\"(?-i:(?:a\\nb))\"})",
+    "bytes": 28,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a PromQL regex matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~`(?-i:(?:a\nb))`})",
+    "expanded": "sum(up{x=~`(?-i:(?:a\nb))`})",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a PromQL equality matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=\"a#b\"})",
+    "expanded": "sum(up{x=\"a#b\"})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a PromQL equality matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=`a#b`})",
+    "expanded": "sum(up{x=`a#b`})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a PromQL equality matcher, single-quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x='$n'})",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x='a#b'})",
+    "expanded": "sum(up{x='a#b'})",
+    "bytes": 16,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a PromQL regex matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~\"$n\"})",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~\"(?-i:(?:a#b))\"})",
+    "expanded": "sum(up{x=~\"(?-i:(?:a#b))\"})",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a PromQL regex matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "sum(up{x=~`$n`})",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000,
+    "rate": true
+   },
+   "types": {},
+   "needs_types": false,
+   "planned": {
+    "query": "sum(up{x=~`(?-i:(?:a#b))`})",
+    "expanded": "sum(up{x=~`(?-i:(?:a#b))`})",
+    "bytes": 27,
+    "value_type": "vector",
+    "rate_candidate": false,
+    "rate_applied": false,
+    "histogram": false,
+    "step_ms": 5000
+   }
   }
  ],
  "kind_of": [

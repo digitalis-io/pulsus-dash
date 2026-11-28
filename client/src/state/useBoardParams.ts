@@ -18,6 +18,7 @@ import {
   withoutSectionOverrides,
   withSectionOverride,
   withVar,
+  withVarValues,
   type BoardParams,
   type ParamError,
 } from './boardParams';
@@ -28,6 +29,8 @@ export interface BoardParamsState {
   params: BoardParams;
   /** Push; `'url.tooLong'` → no navigation. */
   setVar: (name: string, value: string | null) => ParamError | null;
+  /** Push the encoded values of a defined variable; null removes them. */
+  setVarValues: (name: string, values: readonly string[] | null) => ParamError | null;
   /** Push; `'url.tooLong'` → no navigation. */
   setFilter: (key: string, value: string | null) => ParamError | null;
   /** Replace; re-checked against the current URL. */
@@ -36,11 +39,20 @@ export interface BoardParamsState {
   clearSectionOverrides: () => void;
 }
 
-export function useBoardParams(sectionIds: readonly string[]): BoardParamsState {
+export function useBoardParams(
+  sectionIds: readonly string[],
+  /** The board's defined variables (spec v9): read with the `$` escape (plan #289 §4.1). */
+  defined?: ReadonlySet<string>,
+): BoardParamsState {
   const { search, rest } = useTimeContext();
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const params = useMemo(() => readBoardParams(rest), [rest]);
+  // The names, not the set's identity, key the read: a caller may pass a new set each render.
+  const definedKey = [...(defined ?? [])].join('\u0000');
+  const params = useMemo(
+    () => readBoardParams(rest, new Set(definedKey === '' ? [] : definedKey.split('\u0000'))),
+    [rest, definedKey],
+  );
 
   const go = useCallback(
     (next: readonly SearchParamPair[], replace: boolean): void => {
@@ -84,5 +96,11 @@ export function useBoardParams(sectionIds: readonly string[]): BoardParamsState 
     go(withoutSectionOverrides(rest), true);
   }, [go, rest]);
 
-  return { params, setVar, setFilter, setSectionOverride, clearSectionOverrides };
+  const setVarValues = useCallback(
+    (name: string, values: readonly string[] | null) =>
+      budgeted(withVarValues(rest, name, values), values === null),
+    [budgeted, rest],
+  );
+
+  return { params, setVar, setVarValues, setFilter, setSectionOverride, clearSectionOverrides };
 }

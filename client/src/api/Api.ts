@@ -21,6 +21,8 @@ import type {
   RefPage,
   SaveResult,
   Session,
+  VariableValues,
+  VariableValuesRequest,
   VolumeRequest,
 } from './types';
 
@@ -103,6 +105,12 @@ export interface Api {
     req: LogMatchRequest,
     signal?: AbortSignal,
   ): Promise<PromValues>;
+  /** A board variable's values (`POST /variables/values`, plan #289 §3.5); errors as `queryRange`. */
+  variableValues(
+    tenant: string,
+    req: VariableValuesRequest,
+    signal?: AbortSignal,
+  ): Promise<VariableValues>;
   /** Metric metadata (`GET /prom/metadata`). */
   promMetadata(
     tenant: string,

@@ -1,0 +1,119 @@
+/* The variable chip (plan #289 §4.4): a 28 px field, a muted label, the value ellipsised; its corner
+   is on the radius scale (VL-019: no capsules). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: var(--size-control);
+  max-width: calc(var(--size-crumb-max) * 2);
+  padding: 0 var(--space-2);
+  border: var(--border-hairline) solid var(--border-field);
+  border-radius: var(--radius-md);
+  background: var(--field);
+  overflow: hidden;
+}
+
+.chipLabel {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.chipValue {
+  min-width: 0;
+  max-width: var(--size-crumb-max);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: var(--font-weight-medium);
+}
+
+.chipMuted {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-regular);
+}
+
+/* Loading: a shimmer over the capsule; still under reduced motion. */
+.loading {
+  background: linear-gradient(90deg, var(--field) 0%, var(--hairline) 50%, var(--field) 100%);
+  background-size: 200% 100%;
+  animation: shimmer calc(var(--motion-standard) * 5) linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading {
+    animation: none;
+  }
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: calc(var(--size-sidebar-expanded) + var(--space-16));
+  padding: var(--space-3);
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--size-control);
+  padding: 0 var(--space-2);
+  border: var(--border-hairline) solid var(--border-field);
+  border-radius: var(--radius);
+  background: var(--field);
+}
+
+.search[data-focus-within] {
+  outline: var(--size-focus-ring) solid var(--focus);
+  outline-offset: 0;
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--font-size-md);
+  outline: none;
+}
+
+.list {
+  max-height: calc(var(--size-control) * 10);
+}
+
+.empty,
+.note {
+  margin: 0;
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.live {
+  position: absolute;
+  width: var(--border-hairline);
+  height: var(--border-hairline);
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

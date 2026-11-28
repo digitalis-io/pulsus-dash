@@ -15,16 +15,17 @@ every version, the actor of every audit event, and the owner of the starred and 
 The tables are described in [the database page](database.md#schema-migration-2), and the board
 tags cache in [migration 4](database.md#schema-migration-4).
 
-## Board spec v8
+## Board spec v9
 
-A board is a JSON object, called the spec. The server stores it with `schema_version` 8. Version 2
+A board is a JSON object, called the spec. The server stores it with `schema_version` 9. Version 2
 (#64 Part B) adds the optional `vis.thresholds` and `vis.legend` to version 1; version 3 (#173
 Part 1) adds the optional `vis.options` and the kinds `barchart` and `pie`; version 4 (#215) adds
 the optional `tags`; version 5 (#198 Part 1) adds the widgets: `query` becomes optional, and the
 kinds `text` and `clock` come with their options ([widgets](#widgets-text-and-clock-v5)); version 6
 (#216 Part 1) adds the `boardList` widget and its options ([board list](#board-list-boardlist-v6));
 version 7 (#234 Part 1) adds the `geomap` data kind and its options ([geomap](#geomap-geomap-v7));
-version 8, the units version (#290), adds the optional `vis.unit` ([panel units](#panel-units-v8)).
+version 8, the units version (#290), adds the optional `vis.unit` ([panel units](#panel-units-v8));
+version 9, the variables version (#289), adds the optional `variables` ([board variables](#board-variables-v9)).
 Each version is otherwise the same as the one before (see
 [Versions and the upcaster](#versions-and-the-upcaster)).
 
@@ -267,6 +268,61 @@ The server stores the id and the suffix and nothing else: what a unit looks like
 A member other than `id` and `suffix`, a missing `id`, or a value that is not a string is a shape
 error (`board.json.unknownKey`, `board.json.required`, `board.json.type`) as anywhere else.
 
+#### Board variables (v9)
+
+`variables` is an array of at most 32 `BoardVariable` objects (#289, IA-006): saved definitions
+whose values the board's queries reference as `$name` or `${name}`. Their values live in the board
+URL (`var-<name>`, repeated for several values) and are resolved by the client
+([board variables](../client/boards.md#board-variables-289)); the server stores the definitions only.
+
+| Key | Type | Meaning |
+|---|---|---|
+| `name` | string, required | `^[A-Za-z_][A-Za-z0-9_]{0,63}$`, not starting with `__` (the macros), unique on the board |
+| `label` | string, required | at most 100 code points; `""` shows the name |
+| `kind` | `query`, `custom` or `constant`, required | where the values come from |
+| `query` | `Query` | `query` only: `{lang, text}`, `text` `label_values(label)` or `label_values(selector, label)`, at most 4 096 bytes; it may reference only the variables defined before this one |
+| `values` | array of 1 to 200 distinct strings of 1 to 200 code points | `custom`: the values; `constant`: exactly one |
+| `multi` | boolean | more than one value may be picked |
+| `includeAll` | boolean | All may be picked |
+| `allValue` | string, 1 to 4 096 bytes | All's regex; absent: `.*`. Only with `includeAll: true` |
+| `default` | array of 1 to 200 strings of 1 to 200 code points | the values used without a `var-` in the URL, written as the URL writes them: `["$__all"]` is All, and a literal that starts with `$` has one more `$` |
+| `sort` | `none`, `alphaAsc`, `alphaDesc`, `numAsc` or `numDesc` | the list order |
+| `refresh` | `load` or `timeChange` | `query` only: fetch the list once per board open, or again for every new time range |
+
+```json
+{ "name": "node", "label": "Node", "kind": "query",
+  "query": { "lang": "promql", "text": "label_values(ClickHouseAsyncMetrics_Uptime{job=\"clickhouse\"}, instance)" },
+  "multi": true, "includeAll": true, "allValue": ".+", "default": ["$__all"], "sort": "alphaAsc", "refresh": "timeChange" }
+{ "name": "env", "label": "Environment", "kind": "custom", "values": ["prod", "staging"],
+  "multi": false, "includeAll": false, "sort": "none" }
+{ "name": "dc", "label": "", "kind": "constant", "values": ["eu-west-1"] }
+```
+
+The fixture `api/fixtures/board-spec/v9-variables.json` holds these three. The rules (Go
+`spec/variables.go`, mirrored by the client's `boards/variablesSpec.ts`), after the tags and before
+the panels, pointer `/variables/<i>/<key>`:
+
+| Condition | Pointer | `message_key` |
+|---|---|---|
+| more than 32 variables | `/variables` | `board.variables.tooMany` |
+| a name that does not match, or starts with `__` | `…/name` | `board.variable.name.invalid` |
+| a name equal to an earlier one | `…/name` | `board.variable.name.duplicate` |
+| a label over 100 code points | `…/label` | `board.variable.label.tooLong` |
+| a kind not in the list (no other rule then runs) | `…/kind` | `board.variable.kind.invalid` |
+| `query`: `query`, `multi`, `includeAll`, `sort` or `refresh` missing; `values` present | `/variables/<i>`; `…/values` | `board.variable.<key>.required`; `board.variable.values.forbidden` |
+| `custom`: `values`, `multi`, `includeAll` or `sort` missing; `query` or `refresh` present | `/variables/<i>`; `…/<key>` | `board.variable.<key>.required`; `board.variable.<key>.forbidden` |
+| `constant`: `values` missing; any other optional key present | `/variables/<i>`; `…/<key>` | `board.variable.values.required`; `board.variable.<key>.forbidden` |
+| `allValue` without `includeAll: true`; or out of its bounds | `…/allValue` | `board.variable.allValue.forbidden`; `board.variable.allValue.invalid` |
+| `values` out of their bounds, with a duplicate, or (constant) not exactly one | `…/values` | `board.variable.values.invalid` |
+| `query.lang` not `promql` or `logql`, `query.text` over 4 096 bytes or not `label_values(…)` | `…/query` | `board.variable.query.invalid` |
+| `query.text` references its own name or a later variable (an earlier one, or a name the board does not define, whose value comes from the URL, is allowed) | `…/query` | `board.variable.query.order` |
+| `sort` or `refresh` not in its list | `…/sort`, `…/refresh` | `board.variable.<key>.invalid` |
+| `default` out of its bounds, with a duplicate (decoded), more than one entry without `multi`, `$__all` without `includeAll` or not on its own, or (custom) an entry (decoded) not in `values` | `…/default` | `board.variable.default.invalid` |
+| a `multi` default whose decoded values, as a JSON array, are over 65 536 bytes | `…/default` | `board.variable.default.tooLarge` |
+
+A member other than these, a missing `name`, `label` or `kind`, or a value of the wrong JSON type
+is a shape error (`board.json.unknownKey`, `board.json.required`, `board.json.type`).
+
 ### Validation
 
 The server decodes the spec strictly before anything is written (`internal/spec`). A refused spec
@@ -381,24 +437,26 @@ A save of a spec whose canonical form differs from the head writes version `n + 
 head (T11-006). A save of an identical spec is a no-op: no version, no audit event, the same ETag,
 and `changed: false` in the response. Versions are never updated or deleted.
 
-Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 8 is the current
-version; a version 1 to 7 spec is a subset of it and reads unchanged (the identity upcast: versions
-1 to 8 decode unchanged). Every write stores version 8. The spec itself needs no SQL migration
+Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 9 is the current
+version; a version 1 to 8 spec is a subset of it and reads unchanged (the identity upcast: versions
+1 to 9 decode unchanged). Every write stores version 9. The spec itself needs no SQL migration
 (`schema_version` is an existing column); migration 4 adds only the tags cache the list reads. A
 spec stored by a newer server (a rolling upgrade) answers 503 `board saved by a newer server
 version`, and is never overwritten by the older server.
 
-| Server | Reads a v1 to v7 row | Reads a v8 row | Writes |
+| Server | Reads a v1 to v8 row | Reads a v9 row | Writes |
 |---|---|---|---|
-| this release | unchanged | parsed | `schema_version` 8 |
-| the previous release (v7), during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 7 |
+| this release | unchanged | parsed | `schema_version` 9 |
+| the previous release (v8), during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 8 |
 
 During a rolling upgrade (T11-015), the previous release still lists a board this release saved at
-v8 (`GET /boards`), but its `GET` and `PUT` of that board answer 503 and write nothing. A spec with
-a `vis.unit` sent to the previous release (`POST`, or `PUT` over a board it can read) is 400, the
-first field `board.json.unknownKey` at `/panels/<i>/vis/unit` of the first panel with a unit: it
-knows no such key, so nothing is written. The web client shows that refusal as "This server does
-not support panel units yet" ([panel units](../client/boards.md#panel-units-290)). The v7 → v6
+v9 (`GET /boards`), but its `GET` and `PUT` of that board answer 503 and write nothing. A spec with
+`variables` sent to the previous release (`POST`, or `PUT` over a board it can read) is 400, the
+first field `board.json.unknownKey` at `/variables`: it knows no such key, so nothing is written.
+The web client shows that refusal as "This server does not support board variables yet". The v8 →
+v7 upgrade behaved the same way for a unit, with `board.json.unknownKey` at `/panels/<i>/vis/unit`
+("This server does not support panel units yet",
+[panel units](../client/boards.md#panel-units-290)). The v7 → v6
 upgrade behaved the same way for a geomap, with `board.vis.kind.invalid` at its `…/vis/kind`
 ("This server does not support map panels yet", [map panels](../client/boards.md#map-panels-234-part-1));
 v6 → v5 for a board list, and v5 → v4 with `board.json.required` at `/panels/<i>/query` of the
@@ -628,7 +686,8 @@ guarantee) and ENT-022 (subsets) in
 (`recent_views.viewed_at`) in
 [T11](../../designs/technical/T11-postgres-schema.md); gates `unit:board-spec`, `itest:board-crud`,
 `itest:board-prefs`, `itest:board-find`, `itest:board-tags`, `itest:board-list-snapshot` and
-`itest:board-tags-old-binary`, and for board spec v5 `unit:board-spec-widgets`,
+`itest:board-tags-old-binary`, for board spec v9 (board variables, IA-006, SRF-017; plan #289)
+`unit:board-spec` and `itest:board-spec-old-binary` (v8 against v9), and for board spec v5 `unit:board-spec-widgets`,
 `itest:board-zones-grandfathered` and `itest:board-spec-old-binary`, and for board spec v6
 `unit:board-spec-board-list`, in
 [T05](../../designs/technical/T05-testing-and-performance.md) §7.1;

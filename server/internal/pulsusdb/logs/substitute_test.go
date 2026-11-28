@@ -25,7 +25,7 @@ func FuzzEncodeDQ(f *testing.F) {
 	if fx, err := readFixture(); err == nil {
 		for _, c := range fx.Plan {
 			for _, v := range c.Inputs.Vars {
-				f.Add(v)
+				f.Add(v.Text)
 			}
 		}
 	}

@@ -1,9 +1,9 @@
 // Package logs plans LogQL queries on the server (ADR-0021, plan #116). It substitutes variables
 // and the step macros by the LogQL lexical rules, classifies the stream selectors that name the
 // reserved source (T07 §4.1 step 1a), applies the fixed volume template and the 65 536-byte limit
-// on the final planned text. Every function here is pure and imports only the standard library:
-// LogQL planning needs no metric types and no parser (ADR-0021 §5). Nothing here logs or returns
-// the query text or a variable value in an error.
+// on the final planned text. Every function here is pure and imports only the standard library and
+// the shared variable values (vars): LogQL planning needs no metric types and no parser (ADR-0021
+// §5). Nothing here logs or returns the query text or a variable value in an error.
 package logs
 
 import (
@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 )
 
 // Limits of a plan (plan #116 §3.1, the PromQL limits of plan #112 §3.1).
@@ -40,7 +42,7 @@ const (
 // Inputs are what a route hands the planner: the raw text and the request members.
 type Inputs struct {
 	Query  string
-	Vars   map[string]string
+	Vars   map[string]vars.Value
 	Kind   Kind
 	StepMs int64 // the grid step
 	// RangeMs is the request window, to − from, for $__range, $__range_s and $__range_ms; 0 = none.
@@ -182,11 +184,19 @@ func checkInputs(in Inputs) *PlanError {
 	if len(in.Query) == 0 || len(in.Query) > MaxRawBytes {
 		return inputError("/query", "field.range", "query must be 1 to 131072 bytes")
 	}
-	if len(in.Vars) > MaxVars {
+	return checkVars(in.Vars)
+}
+
+// CheckVars is rows 3–5 of §3.1 alone: the count, the names and the values of vs (the value
+// route's label_values(label), which plans no selector, #289).
+func CheckVars(vs map[string]vars.Value) *PlanError { return checkVars(vs) }
+
+func checkVars(vs map[string]vars.Value) *PlanError {
+	if len(vs) > MaxVars {
 		return inputError("/vars", "field.range", "vars must have at most 64 entries")
 	}
-	names := make([]string, 0, len(in.Vars))
-	for n := range in.Vars {
+	names := make([]string, 0, len(vs))
+	for n := range vs {
 		names = append(names, n)
 	}
 	sort.Strings(names)
@@ -194,8 +204,8 @@ func checkInputs(in Inputs) *PlanError {
 		if !validName(n) {
 			return inputError("/vars/"+pointerToken(n), "field.pattern", "a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 		}
-		if v := in.Vars[n]; !utf8.ValidString(v) || len(v) > MaxValueBytes {
-			return inputError("/vars/"+pointerToken(n), "field.range", "a variable value must be UTF-8 and at most 4096 bytes")
+		if v := vs[n]; !validValue(v) {
+			return inputError("/vars/"+pointerToken(n), "field.range", vars.RangeMessage(v))
 		}
 	}
 	return nil
@@ -207,6 +217,22 @@ func processingCap() *PlanError {
 	return &PlanError{Kind: ErrProcessingCap,
 		Message: "the substituted query is over 2097152 bytes, the most the server processes",
 		Fields:  []FieldError{{Pointer: "/query", MessageKey: "query.too_large_to_plan"}}}
+}
+
+// validValue is row 5 for one value (vars.Check).
+func validValue(v vars.Value) bool {
+	_, ok := vars.Check(v)
+	return ok
+}
+
+// unrepresentableError is row 7b and T07-031 (plan #289 §3.4): the refused names, the message
+// naming the place of the first refused reference.
+func unrepresentableError(names []string, where string) *PlanError {
+	suffix := " cannot be written where it is referenced"
+	if where != "" {
+		suffix += " (in " + where + ")"
+	}
+	return namesError(ErrInput, names, "variable.unrepresentable", "the value of variable ", suffix)
 }
 
 // namesError is row 7 or 7b: one field per name, in first-reference order.
@@ -237,13 +263,12 @@ func prepareSubstitute(in Inputs) (text string, segs []segment, err *PlanError) 
 	if e := checkInputs(in); e != nil {
 		return "", nil, e
 	}
-	count := substitute(in.Query, in.Vars, placeholders(), false)
+	count := substitute(in.Query, in.Vars, placeholders(), false, scanOptions{guard: &vars.Guard{}})
 	if len(count.missing) > 0 {
 		return "", nil, namesError(ErrVariableMissing, count.missing, "variable.missing", "no value for variable ", "")
 	}
-	if len(count.unrepresentable) > 0 {
-		return "", nil, namesError(ErrInput, count.unrepresentable, "variable.unrepresentable",
-			"the value of variable ", " cannot be written where it is referenced")
+	if names, where := count.unrepresentable(); len(names) > 0 {
+		return "", nil, unrepresentableError(names, where)
 	}
 	if count.rangeMacro && in.RangeMs <= 0 {
 		return "", nil, noWindow()
@@ -251,7 +276,7 @@ func prepareSubstitute(in Inputs) (text string, segs []segment, err *PlanError) 
 	if count.size > MaxExpandedBytes {
 		return "", nil, processingCap()
 	}
-	built := substitute(in.Query, in.Vars, placeholders(), true)
+	built := substitute(in.Query, in.Vars, placeholders(), true, scanOptions{})
 	return built.text, built.segs, nil
 }
 
@@ -281,7 +306,7 @@ func (p *Prepared) Class() Class { return p.class }
 // Prepare counted, so the substituted length is counted again, without building the text. Plan
 // repeats it.
 func (p *Prepared) CheckCap(stepMs int64) *PlanError {
-	if substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), false).size > MaxExpandedBytes {
+	if substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), false, scanOptions{}).size > MaxExpandedBytes {
 		return processingCap()
 	}
 	return nil
@@ -298,7 +323,7 @@ func (p *Prepared) Plan(stepMs int64) (Planned, *PlanError) {
 	if pe := p.CheckCap(stepMs); pe != nil {
 		return Planned{}, pe
 	}
-	sub := substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), true)
+	sub := substitute(p.in.Query, p.in.Vars, macrosAt(stepMs, p.in.RangeMs), true, scanOptions{})
 	expanded := sub.text
 	out := Planned{Query: expanded, Expanded: expanded, StepMs: stepMs, sub: sub.segs,
 		rw: []segment{{sentFrom: 0, sentLen: len(expanded), rawFrom: 0, rawLen: len(expanded), kind: segCopy}}}

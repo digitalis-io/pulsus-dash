@@ -7,7 +7,7 @@
  * is bumped and the listeners are called.
  */
 import type { Api } from '../api/Api';
-import { ApiError, type LogsRequest } from '../api/types';
+import { ApiError, type LogsRequest, type VarValue } from '../api/types';
 import type { Completeness, LogqlPlannedQuery, LogsResult } from '../data/decode';
 import { LogBuffer, type AcceptOutcome, type BufferCaps, type OrdRange } from './logBuffer';
 
@@ -18,7 +18,7 @@ export interface LogPagerInput {
   readonly tenant: string;
   /** The raw text (ADR-0021 §2): never substituted or planned here. */
   readonly query: string;
-  readonly vars?: Readonly<Record<string, string>>;
+  readonly vars?: Readonly<Record<string, VarValue>>;
   readonly fromMs: number;
   readonly toMs: number;
   readonly widthPx: number;

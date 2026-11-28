@@ -5,10 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -119,8 +121,16 @@ func TestUpcasterAcceptsV1Unchanged(t *testing.T) {
 			if got, want := canon(t, b8), canon(t, raw); !bytes.Equal(got, want) {
 				t.Errorf("DecodeBoard(raw, 8) = %s, want %s", got, want)
 			}
-			if _, err := DecodeBoard(raw, 9); !errors.Is(err, ErrSchemaTooNew) {
-				t.Errorf("DecodeBoard(raw, 9) = %v, want ErrSchemaTooNew", err)
+			// Version 9 adds variables, the variables version (#289): the identity again.
+			b9, err := DecodeBoard(raw, 9)
+			if err != nil {
+				t.Fatalf("DecodeBoard(raw, 9): %v", err)
+			}
+			if got, want := canon(t, b9), canon(t, raw); !bytes.Equal(got, want) {
+				t.Errorf("DecodeBoard(raw, 9) = %s, want %s", got, want)
+			}
+			if _, err := DecodeBoard(raw, 10); !errors.Is(err, ErrSchemaTooNew) {
+				t.Errorf("DecodeBoard(raw, 10) = %v, want ErrSchemaTooNew", err)
 			}
 			if _, err := DecodeBoard(raw, 0); !errors.Is(err, ErrSchemaVersion) {
 				t.Errorf("DecodeBoard(raw, 0) = %v, want ErrSchemaVersion", err)
@@ -167,8 +177,8 @@ func TestDecodeBoardUpTo(t *testing.T) {
 	if got, want := canon(t, b), canon(t, raw); !bytes.Equal(got, want) {
 		t.Errorf("DecodeBoardUpTo(raw, 2, 2) = %s, want %s", got, want)
 	}
-	if BoardSchemaVersion != 8 {
-		t.Errorf("BoardSchemaVersion = %d, want 8", BoardSchemaVersion)
+	if BoardSchemaVersion != 9 {
+		t.Errorf("BoardSchemaVersion = %d, want 9", BoardSchemaVersion)
 	}
 }
 
@@ -556,9 +566,6 @@ const v8CanonicalSHA256 = "0dc7aaa6d4ab4a6d652ea4c75e083402ad220143b036f79b565f0
 // logs; it is valid and readable by this version only, round-trips canonically, and v7 upcasts
 // unchanged.
 func TestV8UnitsFixture(t *testing.T) {
-	if BoardSchemaVersion != 8 {
-		t.Errorf("BoardSchemaVersion = %d, want 8", BoardSchemaVersion)
-	}
 	raw := fixture(t, "v8-units.json")
 	b, err := ParseNewBoard(raw)
 	if err != nil {
@@ -619,5 +626,104 @@ func TestV8UnitsFixture(t *testing.T) {
 	}
 	if _, err := DecodeBoardUpTo(raw, 8, 7); !errors.Is(err, ErrSchemaTooNew) {
 		t.Errorf("DecodeBoardUpTo(v8, 8, 7) = %v, want ErrSchemaTooNew", err)
+	}
+}
+
+// v9CanonicalSHA256 is the SHA-256 of v9-variables.json's canonical form; boards/spec.test.ts
+// holds the same value, so the two canonical forms are byte-equal.
+const v9CanonicalSHA256 = "919f35ba2b06d948158101380f3ca19da64864b8d3dc99ee46b42ffa5ba01676"
+
+// largeDefault is 200 distinct entries of 4-byte runes whose JSON array is total bytes (the
+// rows of invalid.json build the same at 65 537).
+func largeDefault(total int) []string {
+	es := make([]string, 200)
+	n := 2 + 199
+	for i := range es {
+		es[i] = strings.Repeat("\U0001F600", 80) + fmt.Sprintf("%03d", i)
+		n += 2 + len(es[i])
+	}
+	for i := 0; n < total; i++ {
+		es[i%200] += "z"
+		n++
+	}
+	return es
+}
+
+// unit:board-spec (plan #289 §3.1, §3.2; IA-006, T11-016): board spec v9, the variables version.
+// The fixture holds a query, a custom and a constant variable; it is valid and readable by this
+// version only, round-trips canonically, and v8 upcasts unchanged.
+func TestV9VariablesFixture(t *testing.T) {
+	if BoardSchemaVersion != 9 {
+		t.Errorf("BoardSchemaVersion = %d, want 9", BoardSchemaVersion)
+	}
+	raw := fixture(t, "v9-variables.json")
+	b, err := ParseNewBoard(raw)
+	if err != nil {
+		t.Fatalf("ParseNewBoard: %v", err)
+	}
+	c := canon(t, b)
+	if want := canon(t, raw); !bytes.Equal(c, want) {
+		t.Errorf("Canonical(board) = %s\nwant Canonical(raw) = %s", c, want)
+	}
+	h := ContentHash(c)
+	if got := hex.EncodeToString(h[:]); got != v9CanonicalSHA256 {
+		t.Errorf("ContentHash = %s, want %s", got, v9CanonicalSHA256)
+	}
+	again, err := ParseBoard(c)
+	if err != nil {
+		t.Fatalf("ParseBoard(canonical): %v", err)
+	}
+	if !reflect.DeepEqual(again, b) {
+		t.Errorf("ParseBoard(Canonical(board)) = %+v, want %+v", again, b)
+	}
+	v8 := fixture(t, "v8-units.json")
+	up, err := DecodeBoardUpTo(v8, 8, 9)
+	if err != nil {
+		t.Fatalf("DecodeBoardUpTo(v8-units, 8, 9): %v", err)
+	}
+	parsed8, err := ParseBoard(v8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := canon(t, up), canon(t, parsed8); !bytes.Equal(got, want) {
+		t.Errorf("DecodeBoardUpTo(v8-units, 8, 9) = %s, want %s", got, want)
+	}
+	if _, err := DecodeBoardUpTo(raw, 9, 8); !errors.Is(err, ErrSchemaTooNew) {
+		t.Errorf("DecodeBoardUpTo(v9, 9, 8) = %v, want ErrSchemaTooNew", err)
+	}
+
+	// A multi default whose JSON array is exactly 65 536 bytes is valid (65 537 is a row of
+	// invalid.json).
+	big, _ := json.Marshal(map[string]any{"title": "B", "panels": []any{}, "sections": []any{}, "variables": []any{
+		map[string]any{"name": "n", "label": "N", "kind": "query", "query": map[string]any{"lang": "promql", "text": "label_values(up, instance)"},
+			"multi": true, "includeAll": true, "sort": "none", "refresh": "load", "default": largeDefault(65_536)}}})
+	if _, err := ParseNewBoard(big); err != nil {
+		t.Errorf("a 65 536-byte default: %v", err)
+	}
+}
+
+// unit:board-spec (#289 §3.2, review r1): a variable query may reference earlier definitions and
+// names the board does not define (legacy strings, from the URL); its own name or a later
+// definition is board.variable.query.order.
+func TestVariableQueryReferences(t *testing.T) {
+	spec := func(text string) []byte {
+		b, _ := json.Marshal(map[string]any{"title": "B", "panels": []any{}, "sections": []any{}, "variables": []any{
+			map[string]any{"name": "a", "label": "", "kind": "custom", "values": []string{"x"}, "multi": false, "includeAll": false, "sort": "none"},
+			map[string]any{"name": "n", "label": "", "kind": "query", "query": map[string]any{"lang": "promql", "text": text},
+				"multi": false, "includeAll": false, "sort": "none", "refresh": "load"},
+			map[string]any{"name": "z", "label": "", "kind": "custom", "values": []string{"x"}, "multi": false, "includeAll": false, "sort": "none"}}})
+		return b
+	}
+	for _, text := range []string{`label_values(up{a="$a"}, b)`, `label_values(up{job="$job"}, b)`, `label_values(up{a="$a",j="${job}"}, b)`, `label_values(x[$__interval], b)`} {
+		if _, err := ParseNewBoard(spec(text)); err != nil {
+			t.Errorf("%s: %v", text, err)
+		}
+	}
+	for _, text := range []string{`label_values(up{a="$n"}, b)`, `label_values(up{a="$z"}, b)`} {
+		_, err := ParseNewBoard(spec(text))
+		var ve *ValidationError
+		if !errors.As(err, &ve) || len(ve.Fields) != 1 || ve.Fields[0] != (FieldError{Pointer: "/variables/1/query", MessageKey: "board.variable.query.order"}) {
+			t.Errorf("%s: %v, want query.order", text, err)
+		}
 	}
 }
