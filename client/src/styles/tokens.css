@@ -20,8 +20,10 @@
   --control-hover: #2A2F37;
   --control-pressed: #31363F;
   --degraded: #E8923A;
+  --degraded-text: #E8923A;
   --failing: #E0457B;
   --failing-glow: #E0457B26;
+  --failing-text: #E0457B;
   --field: #111317;
   --focus: #4D9BFF;
   --hairline: #FFFFFF14;
@@ -40,6 +42,7 @@
   --material-bar: #15171CE6;
   --material-menu: #1E2127EB;
   --ok: #2FB59A;
+  --ok-text: #2FB59A;
   --pattern-ink: #0B0D10A6;
   --ramp-1: #253444;
   --ramp-2: #2C4967;
@@ -83,7 +86,9 @@
   --text-on-accent: #F5F8FF;
   --text-on-row-selected: #E9EBEF;
   --unknown: #6B7280;
+  --unknown-text: #6B7280;
   --watch: #D9C84A;
+  --watch-text: #D9C84A;
 }
 
 :root[data-theme="light"] {
@@ -105,8 +110,10 @@
   --control-hover: #F6F7F9;
   --control-pressed: #ECEEF1;
   --degraded: #A85A12;
+  --degraded-text: #A85A12;
   --failing: #B8285C;
   --failing-glow: #B8285C1A;
+  --failing-text: #B8285C;
   --field: #FCFCFD;
   --focus: #185FCC;
   --hairline: #1C223314;
@@ -125,6 +132,7 @@
   --material-bar: #FFFFFFD9;
   --material-menu: #FAFBFCE6;
   --ok: #17806A;
+  --ok-text: #17806A;
   --pattern-ink: #FFFFFFB3;
   --ramp-1: #E3F0FE;
   --ramp-2: #B9DAFD;
@@ -168,7 +176,9 @@
   --text-on-accent: #FFFFFF;
   --text-on-row-selected: #FFFFFF;
   --unknown: #7A818C;
+  --unknown-text: #7A818C;
   --watch: #8A7A0F;
+  --watch-text: #8A7A0F;
 }
 
 :root {

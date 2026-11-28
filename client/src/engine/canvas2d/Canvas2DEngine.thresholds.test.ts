@@ -145,10 +145,21 @@ describe('unit:threshold-mark (#64 Part B §4.2)', () => {
       h
         .layer()
         .calls('fillText')
-        .some((o) => o.args[0] === '◉ SLO' && o.fillStyle === colour.dark.degraded),
+        .some((o) => o.args[0] === '◉ SLO' && o.fillStyle === colour.dark['degraded-text']),
     ).toBe(true);
     expect(s.thresholdLabels).toHaveLength(1);
     expect(s.thresholdLabels[0]).toMatchObject({ text: '◉ SLO', clipped: false });
+  });
+
+  it('a threshold label is drawn in the state text colour; its line keeps the state colour (#284)', () => {
+    const h = show(line([{ value: 20, state: 'failing', label: 'SLO' }]));
+    expect(dashed(h)[0]?.strokeStyle).toBe(colour.dark.failing);
+    const label = h
+      .layer()
+      .calls('fillText')
+      .find((o) => o.args[0] === '■ SLO');
+    expect(label?.fillStyle).toBe(colour.dark['failing-text']);
+    expect(label?.fillStyle).not.toBe(colour.dark.failing);
   });
 
   it('auto domain includes thresholds', () => {
