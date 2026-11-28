@@ -208,6 +208,13 @@ page summary and Copy link all resolve `now` to the same instant.
 | `[` / `]`                 | step the window back or forward by its width                                                                                                                              |
 | `-` / `=`                 | zoom out (twice as wide, around the centre) / in (half as wide)                                                                                                           |
 
+**The live edge** (`state/clampToNow.ts`): a move that would push the window's end later and past
+now (`]`, `-`, and a chart's brush, wheel or drag commit, the `chartWindow` action) is shifted back
+to end at now, keeping its width, so a zoom out at the live edge widens into the past and `]` at
+the edge does nothing. A relative range that ended at `now` stays relative (`now-1h` zoomed out
+gives `now-2h` … `now`) when a whole unit names its width. Zooming in and stepping back are never
+clamped.
+
 The window keys use `KeyboardEvent.code` without modifiers and are ignored inside fields, dialogs,
 menus, list boxes and grids. The exclusions apply to every element on the event's
 `composedPath()`, falling back to `e.target` when the path is empty. So a key typed in an editor in

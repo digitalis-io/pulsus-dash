@@ -37,7 +37,7 @@ through the context (`src/test/fakeEngine.ts`).
 
 | Concern | Owner |
 |---|---|
-| Context window and URL | The application. `ChartFrame` turns a `brush` event into a `setRange` (box zoom; absolute times, pushed) or `zoom out` (double-click) action of `useTimeContext().dispatch`, and a `commit` with a `window` into the same `setRange` push. The engine only proposes windows |
+| Context window and URL | The application. `ChartFrame` turns a `brush` event into a `chartWindow` (box zoom; absolute times, pushed) or `zoom out` (double-click) action of `useTimeContext().dispatch`, and a `commit` with a `window` into the same `chartWindow` push. Both hold the window's end at now ([the live edge](README.md#time-context-ia-020-ia-022-ia-023-int-032-t03-014-t03-017-t08-005)). The engine only proposes windows |
 | Value-axis pin | The `ChartFrame` instance (`useState`), keyed by the spec's kind and unit. It is passed back to the engine as `valueRange` in the spec. It is not in the URL or the Context, and is lost on unmount, reload, or a kind or unit change |
 | Validation, notices, tooltip, summary label, crosshair slider, Reset Y axis button | `ChartFrame` (`src/charts/`) |
 | Scales, ticks, marks, picking, the camera (view, gesture, changed axes, band hold), layer cache | The engine frame; discarded on `dispose()` |
