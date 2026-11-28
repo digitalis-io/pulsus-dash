@@ -9,6 +9,7 @@ import type { RecordedOp } from '../../test/recordingContext';
 import { frameOf, geoSpec } from '../../test/geoKit';
 import { Canvas2DEngine, loadGeoModule } from './Canvas2DEngine';
 import { seriesColourIndex, themeColours } from './palette';
+import { barFillOf } from '../../test/barFills';
 
 const K1 = '00000000000000a1';
 const K2 = '00000000000000a2';
@@ -163,15 +164,16 @@ describe('unit:selection-draw', () => {
   it('bars: k2 segments dimmed, k1 with a 2 px inner focus stroke', () => {
     const h = frame(BARS, BARS_DATA);
     const ops = drawWith(h, sel([K1]));
-    const k2 = ops.filter((o) => o.op === 'fillRect' && o.fillStyle === colourOf(K2));
-    const k1 = ops.filter((o) => o.op === 'fillRect' && o.fillStyle === colourOf(K1));
+    const bar = (o: RecordedOp, c: string) => barFillOf(o, new Set([c])) !== null;
+    const k2 = ops.filter((o) => bar(o, colourOf(K2)));
+    const k1 = ops.flatMap((o) => barFillOf(o, new Set([colourOf(K1)])) ?? []);
     expect(k2.length).toBeGreaterThan(0);
     expect(k2.every((o) => o.globalAlpha === 0.35)).toBe(true);
     expect(k1.every((o) => o.globalAlpha === 1)).toBe(true);
     const rings = ops.filter((o) => o.op === 'strokeRect' && o.strokeStyle === C.focus);
     expect(rings).toHaveLength(k1.length);
     expect(rings.every((o) => o.lineWidth === 2)).toBe(true);
-    const [x, y, w, hh] = (k1[0]?.args ?? []) as number[];
+    const [x, y, w, hh] = k1[0]?.args ?? [];
     expect(rings[0]?.args).toEqual([(x ?? 0) + 1, (y ?? 0) + 1, (w ?? 0) - 2, (hh ?? 0) - 2]);
   });
 

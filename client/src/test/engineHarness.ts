@@ -59,6 +59,8 @@ export function harness(
     loadGeo?: () => Promise<GeoModule>;
     /** `now()` reads the fake timer clock (`advance`) instead of 0. */
     clockNow?: boolean;
+    /** The media queries that match (reduced motion, forced colours); default the engine's. */
+    media?: (query: string) => boolean;
   } = {},
 ): Harness {
   const queue = new Map<number, () => void>();
@@ -100,6 +102,7 @@ export function harness(
     // No unconsumed page wheel unless a test says so.
     wheelLatch: o.latch ?? { lastPageWheel: () => -Infinity },
     ...(o.loadGeo === undefined ? {} : { loadGeo: o.loadGeo }),
+    ...(o.media === undefined ? {} : { media: o.media }),
   });
   const canvas = document.createElement('canvas');
   const frame = engine.createFrame(canvas, {

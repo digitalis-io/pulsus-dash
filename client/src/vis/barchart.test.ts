@@ -3,7 +3,7 @@
  * `fitBarchart` per cell size with a 6 px-per-character measure.
  */
 import { describe, expect, it } from 'vitest';
-import { BOTTOM, categoryExtent, LABEL_HEIGHT } from '../engine/canvas2d/layout';
+import { BAR_LABEL_HEIGHT, BOTTOM, categoryExtent } from '../engine/canvas2d/layout';
 import { barLayout, minPlotPx } from '../engine/canvas2d/barLayout';
 import { BY_VERSION, COMPLETE, byVersion, fkey, instant } from '../test/categoryFixtures';
 import { valueText } from '../engine/canvas2d/barLayout';
@@ -15,7 +15,7 @@ import type { Thresholds } from './thresholds';
 type Result = Exclude<ExploreResult, { kind: 'string' }>;
 
 const m6 = (t: string): number => 6 * Array.from(t).length;
-const L = LABEL_HEIGHT;
+const L = BAR_LABEL_HEIGHT;
 
 function model(o: { options?: Parameters<typeof barchartModel>[1]['options'] } = {}) {
   return barchartModel(byVersion() as Exclude<ReturnType<typeof byVersion>, { kind: 'string' }>, {

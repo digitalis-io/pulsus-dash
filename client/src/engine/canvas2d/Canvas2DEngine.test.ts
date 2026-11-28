@@ -16,6 +16,7 @@ import { barStats } from './summary';
 import { brushSnapUnit } from './columns';
 import { Canvas2DEngine, ChartUnsupportedError, MAX_SERIES } from './Canvas2DEngine';
 import { seriesColourIndex } from './palette';
+import { barFills } from '../../test/barFills';
 
 const K = (i: number): string => `00000000000000${i.toString(16).padStart(2, '0')}`;
 const STATE = ['ok', 'watch', 'degraded', 'failing', 'unknown'] as const;
@@ -159,14 +160,9 @@ describe('engine', () => {
     );
     show(h, spec, seriesData(...series), { fromMs: 0, toMs: 3_000 });
     const palette = new Set<string>(seriesPalette.dark);
-    const bars = h
-      .layer()
-      .calls('fillRect')
-      .filter((o) => palette.has(o.fillStyle));
-    const x0 = Math.min(...bars.map((o) => Number(o.args[0])));
-    const first = bars
-      .filter((o) => o.args[0] === x0)
-      .sort((a, b) => Number(b.args[1]) - Number(a.args[1]));
+    const bars = barFills(h.layer(), palette);
+    const x0 = Math.min(...bars.map((o) => o.args[0]));
+    const first = bars.filter((o) => o.args[0] === x0).sort((a, b) => b.args[1] - a.args[1]);
     expect(first.map((o) => o.fillStyle)).toEqual(
       [5, 1, 0, 4, 3].map((i) => seriesPalette.dark[i]),
     );
@@ -751,11 +747,7 @@ describe('bucket overlapping the window edge (merged path)', () => {
     },
   };
   const marks = (h: Harness, colours: readonly string[]) =>
-    h
-      .layer()
-      .calls('fillRect')
-      .filter((o) => colours.includes(o.fillStyle))
-      .map((o) => ({ x: Number(o.args[0]), w: Number(o.args[2]) }));
+    barFills(h.layer(), new Set(colours)).map((o) => ({ x: o.args[0], w: o.args[2] }));
 
   it.each([
     ['bars', BARS, bars, seriesPalette.dark],

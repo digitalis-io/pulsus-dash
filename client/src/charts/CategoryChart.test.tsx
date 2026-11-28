@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BOTTOM, LABEL_HEIGHT } from '../engine/canvas2d/layout';
+import { BAR_LABEL_HEIGHT, BOTTOM } from '../engine/canvas2d/layout';
 import { byVersion, fkey, instant, many } from '../test/categoryFixtures';
 import { lastFrame, renderChart } from '../test/chartFrameKit';
 import { fakeEngine } from '../test/fakeEngine';
@@ -80,11 +80,11 @@ describe('unit:barchart-fit-stages (CategoryChart)', () => {
 
   it('vertical: the same stages by height', () => {
     const { size } = mount(model(byVersion(), { orientation: 'vertical' }));
-    size(600, 88 + LABEL_HEIGHT);
+    size(600, 88 + BAR_LABEL_HEIGHT);
     expect(note()).toBeNull();
-    size(600, 87 + LABEL_HEIGHT);
+    size(600, 87 + BAR_LABEL_HEIGHT);
     expect(note()).toBe('Names hidden — panel too narrow');
-    size(600, 55 + LABEL_HEIGHT);
+    size(600, 55 + BAR_LABEL_HEIGHT);
     expect(note()).toBe('Names and values hidden — panel too narrow');
     size(600, 55);
     expect(frames()).toBe(0);
@@ -98,8 +98,8 @@ describe('unit:barchart-labels (CategoryChart)', () => {
       { key: fkey(2), labels: { svc: 'svc-alpha-payments-service-eu-west' }, value: 1 },
     ]);
     const { size } = mount(model(r, { orientation: 'vertical' }));
-    // Vertical: band ⌊0.4 · 70⌋ = 28, room 20 < 24 (`MMMM`); the plot keeps 70 − 8 − 14 = 48.
-    size(600, 70);
+    // Vertical: band ⌊0.4 · 71⌋ = 28, room 20 < 24 (`MMMM`); the plot keeps 71 − 8 − 15 = 48.
+    size(600, 71);
     expect(note()).toBe('Names hidden — panel too narrow');
   });
 });
@@ -153,7 +153,7 @@ describe('bar list (review r1: the bars for assistive technology)', () => {
       { key: fkey(2), labels: { svc: 'svc-alpha-payments-service-eu-west' }, value: 1 },
     ]);
     const { size } = mount(model(r, { orientation: 'vertical' }));
-    size(600, 70);
+    size(600, 71);
     expect(note()).toBe('Names hidden — panel too narrow');
     expect(items()).toEqual([
       'svc-alpha-checkout-service-eu-west: 2',
