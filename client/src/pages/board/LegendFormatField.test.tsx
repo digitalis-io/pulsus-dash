@@ -62,7 +62,7 @@ describe('unit:legend-format-field', () => {
 
   it('without a result the hint says how to use a label', () => {
     mount();
-    expect(screen.getByText("{{label}} shows a label's value")).toBeInTheDocument();
+    expect(screen.getByText('Use {{label}}')).toBeInTheDocument();
   });
 
   it('shows the error', () => {

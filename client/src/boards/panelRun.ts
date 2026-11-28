@@ -86,6 +86,8 @@ export type PanelView =
       readonly thresholds: Thresholds | null;
       /** `panel.vis.legend?.mode ?? 'table'`. */
       readonly legend: 'table' | 'hidden';
+      /** `panel.vis.legendFormat ?? null`: the series' shown names (#204). */
+      readonly legendFormat: string | null;
       /** The log volume by level (a LogQL Bars panel on a log query, plan #67 §3.4). */
       readonly volume?: true;
     }
@@ -244,14 +246,22 @@ export function panelFrame(
   return { spec: withThresholds(plan.spec, v.thresholds), data: plan.data };
 }
 
-const rowsOf = new WeakMap<ExploreResult, readonly SeriesRow[]>();
+const rowsOf = new WeakMap<ExploreResult, Map<string | null, readonly SeriesRow[]>>();
 
-/** seriesRows(result), cached per result (WeakMap). */
-export function legendRows(r: ExploreResult): readonly SeriesRow[] {
-  let rows = rowsOf.get(r);
+/** seriesRows(result, legendFormat), cached per result (WeakMap) and template (#204). */
+export function legendRows(
+  r: ExploreResult,
+  legendFormat: string | null = null,
+): readonly SeriesRow[] {
+  let byFormat = rowsOf.get(r);
+  if (byFormat === undefined) {
+    byFormat = new Map();
+    rowsOf.set(r, byFormat);
+  }
+  let rows = byFormat.get(legendFormat);
   if (rows === undefined) {
-    rows = seriesRows(r);
-    rowsOf.set(r, rows);
+    rows = seriesRows(r, legendFormat);
+    byFormat.set(legendFormat, rows);
   }
   return rows;
 }
@@ -292,6 +302,7 @@ function frameView(
     units,
     thresholds,
     legend: panelVis.legend?.mode ?? 'table',
+    legendFormat: panelVis.legendFormat ?? null,
   };
 }
 
@@ -382,7 +393,8 @@ export function categoryView(
   }
   const thresholds = o.panelVis.thresholds ?? null;
   const unit = panelUnits(o.panelVis, 'barchart', o.rateApplied).value;
-  const k = JSON.stringify([o.title, unit, o.panelVis.options ?? null, thresholds]);
+  const legendFormat = o.panelVis.legendFormat ?? null;
+  const k = JSON.stringify([o.title, unit, o.panelVis.options ?? null, thresholds, legendFormat]);
   let model = byInput.get(k);
   if (model === undefined) {
     model = barchartModel(r, {
@@ -390,6 +402,7 @@ export function categoryView(
       unit,
       options: o.panelVis.options,
       thresholds,
+      legendFormat,
       base: b === undefined || b === 'failed' || b.kind === 'string' ? null : b,
     });
     byInput.set(k, model);

@@ -33,6 +33,8 @@ export interface GeoMapFrameProps {
   readonly fill?: boolean;
   readonly sizeMemo?: { current: FrameSize | null };
   readonly onInspect?: ChartFrameProps['onInspect'];
+  /** The panel's legend name template (#204): the marks' names; absent or null = none. */
+  readonly legendFormat?: string | null;
 }
 
 export type GeoPlan =
@@ -88,7 +90,15 @@ function rowsOf(p: GeoMapFrameProps, assets: GeoData): GeoRowSet | FrameDataIssu
   if (r === undefined || r.kind === 'string') return { code: 'kind' };
   const series: readonly SeriesFrame[] = r.kind === 'scalar' ? [scalarSeries(r.scalar)] : r.series;
   const source = r.kind === 'series' ? r.source : 'instant';
-  return geoRowSet(series, source, p.options, p.thresholds, assets.gazetteer, r.completeness);
+  return geoRowSet(
+    series,
+    source,
+    p.options,
+    p.thresholds,
+    assets.gazetteer,
+    r.completeness,
+    p.legendFormat ?? null,
+  );
 }
 
 const isIssue = (x: GeoRowSet | FrameDataIssue): x is FrameDataIssue => 'code' in x;

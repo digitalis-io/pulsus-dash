@@ -932,7 +932,7 @@ describe('unit:board-spec-legend-format (TS)', () => {
     expect(JSON.parse(c)).toEqual(x);
     // The Go suite (board_test.go v10CanonicalSHA256) holds the same hash: byte-equal forms.
     expect(createHash('sha256').update(c, 'utf8').digest('hex')).toBe(
-      '0000000000000000000000000000000000000000000000000000000000000000',
+      '6c460f4a528ebd8c55ad9b9753a07f9ecac943f729ff4642a04d3dc268c895d0',
     );
     expect(x.panels[0]?.vis).toHaveProperty('legendFormat');
   });

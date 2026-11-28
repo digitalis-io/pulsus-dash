@@ -30,7 +30,12 @@ import {
 import type { DataPanelSpec, DataVisKind, FieldError, QueryLang } from '../../api/types';
 import type { PanelPatch } from '../../boards/editorState';
 import { panelView } from '../../boards/panelRun';
-import { fieldMessage, kindFieldMessage, unitsUnsupported } from '../../boards/fieldMessages';
+import {
+  fieldMessage,
+  kindFieldMessage,
+  legendFormatUnsupported,
+  unitsUnsupported,
+} from '../../boards/fieldMessages';
 import { PENDING_KINDS, withKind } from '../../boards/options';
 import { usePanelWidth } from '../../boards/panelWidths';
 import { usePanelRun } from '../../boards/usePanelRun';
@@ -44,12 +49,14 @@ import { panelCard } from './panelCard';
 import { Select } from '../../kit/Select';
 import { TextField } from '../../kit/TextField';
 import { autoVis } from '../../vis/autovis';
+import { resultLabelNames } from '../../vis/legendFormat';
 import { BarchartOptionsField } from './BarchartOptionsField';
 import styles from './Board.module.css';
 import { PanelPreview } from './PanelFrame';
 import { PanelLogqlField } from './PanelLogqlField';
 import { PanelQueryField } from './PanelQueryField';
 import { ThresholdsField } from './ThresholdsField';
+import { LegendFormatField } from './LegendFormatField';
 import { UnitField } from './UnitField';
 
 const LANGS: readonly { id: QueryLang; label: MessageId }[] = [
@@ -147,6 +154,7 @@ const VisExtras = memo(function VisExtras({
   unit,
   rateApplied,
   drawnKind,
+  labels,
   fields,
   pointer,
   readOnly,
@@ -158,6 +166,8 @@ const VisExtras = memo(function VisExtras({
   rateApplied: boolean;
   /** The kind the preview draws after Auto (null before it has drawn): the Unit field's hint. */
   drawnKind: VisKind | null;
+  /** The label names of the preview's result: the Legend name field's hint (#204). */
+  labels: readonly string[];
   /** The field errors under the panel's `/vis`. */
   fields: readonly FieldError[];
   pointer: string;
@@ -167,8 +177,11 @@ const VisExtras = memo(function VisExtras({
   const errorAt = (suffix: string): string | null => {
     const f = fields.find((x) => x.pointer === `${pointer}${suffix}`);
     if (f === undefined) return null;
-    // An older server's refusal of the unit (#290 §4.4), as the board shows it.
-    return unitsUnsupported(f) ? t('board.save.unitsUnsupported') : fieldMessage(f.messageKey);
+    // An older server's refusal of the unit (#290 §4.4) or of a legend name (#204), as the board
+    // shows it.
+    if (unitsUnsupported(f)) return t('board.save.unitsUnsupported');
+    if (legendFormatUnsupported(f)) return t('board.save.legendFormatUnsupported');
+    return fieldMessage(f.messageKey);
   };
   return (
     <>
@@ -219,6 +232,18 @@ const VisExtras = memo(function VisExtras({
             }}
             error={errorAt('/vis/legend/mode')}
             isDisabled={readOnly}
+          />
+        </div>
+      )}
+      {/* Every kind that names series (#204): not a heatmap's buckets or a log panel. */}
+      {vis.kind !== 'logs' && vis.kind !== 'heatmap' && (
+        <div className={cx(styles['editorWide'])}>
+          <LegendFormatField
+            vis={vis}
+            labels={labels}
+            error={errorAt('/vis/legendFormat')}
+            readOnly={readOnly}
+            onVis={onVis}
           />
         </div>
       )}
@@ -311,6 +336,9 @@ export function PanelEditor({
     latestOnChange.current({ vis: next });
   }, []);
   const stableUnit = useStable(unit);
+  const labels = useStable(
+    useMemo(() => (outcome === null ? [] : resultLabelNames(outcome.result)), [outcome]),
+  );
   const visErrors = useStable(fields.filter((f) => f.pointer.startsWith(`${pointer}/vis/`)));
   // A LogQL answer (plan #67 §3.5): a stream answer draws log lines, a metric answer a line.
   const streamPhase = run.stream?.state?.phase ?? null;
@@ -412,6 +440,7 @@ export function PanelEditor({
               unit={stableUnit}
               rateApplied={outcome?.planned.rateApplied === true}
               drawnKind={drawnKind}
+              labels={labels}
               fields={visErrors}
               pointer={pointer}
               readOnly={readOnly}

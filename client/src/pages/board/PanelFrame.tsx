@@ -142,6 +142,8 @@ export interface PanelGeo {
   readonly thresholds: Thresholds | null;
   readonly run: PanelRun;
   readonly unit: Unit;
+  /** The panel's legend name template (#204): the marks' names; null = the full label set. */
+  readonly legendFormat: string | null;
   /** False in the editor preview (§4.1). */
   readonly inspectorSource?: boolean;
 }
@@ -155,6 +157,7 @@ export function panelGeo(panel: DataPanelSpec, run: PanelRun, inspectorSource = 
     run,
     // The panel's unit (T22-015): its stored unit, rated after the rewrite; else `/s` or none.
     unit: panelUnits(panel.vis, 'geomap', run.outcome?.planned.rateApplied === true).value,
+    legendFormat: panel.vis.legendFormat ?? null,
     inspectorSource,
   };
 }
@@ -267,7 +270,7 @@ const PanelChart = memo(function PanelChart({
   // The board's markers (plan #64 Part C §3.8): one reference for every panel.
   const { markers } = useContext(BoardEventsContext);
   const cellRef = useRef<HTMLDivElement>(null);
-  const rows = legendRows(view.result);
+  const rows = legendRows(view.result, view.legendFormat);
   const legend = view.legend === 'table' && rows.length > 0;
   // The chart cell is smaller than the body by the legend (a stat's fills it): its size
   // goes into the memo in the commit, before the chart's mount effect pre-sizes from it, so a
@@ -309,6 +312,7 @@ const PanelChart = memo(function PanelChart({
       pending={<p className={cx(styles['message'])}>{t('panel.loading')}</p>}
       sizeMemo={memo}
       events={markers}
+      legendFormat={view.legendFormat}
       {...(onInspect === undefined ? {} : { onInspect })}
       {...(inspect?.onEmptyClick === undefined ? {} : { onEmptyClick: inspect.onEmptyClick })}
     />

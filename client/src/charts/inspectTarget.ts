@@ -9,6 +9,7 @@ import { t } from '../i18n/t';
 import type { InspectorTarget, Selection } from '../inspector/types';
 import type { GeoFrame, GeoRow, GeoRowSet } from '../vis/geo/frame';
 import { geoPlace, geoTarget, seedOrdered, worstState } from '../vis/geo/targets';
+import type { SeriesNames } from '../vis/legendFormat';
 
 /** No rows: the target of a geo item on data that is not a geomap's (never drawn). */
 const EMPTY_SET: GeoRowSet = Object.freeze({
@@ -61,7 +62,7 @@ export function targetOf(
   spec: VisSpec,
   data: FrameData,
   item: HoverItem,
-  _names: ReadonlyMap<string, string> | null = null,
+  names: SeriesNames | null = null,
 ): InspectorTarget {
   if (item.kind === 'geo') {
     const geo = data.kind === 'geo' ? data.geo : null;
@@ -87,8 +88,10 @@ export function targetOf(
   }
   const s = seriesOf(data).find((x) => x.key === item.key);
   const labels = s?.labels ?? {};
+  // A legend name template (#204) names the point; else a bar by its category, a line by its labels.
   const name =
-    spec.kind === 'bars' ? (labels[spec.categoryLabel] ?? seriesName(labels)) : seriesName(labels);
+    names?.get(item.key) ??
+    (spec.kind === 'bars' ? (labels[spec.categoryLabel] ?? seriesName(labels)) : seriesName(labels));
   return {
     type: 'point',
     vis: spec.kind === 'bars' ? 'bars' : 'line',
@@ -104,7 +107,7 @@ export function targetOf(
 export function statTarget(
   spec: Extract<VisSpec, { kind: 'stat' }>,
   data: FrameData,
-  _names: ReadonlyMap<string, string> | null = null,
+  names: SeriesNames | null = null,
 ): Extract<InspectorTarget, { type: 'value' }> {
   if (data.kind === 'scalar') {
     return {
@@ -131,7 +134,7 @@ export function statTarget(
     type: 'value',
     key: s?.key ?? null,
     labels: s?.labels ?? {},
-    name: s === undefined ? spec.title : seriesName(s.labels),
+    name: s === undefined ? spec.title : (names?.get(s.key) ?? seriesName(s.labels)),
     value: statValue(data),
     tMs,
     state: null,

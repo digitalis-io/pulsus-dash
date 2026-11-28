@@ -3,10 +3,10 @@
  * with its colour, mean, last and max (mean by #64 Part B for the board legend); sorting and the
  * isolation toggle. Explore and the board legend render them (`charts/SeriesTable`).
  */
-import { seriesName } from '../data/frames';
 import { MAX_SERIES } from '../engine/canvas2d/Canvas2DEngine';
 import { seriesColourIndex } from '../engine/canvas2d/palette';
 import type { ExploreResult } from '../vis/autovis';
+import { displayName } from '../vis/legendFormat';
 import { SCALAR_KEY, scalarSeries } from '../vis/framePlan';
 
 export interface SeriesRow {
@@ -31,7 +31,11 @@ export interface SortState {
 /** The rows the table shows at most: the engine's series cap. */
 export const TABLE_ROWS = MAX_SERIES;
 
-export function seriesRows(r: ExploreResult, _format: string | null = null): SeriesRow[] {
+/**
+ * The rows of `r`, each series named by the panel's legend name template `format` (#204), or by
+ * its full label set without one; the key stays the series key.
+ */
+export function seriesRows(r: ExploreResult, format: string | null = null): SeriesRow[] {
   switch (r.kind) {
     case 'string':
       return [];
@@ -64,7 +68,7 @@ export function seriesRows(r: ExploreResult, _format: string | null = null): Ser
         const mean = n === 0 || Number.isNaN(sum / n) ? null : sum / n;
         return {
           key: s.key,
-          name: seriesName(s.labels),
+          name: displayName(s.labels, format),
           colourIndex: seriesColourIndex(s),
           last,
           max,

@@ -23,6 +23,7 @@ import { browserTimeZone, formatValue, type Unit } from '../i18n/format';
 import { t } from '../i18n/t';
 import type { ExploreResult } from './autovis';
 import { SCALAR_KEY } from './framePlan';
+import { renderLegendFormat } from './legendFormat';
 import { mergeKey } from './merge';
 import { SEVERITY, stateOf, type Thresholds } from './thresholds';
 
@@ -199,13 +200,14 @@ export function disambiguator(x: Labels, others: readonly Labels[]): readonly st
  * `label` when it is non-empty (quoted when it could read as a marker), else `seriesName(labels)`;
  * rows that share a base get ` · ` and the parts of their distinguishing keys (`k="v"` or
  * `k absent`); names still equal, counting `aggregates`, get ` (1)`, ` (2)`, … in key order.
+ * With a legend name template (`format`, #204) the base is the template rendered on the labels.
  * Aggregates are never suffixed.
  */
 export function markNames(
   rows: readonly { key: string; labels: Labels }[],
   label: string | null,
   aggregates: readonly string[] = [],
-  _format: string | null = null,
+  format: string | null = null,
 ): string[] {
   const groups = <T>(list: readonly T[]): Map<T, number[]> => {
     const m = new Map<T, number[]>();
@@ -217,6 +219,7 @@ export function markNames(
     return m;
   };
   const bases = rows.map((r) => {
+    if (format !== null) return renderLegendFormat(format, r.labels);
     const raw = label === null ? undefined : r.labels[label];
     return raw !== undefined && raw !== '' ? shownRaw(raw) : seriesName(r.labels);
   });
@@ -299,14 +302,21 @@ const SORTS: Readonly<Record<Exclude<Sort, 'none'>, (a: Mark, b: Mark) => number
 export function categoryRows(
   r: ExploreResult,
   base: ExploreResult | null,
-  o: { reducer: Reducer; categoryBy: string; sort: Sort; thresholds: Thresholds | null },
+  o: {
+    reducer: Reducer;
+    categoryBy: string;
+    sort: Sort;
+    thresholds: Thresholds | null;
+    /** The legend name template (#204): the base names; absent = none. */
+    legendFormat?: string | null;
+  },
 ): CategoryResult {
   const cur = reduced(r, o.reducer);
   const prev = base === null ? null : reduced(base, o.reducer);
   const baseByKey = new Map<string, number>();
   if (prev !== null) prev.series.forEach((s, i) => baseByKey.set(s.key, prev.values[i] ?? NaN));
   const label = effectiveLabel(cur.series, o.categoryBy);
-  const names = markNames(cur.series, label);
+  const names = markNames(cur.series, label, [], o.legendFormat ?? null);
   const rows: CategoryRow[] = cur.series.map((s, i) => {
     const value = cur.values[i] ?? NaN;
     return {
