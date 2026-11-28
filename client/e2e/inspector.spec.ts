@@ -110,6 +110,8 @@ test.describe('e2e:inspector (fake)', () => {
         // Keyboard: Enter on p1's crosshair inspects and focuses the heading.
         const slider = panel(page, 'p1').getByRole('slider');
         await slider.scrollIntoViewIfNeeded();
+        // The refined data (#304: a cold view may paint a coarse fill first).
+        await expect(panel(page, 'p1')).toHaveAttribute('data-rank', '1');
         await slider.focus();
         await page.keyboard.press('End');
         // The crosshair is shown (the idle text goes), at the last sample.
@@ -245,6 +247,9 @@ test.describe('e2e:inspector (fake)', () => {
         const slider = panel(page, 'p1').getByRole('slider');
         const frame = panel(page, 'p1').locator('[data-chart-frame]');
         await frame.locator('[data-frame-ready="true"]').or(frame).first().waitFor();
+        // The refined data (#304: a cold view paints a coarse fill first; the refine resets the
+        // crosshair, as any new data does).
+        await expect(panel(page, 'p1')).toHaveAttribute('data-rank', '1');
         await slider.focus();
         await page.keyboard.press('End');
         // 15 s samples: 13:44 back to 13:41:30.
