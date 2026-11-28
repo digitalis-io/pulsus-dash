@@ -106,6 +106,7 @@ export function galleryRun(series: readonly SeriesFrame[]): PanelRun {
     text: 'gallery',
     blocked: null,
     missing: [],
+    tooMany: null,
     refusal: null,
     ready: true,
     outcome: {

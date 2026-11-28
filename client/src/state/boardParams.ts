@@ -1,6 +1,7 @@
 /**
- * The board's URL parameters (plan #61 Part C §3.6, Appendix C-A §A.8; IA-022, ADR-0017): a value
- * per variable (`var-<name>`), the `+ Filter` filters (repeated `f=<label>=<value>`) and View-mode
+ * The board's URL parameters (plan #61 Part C §3.6, Appendix C-A §A.8; IA-022, ADR-0017; repeated
+ * values and the `$` escape by plan #289 §4.1): the values of each
+ * variable (`var-<name>`), the `+ Filter` filters (repeated `f=<label>=<value>`) and View-mode
  * overrides of a section's saved collapsed state (repeated `collapse=<id>` / `expand=<id>`). None is
  * saved in the spec. They live in the Context's `rest` pairs; readers ignore invalid pairs (they stay
  * in `rest` until the next write of that kind) and writers emit canonical, sorted pairs.
@@ -36,7 +37,11 @@ export interface SectionOverrides {
   readonly expand: ReadonlySet<string>;
 }
 export interface BoardParams {
-  readonly vars: ReadonlyMap<string, string>;
+  /**
+   * Each variable's valid address values, distinct, in address order: a defined variable's
+   * canonically encoded (§4.1), an undefined one's raw.
+   */
+  readonly vars: ReadonlyMap<string, readonly string[]>;
   readonly filters: readonly BoardFilter[];
   readonly sections: SectionOverrides;
 }
@@ -70,15 +75,30 @@ function splitFilter(v: string): BoardFilter | null {
   return i === -1 ? null : { key: v.slice(0, i), value: v.slice(i + 1) };
 }
 
-export function readBoardParams(rest: readonly SearchParamPair[]): BoardParams {
-  const vars = new Map<string, string>();
+const NO_NAMES: ReadonlySet<string> = new Set();
+
+/**
+ * The board's parameters. `defined` names the board's defined variables (spec v9, plan #289
+ * §4.1): their values are read with the `$` escape and kept canonically encoded; any other
+ * variable's values are read raw, as before.
+ */
+export function readBoardParams(
+  rest: readonly SearchParamPair[],
+  defined: ReadonlySet<string> = NO_NAMES,
+): BoardParams {
+  const vars = new Map<string, string[]>();
   const filters: BoardFilter[] = [];
   const collapse = new Set<string>();
   const expand = new Set<string>();
   for (const [k, v] of rest) {
     if (k.startsWith(VAR_PREFIX)) {
       const name = k.slice(VAR_PREFIX.length);
-      if (VARIABLE_NAME.test(name) && validValue(v) && !vars.has(name)) vars.set(name, v);
+      if (!VARIABLE_NAME.test(name)) continue;
+      const value = defined.has(name) ? canonical(v) : validValue(v) ? v : null;
+      if (value === null) continue;
+      const list = vars.get(name);
+      if (list === undefined) vars.set(name, [value]);
+      else if (!list.includes(value)) list.push(value);
     } else if (k === FILTER_PARAM) {
       const f = splitFilter(v);
       if (
@@ -102,6 +122,45 @@ export function readBoardParams(rest: readonly SearchParamPair[]): BoardParams {
     }
   }
   return { vars, filters, sections: { collapse, expand } };
+}
+
+/** The address value of All (plan #289 §4.1). */
+export const ALL_TOKEN = '$__all';
+
+/** A decoded address or default value of a defined variable: All or a literal. */
+export type DecodedValue = { readonly all: true } | { readonly value: string };
+
+/**
+ * A defined variable's value as the address writes it (§4.1): `$__all` is All; any other value
+ * starting with `$` has one leading `$` stripped.
+ */
+export function decodeValue(raw: string): DecodedValue {
+  if (raw === ALL_TOKEN) return { all: true };
+  return { value: raw.startsWith('$') ? raw.slice(1) : raw };
+}
+
+/** A literal as the address writes it: one more `$` when it starts with `$`. */
+export function encodeValue(literal: string): string {
+  return literal.startsWith('$') ? '$' + literal : literal;
+}
+
+/** The canonical address form of a defined variable's raw value, or null when it is not valid. */
+function canonical(raw: string): string | null {
+  const d = decodeValue(raw);
+  if ('all' in d) return ALL_TOKEN;
+  return validValue(d.value) ? encodeValue(d.value) : null;
+}
+
+/** `rest` with `values` (encoded) as the `var-<name>` pairs, in order; null removes them. */
+export function withVarValues(
+  rest: readonly SearchParamPair[],
+  name: string,
+  values: readonly string[] | null,
+): SearchParamPair[] {
+  const key = VAR_PREFIX + name;
+  const out: SearchParamPair[] = rest.filter(([k]) => k !== key);
+  for (const v of values ?? []) out.push([key, v]);
+  return sorted(out);
 }
 
 export function withVar(

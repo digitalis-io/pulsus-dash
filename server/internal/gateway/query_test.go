@@ -315,3 +315,46 @@ func TestSanitiseThroughGateway(t *testing.T) {
 		t.Errorf("the log lacks query_id_present=true and an 8-hex query_id_hash: %s", out)
 	}
 }
+
+// structuredVarsCases are the unit:vars-decode bodies' vars (plan #289 §5): each is refused at
+// /vars/n with its key before any upstream request.
+func structuredVarsCases() []struct{ name, vars, key string } {
+	many := make([]string, 201)
+	for i := range many {
+		many[i] = `"v` + strings.Repeat("x", i) + `"`
+	}
+	// 200 values: 199 of 320 bytes and one grown to make the JSON array 65 537 bytes.
+	big := make([]string, 200)
+	n := 2 + 199
+	for i := range big {
+		big[i] = strings.Repeat("a", 320)
+		n += 322
+	}
+	big[199] += strings.Repeat("b", 65_537-n)
+	quoted := make([]string, len(big))
+	for i, v := range big {
+		quoted[i] = `"` + v + `"`
+	}
+	return []struct{ name, vars, key string }{
+		{"no values", `{"n":{"values":[]}}`, "field.range"},
+		{"another member", `{"n":{"x":1}}`, "field.type"},
+		{"both members", `{"n":{"values":["a"],"all":".*"}}`, "field.type"},
+		{"201 values", `{"n":{"values":[` + strings.Join(many, ",") + `]}}`, "field.range"},
+		{"65 537 bytes", `{"n":{"values":[` + strings.Join(quoted, ",") + `]}}`, "field.range"},
+		{"a number in values", `{"n":{"values":[1]}}`, "field.type"},
+		{"an empty all", `{"n":{"all":""}}`, "field.range"},
+	}
+}
+
+// unit:vars-decode (T06-029, plan #289 §5): the structured vars of the PromQL routes.
+func TestVarsDecode(t *testing.T) {
+	fake, url := fakeharness.Start(t)
+	h, _ := queryGateway(t, url, pulsusdb.Options{})
+	for _, c := range structuredVarsCases() {
+		wantError(t, "range "+c.name, postJSON(h, rangePath, `{"query":"up{a=~\"$n\"}",`+planWindow+`,"vars":`+c.vars+`}`), 400, "invalid", "/vars/n", c.key)
+		wantError(t, "instant "+c.name, postJSON(h, instantPath, `{"query":"up{a=~\"$n\"}",`+planAt+`,"vars":`+c.vars+`}`), 400, "invalid", "/vars/n", c.key)
+	}
+	if n := len(fake.Requests()); n != 0 {
+		t.Errorf("%d upstream requests for refused vars", n)
+	}
+}

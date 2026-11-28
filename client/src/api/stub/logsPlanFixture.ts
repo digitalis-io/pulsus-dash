@@ -5,7 +5,7 @@
  */
 import raw from '../../../../wire/fixtures/plan/logql.json?raw';
 import type { LogqlPlannedQuery } from '../../data/decode';
-import type { FieldError } from '../types';
+import type { FieldError, VarValue } from '../types';
 import { expand, type Text } from './planFixture';
 
 export { expand, type Text };
@@ -25,7 +25,7 @@ export interface LogsFacts {
 export interface LogsClassifyCase {
   readonly name: string;
   readonly text: Text;
-  readonly vars?: Readonly<Record<string, string>>;
+  readonly vars?: Readonly<Record<string, VarValue>>;
   /** The offset at which Prepare refuses the text with row 9b (plan #121 §3.3). */
   readonly prepare_position?: number;
   readonly want: LogsFacts & {
@@ -36,9 +36,11 @@ export interface LogsClassifyCase {
 export interface LogsPlanCase {
   readonly name: string;
   readonly from: string;
+  /** Only the server's probe guard refuses it (plan #289 §3.4): the mirror skips it. */
+  readonly server_only?: boolean;
   readonly inputs: {
     readonly query: Text;
-    readonly vars: Readonly<Record<string, string>>;
+    readonly vars: Readonly<Record<string, VarValue>>;
     readonly kind: 'range' | 'volume';
     readonly step_ms: number;
     readonly range_ms?: number;

@@ -237,6 +237,18 @@ paths:
       responses:
         '200': { description: Frames, scalar or string, and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/PromInstantResponse' } } } }
         default: { description: Error (400, 404, 413, 422, 429, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
+  /api/dash/v1/variables/values:
+    post:
+      operationId: postVariableValues
+      tags: [query]
+      description: The values of a board variable's query (#289, SRF-017), label_values(label) or label_values(selector, label), planned by the variable rules (T07-031) and answered by the label values call of its language. Hand-written handler; excluded from server generation.
+      x-permission: query.read
+      parameters: [{ $ref: '#/components/parameters/Tenant' }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VariableValuesRequest' } } } }
+      responses:
+        '200': { description: The planned label and selector, the values and completeness, content: { application/json: { schema: { $ref: '#/components/schemas/VariableValuesResponse' } } } }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        default: { description: Error (400, 403, 404, 422, 502, 503, 504), content: { application/json: { schema: { $ref: '#/components/schemas/ErrorEnvelope' } } } }
   /api/dash/v1/prom/labels:
     get:
       operationId: getPromLabels
@@ -449,10 +461,49 @@ components:
         vars: { $ref: '#/components/schemas/QueryVars' }
         step_ms: { type: integer, format: int64, minimum: 1000, maximum: 86400000 }   # macros and the rate rewrite apply only with it
     QueryVars:
-      description: Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+      description: Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$). A plain string is written as given (an undefined variable, today's behaviour); VarMulti carries literal picks and VarAll a regex, written only where T07-031 allows. The server substitutes them (ADR-0021).
       type: object
       maxProperties: 64
-      additionalProperties: { type: string, maxLength: 4096 }
+      additionalProperties: { oneOf: [ { type: string, maxLength: 4096 }, { $ref: '#/components/schemas/VarMulti' }, { $ref: '#/components/schemas/VarAll' } ] }
+    VarMulti:
+      description: The literal values picked for a defined variable (board spec v9, #289), in order; a regex context writes them as one case-sensitive group, an equality context takes exactly one. At most 65536 bytes as a JSON array.
+      type: object
+      additionalProperties: false
+      required: [values]
+      properties:
+        values: { type: array, minItems: 1, maxItems: 200, items: { type: string, maxLength: 4096 } }
+    VarAll:
+      description: All of a defined variable's values, as its regex (allValue, or ".*"); written verbatim in a regex context only.
+      type: object
+      additionalProperties: false
+      required: [all]
+      properties:
+        all: { type: string, minLength: 1, maxLength: 4096 }
+    VariableValuesRequest:
+      type: object
+      additionalProperties: false
+      required: [lang, query, from, to]
+      properties:
+        lang: { type: string, enum: [promql, logql] }
+        query: { type: string, minLength: 1, maxLength: 4096 }   # label_values(label) or label_values(selector, label)
+        from: { type: integer, format: int64, minimum: 0 }        # ms since the epoch
+        to: { type: integer, format: int64, minimum: 0 }
+        vars: { $ref: '#/components/schemas/QueryVars' }
+        limit: { type: integer, minimum: 1, maximum: 10000, default: 1000 }
+    VariableValuesResponse:
+      type: object
+      additionalProperties: false
+      required: [planned, values, completeness]
+      properties:
+        planned:
+          type: object
+          additionalProperties: false
+          required: [label, match]
+          properties:
+            label: { type: string }
+            match: { type: [string, 'null'] }   # the substituted selector; null for label_values(label)
+        values: { type: array, items: { type: string } }
+        completeness: { $ref: '#/components/schemas/Completeness' }
     PlannedQuery:
       description: What the server planned and sent (ADR-0021, T06-029).
       type: object
@@ -690,8 +741,25 @@ components:
         title: { type: string, minLength: 1, maxLength: 200 }
         time: { $ref: '#/components/schemas/TimeRange' }
         tags: { type: array, maxItems: 16, uniqueItems: true, items: { $ref: '#/components/schemas/AnnotationTag' } }
+        variables: { type: array, maxItems: 32, items: { $ref: '#/components/schemas/BoardVariable' } }
         panels: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/Panel' } }
         sections: { type: array, maxItems: 50, items: { $ref: '#/components/schemas/Section' } }
+    BoardVariable:   # Board spec v9 (#289); the kind-specific keys are server rules (board.variable.*)
+      type: object
+      additionalProperties: false
+      required: [name, label, kind]
+      properties:
+        name: { type: string, pattern: '^[A-Za-z_][A-Za-z0-9_]{0,63}$' }
+        label: { type: string, maxLength: 100 }            # '' shows the name
+        kind: { type: string, enum: [query, custom, constant] }
+        query: { $ref: '#/components/schemas/Query' }      # text: label_values(...), at most 4096 bytes
+        values: { type: array, minItems: 1, maxItems: 200, items: { type: string, minLength: 1, maxLength: 200 } }
+        multi: { type: boolean }
+        includeAll: { type: boolean }
+        allValue: { type: string, minLength: 1, maxLength: 4096 }   # absent: All is ".*"
+        default: { type: array, minItems: 1, maxItems: 200, items: { type: string, minLength: 1, maxLength: 200 } }  # ["$__all"] = All; a literal starting with $ has one more $
+        sort: { type: string, enum: [none, alphaAsc, alphaDesc, numAsc, numDesc] }
+        refresh: { type: string, enum: [load, timeChange] }
     TimeRange: { type: object, additionalProperties: false, required: [from, to], properties: { from: { type: string, pattern: '^(now|now/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$' }, to: { type: string, pattern: '^(now|now/d|now-[1-9][0-9]{0,4}[smhdw]|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{3})?)?(Z|[+-]\d{2}:\d{2}))$' } } }
     Section:
       type: object

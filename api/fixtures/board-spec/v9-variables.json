@@ -1,0 +1,130 @@
+{
+  "title": "ClickHouse",
+  "variables": [
+    {
+      "name": "node",
+      "label": "Node",
+      "kind": "query",
+      "query": {
+        "lang": "promql",
+        "text": "label_values(ClickHouseAsyncMetrics_Uptime{job=\"clickhouse\"}, instance)"
+      },
+      "multi": true,
+      "includeAll": true,
+      "allValue": ".+",
+      "default": [
+        "$__all"
+      ],
+      "sort": "alphaAsc",
+      "refresh": "timeChange"
+    },
+    {
+      "name": "env",
+      "label": "Environment",
+      "kind": "custom",
+      "values": [
+        "prod",
+        "staging"
+      ],
+      "multi": false,
+      "includeAll": false,
+      "sort": "none"
+    },
+    {
+      "name": "dc",
+      "label": "",
+      "kind": "constant",
+      "values": [
+        "eu-west-1"
+      ]
+    }
+  ],
+  "panels": [
+    {
+      "id": "p-1",
+      "title": "Uptime",
+      "grid": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "query": {
+        "lang": "promql",
+        "text": "ClickHouseAsyncMetrics_Uptime{job=\"clickhouse\",instance=~\"$node\"}"
+      },
+      "vis": {
+        "kind": "stat"
+      }
+    },
+    {
+      "id": "p-2",
+      "title": "Queries",
+      "grid": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "query": {
+        "lang": "promql",
+        "text": "sum by (instance) (rate(ClickHouseProfileEvents_Query{instance=~\"$node\"}[$__rate_interval]))"
+      },
+      "vis": {
+        "kind": "line"
+      }
+    },
+    {
+      "id": "p-3",
+      "title": "Memory",
+      "grid": {
+        "x": 0,
+        "y": 6,
+        "w": 6,
+        "h": 6
+      },
+      "query": {
+        "lang": "promql",
+        "text": "ClickHouseMetrics_MemoryTracking{instance=~\"$node\"}"
+      },
+      "vis": {
+        "kind": "line"
+      }
+    },
+    {
+      "id": "p-4",
+      "title": "Scrape targets",
+      "grid": {
+        "x": 6,
+        "y": 6,
+        "w": 6,
+        "h": 6
+      },
+      "query": {
+        "lang": "promql",
+        "text": "count(up{job=\"clickhouse\"})"
+      },
+      "vis": {
+        "kind": "stat"
+      }
+    },
+    {
+      "id": "p-5",
+      "title": "Up",
+      "grid": {
+        "x": 0,
+        "y": 12,
+        "w": 6,
+        "h": 6
+      },
+      "query": {
+        "lang": "promql",
+        "text": "up{job=\"clickhouse\"}"
+      },
+      "vis": {
+        "kind": "line"
+      }
+    }
+  ],
+  "sections": []
+}

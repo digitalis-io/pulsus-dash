@@ -89,7 +89,7 @@ subsections below up to [Fixtures](#fixtures) describe the PromQL module.
 | Input | Limit | Notes |
 |---|---|---|
 | `query` | 1 to 131 072 UTF-8 bytes | the raw text; JSON Schema `maxLength` counts characters, the server counts bytes |
-| `vars` | at most 64 names, each `^[A-Za-z_][A-Za-z0-9_]{0,63}$`; each value at most 4 096 bytes | names checked in byte order |
+| `vars` | at most 64 names, each `^[A-Za-z_][A-Za-z0-9_]{0,63}$`; each value a string of at most 4 096 bytes, `{"values": […]}` (1 to 200 strings of at most 4 096 bytes, at most 65 536 bytes as a JSON array) or `{"all": "<regex>"}` (1 to 4 096 bytes); any other shape is 400 `field.type` at `/vars/<name>` ([structured values](#structured-variable-values-t07-031)) | names checked in byte order |
 | `rate` (range) | boolean, default `true` | the rate chip |
 | `step_ms` (instant) | 1 000 to 86 400 000 | the step of `$__interval`, `$__rate_interval` and the rate rewrite; without it an instant query is not rated |
 | `from`, `to` (range) | the route's bounds | the window `to − from` of `$__range`, `$__range_s` and `$__range_ms` ([below](#range-macros)); the instant body has no window |
@@ -134,7 +134,9 @@ when a rewrite would shrink it.
    | a name in `vars`, outside strings and comments | the value verbatim: it is query text by intent (`$q` with `q=sum(x)`) |
    | a name not in `vars` | itself; the plan is refused with `variable.missing` |
 
-   A value written into a string opened by `"` or `'` is encoded so that the upstream parser reads
+   A structured value (#289) is first written by its context
+([structured values](#structured-variable-values-t07-031)); the text it gives is then encoded the
+same way. A value written into a string opened by `"` or `'` is encoded so that the upstream parser reads
    it back as itself:
 
    | Byte or rune of the value | In `"…"` | In `'…'` |
@@ -242,7 +244,7 @@ The first refusal wins, in this order. Pointers escape `~` as `~0` and `/` as `~
 | a bad variable name | 400 | `/vars/<name>`, `field.pattern` | `a variable name must match ^[A-Za-z_][A-Za-z0-9_]{0,63}$` |
 | a value over 4 096 bytes | 400 | `/vars/<name>`, `field.range` | `a variable value must be UTF-8 and at most 4096 bytes` |
 | referenced variables without a value | 400 | one `/vars/<name>`, `variable.missing` per name, first reference first | `no value for variable $a, $b` |
-| a referenced value that cannot be written where it is referenced | 400 | one `/vars/<name>`, `variable.unrepresentable` per name, first reference first | `the value of variable $a, $b cannot be written where it is referenced` |
+| a referenced value that cannot be written where it is referenced (row 7b), or a structured value refused by its context (T07-031) | 400 | one `/vars/<name>`, `variable.unrepresentable` per name, first refused reference first | `the value of variable $a, $b cannot be written where it is referenced`, then ` (in <where>)` when the first refused reference was refused by its context ([structured values](#structured-variable-values-t07-031)) |
 | a macro in an instant query without `step_ms` | 400 | `/step_ms`, `field.required` | `step_ms is required for $__interval and $__rate_interval` |
 | a range macro without a window (every instant query) | 400 | `/query`, `query.no_window` | `$__range, $__range_s and $__range_ms need a time window, and the request has none` |
 | the substituted text over 2 MiB | 413 | `/query`, `query.too_large_to_plan` | `the substituted query is over 2097152 bytes, the most the server processes`; `hint.reason: processing_cap`, no `planned` |
@@ -251,6 +253,98 @@ The first refusal wins, in this order. Pointers escape `~` as `~0` and `/` as `~
 
 Every planning refusal has `code: invalid`. A reserved selector is 400 `virtual_unsupported`
 ([below](#reserved-selectors-t07-0-t07-020-v1)).
+
+### Structured variable values ([T07-031](../../designs/technical/T07-scene-query-planner.md))
+
+A board's defined variables (board spec v9, #289) send their picks as structured values; a plain
+string is a variable the board does not define and is written as before, everywhere. The shared
+package `server/internal/pulsusdb/vars` holds the forms (`vars.Value`), their bounds (`vars.Check`,
+`vars.SelectionBytes`, the UTF-8 bytes of the values as `JSON.stringify` writes them) and how a
+structured value is written (`vars.Render`); each language module fixes the context of every
+reference as it scans.
+
+| Form | JSON | Meaning |
+|---|---|---|
+| legacy | `"text"` | written as given, in every context (today's behaviour) |
+| multi | `{"values": ["a", "b"]}` | literal picks, in order |
+| All | `{"all": ".+"}` | the variable's All, as its regex (`allValue`, or `.*`); never expanded |
+
+**Contexts (an allowlist).** The scanner fixes a context when a string opens, from the operator
+before it (ASCII white space skipped, comments read as white space), or at a reference outside
+strings. In LogQL it also tracks the pipeline stage: the first identifier after a top-level `|`
+that is not `|=`, `|~` or `|>`.
+
+| Language | Where | Operator before the string | Context |
+|---|---|---|---|
+| both | a matcher value inside `{…}` | `=`, `!=` / `=~`, `!~` | equality / regex |
+| LogQL | a line filter (the token before `!=`, `!~` is not an identifier) | `\|=`, `!=` / `\|~`, `!~` | equality / regex |
+| LogQL | a label-filter comparison: the stage is a label name, not a keyword below; across `,`, `and`, `or` until the next `\|` | `=`, `!=` / `=~`, `!~` | equality / regex |
+| PromQL | a reference outside strings and comments | — | top level |
+| — | anything else | — | refused, naming `json`, `logfmt`, `regexp`, `pattern`, `unpack`, `line_format`, `label_format`, `unwrap`, `drop`, `keep`, `decolorize`, `distinct`, `or filter`, `pattern filter`, `function argument`, `comment` or `top level` |
+
+| Value | Regex | Equality | PromQL top level | Anything else |
+|---|---|---|---|---|
+| legacy `t` | `t` | `t` | `t` | `t` |
+| `{"values": ["a"]}` | `(?-i:(?:a))`, `a` quoted by `regexp.QuoteMeta` | `a` | `a` if it is an unsigned number or a duration (`5m`, `1.5e3`, `0x1F`, `1h30m`), else refused (`top level`) | refused |
+| `{"values": ["a", "b"]}` | `(?-i:(?:a\|b))`, in order | refused (`equality match`) | refused | refused |
+| `{"all": "X"}` | `X` | refused | refused | refused |
+
+The text is then encoded for its string exactly as a legacy value is (the quoting table above) and
+checked by row 7b. Every structured value is one non-capturing group, so a quantifier, `|` or an
+anchor after it cannot broaden it; the `(?-i:…)` wrapper keeps a template's `(?i)` off it, so
+**picked values match exactly, including case**. No other flag needs resetting: quoted text holds
+no `^`, `$`, `.` or quantifier.
+
+**Regex positions.** In a regex a structured reference is refused inside a character class
+`[…]` or a quantifier brace `{…}` (`regex class`), right after an unconsumed regex `\` (`regex
+escape`), and inside `\Q…\E` (`regex quoted text`). The scanner reads the regex as the string
+decodes it (`strconv.UnquoteChar`), with `]` first in a class as a literal and a POSIX class
+`[:name:]` as one item.
+
+**Probe guard (fails closed).** After the scanner accepts, Prepare renders each regex string with
+a structured reference again, that reference as the probe `pulsusvarprobe<i>z` in the same
+wrapper, and parses the decoded regex with `regexp/syntax` (Perl flags). The reference is kept
+only if a literal node outside any class, without case folding, holds the probe as one run with
+neither the wrapper's own text nor a brace beside it; a parse error, a missing probe, or the probe
+text already in the regex refuses it (`regex`). Groups of literal picks are probed together in one
+parse (they share their structure), the rest one at a time; the guard parses at most 8 MiB per
+query (`vars.MaxGuardBytes`) and refuses what is left beyond that. The parser factors a common
+prefix out of adjacent alternatives (`prod|$n`), so a reference is retried with probes of three
+different first letters before it is refused.
+
+Examples, PromQL (`unit:plan-parity` cases M, R and H of `wire/fixtures/plan/promql.json`):
+
+| Text | `vars` | Sent or refused |
+|---|---|---|
+| `sum(up{instance=~"$n"})` | `{"n":{"values":["a:1","b.2"]}}` | `sum(up{instance=~"(?-i:(?:a:1\|b\\.2))"})` |
+| `sum(up{instance="$n"})` | `{"n":{"values":["a","b"]}}` | refused (in equality match) |
+| `sum(up{instance=~"$n"})` | `{"n":{"all":".+"}}` | `sum(up{instance=~".+"})` |
+| `sum(rate(x_total[5m] offset $d))` | `{"d":{"values":["5m"]}}` | `… offset 5m))` |
+| `up $op up` | `{"op":{"values":["and"]}}` | refused (in top level) |
+| `sum(up{x=~"[$n]"})` | `{"n":{"values":["a-z"]}}` | refused (in regex class) |
+
+### The variable values route
+
+`POST /api/dash/v1/variables/values?tenant=<slug>` (`postVariableValues`, `query.read`) lists a
+variable's values for the board's picker:
+
+```
+{"lang": "promql" | "logql", "query": "label_values(selector, label)", "from": <ms>, "to": <ms>,
+ "vars"?: {…}, "limit"?: 1..10000 (default 1000)}
+→ {"planned": {"label": "instance", "match": "<selector>" | null}, "values": [...], "completeness": {...}}
+```
+
+| Step | PromQL | LogQL | Refusal |
+|---|---|---|---|
+| 1 | the tenant, `from < to`, `limit`; `vars` (count, names, values) even for `label_values(label)` | the same, `to` at most 9 223 372 036 854 | the field errors |
+| 2 | `varquery.Parse`: `label_values(label)` or `label_values(selector, label)` | the same | 400 `query.invalid` at `/query` |
+| 3 | `prom.SubstituteSelector` (the rules above, macros left as written), then the upstream parser must read one metric selector | `logs.SubstituteSelector`, then exactly one `{…}` and no pipeline | `variable.*`, `field.*`; 400 `query.invalid` |
+| 4 | the byte guard on the selector, before tenant resolution | the same | 400 `virtual_unsupported` |
+| 5 | `LabelValues(label, match[] = selector)`, 10 s | `LogLabelValues(label, query = selector)`, cut to `limit` | as the label values routes; a restricted scope is 403 |
+
+`planned.match` is the substituted selector (`null` for `label_values(label)`). Nothing is sent
+upstream before step 5. The label values calls round the window as the completion routes do
+(PromQL seconds, the start floored and the end raised to the minute; LogQL nanoseconds).
 
 ### Positions
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/util/strutil"
 )
@@ -31,7 +32,7 @@ func valueSeeds() []string {
 	}
 	for _, c := range fx.Plan {
 		for _, v := range c.Inputs.Vars {
-			out = append(out, v)
+			out = append(out, v.Text)
 		}
 	}
 	return out
@@ -118,7 +119,7 @@ func FuzzValueRoundTrip(f *testing.F) {
 			t.Skip()
 		}
 		plan := func(q string) (Planned, *PlanError) {
-			return Plan(Inputs{Query: q, Vars: map[string]string{"a": v}, Kind: KindRange, StepMs: 5000}, MetricTypes{})
+			return Plan(Inputs{Query: q, Vars: map[string]vars.Value{"a": vars.Literal(v)}, Kind: KindRange, StepMs: 5000}, MetricTypes{})
 		}
 		for _, q := range []string{`x{a="$a"}`, `x{a='$a'}`} {
 			p, err := plan(q)

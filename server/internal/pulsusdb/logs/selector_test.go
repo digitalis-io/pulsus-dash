@@ -8,6 +8,7 @@ import (
 
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb"
 	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/logs"
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 )
 
 // unit:logql-classify (Go): every entry of the fixture's classify group, classified on its
@@ -18,11 +19,11 @@ func TestLogqlClassify(t *testing.T) {
 	f := logs.LoadFixture(t)
 	for _, e := range f.Classify {
 		t.Run(e.Name, func(t *testing.T) {
-			vars := e.Vars
-			if vars == nil {
-				vars = map[string]string{}
+			vs := e.Vars
+			if vs == nil {
+				vs = map[string]vars.Value{}
 			}
-			in := logs.Inputs{Query: string(e.Text), Vars: vars, Kind: logs.KindRange, StepMs: 5000}
+			in := logs.Inputs{Query: string(e.Text), Vars: vs, Kind: logs.KindRange, StepMs: 5000}
 			sub, serr := logs.PrepareSubstitute(in)
 			if serr != nil {
 				t.Fatalf("logs.PrepareSubstitute: %v", serr)

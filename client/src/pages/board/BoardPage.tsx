@@ -31,7 +31,9 @@ import {
   type Board,
   type BoardSpec,
   type FieldError,
+  type BoardVariable,
   type PanelSpec,
+  type VarValue,
 } from '../../api/types';
 import { BoardFiltersContext } from '../../boards/boardFilters';
 import { BoardEventsContext, useBoardEvents } from '../../boards/boardEvents';
@@ -60,6 +62,7 @@ import { invalidateBoardLists } from '../../boards/queries';
 import { checkBoardSpec } from '../../boards/spec';
 import { tagError } from '../../boards/tags';
 import { boardVariables } from '../../boards/variables';
+import { referencedVariables } from '../../boards/variableRefs';
 import { WidgetRegistryContext, type WidgetDef } from '../../widgets/registry';
 import { isDataPanel, isWidgetPanel } from '../../widgets/spec';
 import { t } from '../../i18n/t';
@@ -75,6 +78,7 @@ import { useShellRoute } from '../../shell/useShellRoute';
 import type { ParamError } from '../../state/boardParams';
 import { contextSearchString } from '../../state/contextSearch';
 import { useBoardParams } from '../../state/useBoardParams';
+import { useVariableLists } from '../../boards/useVariableLists';
 import { useClock, useTimeContext } from '../../state/useTimeContext';
 import pages from '../pages.module.css';
 import styles from './Board.module.css';
@@ -91,6 +95,7 @@ import { WidgetEditor } from './WidgetEditor';
 // The grid chunk (react-grid-layout, ADR-0014 §8): one grid serves View and Edit mode, so the
 // panels stay mounted across the modes (#111). It is a lazy chunk of its own, requested when the
 // board route mounts, alongside the board's own read.
+const NO_VARIABLES: readonly BoardVariable[] = Object.freeze([]);
 const loadGrid = () => import('./BoardGrid');
 const BoardGrid = lazy(loadGrid);
 
@@ -216,7 +221,13 @@ function BoardEditor({
   const saving = s.save.status === 'saving';
   const busy = saving || discarding;
   const edit = s.mode === 'edit';
-  const boardParams = useBoardParams(s.draft.sections.map((x) => x.id));
+  // The board's defined variables (spec v9, plan #289): read with the `$` escape from the URL.
+  const defs = useMemo(() => s.draft.variables ?? NO_VARIABLES, [s.draft.variables]);
+  const definedNames = useMemo(() => new Set(defs.map((d) => d.name)), [defs]);
+  const boardParams = useBoardParams(
+    s.draft.sections.map((x) => x.id),
+    definedNames,
+  );
   // The filters a bar chart's click toggles (T22-007, #173 Part 3b): one object while they hold,
   // so a board render that leaves the URL alone renders no panel (#111). `setFilter` changes with
   // every render (the section ids), so the panels get a stable function that calls the latest.
@@ -590,6 +601,40 @@ function BoardEditor({
   // One events request for the whole board (plan #64 Part C §3.8): every grid and section counts,
   // collapsed ones too, and none is made before the board's time is ready.
   const events = useBoardEvents(tenant, timeReady && livePanels.length > 0);
+  // The variables (plan #289 §4.2–§4.4): the referenced names the board does not define keep
+  // their text chip and plain string; the defined ones resolve from the URL, the default and their
+  // lists, and every panel reads their values, states and labels.
+  // Keyed by the names, so a draft edit that keeps them renders no panel (#111).
+  // The variable queries' references count too (#289 review r1): a name they use that the board
+  // does not define is a legacy chip, and its URL value goes into their list requests.
+  const legacyKey = [
+    ...new Set([
+      ...boardVariables(s.draft),
+      ...defs.flatMap((d) => (d.query === undefined ? [] : referencedVariables(d.query.text))),
+    ]),
+  ]
+    .filter((n) => !definedNames.has(n))
+    .join(' ');
+  const legacy = useMemo(() => (legacyKey === '' ? [] : legacyKey.split(' ')), [legacyKey]);
+  const variables = useVariableLists({
+    tenant,
+    uid,
+    defs,
+    address: boardParams.params.vars,
+    legacy,
+    timeReady,
+  });
+  const run = useMemo(() => {
+    const vars = new Map<string, VarValue>();
+    const displayVars = new Map<string, string>();
+    for (const [n, st] of variables.states) {
+      if (st.kind !== 'ready') continue;
+      vars.set(n, st.value);
+      displayVars.set(n, st.display);
+    }
+    const labels = new Map(defs.map((d) => [d.name, d.label === '' ? d.name : d.label]));
+    return { vars, displayVars, labels };
+  }, [variables.states, defs]);
   const eventsNotice = events.failed
     ? t('board.events.failed')
     : events.truncated
@@ -616,7 +661,7 @@ function BoardEditor({
               : t('board.status.failingMany', { n: failing })}
           </span>
         )}
-        <BoardFilterBar variables={boardVariables(s.draft)} state={boardParams} />
+        <BoardFilterBar variables={legacy} defined={defs} lists={variables} state={boardParams} />
         {edit ? (
           <BoardToolbar
             mode="edit"
@@ -833,7 +878,10 @@ function BoardEditor({
   return (
     <BoardRunProvider
       tenant={tenant}
-      vars={boardParams.params.vars}
+      vars={run.vars}
+      states={variables.states}
+      displayVars={run.displayVars}
+      labels={run.labels}
       timeReady={timeReady}
       livePanels={livePanels}
     >

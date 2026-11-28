@@ -27,6 +27,13 @@ export interface DataSourceStatus {
   checkedAtMs?: number;
 }
 
+/**
+ * One variable's value on the query routes (OpenAPI QueryVars, plan #289 §3.4): a plain string for
+ * a variable the board does not define (written as given), the literal picks of a defined one, or
+ * All, its regex. The server writes a structured value only where T07-031 allows it.
+ */
+export type VarValue = string | { readonly values: readonly string[] } | { readonly all: string };
+
 /** A range query: the raw text and the inputs the server plans it with (ADR-0021). */
 export interface RangeRequest {
   query: string;
@@ -34,7 +41,7 @@ export interface RangeRequest {
   toMs: number;
   widthPx: number;
   timeoutMs?: number;
-  vars?: Readonly<Record<string, string>>;
+  vars?: Readonly<Record<string, VarValue>>;
   /** The rate chip; omitted = on. */
   rate?: boolean;
   /** A PromQL ladder step the server validates and plans with (#304 §A.1); omitted = from the width. */
@@ -56,7 +63,7 @@ export interface LogsRequest {
   cursor?: string;
   timeoutMs?: number;
   /** Variable values; the server substitutes them (plan #116). */
-  vars?: Readonly<Record<string, string>>;
+  vars?: Readonly<Record<string, VarValue>>;
 }
 
 /** A log volume request. */
@@ -66,16 +73,36 @@ export interface VolumeRequest {
   toMs: number;
   widthPx: number;
   timeoutMs?: number;
-  vars?: Readonly<Record<string, string>>;
+  vars?: Readonly<Record<string, VarValue>>;
 }
 
 export interface InstantRequest {
   query: string;
   atMs: number;
   timeoutMs?: number;
-  vars?: Readonly<Record<string, string>>;
+  vars?: Readonly<Record<string, VarValue>>;
   /** The step of `$__interval`, `$__rate_interval` and the rate rewrite; omitted = none. */
   stepMs?: number;
+}
+
+/** A board variable's values (`POST /variables/values`, plan #289 §3.5). */
+export interface VariableValuesRequest {
+  readonly lang: QueryLang;
+  /** `label_values(label)` or `label_values(selector, label)`. */
+  readonly query: string;
+  readonly fromMs: number;
+  readonly toMs: number;
+  readonly vars?: Readonly<Record<string, VarValue>>;
+  /** 1..10 000; omitted = 1 000. */
+  readonly limit?: number;
+}
+
+/** The answer of `POST /variables/values`. */
+export interface VariableValues {
+  /** The label and the substituted selector (null: `label_values(label)`). */
+  readonly planned: { readonly label: string; readonly match: string | null };
+  readonly values: readonly string[];
+  readonly truncated: boolean;
 }
 
 /** The window and selectors of a `/prom/*` metadata read (plan #63 §3.1). */
@@ -167,6 +194,11 @@ export type PanelSpec = DataPanelSpec | WidgetPanelSpec;
 export interface SectionSpec extends Omit<S['Section'], 'panels'> {
   panels: PanelSpec[];
 }
+/** A board variable (board spec v9, #289): kind query, custom or constant. */
+export type BoardVariable = S['BoardVariable'];
+export type VariableKind = BoardVariable['kind'];
+export type VariableSort = NonNullable<BoardVariable['sort']>;
+
 export interface BoardSpec extends Omit<S['BoardSpec'], 'panels' | 'sections'> {
   panels: PanelSpec[];
   sections: SectionSpec[];

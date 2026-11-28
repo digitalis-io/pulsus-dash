@@ -44,7 +44,8 @@ import { fromStore, outcomeOf, useStoreRun } from './panelStore';
 import { chunkable } from './rangeView';
 import { useLogPanelRun } from './useLogPanelRun';
 import { useQueryLanguage } from './useQueryLanguage';
-import { panelVars, referencedVariables } from './variableRefs';
+import { variableBlock } from './variableBlock';
+import { panelVars } from './variableRefs';
 
 export interface PanelRunInput {
   readonly tenant: string;
@@ -76,6 +77,8 @@ export interface PanelRun {
   readonly blocked: PanelState | null;
   /** The client hint, or the server's `variable.missing` names (§4.2). */
   readonly missing: readonly string[];
+  /** `variableTooMany`: the label of the variable whose selection is too large (plan #289). */
+  readonly tooMany: string | null;
   /** `queryTooLarge` (the pre-check) or `tooLong` (the server's 413). */
   readonly refusal: Refusal | null;
   /** The language and width are known and nothing blocks the run. */
@@ -131,14 +134,18 @@ export function usePanelRun(a: PanelRunInput): PanelRun {
 /** A PromQL panel's run; inactive (a LogQL panel), an idle key and no language. */
 function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
   const api = useApi();
-  const { vars, timeReady } = useContext(BoardRunContext);
+  const { vars, states, labels, timeReady } = useContext(BoardRunContext);
   const { window, anchorMs, refreshEpoch } = useTimeContext();
   const { tenant, panel, text, enabled, widthPx } = a;
   const { fromMs, toMs } = window;
   const { lang, failed } = useQueryLanguage(active ? 'promql' : null);
   const degraded = a.degraded ?? false;
 
-  const hint = useMemo(() => referencedVariables(text).filter((n) => !vars.has(n)), [text, vars]);
+  const block = useMemo(
+    () => variableBlock(text, vars, states, labels),
+    [text, vars, states, labels],
+  );
+  const hint = block.missing;
   const refusedEarly = useMemo(() => refusalOf(text), [text]);
   const pre: PanelState | null = !active
     ? null
@@ -150,11 +157,13 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
           ? 'empty'
           : refusedEarly !== null
             ? 'refused'
-            : hint.length > 0
-              ? 'variable'
-              : failed && !degraded
-                ? 'langFailed'
-                : null;
+            : block.tooMany !== null
+              ? 'variableTooMany'
+              : hint.length > 0
+                ? 'variable'
+                : failed && !degraded
+                  ? 'langFailed'
+                  : null;
 
   // Nothing is planned before the board's time is set (§4.6).
   const stepMs =
@@ -162,8 +171,10 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       ? (promGrid(fromMs, toMs, widthPx)?.stepMs ?? null)
       : null;
   const kind = useMemo(
-    () => (active && timeReady && pre === null ? runKind(text, lang, degraded) : null),
-    [active, timeReady, pre, text, lang, degraded],
+    // A loading variable holds the idle key: the panel shows Loading (plan #289 §4.4).
+    () =>
+      active && timeReady && pre === null && !block.loading ? runKind(text, lang, degraded) : null,
+    [active, timeReady, pre, block.loading, text, lang, degraded],
   );
   const sentPairs = useMemo(() => panelVars(text, vars), [text, vars]);
   const varsJson = useMemo(() => JSON.stringify(sentPairs), [sentPairs]);
@@ -403,6 +414,7 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       text,
       blocked,
       missing,
+      tooMany: block.tooMany,
       refusal,
       ready: runKey !== null && blocked === null,
       outcome,
@@ -422,6 +434,7 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
       text,
       blocked,
       missing,
+      block.tooMany,
       refusal,
       runKey,
       outcome,

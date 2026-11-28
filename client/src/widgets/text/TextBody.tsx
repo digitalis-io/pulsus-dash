@@ -123,7 +123,7 @@ export const TextBody = memo(function TextBody({
   const statusId = useId();
   const options = useMemo(() => textOptions(panel.vis.options), [panel.vis.options]);
   const errors = useMemo(() => widgetVisErrors(panel), [panel]);
-  const { vars: all } = useContext(BoardRunContext);
+  const { displayVars: all } = useContext(BoardRunContext);
   const vars = textVars(all, options);
   const deferredOptions = useDeferredValue(options);
   const deferredVars = useDeferredValue(vars);

@@ -1,8 +1,11 @@
 package logs
 
 import (
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/digitalis-io/pulsus-dash/server/internal/pulsusdb/vars"
 )
 
 // segmentKind is how a segment maps its bytes (plan #112 §4.2, unchanged).
@@ -79,12 +82,35 @@ const (
 
 // substitution is the outcome of one scan of the raw text.
 type substitution struct {
-	size            int      // bytes of the substituted text
-	missing         []string // referenced variables without a value: distinct, first-reference order
-	unrepresentable []string // referenced values that cannot be written where they are (row 7b)
-	rangeMacro      bool     // a range macro is referenced
-	text            string   // built only when asked
-	segs            []segment
+	size       int            // bytes of the substituted text
+	missing    []string       // referenced variables without a value: distinct, first-reference order
+	refusals   []vars.Refusal // row 7b and T07-031 (plan #289 §3.4), in the order found
+	rangeMacro bool           // a range macro is referenced
+	text       string         // built only when asked
+	segs       []segment
+}
+
+// unrepresentable is the refused names, distinct, in the order of their first refused reference,
+// and the place of the first refused reference ("" for row 7b).
+func (s substitution) unrepresentable() (names []string, where string) {
+	rs := slices.Clone(s.refusals)
+	slices.SortStableFunc(rs, func(a, b vars.Refusal) int { return a.At - b.At })
+	for _, r := range rs {
+		if !contains(names, r.Name) {
+			names = append(names, r.Name)
+		}
+	}
+	if len(rs) > 0 {
+		where = rs[0].Where
+	}
+	return names, where
+}
+
+// scanOptions are what one scan does beyond substitution: run the probe guard over its regex
+// strings (Prepare's count; nil skips it), and leave every macro as written (the value route).
+type scanOptions struct {
+	guard      *vars.Guard
+	keepMacros bool
 }
 
 // isNameStart and isNameByte are the bytes of NAME = [A-Za-z_][A-Za-z0-9_]* (#61 VARIABLE_REF).
@@ -184,14 +210,36 @@ func writeDQ(b *strings.Builder, v string) {
 	}
 }
 
-// substitute scans raw once (plan #116 §4.2). With build false it only counts the output, so a
-// text over the cap is refused before it is built; with build true it builds the text and the
-// segment map of expanded → raw.
-func substitute(raw string, vars map[string]string, m macroText, build bool) substitution {
+// substitute scans raw once (plan #116 §4.2), with the contexts of plan #289 §3.4. With build
+// false it only counts the output, so a text over the cap is refused before it is built; with
+// build true it builds the text and the segment map of expanded → raw. Structured values are
+// rendered by their context (vars.Render); the memo is per value and context kind.
+func substitute(raw string, vs map[string]vars.Value, m macroText, build bool, o scanOptions) substitution {
 	var out substitution
 	var b strings.Builder
 	if build {
 		b.Grow(len(raw))
+	}
+	type renderKey struct {
+		name string
+		kind vars.CtxKind
+	}
+	type rendered struct {
+		text string
+		ok   bool
+	}
+	renders := map[renderKey]rendered{}
+	render := func(name string, v vars.Value, c vars.Ctx) (string, bool) {
+		if v.Legacy {
+			return v.Text, true
+		}
+		k := renderKey{name, c.Kind}
+		if r, ok := renders[k]; ok {
+			return r.text, r.ok
+		}
+		text, ok := vars.Render(v, c)
+		renders[k] = rendered{text, ok}
+		return text, ok
 	}
 	copyFrom := 0 // start of the pending copy run
 	flush := func(to int) {
@@ -203,31 +251,61 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 			out.size += to - copyFrom
 		}
 	}
+	t := vars.Tracker{LogQL: true}
+	var sctx vars.Ctx        // the context of the open string
+	var rx *vars.RegexString // the open string's regex parts (a CtxRe string only)
+	open := func(st lexState, at int) {
+		sctx = t.String()
+		rx = nil
+		if sctx.Kind == vars.CtxRe {
+			q := byte('"')
+			if st == stBQ {
+				q = 0
+			}
+			rx = vars.NewRegexString(q, at+1)
+		}
+	}
+	closeString := func(at int) {
+		if rx != nil {
+			out.refusals = append(out.refusals, rx.Close(raw, at, MaxExpandedBytes, o.guard)...)
+			rx = nil
+		}
+		t.EndString()
+	}
 	st := stNone
 	for i := 0; i < len(raw); {
 		c := raw[i]
 		if c == '$' {
 			name, end, ok := reference(raw, i)
 			if !ok {
+				if st == stNone {
+					t.Byte(c)
+				}
 				i++
 				continue
 			}
-			value, subst, isVar := "", false, false
+			ctx := sctx
+			if st == stNone {
+				ctx = t.Ref()
+			}
+			text, subst, isVar := "", false, false
+			var v vars.Value
 			switch {
+			case isMacro(name) && o.keepMacros:
 			case name == macroInterval:
-				value, subst = m.interval, true
+				text, subst = m.interval, true
 			case name == macroRateInterval:
-				value, subst = m.rateInterval, true
+				text, subst = m.rateInterval, true
 			case name == macroRange:
-				value, subst, out.rangeMacro = m.rng, true, true
+				text, subst, out.rangeMacro = m.rng, true, true
 			case name == macroRangeS:
-				value, subst, out.rangeMacro = m.rngS, true, true
+				text, subst, out.rangeMacro = m.rngS, true, true
 			case name == macroRangeMs:
-				value, subst, out.rangeMacro = m.rngMs, true, true
+				text, subst, out.rangeMacro = m.rngMs, true, true
 			case strings.HasPrefix(name, "__") || len(name) > maxNameLen:
 			default:
-				if v, has := vars[name]; has {
-					value, subst, isVar = v, true, true
+				if val, has := vs[name]; has {
+					v, subst, isVar = val, true, true
 				} else if !contains(out.missing, name) {
 					out.missing = append(out.missing, name)
 				}
@@ -236,20 +314,31 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 				i = end
 				continue
 			}
-			if isVar && !representable(value, st) && !contains(out.unrepresentable, name) {
-				out.unrepresentable = append(out.unrepresentable, name)
+			if isVar {
+				var ok bool
+				if text, ok = render(name, v, ctx); !ok {
+					out.refusals = append(out.refusals, vars.Refusal{Name: name, At: i, Where: ctx.Where})
+				}
+				if ok && !representable(text, st) {
+					out.refusals = append(out.refusals, vars.Refusal{Name: name, At: i})
+				}
+				if rx != nil {
+					rx.Add(raw, i, end, name, text, ok && !v.Legacy, v.Values != nil)
+				}
+			} else if rx != nil {
+				rx.Add(raw, i, end, name, text, false, false)
 			}
 			flush(i)
-			n := len(value)
+			n := len(text)
 			if st == stDQ {
-				n = encodedDQLen(value)
+				n = encodedDQLen(text)
 			}
 			if build {
 				out.segs = append(out.segs, segment{sentFrom: out.size, sentLen: n, rawFrom: i, rawLen: end - i, kind: segInsert})
 				if st == stDQ {
-					writeDQ(&b, value)
+					writeDQ(&b, text)
 				} else {
-					b.WriteString(value)
+					b.WriteString(text)
 				}
 			}
 			out.size += n
@@ -261,8 +350,12 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 			switch c {
 			case '"':
 				st = stDQ
+				open(st, i)
 			case '`':
 				st = stBQ
+				open(st, i)
+			default:
+				t.Byte(c)
 			}
 		case stDQ:
 			switch c {
@@ -271,20 +364,34 @@ func substitute(raw string, vars map[string]string, m macroText, build bool) sub
 				i += 2
 				continue
 			case '"', '\n':
+				closeString(i)
 				st = stNone
 			}
 		case stBQ:
 			if c == '`' {
+				closeString(i)
 				st = stNone
 			}
 		}
 		i++
+	}
+	if rx != nil {
+		closeString(len(raw))
 	}
 	flush(len(raw))
 	if build {
 		out.text = b.String()
 	}
 	return out
+}
+
+// isMacro reports whether name is one of the macros.
+func isMacro(name string) bool {
+	switch name {
+	case macroInterval, macroRateInterval, macroRange, macroRangeS, macroRangeMs:
+		return true
+	}
+	return false
 }
 
 // representable reports whether v can be written verbatim in state st (row 7b): a backtick would

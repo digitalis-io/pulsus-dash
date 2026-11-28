@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.15-rc · 2026-11-27 |
+| **Version** | 1.16-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (metrics, step/level, dedupe, cancel, passes P0–P4, human budgets, expressions) → M-UI2 (all signals, R2/R9 fallbacks, fusion, approach prefetch) → M-UI3 (local placement, R5/R6 fallbacks, Postgres fallback pyramids, level-split) → M-UI4 (virtual sources, BFF joins, agent budgets) → M-UI5 (Board variables, 200 viewports) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md), [ADR-0014](../adr/0014-typescript-react-web-client.md) (supersede ADR-0001), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T07-scene-query-planner.md (not tracked) |
@@ -12,7 +12,7 @@
 
 The planner runs in the Go BFF ([ADR-0015](../adr/0015-go-bff.md)); the browser is a TS application
 with the chart engine later ([ADR-0014](../adr/0014-typescript-react-web-client.md)). The pipeline,
-the rules T07-001 to T07-030 and the budgets stand, except that every rule or structure that needs a
+the rules T07-001 to T07-031 and the budgets stand, except that every rule or structure that needs a
 parsed query applies only from the later parser design (table below). Rust specifics map as follows:
 
 | Was | Now |
@@ -135,7 +135,7 @@ JSON form and is held to the same semantics by shared fixtures (§0).
 | [INT-022](../product/03-interaction-model.md#int-022--pre-fetch-on-approach) | §4.9 | `replay:approach-prefetch` |
 | [PRF-022](../product/09-performance-contract.md#prf-022--200-viewports-per-board) | §4.6 (visibility), T07-012 | `itest:planner-offscreen`: a 200-viewport board plan issues 0 physical queries for viewports beyond 1 viewport-height off-screen |
 | [SRF-016](../product/04-surfaces.md#srf-016--lazy-collapsed-sections) | §4.6, T07-012 | `itest:planner-collapsed`: a collapsed section of 10 viewports issues no physical query |
-| [SRF-017](../product/04-surfaces.md#srf-017--variables) | §4.1 (variable dependency index), T07-013 | `itest:planner-variables`: changing `$region` on a 30-viewport board where 5 use it re-plans exactly 5 |
+| [SRF-017](../product/04-surfaces.md#srf-017--variables) | §4.1 (variable dependency index), T07-013, T07-031 | `itest:planner-variables`: changing `$region` on a 30-viewport board where 5 use it re-plans exactly 5 (owed); v1 (#289): `unit:board-variables-run`, `unit:var-render`, `unit:regex-probe-guard`, `itest:variable-values` |
 | [PRF-025](../product/09-performance-contract.md#prf-025--local-first-analytics) | §4.5 (local placement), §4.12 (Postgres fallback pyramids) | `itest:planner-local-first` (Exact answerability issues no remote query; server refinement uses the same `LogicalQuery`); `itest:no-pulsusdb-writes` |
 | [EST-043](../product/15-estate-navigation.md#est-043--fetch-plan-budgets-and-timing) | §4.1, §4.8 (Background and Prefetch budgets per level) | `itest:fetch-plan-levels` ([T12](T12-entity-catalogue.md) co-owns Table 15-6) |
 | [SRF-044](../product/04-surfaces.md#srf-044--traceql-metrics-and-service-graph-slice) | §4.12 (R5, service-graph slice) | `itest:service-graph-slice`: a TraceQL metrics query and its service-graph slice plan to one `traceql_metrics_range` and one `service_graph` call |
@@ -519,6 +519,46 @@ dependency index lists for it. Other viewports keep their generation and their d
 
 *v1 (#64 Part A):* a panel's query key carries only the Board variables its text references (their
 URL values, sorted by name), so changing a variable re-queries only the panels that use it.
+
+*v1 (#289):* a board's defined variables resolve on the client (address over the saved default,
+over the first listed value); the key carries each referenced variable's `VarValue`
+(`{values: […]}` or `{all: regex}`) as `[name, value]` pairs, so a pick re-queries only the panels
+whose pairs change. A variable query references only earlier variables, so the lists load in spec
+order and a dependent's list is fetched again when a value it uses changes.
+
+#### T07-031 — Structured values render only in allowlisted contexts
+**MUST** — A structured variable value (the literal picks or the All of a defined Board variable,
+board spec v9) MUST be written into a query only in a context the planner recognises, and every
+other reference MUST be refused (`variable.unrepresentable`, naming the place) before any upstream
+request. The contexts: a matcher value inside `{…}` after `=`, `!=` (equality) or `=~`, `!~`
+(regex); in LogQL also a line filter (`|=`, `!=` / `|~`, `!~`) and a label-filter comparison whose
+stage is a label name; in PromQL a reference outside strings and comments (top level). Every other
+place is refused: the LogQL stages `json`, `logfmt`, `regexp`, `pattern`, `unpack`, `line_format`,
+`label_format`, `unwrap`, `drop`, `keep`, `decolorize`, `distinct`, an `or` filter, a pattern
+filter, a function argument, a comment, and the LogQL top level. Writing, before the string
+encoding:
+
+| Value | Regex | Equality | PromQL top level | Elsewhere |
+|---|---|---|---|---|
+| a plain string (an undefined variable) | itself | itself | itself | itself |
+| one picked value `a` | `(?-i:(?:QM(a)))` | `a` | `a` only if it is an unsigned number or a duration | refused |
+| several picked values | `(?-i:(?:QM(a)\|QM(b)…))`, in order | refused | refused | refused |
+| All `X` | `X` | refused | refused | refused |
+
+QM is `regexp.QuoteMeta`. Each structured value is one non-capturing group, so a following
+quantifier, `|` or anchor cannot broaden it, and the `(?-i:…)` wrapper keeps the template's `(?i)`
+off it: **picked values match exactly, including case**. No other flag needs resetting (quoted text
+holds no `^`, `$`, `.` or quantifier). In a regex a structured reference MUST also be refused inside
+a character class or a quantifier brace, right after an unconsumed regex `\`, and inside `\Q…\E`;
+the scanner reads the regex as the string decodes it. A **probe guard** on the server fails closed:
+each regex string holding a structured reference is rendered again with that reference as a probe
+literal and parsed with `regexp/syntax` (Perl); the reference is kept only if a literal node outside
+any class, without case folding, holds the probe as one run, with neither the wrapper's text nor a
+brace beside it. The guard's parsing is bounded per query. The value route (`POST
+/variables/values`) plans its selector by the same rules. The client's stub mirrors the contexts and
+the position rules, not the guard. Gates: `unit:var-render`, `unit:regex-probe-guard`,
+`FuzzMultiRegexRoundTrip`, `unit:plan-parity` (cases M, R, L, H), `itest:plan-authority`,
+`itest:logql-planned`, `itest:variable-values`.
 
 ### 4.7 RBAC rewrite insertion point
 
@@ -1191,4 +1231,5 @@ R13/R14 paths are flag-gated per cluster as PulsusDB ships them.
 | 1.12-rc | 2026-11-23 | #121: §0 Reserved names row: the LogQL `#` refusal (`query.invalid`) precedes the reserved-selector check, and the no-dispatch guarantee is unchanged; §4.1 Classify: LogQL has no comments, and the selector reader skips no text |
 | 1.13-rc | 2026-11-27 | #291: §4.1 Bind and Classify leave the range macros as placeholders; Plan substitutes the range macros (`$__range`, `$__range_s`, `$__range_ms`) from the request window, with the rounding rule; a request without a window refuses them (`query.no_window`) |
 | 1.14-rc | 2026-11-27 | #303: T07-003 rounds the step to the nearest `NICE` entry (midpoint rule) instead of up, and §4.3 `resolve` with it; T07-003 v1 note: the PromQL range grid (`PromGrid`: fine pass, 15 s scrape floor, no level prediction) and the rate window `max(step + S, 4 × S)` (was `max(4 × step, step + S, 4 × S)`); the log routes keep #62's grid |
-| 1.15-rc | 2026-11-27 | #304 ([ADR-0038](../adr/0038-page-range-store-and-scope-lease.md)): T07-012 v1 (line panels prefetch one window either side, then the 3×/9× zoom-out ladder; store-backed freshness per bucket); §4.6 v1 note (P2 coarse at width / 4, P3 fine after 120 ms, P4 flanks, the ladder as P5, no linger, cap 6) |
+| 1.15-rc | 2026-11-27 | #289: new T07-031 (structured variable values render only in allowlisted contexts: the context table, the `(?-i:(?:…))` group, the regex position rules and the probe guard that fails closed); T07-013 v1 note (defined variables, `VarValue` pairs in the key, lists in spec order); SRF-017 row |
+| 1.16-rc | 2026-11-27 | #304 ([ADR-0038](../adr/0038-page-range-store-and-scope-lease.md)): T07-012 v1 (line panels prefetch one window either side, then the 3×/9× zoom-out ladder; store-backed freshness per bucket); §4.6 v1 note (P2 coarse at width / 4, P3 fine after 120 ms, P4 flanks, the ladder as P5, no linger, cap 6) |

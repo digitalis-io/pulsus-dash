@@ -49,6 +49,8 @@ import {
   type SaveResult,
   type Session,
   type VolumeRequest,
+  type VariableValues,
+  type VariableValuesRequest,
 } from './types';
 import { errorFromRow, rangeFromDecoded } from '../data/dsfRange';
 import { messageOf, queryError } from './queryError';
@@ -192,6 +194,7 @@ type RangeBody = components['schemas']['PromRangeRequest'];
 type InstantBody = components['schemas']['PromInstantRequest'];
 type LogsBody = components['schemas']['LogqlRangeRequest'];
 type VolumeBody = components['schemas']['LogqlVolumeRequest'];
+type VariableValuesBody = components['schemas']['VariableValuesRequest'];
 
 /** The range request body; the optional members only when given. */
 function rangeBody(req: RangeRequest): RangeBody {
@@ -771,6 +774,35 @@ export class HttpApi implements Api {
     );
     if (data === undefined) throw queryError(response.status, error);
     return decoded(decodeValues, data);
+  }
+
+  /** POST …/variables/values (plan #289 §3.5): errors as the query routes'. */
+  async variableValues(
+    tenant: string,
+    req: VariableValuesRequest,
+    signal?: AbortSignal,
+  ): Promise<VariableValues> {
+    const body = {
+      lang: req.lang,
+      query: req.query,
+      from: req.fromMs,
+      to: req.toMs,
+      ...(req.vars === undefined ? {} : { vars: { ...req.vars } }),
+      ...(req.limit === undefined ? {} : { limit: req.limit }),
+    } as VariableValuesBody;
+    const { data, error, response } = await send(() =>
+      this.client.POST('/api/dash/v1/variables/values', {
+        params: { query: { tenant } },
+        body,
+        ...(signal === undefined ? {} : { signal }),
+      }),
+    );
+    if (data === undefined) throw queryError(response.status, error);
+    return {
+      planned: { label: data.planned.label, match: data.planned.match ?? null },
+      values: data.values,
+      truncated: data.completeness.truncated,
+    };
   }
 
   async promMetadata(

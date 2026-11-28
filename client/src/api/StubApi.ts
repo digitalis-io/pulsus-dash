@@ -66,24 +66,9 @@ import { LOG_LEVELS, type LogFrame } from '../data/logFrame';
 import { logGrid, promGrid, promGridAt } from '../data/step';
 import { keyHash } from '../dev/keyHash';
 import { synthLineValue } from '../dev/synth';
-import {
-  floorStep,
-  isPlanError,
-  prepare,
-  reservedIn,
-  typesFromMetadata,
-  WARN_TYPES_UNAVAILABLE,
-  type MetricTypes,
-  type PlanInputs,
-  type StubPlanError,
-} from './stub/plan';
-import {
-  isLogsPlanError,
-  prepareLogs,
-  RESERVED_MATCHER,
-  type LogsPlanInputs,
-  type LogsStubPlanError,
-} from './stub/logsPlan';
+import type { MetricTypes, PlanInputs, StubPlanError } from './stub/plan';
+import type { LogsPlanInputs, LogsStubPlanError } from './stub/logsPlan';
+import { anyStructured, loadMirror, mirrorLoaded } from './stub/varsCore';
 import {
   ApiError,
   BoardConflictError,
@@ -102,6 +87,8 @@ import {
   type SaveResult,
   type Session,
   type VolumeRequest,
+  type VariableValues,
+  type VariableValuesRequest,
 } from './types';
 
 /** A seeded board; the stub serves it as version 1, etag `"1"`. */
@@ -331,8 +318,29 @@ const METADATA_LIMIT = 10_000;
 /** How long a plan waits for metric types before it degrades (plan #112 §4.5). */
 const TYPES_WAIT_MS = 2_000;
 
+type Planners = typeof import('./stub/planners');
+let planners: Planners | null = null;
+let loadingPlanners: Promise<Planners> | null = null;
+
+/**
+ * The planner mirror, loaded on demand (#289: it is not in the initial chunk); every `StubApi`
+ * starts loading it, so a query rarely waits.
+ */
+function loadPlanners(): Promise<Planners> {
+  loadingPlanners ??= import('./stub/planners').then((m) => (planners = m));
+  return loadingPlanners;
+}
+
+/** The loaded planner mirror (every planning path loads it first). */
+function loadedPlanners(): Planners {
+  if (planners === null) throw new Error('stub: the planner mirror is not loaded');
+  return planners;
+}
+
 function completeness(warn: boolean): Completeness {
-  return warn ? { ...EMPTY_COMPLETENESS, warnings: [WARN_TYPES_UNAVAILABLE] } : EMPTY_COMPLETENESS;
+  return warn
+    ? { ...EMPTY_COMPLETENESS, warnings: [loadedPlanners().WARN_TYPES_UNAVAILABLE] }
+    : EMPTY_COMPLETENESS;
 }
 
 /** `p`, or a rejection after `ms`. */
@@ -393,6 +401,7 @@ export class StubApi implements Api {
   private readonly now: () => number;
 
   constructor(seed: StubSeed = defaultSeed, now: () => number = Date.now) {
+    void loadPlanners();
     this.seed = structuredClone(seed);
     this.seed.boards.push(...extraBoards(this.seed.boards));
     this.now = now;
@@ -581,6 +590,7 @@ export class StubApi implements Api {
 
   /** Plans as the server does (plan #112 §3.9), then serves the synthetic series on the grid. */
   async queryRange(tenant: string, req: RangeRequest, signal?: AbortSignal): Promise<RangeResult> {
+    if (anyStructured(req.vars)) await loadMirror();
     await queryHooks('range', req.query, signal);
     const g = await settle(() => {
       this.checkTenant(tenant);
@@ -628,6 +638,7 @@ export class StubApi implements Api {
     req: InstantRequest,
     signal?: AbortSignal,
   ): Promise<InstantResult> {
+    if (anyStructured(req.vars)) await loadMirror();
     await queryHooks('instant', req.query, signal);
     await settle(() => {
       this.checkTenant(tenant);
@@ -677,6 +688,8 @@ export class StubApi implements Api {
     inputs: PlanInputs,
     signal?: AbortSignal,
   ): Promise<{ planned: PlannedQuery; warn: boolean }> {
+    const { floorStep, isPlanError, prepare, reservedIn, typesFromMetadata } =
+      planners ?? (await loadPlanners());
     const p = prepare(inputs);
     if (isPlanError(p)) throw toApiError(p);
     const { stubShape } = await import('./stub/promShape');
@@ -720,6 +733,7 @@ export class StubApi implements Api {
    * the planned text. Every refusal is the `ApiError` HttpApi maps from the gateway's body.
    */
   private planLogs(inputs: LogsPlanInputs): LogqlPlannedQuery {
+    const { isLogsPlanError, prepareLogs, RESERVED_MATCHER, reservedIn } = loadedPlanners();
     const p = prepareLogs(inputs);
     if (isLogsPlanError(p)) throw toApiError(p);
     if (p.class.source !== 'pulsus_db') throw reservedRefusal(RESERVED_MATCHER);
@@ -788,6 +802,34 @@ export class StubApi implements Api {
       this.checkTenant(tenant);
       return { values: [...(STUB_LOG_LABEL_VALUES[name] ?? [])], completeness: EMPTY_COMPLETENESS };
     }, signal);
+  }
+
+  /** The stub's label values for a variable query planned by the mirror (plan #289 §3.5). */
+  variableValues(
+    tenant: string,
+    req: VariableValuesRequest,
+    signal?: AbortSignal,
+  ): Promise<VariableValues> {
+    return Promise.all([loadPlanners(), loadMirror()]).then(
+      ([{ isLogsPlanError, isPlanError, planVariableQuery, reservedIn }]) =>
+        settle(() => {
+          const plan = planVariableQuery(req.lang, req.query, req.vars ?? {});
+          if (isPlanError(plan) || isLogsPlanError(plan)) throw toApiError(plan);
+          if (plan.match !== null) {
+            const reserved = reservedIn(plan.match);
+            if (reserved !== null) throw reservedRefusal(reserved);
+          }
+          this.checkTenant(tenant);
+          const all =
+            req.lang === 'logql'
+              ? (STUB_LOG_LABEL_VALUES[plan.label] ?? [])
+              : plan.label === '__name__'
+                ? STUB_PROM_METRIC_NAMES
+                : STUB_PROM_LABEL_VALUES;
+          const limit = req.limit ?? 1000;
+          return { planned: plan, values: all.slice(0, limit), truncated: all.length > limit };
+        }, signal),
+    );
   }
 
   promMetadata(
@@ -862,6 +904,13 @@ export class StubApi implements Api {
    * §4.4): 1 s apart from `toMs` down (backward) or from `fromMs` up (forward), over three streams.
    */
   queryLogs(tenant: string, req: LogsRequest, signal?: AbortSignal): Promise<LogsResult> {
+    // A structured value needs the rest of the planner mirror (plan #289).
+    // The planner mirror, and for a structured value the rest of the variables mirror (#289).
+    if (planners === null || (anyStructured(req.vars) && !mirrorLoaded())) {
+      return Promise.all([loadPlanners(), anyStructured(req.vars) ? loadMirror() : null]).then(() =>
+        this.queryLogs(tenant, req, signal),
+      );
+    }
     return settle(() => {
       this.checkTenant(tenant);
       const g = logGrid(req.fromMs, req.toMs, req.widthPx);
@@ -920,6 +969,13 @@ export class StubApi implements Api {
 
   /** Three level frames (`error`, `warn`, `info`) of synthetic counts on the grid. */
   queryVolume(tenant: string, req: VolumeRequest, signal?: AbortSignal): Promise<VolumeResult> {
+    // A structured value needs the rest of the planner mirror (plan #289).
+    // The planner mirror, and for a structured value the rest of the variables mirror (#289).
+    if (planners === null || (anyStructured(req.vars) && !mirrorLoaded())) {
+      return Promise.all([loadPlanners(), anyStructured(req.vars) ? loadMirror() : null]).then(() =>
+        this.queryVolume(tenant, req, signal),
+      );
+    }
     return settle(() => {
       this.checkTenant(tenant);
       const g = logGrid(req.fromMs, req.toMs, req.widthPx);

@@ -56,6 +56,72 @@ func (e AuthorKind) Valid() bool {
 	}
 }
 
+// Defines values for BoardVariableKind.
+const (
+	BoardVariableKindConstant BoardVariableKind = "constant"
+	BoardVariableKindCustom   BoardVariableKind = "custom"
+	BoardVariableKindQuery    BoardVariableKind = "query"
+)
+
+// Valid indicates whether the value is a known member of the BoardVariableKind enum.
+func (e BoardVariableKind) Valid() bool {
+	switch e {
+	case BoardVariableKindConstant:
+		return true
+	case BoardVariableKindCustom:
+		return true
+	case BoardVariableKindQuery:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardVariableRefresh.
+const (
+	Load       BoardVariableRefresh = "load"
+	TimeChange BoardVariableRefresh = "timeChange"
+)
+
+// Valid indicates whether the value is a known member of the BoardVariableRefresh enum.
+func (e BoardVariableRefresh) Valid() bool {
+	switch e {
+	case Load:
+		return true
+	case TimeChange:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BoardVariableSort.
+const (
+	BoardVariableSortAlphaAsc  BoardVariableSort = "alphaAsc"
+	BoardVariableSortAlphaDesc BoardVariableSort = "alphaDesc"
+	BoardVariableSortNone      BoardVariableSort = "none"
+	BoardVariableSortNumAsc    BoardVariableSort = "numAsc"
+	BoardVariableSortNumDesc   BoardVariableSort = "numDesc"
+)
+
+// Valid indicates whether the value is a known member of the BoardVariableSort enum.
+func (e BoardVariableSort) Valid() bool {
+	switch e {
+	case BoardVariableSortAlphaAsc:
+		return true
+	case BoardVariableSortAlphaDesc:
+		return true
+	case BoardVariableSortNone:
+		return true
+	case BoardVariableSortNumAsc:
+		return true
+	case BoardVariableSortNumDesc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ClockCountdownAfter.
 const (
 	CountUp ClockCountdownAfter = "countUp"
@@ -560,6 +626,24 @@ func (e ThresholdsDirection) Valid() bool {
 	case Above:
 		return true
 	case Below:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VariableValuesRequestLang.
+const (
+	VariableValuesRequestLangLogql  VariableValuesRequestLang = "logql"
+	VariableValuesRequestLangPromql VariableValuesRequestLang = "promql"
+)
+
+// Valid indicates whether the value is a known member of the VariableValuesRequestLang enum.
+func (e VariableValuesRequestLang) Valid() bool {
+	switch e {
+	case VariableValuesRequestLangLogql:
+		return true
+	case VariableValuesRequestLangPromql:
 		return true
 	default:
 		return false
@@ -1121,11 +1205,12 @@ type BoardSaveResult struct {
 
 // BoardSpec defines model for BoardSpec.
 type BoardSpec struct {
-	Panels   []Panel          `json:"panels"`
-	Sections []Section        `json:"sections"`
-	Tags     *[]AnnotationTag `json:"tags,omitempty"`
-	Time     *TimeRange       `json:"time,omitempty"`
-	Title    string           `json:"title"`
+	Panels    []Panel          `json:"panels"`
+	Sections  []Section        `json:"sections"`
+	Tags      *[]AnnotationTag `json:"tags,omitempty"`
+	Time      *TimeRange       `json:"time,omitempty"`
+	Title     string           `json:"title"`
+	Variables *[]BoardVariable `json:"variables,omitempty"`
 }
 
 // BoardSummary defines model for BoardSummary.
@@ -1144,6 +1229,30 @@ type BoardUpdate struct {
 	Message *string         `json:"message,omitempty"`
 	Spec    json.RawMessage `json:"spec"`
 }
+
+// BoardVariable defines model for BoardVariable.
+type BoardVariable struct {
+	AllValue   *string               `json:"allValue,omitempty"`
+	Default    *[]string             `json:"default,omitempty"`
+	IncludeAll *bool                 `json:"includeAll,omitempty"`
+	Kind       BoardVariableKind     `json:"kind"`
+	Label      string                `json:"label"`
+	Multi      *bool                 `json:"multi,omitempty"`
+	Name       string                `json:"name"`
+	Query      *Query                `json:"query,omitempty"`
+	Refresh    *BoardVariableRefresh `json:"refresh,omitempty"`
+	Sort       *BoardVariableSort    `json:"sort,omitempty"`
+	Values     *[]string             `json:"values,omitempty"`
+}
+
+// BoardVariableKind defines model for BoardVariable.Kind.
+type BoardVariableKind string
+
+// BoardVariableRefresh defines model for BoardVariable.Refresh.
+type BoardVariableRefresh string
+
+// BoardVariableSort defines model for BoardVariable.Sort.
+type BoardVariableSort string
 
 // Bootstrap defines model for Bootstrap.
 type Bootstrap struct {
@@ -1329,7 +1438,7 @@ type LogqlRangeRequest struct {
 	TimeoutMs *int          `json:"timeout_ms,omitempty"`
 	To        int64         `json:"to"`
 
-	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$). A plain string is written as given (an undefined variable, today's behaviour); VarMulti carries literal picks and VarAll a regex, written only where T07-031 allows. The server substitutes them (ADR-0021).
 	Vars    *QueryVars `json:"vars,omitempty"`
 	WidthPx int        `json:"width_px"`
 }
@@ -1380,7 +1489,7 @@ type LogqlVolumeRequest struct {
 	TimeoutMs *int   `json:"timeout_ms,omitempty"`
 	To        int64  `json:"to"`
 
-	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$). A plain string is written as given (an undefined variable, today's behaviour); VarMulti carries literal picks and VarAll a regex, written only where T07-031 allows. The server substitutes them (ADR-0021).
 	Vars    *QueryVars `json:"vars,omitempty"`
 	WidthPx int        `json:"width_px"`
 }
@@ -1459,7 +1568,7 @@ type PromInstantRequest struct {
 	StepMs    *int64 `json:"step_ms,omitempty"`
 	TimeoutMs *int   `json:"timeout_ms,omitempty"`
 
-	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$). A plain string is written as given (an undefined variable, today's behaviour); VarMulti carries literal picks and VarAll a regex, written only where T07-031 allows. The server substitutes them (ADR-0021).
 	Vars *QueryVars `json:"vars,omitempty"`
 }
 
@@ -1495,7 +1604,7 @@ type PromRangeRequest struct {
 	TimeoutMs *int   `json:"timeout_ms,omitempty"`
 	To        int64  `json:"to"`
 
-	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
+	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$). A plain string is written as given (an undefined variable, today's behaviour); VarMulti carries literal picks and VarAll a regex, written only where T07-031 allows. The server substitutes them (ADR-0021).
 	Vars    *QueryVars `json:"vars,omitempty"`
 	WidthPx int        `json:"width_px"`
 }
@@ -1533,8 +1642,16 @@ type Query struct {
 // QueryLang defines model for Query.Lang.
 type QueryLang string
 
-// QueryVars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$; values at most 4096 UTF-8 bytes). The server substitutes them (ADR-0021).
-type QueryVars map[string]string
+// QueryVars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$). A plain string is written as given (an undefined variable, today's behaviour); VarMulti carries literal picks and VarAll a regex, written only where T07-031 allows. The server substitutes them (ADR-0021).
+type QueryVars map[string]QueryVars_AdditionalProperties
+
+// QueryVars0 defines model for QueryVars.0.
+type QueryVars0 = string
+
+// QueryVars_AdditionalProperties defines model for QueryVars.AdditionalProperties.
+type QueryVars_AdditionalProperties struct {
+	union json.RawMessage
+}
 
 // Ready defines model for Ready.
 type Ready struct {
@@ -1629,6 +1746,41 @@ type TimedValue struct {
 
 	// Value A finite number; the string NaN, +Inf or -Inf; or null for an absent point (T04-005).
 	Value FrameValue `json:"value"`
+}
+
+// VarAll All of a defined variable's values, as its regex (allValue, or ".*"); written verbatim in a regex context only.
+type VarAll struct {
+	All string `json:"all"`
+}
+
+// VarMulti The literal values picked for a defined variable (board spec v9,
+type VarMulti struct {
+	Values []string `json:"values"`
+}
+
+// VariableValuesRequest defines model for VariableValuesRequest.
+type VariableValuesRequest struct {
+	From  int64                     `json:"from"`
+	Lang  VariableValuesRequestLang `json:"lang"`
+	Limit *int                      `json:"limit,omitempty"`
+	Query string                    `json:"query"`
+	To    int64                     `json:"to"`
+
+	// Vars Variable values by name (names ^[A-Za-z_][A-Za-z0-9_]{0,63}$). A plain string is written as given (an undefined variable, today's behaviour); VarMulti carries literal picks and VarAll a regex, written only where T07-031 allows. The server substitutes them (ADR-0021).
+	Vars *QueryVars `json:"vars,omitempty"`
+}
+
+// VariableValuesRequestLang defines model for VariableValuesRequest.Lang.
+type VariableValuesRequestLang string
+
+// VariableValuesResponse defines model for VariableValuesResponse.
+type VariableValuesResponse struct {
+	Completeness Completeness `json:"completeness"`
+	Planned      struct {
+		Label string  `json:"label"`
+		Match *string `json:"match"`
+	} `json:"planned"`
+	Values []string `json:"values"`
 }
 
 // Version defines model for Version.
@@ -2036,6 +2188,94 @@ func (t LogqlRangeResponse) MarshalJSON() ([]byte, error) {
 }
 
 func (t *LogqlRangeResponse) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsQueryVars0 returns the union data inside the QueryVars_AdditionalProperties as a QueryVars0
+func (t QueryVars_AdditionalProperties) AsQueryVars0() (QueryVars0, error) {
+	var body QueryVars0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromQueryVars0 overwrites any union data inside the QueryVars_AdditionalProperties as the provided QueryVars0
+func (t *QueryVars_AdditionalProperties) FromQueryVars0(v QueryVars0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeQueryVars0 performs a merge with any union data inside the QueryVars_AdditionalProperties, using the provided QueryVars0
+func (t *QueryVars_AdditionalProperties) MergeQueryVars0(v QueryVars0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsVarMulti returns the union data inside the QueryVars_AdditionalProperties as a VarMulti
+func (t QueryVars_AdditionalProperties) AsVarMulti() (VarMulti, error) {
+	var body VarMulti
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromVarMulti overwrites any union data inside the QueryVars_AdditionalProperties as the provided VarMulti
+func (t *QueryVars_AdditionalProperties) FromVarMulti(v VarMulti) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeVarMulti performs a merge with any union data inside the QueryVars_AdditionalProperties, using the provided VarMulti
+func (t *QueryVars_AdditionalProperties) MergeVarMulti(v VarMulti) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsVarAll returns the union data inside the QueryVars_AdditionalProperties as a VarAll
+func (t QueryVars_AdditionalProperties) AsVarAll() (VarAll, error) {
+	var body VarAll
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromVarAll overwrites any union data inside the QueryVars_AdditionalProperties as the provided VarAll
+func (t *QueryVars_AdditionalProperties) FromVarAll(v VarAll) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeVarAll performs a merge with any union data inside the QueryVars_AdditionalProperties, using the provided VarAll
+func (t *QueryVars_AdditionalProperties) MergeVarAll(v VarAll) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t QueryVars_AdditionalProperties) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *QueryVars_AdditionalProperties) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

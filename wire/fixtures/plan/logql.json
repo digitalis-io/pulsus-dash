@@ -2277,6 +2277,3193 @@
      }
     ]
    }
+  },
+  {
+   "name": "L01a multi in a stream matcher",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=~\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a:1",
+       "b.2"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=~\"(?-i:(?:a:1|b\\\\.2))\"}",
+   "planned": {
+    "query": "{app=~\"(?-i:(?:a:1|b\\\\.2))\"}",
+    "expanded": "{app=~\"(?-i:(?:a:1|b\\\\.2))\"}",
+    "bytes": 28,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "L01b multi in a regex line filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a:1",
+       "b.2"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ \"(?-i:(?:a:1|b\\\\.2))\"",
+   "planned": {
+    "query": "{app=\"x\"} |~ \"(?-i:(?:a:1|b\\\\.2))\"",
+    "expanded": "{app=\"x\"} |~ \"(?-i:(?:a:1|b\\\\.2))\"",
+    "bytes": 34,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "L02 multi in an equality line filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in equality match)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L03 multi in a label filter after a parser",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | json | level=~\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a:1",
+       "b.2"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | json | level=~\"(?-i:(?:a:1|b\\\\.2))\"",
+   "planned": {
+    "query": "{app=\"x\"} | json | level=~\"(?-i:(?:a:1|b\\\\.2))\"",
+    "expanded": "{app=\"x\"} | json | level=~\"(?-i:(?:a:1|b\\\\.2))\"",
+    "bytes": 47,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "L04a one value in an equality label filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=\"a\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=\"a\"",
+    "expanded": "{app=\"x\"} | level=\"a\"",
+    "bytes": 21,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "L04b two values in an equality label filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in equality match)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L05 line_format, quoted, one value",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | line_format \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "{{.foo}}"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in line_format)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L05 line_format, quoted, two values",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | line_format \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "{{.foo}}",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in line_format)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L06 regexp, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | regexp \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "(?P<x>.*)"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regexp)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L05 line_format, backtick, one value",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | line_format `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "{{.foo}}"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in line_format)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L05 line_format, backtick, two values",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | line_format `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "{{.foo}}",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in line_format)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L06 regexp, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | regexp `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "(?P<x>.*)"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regexp)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L07 label_format",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | label_format a=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in label_format)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L08a pattern",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | pattern \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in pattern)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L08b json parameters",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | json a=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in json)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L08c unwrap",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | unwrap $n",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in unwrap)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L08d an or filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"a\" or \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in or filter)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L08e a pattern filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |> \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in pattern filter)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L08f a negated pattern filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} !> \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in pattern filter)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L09 the top level",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "count_over_time({app=\"x\"}[$n])",
+    "vars": {
+     "n": {
+      "values": [
+       "5m"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in top level)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L10 a negated line filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} != \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} != \"a\"",
+   "planned": {
+    "query": "{app=\"x\"} != \"a\"",
+    "expanded": "{app=\"x\"} != \"a\"",
+    "bytes": 16,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "L11 a negated regex line filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} !~ \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} !~ \"(?-i:(?:a|b))\"",
+   "planned": {
+    "query": "{app=\"x\"} !~ \"(?-i:(?:a|b))\"",
+    "expanded": "{app=\"x\"} !~ \"(?-i:(?:a|b))\"",
+    "bytes": 28,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "L12 a negated label filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level != \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level != \"a\"",
+   "planned": {
+    "query": "{app=\"x\"} | level != \"a\"",
+    "expanded": "{app=\"x\"} | level != \"a\"",
+    "bytes": 24,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "L13 a label filter after or",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=\"a\" or pod=~\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "p1",
+       "p2"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=\"a\" or pod=~\"(?-i:(?:p1|p2))\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=\"a\" or pod=~\"(?-i:(?:p1|p2))\"",
+    "expanded": "{app=\"x\"} | level=\"a\" or pod=~\"(?-i:(?:p1|p2))\"",
+    "bytes": 47,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "L14 a function argument",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= ip(\"$n\")",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in function argument)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L15 All in a stream matcher",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=~\"$n\"}",
+    "vars": {
+     "n": {
+      "all": ".+"
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=~\".+\"}",
+   "planned": {
+    "query": "{app=~\".+\"}",
+    "expanded": "{app=~\".+\"}",
+    "bytes": 11,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "L16 All in an equality line filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$n\"",
+    "vars": {
+     "n": {
+      "all": ".+"
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in equality match)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "L17 a legacy string in line_format is written as today",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | line_format \"$n\"",
+    "vars": {
+     "n": "{{.a}}"
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | line_format \"{{.a}}\"",
+   "planned": {
+    "query": "{app=\"x\"} | line_format \"{{.a}}\"",
+    "expanded": "{app=\"x\"} | line_format \"{{.a}}\"",
+    "bytes": 32,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R05 regex escape in a line filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"(\\\\$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex escape)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R05 regex escape in a label filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"(\\\\$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a",
+       "b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex escape)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R06 a case-insensitive line filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"(?i)$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "node"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ \"(?i)(?-i:(?:node))\"",
+   "planned": {
+    "query": "{app=\"x\"} |~ \"(?i)(?-i:(?:node))\"",
+    "expanded": "{app=\"x\"} |~ \"(?i)(?-i:(?:node))\"",
+    "bytes": 33,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "R07a quoted text in a line filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"\\\\Q$n\\\\E\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex quoted text)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R07b a quoted-text end in a line filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"\\\\Q$n\\\\E\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a\\Eb",
+       "c"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex quoted text)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R08 a POSIX class in a line filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"[[:alpha:]$n]\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex class)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R07a quoted text in a label filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"\\\\Q$n\\\\E\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex quoted text)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R07b a quoted-text end in a label filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"\\\\Q$n\\\\E\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a\\Eb",
+       "c"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex quoted text)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R08 a POSIX class in a label filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"[[:alpha:]$n]\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex class)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "R10 an unbalanced group in a line filter",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"($n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "server_only": true,
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced (in regex)",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL equality stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=\"a\\\"b\"}",
+   "planned": {
+    "query": "{x=\"a\\\"b\"}",
+    "expanded": "{x=\"a\\\"b\"}",
+    "bytes": 10,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL equality stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=`a\"b`}",
+   "planned": {
+    "query": "{x=`a\"b`}",
+    "expanded": "{x=`a\"b`}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL regex stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~\"(?-i:(?:a\\\"b))\"}",
+   "planned": {
+    "query": "{x=~\"(?-i:(?:a\\\"b))\"}",
+    "expanded": "{x=~\"(?-i:(?:a\\\"b))\"}",
+    "bytes": 21,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL regex stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~`(?-i:(?:a\"b))`}",
+   "planned": {
+    "query": "{x=~`(?-i:(?:a\"b))`}",
+    "expanded": "{x=~`(?-i:(?:a\"b))`}",
+    "bytes": 20,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL equality line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= \"a\\\"b\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"a\\\"b\"",
+    "expanded": "{app=\"x\"} |= \"a\\\"b\"",
+    "bytes": 19,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL equality line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= `a\"b`",
+   "planned": {
+    "query": "{app=\"x\"} |= `a\"b`",
+    "expanded": "{app=\"x\"} |= `a\"b`",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL regex line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ \"(?-i:(?:a\\\"b))\"",
+   "planned": {
+    "query": "{app=\"x\"} |~ \"(?-i:(?:a\\\"b))\"",
+    "expanded": "{app=\"x\"} |~ \"(?-i:(?:a\\\"b))\"",
+    "bytes": 29,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL regex line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ `(?-i:(?:a\"b))`",
+   "planned": {
+    "query": "{app=\"x\"} |~ `(?-i:(?:a\"b))`",
+    "expanded": "{app=\"x\"} |~ `(?-i:(?:a\"b))`",
+    "bytes": 28,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL equality label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=\"a\\\"b\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=\"a\\\"b\"",
+    "expanded": "{app=\"x\"} | level=\"a\\\"b\"",
+    "bytes": 24,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL equality label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=`a\"b`",
+   "planned": {
+    "query": "{app=\"x\"} | level=`a\"b`",
+    "expanded": "{app=\"x\"} | level=`a\"b`",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL regex label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~\"(?-i:(?:a\\\"b))\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=~\"(?-i:(?:a\\\"b))\"",
+    "expanded": "{app=\"x\"} | level=~\"(?-i:(?:a\\\"b))\"",
+    "bytes": 35,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H01 '\"' in a LogQL regex label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a\"b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~`(?-i:(?:a\"b))`",
+   "planned": {
+    "query": "{app=\"x\"} | level=~`(?-i:(?:a\"b))`",
+    "expanded": "{app=\"x\"} | level=~`(?-i:(?:a\"b))`",
+    "bytes": 34,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL equality stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=\"a'b\"}",
+   "planned": {
+    "query": "{x=\"a'b\"}",
+    "expanded": "{x=\"a'b\"}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL equality stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=`a'b`}",
+   "planned": {
+    "query": "{x=`a'b`}",
+    "expanded": "{x=`a'b`}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL regex stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~\"(?-i:(?:a'b))\"}",
+   "planned": {
+    "query": "{x=~\"(?-i:(?:a'b))\"}",
+    "expanded": "{x=~\"(?-i:(?:a'b))\"}",
+    "bytes": 20,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL regex stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~`(?-i:(?:a'b))`}",
+   "planned": {
+    "query": "{x=~`(?-i:(?:a'b))`}",
+    "expanded": "{x=~`(?-i:(?:a'b))`}",
+    "bytes": 20,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL equality line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= \"a'b\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"a'b\"",
+    "expanded": "{app=\"x\"} |= \"a'b\"",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL equality line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= `a'b`",
+   "planned": {
+    "query": "{app=\"x\"} |= `a'b`",
+    "expanded": "{app=\"x\"} |= `a'b`",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL regex line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ \"(?-i:(?:a'b))\"",
+   "planned": {
+    "query": "{app=\"x\"} |~ \"(?-i:(?:a'b))\"",
+    "expanded": "{app=\"x\"} |~ \"(?-i:(?:a'b))\"",
+    "bytes": 28,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL regex line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ `(?-i:(?:a'b))`",
+   "planned": {
+    "query": "{app=\"x\"} |~ `(?-i:(?:a'b))`",
+    "expanded": "{app=\"x\"} |~ `(?-i:(?:a'b))`",
+    "bytes": 28,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL equality label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=\"a'b\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=\"a'b\"",
+    "expanded": "{app=\"x\"} | level=\"a'b\"",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL equality label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=`a'b`",
+   "planned": {
+    "query": "{app=\"x\"} | level=`a'b`",
+    "expanded": "{app=\"x\"} | level=`a'b`",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL regex label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~\"(?-i:(?:a'b))\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=~\"(?-i:(?:a'b))\"",
+    "expanded": "{app=\"x\"} | level=~\"(?-i:(?:a'b))\"",
+    "bytes": 34,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H02 \"'\" in a LogQL regex label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a'b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~`(?-i:(?:a'b))`",
+   "planned": {
+    "query": "{app=\"x\"} | level=~`(?-i:(?:a'b))`",
+    "expanded": "{app=\"x\"} | level=~`(?-i:(?:a'b))`",
+    "bytes": 34,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL equality stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=\"a`b\"}",
+   "planned": {
+    "query": "{x=\"a`b\"}",
+    "expanded": "{x=\"a`b\"}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL equality stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL regex stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~\"(?-i:(?:a`b))\"}",
+   "planned": {
+    "query": "{x=~\"(?-i:(?:a`b))\"}",
+    "expanded": "{x=~\"(?-i:(?:a`b))\"}",
+    "bytes": 20,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL regex stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL equality line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= \"a`b\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"a`b\"",
+    "expanded": "{app=\"x\"} |= \"a`b\"",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL equality line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL regex line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ \"(?-i:(?:a`b))\"",
+   "planned": {
+    "query": "{app=\"x\"} |~ \"(?-i:(?:a`b))\"",
+    "expanded": "{app=\"x\"} |~ \"(?-i:(?:a`b))\"",
+    "bytes": 28,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL regex line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL equality label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=\"a`b\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=\"a`b\"",
+    "expanded": "{app=\"x\"} | level=\"a`b\"",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL equality label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL regex label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~\"(?-i:(?:a`b))\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=~\"(?-i:(?:a`b))\"",
+    "expanded": "{app=\"x\"} | level=~\"(?-i:(?:a`b))\"",
+    "bytes": 34,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H03 '`' in a LogQL regex label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a`b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "error": {
+    "status": 400,
+    "message": "the value of variable $n cannot be written where it is referenced",
+    "fields": [
+     {
+      "pointer": "/vars/n",
+      "message_key": "variable.unrepresentable"
+     }
+    ]
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL equality stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=\"a}b\"}",
+   "planned": {
+    "query": "{x=\"a}b\"}",
+    "expanded": "{x=\"a}b\"}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL equality stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=`a}b`}",
+   "planned": {
+    "query": "{x=`a}b`}",
+    "expanded": "{x=`a}b`}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL regex stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~\"(?-i:(?:a\\\\}b))\"}",
+   "planned": {
+    "query": "{x=~\"(?-i:(?:a\\\\}b))\"}",
+    "expanded": "{x=~\"(?-i:(?:a\\\\}b))\"}",
+    "bytes": 22,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL regex stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~`(?-i:(?:a\\}b))`}",
+   "planned": {
+    "query": "{x=~`(?-i:(?:a\\}b))`}",
+    "expanded": "{x=~`(?-i:(?:a\\}b))`}",
+    "bytes": 21,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL equality line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= \"a}b\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"a}b\"",
+    "expanded": "{app=\"x\"} |= \"a}b\"",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL equality line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= `a}b`",
+   "planned": {
+    "query": "{app=\"x\"} |= `a}b`",
+    "expanded": "{app=\"x\"} |= `a}b`",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL regex line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ \"(?-i:(?:a\\\\}b))\"",
+   "planned": {
+    "query": "{app=\"x\"} |~ \"(?-i:(?:a\\\\}b))\"",
+    "expanded": "{app=\"x\"} |~ \"(?-i:(?:a\\\\}b))\"",
+    "bytes": 30,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL regex line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ `(?-i:(?:a\\}b))`",
+   "planned": {
+    "query": "{app=\"x\"} |~ `(?-i:(?:a\\}b))`",
+    "expanded": "{app=\"x\"} |~ `(?-i:(?:a\\}b))`",
+    "bytes": 29,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL equality label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=\"a}b\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=\"a}b\"",
+    "expanded": "{app=\"x\"} | level=\"a}b\"",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL equality label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=`a}b`",
+   "planned": {
+    "query": "{app=\"x\"} | level=`a}b`",
+    "expanded": "{app=\"x\"} | level=`a}b`",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL regex label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~\"(?-i:(?:a\\\\}b))\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=~\"(?-i:(?:a\\\\}b))\"",
+    "expanded": "{app=\"x\"} | level=~\"(?-i:(?:a\\\\}b))\"",
+    "bytes": 36,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H04 '}' in a LogQL regex label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a}b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~`(?-i:(?:a\\}b))`",
+   "planned": {
+    "query": "{app=\"x\"} | level=~`(?-i:(?:a\\}b))`",
+    "expanded": "{app=\"x\"} | level=~`(?-i:(?:a\\}b))`",
+    "bytes": 35,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL equality stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=\"a,b\"}",
+   "planned": {
+    "query": "{x=\"a,b\"}",
+    "expanded": "{x=\"a,b\"}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL equality stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=`a,b`}",
+   "planned": {
+    "query": "{x=`a,b`}",
+    "expanded": "{x=`a,b`}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL regex stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~\"(?-i:(?:a,b))\"}",
+   "planned": {
+    "query": "{x=~\"(?-i:(?:a,b))\"}",
+    "expanded": "{x=~\"(?-i:(?:a,b))\"}",
+    "bytes": 20,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL regex stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~`(?-i:(?:a,b))`}",
+   "planned": {
+    "query": "{x=~`(?-i:(?:a,b))`}",
+    "expanded": "{x=~`(?-i:(?:a,b))`}",
+    "bytes": 20,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL equality line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= \"a,b\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"a,b\"",
+    "expanded": "{app=\"x\"} |= \"a,b\"",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL equality line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= `a,b`",
+   "planned": {
+    "query": "{app=\"x\"} |= `a,b`",
+    "expanded": "{app=\"x\"} |= `a,b`",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL regex line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ \"(?-i:(?:a,b))\"",
+   "planned": {
+    "query": "{app=\"x\"} |~ \"(?-i:(?:a,b))\"",
+    "expanded": "{app=\"x\"} |~ \"(?-i:(?:a,b))\"",
+    "bytes": 28,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL regex line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ `(?-i:(?:a,b))`",
+   "planned": {
+    "query": "{app=\"x\"} |~ `(?-i:(?:a,b))`",
+    "expanded": "{app=\"x\"} |~ `(?-i:(?:a,b))`",
+    "bytes": 28,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL equality label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=\"a,b\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=\"a,b\"",
+    "expanded": "{app=\"x\"} | level=\"a,b\"",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL equality label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=`a,b`",
+   "planned": {
+    "query": "{app=\"x\"} | level=`a,b`",
+    "expanded": "{app=\"x\"} | level=`a,b`",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL regex label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~\"(?-i:(?:a,b))\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=~\"(?-i:(?:a,b))\"",
+    "expanded": "{app=\"x\"} | level=~\"(?-i:(?:a,b))\"",
+    "bytes": 34,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H05 ',' in a LogQL regex label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a,b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~`(?-i:(?:a,b))`",
+   "planned": {
+    "query": "{app=\"x\"} | level=~`(?-i:(?:a,b))`",
+    "expanded": "{app=\"x\"} | level=~`(?-i:(?:a,b))`",
+    "bytes": 34,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL equality stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=\"a|b\"}",
+   "planned": {
+    "query": "{x=\"a|b\"}",
+    "expanded": "{x=\"a|b\"}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL equality stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=`a|b`}",
+   "planned": {
+    "query": "{x=`a|b`}",
+    "expanded": "{x=`a|b`}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL regex stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~\"(?-i:(?:a\\\\|b))\"}",
+   "planned": {
+    "query": "{x=~\"(?-i:(?:a\\\\|b))\"}",
+    "expanded": "{x=~\"(?-i:(?:a\\\\|b))\"}",
+    "bytes": 22,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL regex stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~`(?-i:(?:a\\|b))`}",
+   "planned": {
+    "query": "{x=~`(?-i:(?:a\\|b))`}",
+    "expanded": "{x=~`(?-i:(?:a\\|b))`}",
+    "bytes": 21,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL equality line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= \"a|b\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"a|b\"",
+    "expanded": "{app=\"x\"} |= \"a|b\"",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL equality line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= `a|b`",
+   "planned": {
+    "query": "{app=\"x\"} |= `a|b`",
+    "expanded": "{app=\"x\"} |= `a|b`",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL regex line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ \"(?-i:(?:a\\\\|b))\"",
+   "planned": {
+    "query": "{app=\"x\"} |~ \"(?-i:(?:a\\\\|b))\"",
+    "expanded": "{app=\"x\"} |~ \"(?-i:(?:a\\\\|b))\"",
+    "bytes": 30,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL regex line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ `(?-i:(?:a\\|b))`",
+   "planned": {
+    "query": "{app=\"x\"} |~ `(?-i:(?:a\\|b))`",
+    "expanded": "{app=\"x\"} |~ `(?-i:(?:a\\|b))`",
+    "bytes": 29,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL equality label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=\"a|b\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=\"a|b\"",
+    "expanded": "{app=\"x\"} | level=\"a|b\"",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL equality label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=`a|b`",
+   "planned": {
+    "query": "{app=\"x\"} | level=`a|b`",
+    "expanded": "{app=\"x\"} | level=`a|b`",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL regex label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~\"(?-i:(?:a\\\\|b))\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=~\"(?-i:(?:a\\\\|b))\"",
+    "expanded": "{app=\"x\"} | level=~\"(?-i:(?:a\\\\|b))\"",
+    "bytes": 36,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H06 '|' in a LogQL regex label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a|b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~`(?-i:(?:a\\|b))`",
+   "planned": {
+    "query": "{app=\"x\"} | level=~`(?-i:(?:a\\|b))`",
+    "expanded": "{app=\"x\"} | level=~`(?-i:(?:a\\|b))`",
+    "bytes": 35,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL equality stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=\"a\\nb\"}",
+   "planned": {
+    "query": "{x=\"a\\nb\"}",
+    "expanded": "{x=\"a\\nb\"}",
+    "bytes": 10,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL equality stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=`a\nb`}",
+   "planned": {
+    "query": "{x=`a\nb`}",
+    "expanded": "{x=`a\nb`}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL regex stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~\"(?-i:(?:a\\nb))\"}",
+   "planned": {
+    "query": "{x=~\"(?-i:(?:a\\nb))\"}",
+    "expanded": "{x=~\"(?-i:(?:a\\nb))\"}",
+    "bytes": 21,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL regex stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~`(?-i:(?:a\nb))`}",
+   "planned": {
+    "query": "{x=~`(?-i:(?:a\nb))`}",
+    "expanded": "{x=~`(?-i:(?:a\nb))`}",
+    "bytes": 20,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL equality line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= \"a\\nb\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"a\\nb\"",
+    "expanded": "{app=\"x\"} |= \"a\\nb\"",
+    "bytes": 19,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL equality line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= `a\nb`",
+   "planned": {
+    "query": "{app=\"x\"} |= `a\nb`",
+    "expanded": "{app=\"x\"} |= `a\nb`",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL regex line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ \"(?-i:(?:a\\nb))\"",
+   "planned": {
+    "query": "{app=\"x\"} |~ \"(?-i:(?:a\\nb))\"",
+    "expanded": "{app=\"x\"} |~ \"(?-i:(?:a\\nb))\"",
+    "bytes": 29,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL regex line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ `(?-i:(?:a\nb))`",
+   "planned": {
+    "query": "{app=\"x\"} |~ `(?-i:(?:a\nb))`",
+    "expanded": "{app=\"x\"} |~ `(?-i:(?:a\nb))`",
+    "bytes": 28,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL equality label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=\"a\\nb\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=\"a\\nb\"",
+    "expanded": "{app=\"x\"} | level=\"a\\nb\"",
+    "bytes": 24,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL equality label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=`a\nb`",
+   "planned": {
+    "query": "{app=\"x\"} | level=`a\nb`",
+    "expanded": "{app=\"x\"} | level=`a\nb`",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL regex label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~\"(?-i:(?:a\\nb))\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=~\"(?-i:(?:a\\nb))\"",
+    "expanded": "{app=\"x\"} | level=~\"(?-i:(?:a\\nb))\"",
+    "bytes": 35,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H07 '\\n' in a LogQL regex label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a\nb"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~`(?-i:(?:a\nb))`",
+   "planned": {
+    "query": "{app=\"x\"} | level=~`(?-i:(?:a\nb))`",
+    "expanded": "{app=\"x\"} | level=~`(?-i:(?:a\nb))`",
+    "bytes": 34,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL equality stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=\"a#b\"}",
+   "planned": {
+    "query": "{x=\"a#b\"}",
+    "expanded": "{x=\"a#b\"}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL equality stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=`a#b`}",
+   "planned": {
+    "query": "{x=`a#b`}",
+    "expanded": "{x=`a#b`}",
+    "bytes": 9,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL regex stream matcher, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~\"$n\"}",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~\"(?-i:(?:a#b))\"}",
+   "planned": {
+    "query": "{x=~\"(?-i:(?:a#b))\"}",
+    "expanded": "{x=~\"(?-i:(?:a#b))\"}",
+    "bytes": 20,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL regex stream matcher, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{x=~`$n`}",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{x=~`(?-i:(?:a#b))`}",
+   "planned": {
+    "query": "{x=~`(?-i:(?:a#b))`}",
+    "expanded": "{x=~`(?-i:(?:a#b))`}",
+    "bytes": 20,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL equality line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= \"a#b\"",
+   "planned": {
+    "query": "{app=\"x\"} |= \"a#b\"",
+    "expanded": "{app=\"x\"} |= \"a#b\"",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL equality line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |= `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |= `a#b`",
+   "planned": {
+    "query": "{app=\"x\"} |= `a#b`",
+    "expanded": "{app=\"x\"} |= `a#b`",
+    "bytes": 18,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL regex line filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ \"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ \"(?-i:(?:a#b))\"",
+   "planned": {
+    "query": "{app=\"x\"} |~ \"(?-i:(?:a#b))\"",
+    "expanded": "{app=\"x\"} |~ \"(?-i:(?:a#b))\"",
+    "bytes": 28,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL regex line filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} |~ `$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} |~ `(?-i:(?:a#b))`",
+   "planned": {
+    "query": "{app=\"x\"} |~ `(?-i:(?:a#b))`",
+    "expanded": "{app=\"x\"} |~ `(?-i:(?:a#b))`",
+    "bytes": 28,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL equality label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=\"a#b\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=\"a#b\"",
+    "expanded": "{app=\"x\"} | level=\"a#b\"",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL equality label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=`a#b`",
+   "planned": {
+    "query": "{app=\"x\"} | level=`a#b`",
+    "expanded": "{app=\"x\"} | level=`a#b`",
+    "bytes": 23,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL regex label filter, quoted",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~\"$n\"",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~\"(?-i:(?:a#b))\"",
+   "planned": {
+    "query": "{app=\"x\"} | level=~\"(?-i:(?:a#b))\"",
+    "expanded": "{app=\"x\"} | level=~\"(?-i:(?:a#b))\"",
+    "bytes": 34,
+    "step_ms": 5000
+   }
+  },
+  {
+   "name": "H08 '#' in a LogQL regex label filter, backtick",
+   "from": "plan #289 \u00a75",
+   "inputs": {
+    "query": "{app=\"x\"} | level=~`$n`",
+    "vars": {
+     "n": {
+      "values": [
+       "a#b"
+      ]
+     }
+    },
+    "kind": "range",
+    "step_ms": 5000
+   },
+   "substituted": "{app=\"x\"} | level=~`(?-i:(?:a#b))`",
+   "planned": {
+    "query": "{app=\"x\"} | level=~`(?-i:(?:a#b))`",
+    "expanded": "{app=\"x\"} | level=~`(?-i:(?:a#b))`",
+    "bytes": 34,
+    "step_ms": 5000
+   }
   }
  ],
  "reserved": [

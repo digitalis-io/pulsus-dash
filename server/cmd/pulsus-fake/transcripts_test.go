@@ -51,6 +51,9 @@ func TestE2ETranscripts(t *testing.T) {
 		// The panel units set (#290 §5 E1–E2).
 		"units-rx-bytes", "units-uptime",
 		"zoom-wave",
+		// The board variables set (#289 §5 e2e:board-variables).
+		"variables-memory-all", "variables-memory-n1", "variables-node-values", "variables-queries-all",
+		"variables-queries-n1", "variables-targets", "variables-up", "variables-uptime-all", "variables-uptime-n1",
 	}
 	if !slices.Equal(names, want) {
 		t.Errorf("transcripts %v, want %v", names, want)

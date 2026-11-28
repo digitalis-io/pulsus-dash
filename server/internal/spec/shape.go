@@ -131,8 +131,18 @@ var (
 		{"sections", true, valueType{kind: kArray, elem: &valueType{kind: kObject, shape: sectionShape}}},
 		{"time", false, valueType{kind: kObject, shape: timeShape}},
 		// Board spec v4 (#215, T24-029): tags.
-		{"tags", false, valueType{kind: kArray, elem: &tString}}}
+		{"tags", false, valueType{kind: kArray, elem: &tString}},
+		// Board spec v9 (#289): variables.
+		{"variables", false, valueType{kind: kArray, elem: &valueType{kind: kObject, shape: variableShape}}}}
 	tBoard = valueType{kind: kObject, shape: boardShape}
+	// variableShape is a board variable (board spec v9, #289 §3.1): typed keys; which optional keys a
+	// kind takes is the rules pass's (validateVariables).
+	variableShape = []field{{"name", true, tString}, {"label", true, tString}, {"kind", true, tString},
+		{"query", false, valueType{kind: kObject, shape: queryShape}},
+		{"values", false, valueType{kind: kArray, elem: &tString}},
+		{"multi", false, tBool}, {"includeAll", false, tBool}, {"allValue", false, tString},
+		{"default", false, valueType{kind: kArray, elem: &tString}},
+		{"sort", false, tString}, {"refresh", false, tString}}
 
 	// The request envelopes of POST /boards (BoardCreate) and PUT /boards/{uid} (BoardUpdate).
 	tCreate = valueType{kind: kObject, shape: []field{{"spec", true, valueType{kind: kAny}}}}

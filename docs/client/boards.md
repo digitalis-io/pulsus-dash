@@ -35,9 +35,11 @@ substitutes, rewrites and size-checks the query and returns `planned`.
 | instant | `queryInstant(tenant, {query: text, atMs: toMs, vars, stepMs})` |
 
 - `text` is the panel text as saved, raw (or the dialog's run text, below).
-- `vars` is `panelVars(text, vars)`: the `var-<name>` values of the URL for the variables the text
-  references (`referencedVariables`: `$name` and `${name}`, not `$__…` macros, at most 64
-  characters), sorted by name; `{}` when it references none. Unreferenced variables are not sent.
+- `vars` is `panelVars(text, vars)`: the value of each variable the text references
+  (`referencedVariables`: `$name` and `${name}`, not `$__…` macros, at most 64 characters), sorted
+  by name; `{}` when it references none. Unreferenced variables are not sent. A variable the board
+  defines sends a `VarValue` (`{values: […]}` or `{all: regex}`), one it does not define the URL's
+  first value as a plain string ([board variables](#board-variables-289)).
 - `widthPx` is the panel body's width, read through a ref when the query function runs (a width
   change within one step does not refetch). `stepMs` is `promGrid(fromMs, toMs, widthPx).stepMs`
   for both routes; the instant route sends it so the server can size `$__interval` and the rate
@@ -155,11 +157,12 @@ First match; the text is from `messages.en-GB.ts`.
 | a pending kind (Pie, Map; PromQL or LogQL) | message `kindUnavailable` | "This chart type isn't available in this version yet." |
 | PromQL, visualisation Logs | message `logs` | "A metric query has no log lines. Choose Auto or a chart." |
 | blank text | message `empty` | "Add a query" |
-| a referenced variable without a value | message `variable` | "Set a value for `$a, $b` to run this panel" |
+| a referenced variable whose selection is over 200 values or 65 536 bytes | message `variableTooMany` | "Too many values selected for ‹label›" (no request) |
+| a referenced variable without a value (unset, waiting for another, or its list failed) | message `variable` | "Set a value for `$a, $b` to run this panel" |
 | the language module failed | message `langFailed` | "PromQL support could not be loaded. Reload the page." |
 | over 128 KB, or the server's 413 | message `refused` | `refusalText('queryTooLarge')` or `refusalText('tooLong')` |
 | any other error | error | "Something went wrong", the `errorView` text and, for a query error with a position, " (line L, column C)"; Narrow when the error is about the window |
-| no outcome yet | loading | "Loading" |
+| no outcome yet, or a referenced variable's list is loading (the idle key) | loading | "Loading" |
 | a string result | message `string` | "String result: …" |
 | `framePlan` notice | message `noBuckets` / `tooManyTimestamps` | Explore's texts |
 | saved Bar chart, a series or scalar result | `category` ([below](#bar-chart-panels-173-part-3b)) | |
@@ -492,6 +495,87 @@ error as "This server does not support map panels yet" under the status line
 (`saveFieldMessage`, `boards/fieldMessages.ts`), and the panel editor shows the same text at its
 Visualisation field (`kindFieldMessage`). Every other field error, one under a geomap's
 options included, keeps its own text: a v7 server never reports `geomap` as an invalid kind.
+
+### Board variables (#289)
+
+Board spec v9 adds saved variable definitions (`variables`, [the API](../server/boards-api.md#board-variables-v9)).
+Their values are in the board URL only; nothing about a pick is saved.
+
+| Module | Holds |
+|---|---|
+| `state/boardParams.ts` | `readBoardParams(rest, defined)`: `var-<name>` may repeat; a defined variable's values are decoded with the `$` escape and kept canonically encoded, distinct, in address order; `ALL_TOKEN`, `decodeValue`, `encodeValue`, `withVarValues` |
+| `state/useBoardParams.ts` | `setVarValues(name, encoded \| null)`: a navigation (Back undoes it), refused with `url.tooLong` over the budget |
+| `boards/variableQuery.ts` | `parseVariableQuery(lang, text)`, the server's `varquery.Parse` |
+| `boards/resolveVariables.ts` | `resolveVariables(defs, address, lists, legacy)`: each variable's `VarState`, in spec order; `sortValues`, `selectionBytes`, `displayOf` |
+| `boards/useVariableLists.ts` | the value lists and the states of a board |
+| `boards/variableBlock.ts` | what a panel's references block: missing, too many, loading |
+| `boards/variablesSpec.ts` | the v9 rules, the server's `spec/variables.go` |
+| `pages/board/VariablePicker.tsx`, `kit/ListBox.tsx` | the chip and the picker |
+
+**The address and the `$` escape.** For a defined variable a bare `$__all` is All; any other value
+that starts with `$` loses one `$` when read, and a literal that starts with `$` is written with one
+more (`$__all` the literal is `var-node=$$__all`). The 1 to 200 code-point limit applies to the
+decoded value, so the parameter may be 201. A variable the board does not define is read raw, as
+before. The saved `default` uses the same encoding.
+
+**Resolution** (`resolveVariables`, pure): a query variable that references an earlier variable
+waits (`waiting{on}`) while that one is waiting, failed, too large or unset, and loads while it
+loads. Then the selection S: a constant's value; the decoded address values, over the saved
+default, over the first listed value (`unset` when the list is empty); a single-select variable
+keeps S[0]. S = All gives `{all: allValue ?? '.*'}`, never the expanded list. Otherwise
+`{values: S}`, or `tooMany` when S has more than 200 values or `selectionBytes(S)` (UTF-8 bytes of
+`JSON.stringify(S)`) is over 65 536: no request sends it. A list that failed gives `failed` unless S
+came from the address or the default. A selected value the list no longer holds stays selected.
+`display` is the value, `first +N` or "All"; Markdown Text panels show it (`displayVars`). Sorts:
+`alpha*` by UTF-16 code units; `num*` by `Number()`, values that are not numbers last in code-unit
+order; `none` as served.
+
+**Lists** (`useVariableLists`): a custom variable's values, sorted, with no request. A query
+variable's list is `api.variableValues(tenant, {lang, query, fromMs, toMs, vars, limit: 1000})`
+under `['varValues', tenant, uid, name, lang, text, varsJson, fromMs, toMs]` (`staleTime: Infinity`, no
+retry, no placeholder). The request's `vars` are the earlier variables' values and, for a name the board does not define,
+its URL value (such a name also has the legacy text chip). The key exists only once the variables
+its query references are ready, so lists load in spec order and a dependent fetches again when a value it uses changes. `refresh:
+load` keeps the window of the board's first ready render; `timeChange` follows the window. Retry
+refetches; a new key, a tenant switch or an unmount aborts the request in flight.
+
+**Panels** read `BoardRunContext`: `vars` (the ready values), `states`, `displayVars` and `labels`.
+A panel's key holds its `[name, VarValue]` pairs as JSON, so only the panels whose pairs change run
+again (T07-013). A loading reference holds the idle key ("Loading"); a `tooMany` one shows "Too
+many values selected for ‹label›"; a waiting, failed or unset one "Set a value".
+
+**The bar**, in order: a chip per defined variable but constants (spec order), the text chip of
+each referenced variable the board does not define, the filters, `+ Filter`. A chip is a 28 px
+field (its corner on the radius scale, VL-019): the muted label, the value (ellipsised), a chevron; Loading shimmers and is `aria-busy`;
+waiting reads "Waiting for ‹label›"; failed "Values unavailable" and too large "Selection too
+large; use All or narrow the search", each with the degraded state glyph. Its name is "Variable
+‹label›: ‹display›" (`aria-haspopup="dialog"`, `aria-expanded`).
+
+**The picker** (a `Popover` with a dialog "Variable ‹label›"): React Aria `Autocomplete` with a
+`SearchField` (focus starts there) and the kit `ListBox` (virtual focus, `aria-activedescendant`).
+Rows: All (with `includeAll`), the selected values the list does not hold, tagged "custom" (named
+"‹value›, custom", shown whatever the search), up to 200 listed matches and then "N more, type to
+narrow", and "Use ‹text›" when the search matches nothing. A truncated list adds "List truncated:
+type a value". Single-select: choosing a row commits it and closes. Multi-select: rows toggle a
+draft (All clears the rows, a row clears All); a value over 200 code points (listed or typed) is
+never choosable, and when one more row would pass 200 values or 65 536
+bytes the rows it would add, "Use ‹text›" included, are disabled and "Selection too large; use All or narrow the search"
+shows, All staying enabled. **Apply** (or ⌘/Ctrl+Enter) commits the draft; Escape or a click
+outside discards it; **Reset to default** removes the URL values; **Retry** refetches a failed list.
+A polite region says "Loading values", "Values unavailable", "‹n› matches" and "‹n› selected".
+Focus returns to the chip.
+
+**The stub** plans structured values with the same contexts and regex position rules
+(`api/stub/vars.ts`) and answers `variableValues` from its label values; the server's probe guard
+is not mirrored (the fixture's `server_only` cases). `StubApi` imports the planner mirror on
+demand (`api/stub/planners.ts`, started when a `StubApi` is made) and the variables mirror only
+for a request with a structured value (`api/stub/varsCore.ts` `loadMirror`), so neither is in the
+initial chunk.
+
+Gates: `unit:board-params-multi`, `unit:resolve-variables`, `unit:variable-lists`,
+`unit:variable-too-many`, `unit:board-variables-run`, `unit:variable-picker`, `unit:variable-query`,
+`unit:board-spec` (TS), `unit:plan-parity` (TS) and `e2e:board-variables`; SRF-017 (subset),
+IA-006, IA-022, T07-013, T07-031, T08-007.
 
 ### Panel units (#290)
 

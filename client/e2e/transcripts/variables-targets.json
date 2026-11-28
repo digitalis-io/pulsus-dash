@@ -1,0 +1,41 @@
+{
+  "name": "variables-targets",
+  "provenance": {
+    "synthetic": "board variables (#289): a panel without variables"
+  },
+  "match": {
+    "method": "POST",
+    "paths": [
+      "/api/v1/query_range"
+    ],
+    "query": "sum(vars_targets)"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json",
+      "X-Pulsus-Query-Id": "fake-variables-targets-1"
+    },
+    "body": {
+      "status": "success",
+      "data": {
+        "resultType": "matrix",
+        "result": [
+          {
+            "metric": {},
+            "values": [
+              [
+                1767225600,
+                "1"
+              ],
+              [
+                1767229200,
+                "2"
+              ]
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

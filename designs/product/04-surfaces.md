@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.8-rc · 2026-11-23 |
+| **Version** | 1.9-rc · 2026-11-27 |
 | **Requirement area** | `SRF` |
 | **Source draft** | plans/04-surfaces.md (not tracked) |
 | **Depends on** | [01 Vision & principles](01-vision-and-principles.md) · [01a Audiences & perspectives](01a-audiences-and-perspectives.md) · [02 Information architecture](02-information-architecture.md) · [03 Interaction model](03-interaction-model.md) · [05 Visualisation catalogue](05-visualisation-catalogue.md) · [07 Alerting](07-alerting.md) · [08 Visual language](08-visual-language.md) · [09 Performance contract](09-performance-contract.md) · [15 Estate navigation](15-estate-navigation.md) |
@@ -359,6 +359,11 @@ variable MUST re-query only the viewports that use it, crossfading old to new da
 
 *Acceptance:* Given a board of 30 viewports where 5 use `$region`, when `$region` changes, then
 exactly 5 viewports re-query and each crossfades.
+
+*Note (#289, M-UI5 subset):* saved definitions (board spec v9: query, custom and constant kinds),
+query-driven value lists, multi-select, All and defaults, and the bar's picker chips have landed; a
+pick re-queries only the panels that use the variable ([T07](../technical/T07-scene-query-planner.md)
+T07-013, T07-031). The crossfade and the seeding from Context are owed.
 
 #### SRF-018 — Board overview zoom
 **MUST** · M-UI5 · Engineer, SRE
@@ -1147,6 +1152,7 @@ release and in the team channel.
 | 1.6-rc | 2026-11-21 | #90: §4.3 the M-UI1 panel editor is a centred modal window with a live preview (owner decision 2026-11-21); the region table's viewport editor is a modal window |
 | 1.7-rc | 2026-11-22 | #64 Part B: §4.3 note: the panel editor's Thresholds and Legend, the legend table, threshold lines and the stat chip (M-UI1) |
 | 1.8-rc | 2026-11-23 | #66 Part C (owner decision Q-C2): SRF-033 note: in M-UI1 the brush updates the stream and the volume; patterns join with SRF-034 in M-UI2 |
+| 1.9-rc | 2026-11-27 | #289: SRF-017 note (saved definitions, value lists, multi-select, All, defaults and the picker landed; the crossfade and Context seeding owed) |
 
 ## Resolved during formalisation
 

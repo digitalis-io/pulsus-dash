@@ -5,7 +5,7 @@
  * The answer's kind decides what is drawn (ADR-0021 §2: nothing is planned in the browser).
  */
 import type { Api } from '../api/Api';
-import type { DataVisKind, PlannedQuery } from '../api/types';
+import type { DataVisKind, PlannedQuery, VarValue } from '../api/types';
 import type { Completeness, LogqlPlannedQuery, LogsResult, VolumeResult } from '../data/decode';
 import { logPagerKey, type LogPagerInput, type LogPagerState } from '../logs/logPager';
 import { fromRange } from '../vis/autovis';
@@ -90,7 +90,7 @@ export interface LogFrameRequest {
   readonly fromMs: number;
   readonly toMs: number;
   readonly widthPx: number;
-  readonly vars: Readonly<Record<string, string>>;
+  readonly vars: Readonly<Record<string, VarValue>>;
 }
 
 /**

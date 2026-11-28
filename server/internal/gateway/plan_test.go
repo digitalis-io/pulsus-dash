@@ -653,3 +653,99 @@ func TestPromqlRangeMacros(t *testing.T) {
 	}
 	assertAuthority(t, fake, s)
 }
+
+// structuredCase is a #289 case of a shared plan fixture: its vars kept as JSON.
+type structuredCase struct {
+	Name   string `json:"name"`
+	From   string `json:"from"`
+	Inputs struct {
+		Query string          `json:"query"`
+		Vars  json.RawMessage `json:"vars"`
+	} `json:"inputs"`
+	Planned *struct {
+		Query string `json:"query"`
+	} `json:"planned"`
+	Error *struct {
+		Message string `json:"message"`
+		Fields  []struct {
+			Pointer    string `json:"pointer"`
+			MessageKey string `json:"message_key"`
+		} `json:"fields"`
+	} `json:"error"`
+}
+
+// structuredCases are the #289 cases of the fixture at path whose name starts with one of
+// prefixes (M01, R05, L04a, H03, …).
+func structuredCases(t *testing.T, path string, prefixes ...string) []structuredCase {
+	t.Helper()
+	b, err := os.ReadFile(path) //nolint:gosec // the fixture paths are constants of the tests
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f struct {
+		Plan []json.RawMessage `json:"plan"`
+	}
+	if err := json.Unmarshal(b, &f); err != nil {
+		t.Fatal(err)
+	}
+	var out []structuredCase
+	for _, raw := range f.Plan {
+		var c structuredCase
+		if json.Unmarshal(raw, &c) != nil || c.From != "plan #289 §5" {
+			continue
+		}
+		for _, p := range prefixes {
+			if strings.HasPrefix(c.Name, p) {
+				out = append(out, c)
+			}
+		}
+	}
+	if len(out) == 0 {
+		t.Fatalf("%s: no %v cases", path, prefixes)
+	}
+	return out
+}
+
+// checkStructured: a planned case sent exactly once as planned, a refused one answered 400 with
+// its message and fields and nothing sent (T06-029).
+func checkStructured(t *testing.T, c structuredCase, rec *httptest.ResponseRecorder, sent []string) {
+	t.Helper()
+	if c.Planned != nil {
+		if rec.Code != 200 || len(sent) != 1 || sent[0] != c.Planned.Query {
+			t.Errorf("%s: %d, sent %q, want %q (body %.300s)", c.Name, rec.Code, sent, c.Planned.Query, rec.Body.String())
+		}
+		return
+	}
+	if rec.Code != 400 || len(sent) != 0 {
+		t.Errorf("%s: %d, sent %q, want 400 and nothing sent (body %.300s)", c.Name, rec.Code, sent, rec.Body.String())
+		return
+	}
+	e := errEnvelopeOf(t, rec.Body.Bytes())
+	if c.Error == nil || e.Error.Message != c.Error.Message || len(e.Error.Fields) != len(c.Error.Fields) {
+		t.Errorf("%s: %.300s", c.Name, rec.Body.String())
+		return
+	}
+	for i, f := range c.Error.Fields {
+		if e.Error.Fields[i].Pointer != f.Pointer || e.Error.Fields[i].MessageKey != f.MessageKey {
+			t.Errorf("%s: field %d %+v, want %+v", c.Name, i, e.Error.Fields[i], f)
+		}
+	}
+}
+
+// itest:plan-authority (T06-029, T07-031, plan #289 §5): the M, R and H cases of promql.json
+// through the range route: the upstream query is planned.query; a refusal sends nothing.
+func TestPromqlStructuredValues(t *testing.T) {
+	up := valueUpstream(t)
+	h := plannedGateway(t, up.URL, fixedNow)
+	for _, c := range structuredCases(t, "../../../wire/fixtures/plan/promql.json", "M", "R", "H") {
+		up.reset()
+		rec := postJSON(h, rangePath, rangeBody(c.Inputs.Query, `"vars":`+string(c.Inputs.Vars)))
+		var sent []string
+		for _, r := range up.requests() {
+			if r.Path == "/api/v1/query_range" {
+				sent = append(sent, r.Form.Get("query"))
+			}
+		}
+		checkStructured(t, c, rec, sent)
+	}
+}

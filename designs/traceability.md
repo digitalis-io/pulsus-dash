@@ -159,7 +159,7 @@
 | [SRF-014](product/04-surfaces.md#srf-014--board-layout) | Board layout | MUST | M-UI5 | — | — |
 | [SRF-015](product/04-surfaces.md#srf-015--shared-cursor-and-crosshair) | Shared cursor and crosshair | MUST | M-UI5 | — | — |
 | [SRF-016](product/04-surfaces.md#srf-016--lazy-collapsed-sections) | Lazy collapsed sections | MUST | M-UI5 | T07 §4.6, T07-012 | `itest:planner-collapsed`: a collapsed section of 10 viewports issues no physical query |
-| [SRF-017](product/04-surfaces.md#srf-017--variables) | Variables | MUST | M-UI5 | T07 §4.1 (variable dependency index), T07-013 | `itest:planner-variables`: changing `$region` on a 30-viewport board where 5 use it re-plans exactly 5 |
+| [SRF-017](product/04-surfaces.md#srf-017--variables) | Variables | MUST | M-UI5 | T07 §4.1 (variable dependency index), T07-013, T07-031 | `itest:planner-variables`: changing `$region` on a 30-viewport board where 5 use it re-plans exactly 5 (owed); v1 (#289): `unit:board-variables-run`, `unit:var-render`, `unit:regex-probe-guard`, `itest:variable-values` |
 | [SRF-018](product/04-surfaces.md#srf-018--board-overview-zoom) | Board overview zoom | MUST | M-UI5 | — | — |
 | [SRF-019](product/04-surfaces.md#srf-019--board-capacity) | Board capacity | MUST | M-UI5 | — | — |
 | [SRF-020](product/04-surfaces.md#srf-020--edit-mode) | Edit mode | MUST | M-UI5 | — | — |

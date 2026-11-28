@@ -22,12 +22,13 @@ export function referencedVariables(text: string): string[] {
   return [...seen];
 }
 
-/** The `[name, value]` pairs of `referencedVariables(text)` that `vars` holds, sorted by name. */
-export function panelVars(
-  text: string,
-  vars: ReadonlyMap<string, string>,
-): (readonly [string, string])[] {
-  const out: (readonly [string, string])[] = [];
+/**
+ * The `[name, value]` pairs of `referencedVariables(text)` that `vars` holds, sorted by name: a
+ * panel's request vars and, as JSON, its key element, so only panels whose pairs change re-run
+ * (T07-013, plan #289 §4.4).
+ */
+export function panelVars<V>(text: string, vars: ReadonlyMap<string, V>): (readonly [string, V])[] {
+  const out: (readonly [string, V])[] = [];
   for (const name of referencedVariables(text)) {
     const value = vars.get(name);
     if (value !== undefined) out.push([name, value]);

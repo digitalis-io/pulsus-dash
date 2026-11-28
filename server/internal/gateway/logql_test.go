@@ -565,3 +565,17 @@ func TestLogPageQueryIDOfLastRequest(t *testing.T) {
 		t.Errorf("query_id %v, want none: the last request had no query id", id)
 	}
 }
+
+// unit:vars-decode (T06-029, plan #289 §5): the structured vars of the LogQL routes.
+func TestLogqlVarsDecode(t *testing.T) {
+	up := a1Upstream(t, false)
+	h, _ := queryGateway(t, up.URL, pulsusdb.Options{})
+	for _, c := range structuredVarsCases() {
+		for _, path := range []string{logRangePath, logVolumePath} {
+			wantError(t, path+" "+c.name, postJSON(h, path, `{"query":"{app=~\"$n\"}",`+logWin+`,"vars":`+c.vars+`}`), 400, "invalid", "/vars/n", c.key)
+		}
+	}
+	if n := len(up.requests()); n != 0 {
+		t.Errorf("%d upstream requests for refused vars", n)
+	}
+}

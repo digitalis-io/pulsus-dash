@@ -21,15 +21,25 @@ export function invalidatePanelEpoch(qc: QueryClient, tenant: string): void {
   void qc.invalidateQueries({ queryKey: ['data', 'panel', tenant], refetchType: 'none' });
 }
 
+const NO_STATES: BoardRun['states'] = new Map();
+const NO_TEXT: ReadonlyMap<string, string> = new Map();
+
 export function BoardRunProvider({
   tenant,
   vars,
+  states = NO_STATES,
+  displayVars,
+  labels = NO_TEXT,
   timeReady,
   livePanels,
   children,
 }: {
   tenant: string;
-  vars: ReadonlyMap<string, string>;
+  vars: BoardRun['vars'];
+  states?: BoardRun['states'];
+  /** Defaults to the plain-string values of `vars`. */
+  displayVars?: ReadonlyMap<string, string>;
+  labels?: ReadonlyMap<string, string>;
   timeReady: boolean;
   /** The ids of the board's panels now. */
   livePanels?: readonly string[];
@@ -70,9 +80,15 @@ export function BoardRunProvider({
     prevTenant.current = tenant;
   }, [store, tenant]);
 
+  const shown = useMemo(
+    () =>
+      displayVars ??
+      new Map([...vars].flatMap(([k, v]) => (typeof v === 'string' ? [[k, v] as const] : []))),
+    [displayVars, vars],
+  );
   const value = useMemo<BoardRun>(
-    () => ({ vars, widths, visibility, timeReady }),
-    [vars, widths, visibility, timeReady],
+    () => ({ vars, states, displayVars: shown, labels, widths, visibility, timeReady }),
+    [vars, states, shown, labels, widths, visibility, timeReady],
   );
   return <BoardRunContext.Provider value={value}>{children}</BoardRunContext.Provider>;
 }

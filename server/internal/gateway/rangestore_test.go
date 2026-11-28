@@ -93,7 +93,9 @@ func TestRangeScopeHeaders(t *testing.T) {
 	}
 	// A denied scope is a 403 with the headers of the scope that was denied.
 	restore := dataScope
-	dataScope = func() core.DataScope { return core.ScopedTenant(core.ScopeClause{Attrs: map[string][]string{"team": {"a"}}}) }
+	dataScope = func() core.DataScope {
+		return core.ScopedTenant(core.ScopeClause{Attrs: map[string][]string{"team": {"a"}}})
+	}
 	defer func() { dataScope = restore }()
 	rec := postJSON(h, rangePath, `{"query":"up","from":1767225600000,"to":1767229200000,"width_px":1200}`)
 	if rec.Code != 403 || rec.Header().Get("X-Pulsus-Scope-Epoch") == "" || rec.Header().Get("X-Pulsus-Scope-Epoch") == want {
