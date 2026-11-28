@@ -284,7 +284,7 @@ log-tag = 16
 # The Log lines card of Explore › Logs (#66 Part C): the list's height.
 log-stream = 560
 # The Inspector (T25 §4.4): the sheet's width, its collapsed tab and its inset from the content.
-inspector = 360
+inspector = 720
 inspector-tab = 40
 inspector-inset = 12
 # The table view (#173 Part 3a, T22-013): one row of a panel's virtualised table.
