@@ -53,22 +53,34 @@ func firstField(t *testing.T, b []byte) string {
 	return p + " " + k
 }
 
-// newFixture is this release's fixture of its newest spec version (v9, the variables version,
-// #289), which holds the newest key, variables; oldRefusal is the previous release's first field
-// error for it (a v8 binary knows no variables, T05 §7.1).
+// newFixture is this release's fixture of its newest spec version (v10, the legend-name version,
+// #204), whose first panel has the newest key, vis.legendFormat; oldRefusal is the previous
+// release's first field error for it (a v9 binary knows no vis.legendFormat, T05 §7.1).
 const (
-	newFixture = "v9-variables.json"
-	oldRefusal = "/variables board.json.unknownKey"
+	newFixture = "v10-legend-format.json"
+	oldRefusal = "/panels/0/vis/legendFormat board.json.unknownKey"
 )
 
-// withNewestKind is spec with the newest version's key added: a constant variable.
+// withNewestKind is spec with a panel of the newest version's shape (a line with a legend name
+// template) added below its top-level panels.
 func withNewestKind(t *testing.T, raw []byte) []byte {
 	t.Helper()
 	var s map[string]any
 	if err := json.Unmarshal(raw, &s); err != nil {
 		t.Fatal(err)
 	}
-	s["variables"] = []any{map[string]any{"name": "dc", "label": "", "kind": "constant", "values": []any{"eu-west-1"}}}
+	panels, _ := s["panels"].([]any)
+	bottom := 0.0
+	for _, p := range panels {
+		g, _ := p.(map[string]any)["grid"].(map[string]any)
+		y, _ := g["y"].(float64)
+		h, _ := g["h"].(float64)
+		bottom = max(bottom, y+h)
+	}
+	s["panels"] = append(panels, map[string]any{"id": "legend-newest", "title": "Selects",
+		"grid":  map[string]any{"x": 0, "y": bottom, "w": 4, "h": 4},
+		"query": map[string]any{"lang": "promql", "text": "up"},
+		"vis":   map[string]any{"kind": "line", "legendFormat": "{{instance}} select"}})
 	b, err := json.Marshal(s)
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +197,7 @@ func TestBoardSpecOldBinary(t *testing.T) {
 				t.Errorf("N get V = %d %s, want schema_version %d and V's canonical spec", code, b, spec.BoardSchemaVersion)
 			}
 			if code, _, b := do(t, n, "PUT", boardsURL+"/"+vUID, []byte(`{"spec":`+string(withNewestKind(t, canonV))+`}`), "If-Match", `"1"`); code != 200 {
-				t.Errorf("N save V with a variable = %d %s, want 200", code, b)
+				t.Errorf("N save V with a legend name = %d %s, want 200", code, b)
 			}
 			if code, _, b := doAt(t, old, "GET", boardsURL+"/"+vUID, nil); code != 503 || errMsg(t, b) != tooNew {
 				t.Errorf("old get V = %d %s, want 503 %s", code, b, tooNew)

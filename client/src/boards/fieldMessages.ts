@@ -1,8 +1,8 @@
 /**
  * The text of a field error (plan #61 Part B §3.5, Appendix B-A §A.3): `message_key` → the
  * catalogue id `field.<key>` (T08-027). Unknown keys fall back to the generic "could not be read".
- * A save's errors read through `saveFieldMessage` (an older server's geomap, tags, units or
- * variables refusal).
+ * A save's errors read through `saveFieldMessage` (an older server's geomap, tags, units,
+ * variables or legend name refusal).
  */
 import type { BoardSpec, FieldError } from '../api/types';
 import { messages } from '../i18n/messages.en-GB';
@@ -30,6 +30,7 @@ export function saveFieldMessage(spec: BoardSpec, f: FieldError): string {
   if (tagsUnsupported(f)) return t('board.save.tagsUnsupported');
   if (unitsUnsupported(f)) return t('board.save.unitsUnsupported');
   if (variablesUnsupported(f)) return t('board.save.variablesUnsupported');
+  if (legendFormatUnsupported(f)) return t('board.save.legendFormatUnsupported');
   return fieldMessage(f.messageKey);
 }
 
@@ -79,4 +80,16 @@ export function unitsUnsupported(f: FieldError): boolean {
  */
 export function variablesUnsupported(f: FieldError): boolean {
   return f.pointer === '/variables' && f.messageKey === 'board.json.unknownKey';
+}
+
+const LEGEND_FORMAT_POINTER = /^(?:\/sections\/\d+)?\/panels\/\d+\/vis\/legendFormat$/;
+
+/**
+ * Whether `f` is an older server's refusal of a legend name template (#204): a server before the
+ * legend-name version answers `board.json.unknownKey` at a panel's `…/vis/legendFormat`, shown as
+ * "This server does not support legend names yet". (A legend-name server refuses one only on a
+ * widget, which the client's own check blocks before the save.)
+ */
+export function legendFormatUnsupported(f: FieldError): boolean {
+  return f.messageKey === 'board.json.unknownKey' && LEGEND_FORMAT_POINTER.test(f.pointer);
 }

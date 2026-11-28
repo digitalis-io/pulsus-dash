@@ -7,7 +7,6 @@
  */
 import type { Completeness } from '../../data/decode';
 import {
-  seriesName,
   type Coverage,
   type FrameDataIssue,
   type GeoCoverageCount,
@@ -22,6 +21,7 @@ import { seriesColourIndex } from '../../engine/canvas2d/seriesColour';
 import { CATEGORY_PATTERNS, HEALTH_PATTERN, OTHER_PATTERN } from '../../engine/patterns';
 import { t } from '../../i18n/t';
 import { capMarks, disambiguator, mergeDuplicates, part, reduceSeries } from '../reduce';
+import { displayName } from '../legendFormat';
 import { SEVERITY, stateOf, type Thresholds } from '../thresholds';
 import { locate, type LocationOption, type LocationResult } from './locate';
 import type { Basemap, Gazetteer } from './types';
@@ -362,6 +362,8 @@ export function geoRowSet(
   th: Thresholds | null,
   g: Gazetteer | null,
   q: Completeness,
+  /** The legend name template (#204): each row's name; null = the full label set. */
+  legendFormat: string | null = null,
 ): GeoRowSet {
   const m = mergeDuplicates(series, source);
   const sorted = [...m.series].sort((a, b) => codeUnitOrder(a.key, b.key));
@@ -372,7 +374,7 @@ export function geoRowSet(
     return {
       key: s.key,
       labels: s.labels,
-      name: seriesName(s.labels),
+      name: displayName(s.labels, legendFormat),
       value,
       valueStatus,
       state: stateFor(th, value, valueStatus),

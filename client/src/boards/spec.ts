@@ -1,8 +1,9 @@
 /**
- * Board spec v8 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2, v3 by plan #173
+ * Board spec v10 on the client (plan #61 Part B §3.5; v2 by plan #64 Part B §3.2, v3 by plan #173
  * Part 1 §3.2–3.4, v4 by plan #215 §3.7: tags, accepted and kept; v5 by plan #198 Part 1 §4.1:
  * widgets, query optional, text and clock; v6 by plan #216 Part 1 §4.1: the board list; v7 by plan
- * #234 Part 1 §3.3: the geomap; v8, the units version, by #290 §3.1: `vis.unit`): the
+ * #234 Part 1 §3.3: the geomap; v8, the units version, by #290 §3.1: `vis.unit`; v9, the variables
+ * version, by #289; v10, the legend-name version, by #204: `vis.legendFormat`): the
  * server's validator
  * (`server/internal/spec/shape.go`, `validate.go`) ported to parsed JSON, canonical JSON and panel
  * ids. The two are held together by the shared fixtures `api/fixtures/board-spec/`.
@@ -25,6 +26,7 @@ import type {
 import { isWidgetKind } from '../widgets/spec';
 import { FILTER_LABEL } from '../state/boardParams';
 import { MAX_THRESHOLD_STEPS } from '../vis/thresholds';
+import { isLegendFormat } from '../vis/legendFormat';
 import { isUnitSuffix, UNIT_IDS } from '../vis/units';
 import { fits, overlaps } from './layout';
 import {
@@ -153,6 +155,8 @@ const visShape = [
   opt('legend', obj([req('mode', tString)])),
   // Board spec v8 (#290): the unit, an id and an optional suffix.
   opt('unit', obj([req('id', tString), opt('suffix', tString)])),
+  // Board spec v10 (#204): the legend name template.
+  opt('legendFormat', tString),
   opt('options', { kind: 'rawObject' }),
 ];
 
@@ -479,6 +483,16 @@ function checkRules(c: Collector, b: BoardSpec): void {
       );
     }
     if (v.unit !== undefined) unit(`${pointer}/unit`, v.unit, widget);
+    // The legend name template (`validate.go` `legendFormat`, #204), after the unit: a widget has
+    // none; 1 to 256 code points.
+    if (v.legendFormat !== undefined) {
+      if (widget) c.add(`${pointer}/legendFormat`, 'board.json.unknownKey');
+      else {
+        str(`${pointer}/legendFormat`, v.legendFormat, (s) =>
+          isLegendFormat(s) ? null : 'board.legendFormat.invalid',
+        );
+      }
+    }
     if (v.options !== undefined && VIS_KINDS.includes(v.kind)) {
       options(`${pointer}/options`, v.kind, v.options);
       if (v.kind === 'geomap') {

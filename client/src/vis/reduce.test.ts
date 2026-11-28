@@ -565,3 +565,25 @@ describe('unit:geo-coverage', () => {
     expect(coverageText(s.coverage)).toBe('showing 5,000 of 5,003; kept min, max');
   });
 });
+
+// #204: a legend name template is the base name of a bar chart's marks (before categoryBy); marks
+// with one rendered name still get distinct names.
+describe('unit:category-legend-format', () => {
+  it('the template is the base, disambiguated as any base', () => {
+    const rows = [
+      { key: fkey(1), labels: { instance: 'n1', job: 'a' } },
+      { key: fkey(2), labels: { instance: 'n2', job: 'a' } },
+      { key: fkey(3), labels: { instance: 'n1', job: 'b' } },
+    ];
+    expect(markNames(rows, 'job', [], '{{instance}} select')).toEqual([
+      'n1 select · job="a"',
+      'n2 select',
+      'n1 select · job="b"',
+    ]);
+    expect(markNames(rows, 'job', [], null)).toEqual([
+      'a · instance="n1"',
+      'a · instance="n2"',
+      'b',
+    ]);
+  });
+});

@@ -84,6 +84,8 @@ export function barchartModel(
     readonly unit: Unit;
     readonly options: VisOptions | undefined;
     readonly thresholds: Thresholds | null;
+    /** The panel's legend name template (#204): the marks' base names; absent = none. */
+    readonly legendFormat?: string | null;
     readonly base?: Exclude<ExploreResult, { kind: 'string' }> | null;
   },
 ): BarchartModel {
@@ -105,6 +107,7 @@ export function barchartModel(
     categoryBy: b.categoryBy,
     sort: b.sort,
     thresholds: o.thresholds,
+    legendFormat: o.legendFormat ?? null,
   });
   return {
     spec,

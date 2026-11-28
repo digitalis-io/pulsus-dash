@@ -1787,11 +1787,12 @@ type Version struct {
 
 // Vis defines model for Vis.
 type Vis struct {
-	Kind       VisKind     `json:"kind"`
-	Legend     *Legend     `json:"legend,omitempty"`
-	Options    *VisOptions `json:"options,omitempty"`
-	Thresholds *Thresholds `json:"thresholds,omitempty"`
-	Unit       *PanelUnit  `json:"unit,omitempty"`
+	Kind         VisKind     `json:"kind"`
+	Legend       *Legend     `json:"legend,omitempty"`
+	LegendFormat *string     `json:"legendFormat,omitempty"`
+	Options      *VisOptions `json:"options,omitempty"`
+	Thresholds   *Thresholds `json:"thresholds,omitempty"`
+	Unit         *PanelUnit  `json:"unit,omitempty"`
 }
 
 // VisKind defines model for Vis.Kind.

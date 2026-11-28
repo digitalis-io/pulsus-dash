@@ -71,6 +71,8 @@ var (
 		{"thresholds", false, valueType{kind: kObject, shape: thresholdsShape}},
 		{"legend", false, valueType{kind: kObject, shape: legendShape}},
 		{"unit", false, valueType{kind: kObject, shape: unitShape}},
+		// Board spec v10 (#204): the legend name template.
+		{"legendFormat", false, tString},
 		{"options", false, valueType{kind: kRawObject}}}
 
 	// optionFields are the keys of vis.options in OPTION_ORDER (client boards/options.ts), all

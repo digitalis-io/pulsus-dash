@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.24-rc · 2026-11-27 |
+| **Version** | 1.25-rc · 2026-11-28 |
 | **Milestone** | M-UI1 (sanitiser, links) → M-UI3 (geomap 2D core) → M-UI5 (widgets) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md), [ADR-0016](../adr/0016-asset-integrity-verified-by-bff.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0024](../adr/0024-markdown-runtime-dependencies.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0027](../adr/0027-geomap-frame-seam.md) |
 | **Source draft** | plans/153, plans/181, plans/184 (not tracked) |
@@ -1367,6 +1367,7 @@ gate whatever its number).
 | map-sync version | `sync`, `boundsFilter`, `legacyAuto` (§5.15) | part E step 2 | the next free (v8 or later) |
 | units version | `vis.unit` ([T22](T22-value-categorical-and-table-panels.md) §6.2) | #290, landed | v8 |
 | variables version | `variables` (board variables, [T07](T07-scene-query-planner.md) T07-031; [04](../product/04-surfaces.md) SRF-017) | #289, landed | v9 |
+| legend-name version | `vis.legendFormat` ([T22](T22-value-categorical-and-table-panels.md) T22-018, §6.3) | #204, landed | v10 |
 
 An older server refuses a head saved at a newer version (`ErrSchemaTooNew`).
 
@@ -3231,3 +3232,4 @@ None.
 | 1.22-rc | 2026-11-27 | #234 Part 4 (E2, the navigation stack): §5.16 records that the host answers `geo:` member ids from the open request's top view (`resolveGeoMembers`, pure) at any depth, replacing a per-frame registration ([T25](T25-inspector-and-pivots.md) §4.8); §10.5 gains `unit:geo-members-fullscreen`, and its O2 and N rows give the rows' names as the series names (lat and lon included) |
 | 1.23-rc | 2026-11-27 | #290: §5.0 adds the units version (`vis.unit`, [T22](T22-value-categorical-and-table-panels.md) §6.2), the next free number (v8 or later) |
 | 1.24-rc | 2026-11-27 | #289: §5.0 the units version landed as v8; the variables version (`variables`, #289) landed as v9 |
+| 1.25-rc | 2026-11-28 | #204: §5.0 the legend-name version (`vis.legendFormat`, [T22](T22-value-categorical-and-table-panels.md) §6.3) landed as v10 |

@@ -149,7 +149,12 @@ function useGeoPlan(
 ): GeoPlan {
   const run = p.run;
   const result = run.outcome?.result ?? null;
-  const optsKey = JSON.stringify({ ...p.options, view: null });
+  // The legend name template (#204) names the marks: a new row set, as an option.
+  const optsKey = JSON.stringify({
+    ...p.options,
+    view: null,
+    legendFormat: p.legendFormat ?? null,
+  });
   const thKey = JSON.stringify(p.thresholds);
   const gazetteer = p.geoData === 'loading' ? null : p.geoData.gazetteer;
   const small = size.width < MIN_MAP_W || size.height < MIN_MAP_H;

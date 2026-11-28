@@ -86,6 +86,7 @@ import {
   valueUnit,
 } from './chartText';
 import { geoTooltip, hoverItemOf, statTarget, targetOf } from './inspectTarget';
+import { namedHover, seriesNames } from '../vis/legendFormat';
 import { useAreaAllowed } from './useAreaAllowed';
 
 /** The geomap tooltip's offset from the pointer, CSS px. */
@@ -139,6 +140,11 @@ export interface ChartFrameProps {
   readonly onSummary?: (s: FrameSummary) => void;
   /** `geo`: the host div is the map's plot surface and key target (T24 §5.14); default `chart`. */
   readonly surface?: 'chart' | 'geo';
+  /**
+   * The panel's legend name template (#204): the tooltip, the crosshair text and the Inspector
+   * name each series by it; absent or null = the full label set.
+   */
+  readonly legendFormat?: string | null;
 }
 
 interface HoverState {
@@ -269,6 +275,7 @@ export function ChartFrame({
   onFrame,
   onSummary,
   surface = 'chart',
+  legendFormat = null,
 }: ChartFrameProps) {
   const engine = useContext(ChartEngineContext);
   const { window: win, dispatch } = useTimeContext();
@@ -279,6 +286,8 @@ export function ChartFrame({
     () => (issue === null ? data : emptyFrameData(spec)),
     [issue, data, spec],
   );
+  // The shown series names by key (#204); null without a template.
+  const names = useMemo(() => seriesNames(frameData, legendFormat), [frameData, legendFormat]);
   const { fromMs, toMs } = win;
   const isStat = spec.kind === 'stat';
   // A bar chart has no crosshair: its bars report `mark` and `pick` (ADR-0028).
@@ -319,6 +328,7 @@ export function ChartFrame({
     engineSpec,
     pinKey,
     frameData,
+    names,
     fromMs,
     toMs,
     theme,
@@ -337,6 +347,7 @@ export function ChartFrame({
       engineSpec,
       pinKey,
       frameData,
+      names,
       fromMs,
       toMs,
       theme,
@@ -356,7 +367,12 @@ export function ChartFrame({
   const selectedKeys = useMemo(() => new Set(selection?.keys ?? []), [selection]);
 
   const [summary, setSummary] = useState<FrameSummary | null>(null);
-  const [{ hover, selected }, setHoverState] = useState<HoverState>({ hover: null, selected: 0 });
+  const [{ hover: engineHover, selected }, setHoverState] = useState<HoverState>({
+    hover: null,
+    selected: 0,
+  });
+  // The engines name rows by their full label sets; the legend name template renames them (#204).
+  const hover = useMemo(() => namedHover(engineHover, names), [engineHover, names]);
   const [mark, setMark] = useState<MarkEvent | null>(null);
   const markRef = useRef<HTMLDivElement>(null);
   const geoTipRef = useRef<HTMLDivElement>(null);
@@ -473,7 +489,7 @@ export function ChartFrame({
         }
         // A geomap mark returns focus to the map's surface (T24-092).
         const back = e.item.kind === 'geo' ? hostRef.current : sliderRef.current;
-        l.onInspect?.(targetOf(l.spec, l.frameData, e.item), e.source, back);
+        l.onInspect?.(targetOf(l.spec, l.frameData, e.item, l.names), e.source, back);
       }),
       frame.on('drawn', (d) => {
         // A draw at a superseded size leaves the progress up.
@@ -641,7 +657,7 @@ export function ChartFrame({
       if (hover === null || hover.tMs === null || row === undefined) return;
       e.preventDefault();
       const item = hoverItemOf(spec, frameData, { ...hover, tMs: hover.tMs }, row, toMs);
-      onInspect(targetOf(spec, frameData, item), 'keyboard', e.currentTarget);
+      onInspect(targetOf(spec, frameData, item, names), 'keyboard', e.currentTarget);
       return;
     }
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
@@ -709,7 +725,7 @@ export function ChartFrame({
           aria-label={t('inspector.inspect', { title: spec.title })}
           onClick={(e) => {
             onInspect(
-              statTarget(spec, frameData),
+              statTarget(spec, frameData, names),
               e.detail === 0 ? 'keyboard' : 'pointer',
               e.currentTarget,
             );

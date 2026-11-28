@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.12-rc · 2026-11-28 |
+| **Version** | 1.13-rc · 2026-11-28 |
 | **Milestone** | M-UI1 (stat delta), M-UI2 (bar chart), M-UI5 (pie, stat grid) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0028](../adr/0028-chart-seam-bar-chart.md) (the I1 seam, #173 Part 2), [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md) (the bar chart's keys and brush, #173 Part 3a) |
 | **Source draft** | plans/151/plan.md (not tracked) |
@@ -168,6 +168,9 @@ Amended by #216 Part 2a: `PanelTable` shows any `TableView` (§5; `PanelRows` is
 #### T22-017 — A rate makes units per second
 **MUST** — When the planner rates a query, the panel's value unit MUST become per second for data and count units, never for time or percent: none → `/s`; a suffix `x` not ending in `/s` → `x/s`; bytes and bits → per second; seconds, the percents and `plain` are kept. The panel editor's Unit field says so when the preview's query is rated and the unit changes (`Shown per second (B/s): the query is rated`).
 
+#### T22-018 — Legend name template
+**MUST** — A data panel MAY store one legend name template, `vis.legendFormat` (§6.3), such as `{{instance}} select`. Every series name a panel shows MUST then be the template with each `{{label}}` (a PromQL label name, with optional spaces inside the braces) replaced by that series' value of the label, and by the empty string when the series has no such label; a value is inserted as it is and never read as a template, a repeated placeholder is replaced each time, and any other brace text is literal (`renderLegendFormat`, `client/src/vis/legendFormat.ts`, main thread). Without a template the name is unchanged, the full label set (`seriesName`). The shown name applies to the legend table and its compact chips, the tooltip and the crosshair text (both engines' hover rows are renamed by series key), the Inspector's point and value targets, a bar chart's and a map's mark names (the template replaces the category label as the base name, before T22-004's disambiguation), and so the accessible bar list, the table view and the CSV cells. Only the name changes: keys, isolation, the Context selection (T22-008) and every sort tie-break stay on the series key, so two series that render one name stay two rows, two hover rows and two selectable series. A heatmap's buckets and the log panels name no series; the panel editor's Legend name field (Line, Bars, Stat, Bar chart, Map and Auto) lists the label names of the preview's result as its hint.
+
 ### 4.5 Auto-vis (Table 5-13) and import (VIZ-060)
 | Row | Condition | Result |
 |---|---|---|
@@ -330,6 +333,17 @@ A later key addition bumps `schema_version`, with an identity upcaster (T11-016)
 
 Versions 1 to 7 decode unchanged into the units version (the identity upcast, [T11-016](T11-postgres-schema.md#t11-016--document-upcasters-are-golden-tested)); an older server reads none of it (`ErrSchemaTooNew`) and refuses a `vis.unit` with `board.json.unknownKey` at the panel's `…/vis/unit`, which the client shows as "This server does not support panel units yet". The number is the next free one ([T24](T24-geo-schematic-and-widget-panels.md) §5.0; v8 when it landed).
 
+### 6.3 Board spec v10, the legend-name version (OpenAPI `Vis.legendFormat`, Go `internal/spec`, TS `boards/spec.ts`)
+`Vis` gains `legendFormat`, a string (T22-018). The rules, in Go `vis()` and TS `checkBoardSpec`, after the unit and before the options:
+
+| Condition | Pointer | Key |
+|---|---|---|
+| a template on a widget kind | `…/vis/legendFormat` | `board.json.unknownKey` |
+| not a string | `…/vis/legendFormat` | `board.json.type` |
+| 0 or more than 256 code points | `…/vis/legendFormat` | `board.legendFormat.invalid` |
+
+The editor removes the key when the field is cleared. Versions 1 to 9 decode unchanged into the legend-name version (the identity upcast, [T11-016](T11-postgres-schema.md#t11-016--document-upcasters-are-golden-tested)); an older server reads none of it (`ErrSchemaTooNew`) and refuses a `vis.legendFormat` with `board.json.unknownKey` at the panel's `…/vis/legendFormat`, which the client shows as "This server does not support legend names yet". The number is the next free one ([T24](T24-geo-schematic-and-widget-panels.md) §5.0; v10 when it landed).
+
 ## 7. Performance budget
 
 Targets: 200 bars, 6 wedges, 64 tiles. `bench:frame-interim-categories` takes 50 timed draws per T22 gallery page and reports p50/p95 (report only until #68). Engine gates come with I4 (§11).
@@ -479,3 +493,4 @@ None.
 | 1.10-rc | 2026-11-27 | #216 Part 2a ([T24](T24-geo-schematic-and-widget-panels.md) I2, the Board list view): §5 `TableView` (`columns`, rows of `key`, `drawn`, `cells`), `PanelRows` rows gain `key` (the mark's key), `panelCsv` takes a `TableView`; T22-013 a caller's caption and close label, and null rows (the state text, Export disabled) |
 | 1.11-rc | 2026-11-27 | #290 (panel units): T22-015 one stored unit per panel, resolved by `panelUnits` on the drawn kind (isolation and the caches keyed by the resolved unit); T22-016 the catalogue and the format rules in `format.ts`, mirrored by `dash-units` on shared fixtures; T22-017 a rate rewrite makes data and count units per second, never time or percent; §6.2 the units version (`vis.unit`); §3 VL-012 and VIZ-057 (units subset) |
 | 1.12-rc | 2026-11-28 | Bar fill polish: T22-001 allows a bar's own-colour alpha ramp along the value axis, a 1 px lighter value edge and a value-end radius of at most 3 px; forced colours draw plain fills |
+| 1.13-rc | 2026-11-28 | #204 (legend names, the panel-level part): T22-018 the legend name template (`{{label}}` replaced by the series' value, empty when absent; the name only, keys and selection unchanged) on every surface that names a series; §6.3 the legend-name version (`vis.legendFormat`, 1 to 256 code points) |
