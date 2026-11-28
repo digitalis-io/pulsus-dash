@@ -23,11 +23,15 @@ describe('unit:context-reducer keys', () => {
     expect(contextReducer(s, IN, env)).toEqual(abs('10:15', '10:45'));
   });
 
-  it('INT-032 from 12:03–13:03; - then = restores', () => {
+  it('INT-032 from 12:03–13:03 (ending at now): - widens into the past', () => {
     const s = abs('12:03', '13:03');
     expect(contextReducer(s, STEP_BACK, env)).toEqual(abs('11:03', '12:03'));
-    expect(contextReducer(s, OUT, env)).toEqual(abs('11:33', '13:33'));
+    expect(contextReducer(s, OUT, env)).toEqual(abs('11:03', '13:03'));
     expect(contextReducer(s, IN, env)).toEqual(abs('12:18', '12:48'));
+  });
+
+  it('INT-032 away from now: - then = restores', () => {
+    const s = abs('10:00', '11:00');
     expect(contextReducer(contextReducer(s, OUT, env), IN, env)).toEqual(s);
   });
 

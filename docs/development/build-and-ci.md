@@ -388,6 +388,8 @@ build-origin check in [the supply chain page](../client/supply-chain.md).
       `Shift` wheel pins only `Edge p99`; Back restores every slider's window.
     - Z10: five wheels on `bars` leave its `data-plot` unchanged through each preview, the commit and
       the refetch, and the time under the pointer within 1 px.
+    - Z11: on a `line-1` window ending at the fixed now, a `Ctrl`+wheel zoom-out commits a wider
+      window whose end is not later than now.
   - **`e2e:chart-hover`** (`e2e/chart-hover.spec.ts`): the `line-gaps` tooltip lists the time and the
     three series with the values the generator gives; on `line-50` a pointer sweep down the plot
     shows every one of the 50 series; on `bars` all five levels at every height.

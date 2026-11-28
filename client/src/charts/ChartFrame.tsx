@@ -67,7 +67,6 @@ import type { InspectorTarget } from '../inspector/types';
 import { Button } from '../kit/Button';
 import { cx } from '../kit/cx';
 import { Tooltip } from '../kit/Tooltip';
-import { printTimeExpr } from '../state/timeExpr';
 import { useTimeZone } from '../state/timeZone';
 import { useTimeContext } from '../state/useTimeContext';
 import { size, space } from '../styles/tokens';
@@ -454,21 +453,13 @@ export function ChartFrame({
           d({ type: 'zoom', dir: 'out' });
           return;
         }
-        d({
-          type: 'setRange',
-          from: printTimeExpr({ kind: 'absolute', ms: b.fromMs }),
-          to: printTimeExpr({ kind: 'absolute', ms: b.toMs }),
-        });
+        d({ type: 'chartWindow', fromMs: b.fromMs, toMs: b.toMs });
       }),
       frame.on('commit', (c) => {
         const l = latest.current;
         // A time move is one push, as the brush (T03-016); every chart on the page follows it.
         if (c.window !== null) {
-          l.dispatch({
-            type: 'setRange',
-            from: printTimeExpr({ kind: 'absolute', ms: c.window.fromMs }),
-            to: printTimeExpr({ kind: 'absolute', ms: c.window.toMs }),
-          });
+          l.dispatch({ type: 'chartWindow', fromMs: c.window.fromMs, toMs: c.window.toMs });
         }
         // A time-only commit (`value === null`) leaves the pin as it is.
         if (c.value !== null) setPin(c.value === 'auto' ? null : { key: l.pinKey, range: c.value });

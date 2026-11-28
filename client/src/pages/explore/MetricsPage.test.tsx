@@ -193,13 +193,13 @@ describe('MetricsPage time and refresh', () => {
     await waitFor(() => {
       expect(rng).toHaveLength(1);
     });
-    windowKey('BracketRight');
+    windowKey('BracketLeft');
     await waitFor(() => {
       expect(rng).toHaveLength(2);
     });
     expect(rng[0]?.signal?.aborted).toBe(true);
-    expect(rng[1]?.req.fromMs).toBe(W0 + HOUR);
-    expect(rng[1]?.req.toMs).toBe(W0 + 2 * HOUR);
+    expect(rng[1]?.req.fromMs).toBe(W0 - HOUR);
+    expect(rng[1]?.req.toMs).toBe(W0);
     await waitFor(() => {
       expect(drawn(engine)).toEqual([{ key: S2.series[0]?.key, values: [3, 4] }]);
     });
@@ -600,11 +600,11 @@ describe('MetricsPage state across views', () => {
       });
       expect(rng).toHaveLength(1);
       if (variant === 'window') {
-        windowKey('BracketRight');
+        windowKey('BracketLeft');
         await waitFor(() => {
           expect(cell(0, 1)).toBe('4');
         });
-        windowKey('BracketRight');
+        windowKey('BracketLeft');
         await waitFor(() => {
           expect(alertText()).toContain('PulsusDB is unavailable');
         });
@@ -670,7 +670,7 @@ describe('MetricsPage state across views', () => {
     await waitFor(() => {
       expect(drawn(engine)).toEqual([{ key: P1.series[0]?.key, values: [1, 2] }]);
     });
-    windowKey('BracketRight');
+    windowKey('BracketLeft');
     await waitFor(() => {
       expect(drawn(engine)).toEqual([{ key: P1.series[0]?.key, values: [3, 4] }]);
     });
@@ -687,7 +687,7 @@ describe('MetricsPage state across views', () => {
     });
     await flush();
     expect(drawn(engine)).toEqual([{ key: P1.series[0]?.key, values: [3, 4] }]);
-    windowKey('BracketRight');
+    windowKey('BracketLeft');
     await waitFor(() => {
       expect(drawn(engine)).toEqual([{ key: P3.series[0]?.key, values: [7, 8] }]);
     });

@@ -695,9 +695,9 @@ describe('unit:board-log-panels', () => {
     });
     await t.logs[0]?.resolve(lines(3));
     hide('S');
-    windowKey(']');
-    await flush();
     windowKey('[');
+    await flush();
+    windowKey(']');
     await flush();
     expect(t.logs).toHaveLength(1);
     show('S');
