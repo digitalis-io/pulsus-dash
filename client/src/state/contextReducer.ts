@@ -4,12 +4,15 @@
  * navigation.
  */
 import type { ContextSearch, RefreshInterval } from './contextSearch';
+import { agoExpr, clampToNow } from './clampToNow';
 import { parseTimeExpr, printTimeExpr, resolveTimeExpr } from './timeExpr';
 
 export type ContextAction =
   | { type: 'step'; dir: -1 | 1 }
   | { type: 'zoom'; dir: 'out' | 'in' }
   | { type: 'setRange'; from: string; to: string }
+  /** A window a chart committed (brush, wheel, drag): held to the live edge as the keys are. */
+  | { type: 'chartWindow'; fromMs: number; toMs: number }
   | { type: 'setRefresh'; refresh: RefreshInterval };
 
 export const MIN_WINDOW_MS = 1_000;
@@ -33,14 +36,37 @@ function absolute(ms: number): string | null {
   return r.ok ? text : null;
 }
 
-function withWindow(s: ContextSearch, fromMs: number, toMs: number): ContextSearch {
+function withWindow(
+  s: ContextSearch,
+  fromMs: number,
+  toMs: number,
+  relative = false,
+): ContextSearch {
   const width = toMs - fromMs;
   if (width < MIN_WINDOW_MS || width > MAX_WINDOW_MS) return s;
-  const from = absolute(fromMs);
-  const to = absolute(toMs);
+  const ago = relative ? agoExpr(width) : null;
+  const from = ago ?? absolute(fromMs);
+  const to = ago !== null ? 'now' : absolute(toMs);
   if (from === null || to === null) return s;
   if (from === s.from && to === s.to) return s;
   return { ...s, from, to };
+}
+
+/**
+ * A move that may push the end past now: clamped to the live edge (`clampToNow`). A range that
+ * ended at `now` and is clamped stays relative (`now-<width>` to `now`) when a whole unit expresses
+ * its width.
+ */
+function moveWindow(
+  s: ContextSearch,
+  prevToMs: number,
+  fromMs: number,
+  toMs: number,
+  env: Env,
+): ContextSearch {
+  const next = { fromMs, toMs };
+  const c = clampToNow(next, prevToMs, env.nowMs);
+  return withWindow(s, c.fromMs, c.toMs, c !== next && s.to === 'now');
 }
 
 export function contextReducer(s: ContextSearch, a: ContextAction, env: Env): ContextSearch {
@@ -51,10 +77,10 @@ export function contextReducer(s: ContextSearch, a: ContextAction, env: Env): Co
       const toMs = resolve(s.to, env);
       if (fromMs === null || toMs === null || fromMs >= toMs) return s;
       const w = toMs - fromMs;
-      if (a.type === 'step') return withWindow(s, fromMs + a.dir * w, toMs + a.dir * w);
+      if (a.type === 'step') return moveWindow(s, toMs, fromMs + a.dir * w, toMs + a.dir * w, env);
       if (a.dir === 'out') {
         const from = fromMs - Math.floor(w / 2);
-        return withWindow(s, from, from + 2 * w);
+        return moveWindow(s, toMs, from, from + 2 * w, env);
       }
       const from = fromMs + Math.floor(w / 4);
       return withWindow(s, from, from + Math.floor(w / 2));
@@ -70,6 +96,11 @@ export function contextReducer(s: ContextSearch, a: ContextAction, env: Env): Co
       if (fromMs >= toMs) return s;
       if (from === s.from && to === s.to) return s;
       return { ...s, from, to };
+    }
+    case 'chartWindow': {
+      const toMs = resolve(s.to, env);
+      if (toMs === null || !(a.fromMs < a.toMs)) return s;
+      return moveWindow(s, toMs, a.fromMs, a.toMs, env);
     }
     case 'setRefresh':
       return a.refresh === s.refresh ? s : { ...s, refresh: a.refresh };

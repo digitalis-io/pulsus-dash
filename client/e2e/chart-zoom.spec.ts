@@ -10,6 +10,7 @@ import { brushSnapUnit } from '../src/engine/canvas2d/columns.ts';
 import { mulberry32 } from '../src/test/random.ts';
 import {
   frame,
+  GALLERY,
   GALLERY_FROM,
   GALLERY_TO,
   GALLERY_URL,
@@ -18,6 +19,7 @@ import {
   plotOf,
   plotX,
   searchOf,
+  T,
   timeAt,
   type Plot,
 } from './helpers.ts';
@@ -484,4 +486,21 @@ test('Z10: the plot keeps its place through the commit and the refetch', async (
   await expect.poll(() => sliderOf.getAttribute('aria-valuemin')).toBe(String(w.from));
   expect(await rect()).toBe(r0);
   expect(Math.abs(plotX(box.x, plot, ta, w.from, w.to) - p.x)).toBeLessThan(1);
+});
+
+test('Z11: Ctrl+wheel zoom-out at the live edge keeps the end at now', async ({ page }) => {
+  const url = `${GALLERY}?from=${encodeURIComponent(new Date(T - HOUR).toISOString())}&to=${encodeURIComponent(new Date(T).toISOString())}&refresh=off`;
+  await open(page, url, T);
+  await galleryReady(page);
+  const f = frame(page, 'line-1');
+  const plot = await plotOf(f);
+  const box = await boxOf(f);
+  const p = point(box, plot, 0.8);
+  await page.mouse.move(p.x, p.y);
+  const before = page.url();
+  await zoomWheel(page, 0, 300);
+  await waitUrlChange(page, before);
+  const w = urlWindow(page);
+  expect(w.to).toBeLessThanOrEqual(T);
+  expect(w.to - w.from).toBeGreaterThan(HOUR);
 });
