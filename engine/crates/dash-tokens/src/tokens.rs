@@ -232,7 +232,7 @@ pub mod size {
     pub const FOCUS_RING: f32 = 3.0;
     pub const HEADER: f32 = 56.0;
     pub const ICON: f32 = 16.0;
-    pub const INSPECTOR: f32 = 360.0;
+    pub const INSPECTOR: f32 = 720.0;
     pub const INSPECTOR_INSET: f32 = 12.0;
     pub const INSPECTOR_TAB: f32 = 40.0;
     pub const LIST_CHIP: f32 = 20.0;
