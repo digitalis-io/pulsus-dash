@@ -77,10 +77,12 @@ const NO_STALE: readonly TimeWindow[] = Object.freeze([]);
 
 /**
  * The view of a panel run (`input` null: ineligible), retained while `enabled`; the tenant's scope
- * and lease and the view's stale spans as external stores. A store event on the view's identity
+ * and lease (read for every panel: an ineligible one may still hold store data, after a switch of
+ * its vis) and the view's stale spans as external stores. A store event on the view's identity
  * puts the latest assembly into the query `key` when it holds store data and no error.
  */
 export function useStoreRun(
+  tenant: string,
   input: Omit<ViewInput, 'scope'> | null,
   enabled: boolean,
   key: readonly unknown[],
@@ -88,7 +90,6 @@ export function useStoreRun(
   const store = useRangeStore();
   const owner = useId();
   const qc = useQueryClient();
-  const tenant = input?.tenant ?? '';
   const scope = useSyncExternalStore(
     (cb) => store.subscribe(tenant, cb),
     () => store.scopeOf(tenant),

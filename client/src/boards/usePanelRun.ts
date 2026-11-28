@@ -214,6 +214,7 @@ function usePromPanelRun(a: PanelRunInput, active: boolean): PanelRun {
     widthPx !== null &&
     widthPx > 0;
   const sr = useStoreRun(
+    tenant,
     eligible
       ? {
           tenant,

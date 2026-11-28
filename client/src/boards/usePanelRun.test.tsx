@@ -61,6 +61,8 @@ interface Mounted {
   readonly inflight: () => number;
   readonly maxInflight: () => number;
   rerenderProviders(): void;
+  /** Replaces a panel's vis (an editor's draft). */
+  setVis(id: string, vis: DataPanelSpec['vis']): void;
   go(fromMs: number, toMs: number): Promise<void>;
 }
 
@@ -120,6 +122,13 @@ function mount(
     if (rec.views.at(-1) !== view) rec.views.push(view);
     return <div data-run={p.id} data-store={run.store} data-view={view.kind} />;
   }
+  let setPanels: (f: (ps: readonly DataPanelSpec[]) => readonly DataPanelSpec[]) => void = () =>
+    undefined;
+  function Panels() {
+    const [ps, set] = useState(panels);
+    setPanels = set;
+    return ps.map((p) => <Run key={p.id} p={p} />);
+  }
   const engine = fakeEngine();
   const router = createMemoryRouter(
     [
@@ -128,9 +137,7 @@ function mount(
         element: (
           <ChartEngineContext.Provider value={engine}>
             <BoardRunProvider tenant="demo" vars={new Map()} timeReady>
-              {panels.map((p) => (
-                <Run key={p.id} p={p} />
-              ))}
+              <Panels />
             </BoardRunProvider>
           </ChartEngineContext.Provider>
         ),
@@ -164,6 +171,11 @@ function mount(
     logs,
     inflight: () => inflight,
     maxInflight: () => maxInflight,
+    setVis: (id, vis) => {
+      act(() => {
+        setPanels((ps) => ps.map((p) => (p.id === id ? { ...p, vis } : p)));
+      });
+    },
     rerenderProviders: () => {
       act(() => {
         bump();
@@ -212,6 +224,21 @@ describe('store-backed panel run (#304 §4.1)', () => {
       expect(c.req.fromMs).toBeGreaterThan(T0 + 2 * H);
     }
     expect(m.recs.get('p')?.run?.store).toBe('held');
+  });
+
+  it('a switch away from line reuses the result: no request', async () => {
+    const m = mount([panel('p', 'up')], { fromMs: T0, toMs: T0 + H });
+    m.api.auto = answer(ONE);
+    await waitFor(() => {
+      expect(m.recs.get('p')?.run?.outcome?.held).toBeDefined();
+    });
+    await drain();
+    const before = m.api.calls.length;
+    m.setVis('p', { kind: 'heatmap' });
+    await drain();
+    expect(m.api.calls.slice(before)).toEqual([]);
+    expect(m.recs.get('p')?.run?.outcome).not.toBeNull();
+    expect(m.recs.get('p')?.run?.store).toBe('off');
   });
 
   it('ten changes, nine cancelled', async () => {
