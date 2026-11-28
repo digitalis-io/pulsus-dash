@@ -41,6 +41,7 @@ import type {
 } from '../api';
 import { drawBarchart, type BarPick } from './barchart';
 import { drawAreas } from './area';
+import { fillBar } from './barFill';
 import { bucketScale, type BucketScale } from './bucketScale';
 import { bucketEnd, columnCount, lineColumns, mergeBuckets, type Column } from './columns';
 import type { Ctx2D } from './ctx';
@@ -108,6 +109,13 @@ export interface LayerInput {
    * is released to 0×0. Absent: each unmatched series is stroked at `dimmed` (no frame).
    */
   readonly scratch?: DimScratch | null;
+  /** Bars and bar chart: plain flat fills, no gradient or highlight (forced colours); absent = false. */
+  readonly plain?: boolean;
+  /**
+   * The bar chart's motion at this frame (`barMotion.ts`): the grow progress ∈ [0, 1] and each
+   * bar's hover alpha; absent = landed, no hover.
+   */
+  readonly barMotion?: { readonly grow: number; readonly alpha: (key: string) => number } | null;
 }
 
 /** A scratch canvas and its context (ADR-0032). */
@@ -634,6 +642,15 @@ export function orderCategories(
   });
 }
 
+/** The narrowest time bar (CSS px) drawn with the gradient and the rounded top; flat below. */
+const BAR_SHAPE_MIN = 4;
+/** The share of a shaped time bar's bucket left as a gap. */
+const BARS_GAP = 0.2;
+/** The time bars' top radius. */
+const BARS_RADIUS = 2;
+/** The alpha of a narrow, flat time bar: no full-saturation slabs. */
+const NARROW_ALPHA = 0.85;
+
 interface BarsModel {
   readonly shown: SeriesFrame[];
   readonly ref: Float64Array;
@@ -716,6 +733,7 @@ function drawBars(
     bandHeld: axis.held,
   });
   if (isPlotEmpty(plot)) return model(base);
+  const plain = i.plain === true;
   drawAxes(i, plot, labels, true);
   // The plot's bottom baseline over the guides (#282 Part 2b §4.2).
   i.ctx.fillStyle = i.colours.axis;
@@ -729,6 +747,23 @@ function drawBars(
       const span = bucketSpan(plot, i.window, ts, t, lastEnd);
       if (span === null) continue;
       let acc = 0;
+      // The stack's top segment carries the rounded value end.
+      let topK = -1;
+      let total = 0;
+      merged.forEach((s, k) => {
+        const v = s.values[t] ?? 0;
+        if (v > 0) {
+          topK = k;
+          total += v;
+        }
+      });
+      const shaped = span[1] >= BAR_SHAPE_MIN;
+      // A shaped bar leaves about a fifth of its bucket as air, except at a plot edge it is cut by.
+      const gap = shaped ? Math.round(BARS_GAP * span[1]) : 0;
+      const gl = span[0] > plot.x ? Math.floor(gap / 2) : 0;
+      const gr = span[0] + span[1] < plot.x + plot.width - 1 ? gap - Math.floor(gap / 2) : 0;
+      const bx = span[0] + gl;
+      const bw = span[1] - gl - gr;
       merged.forEach((s, k) => {
         const v = s.values[t] ?? 0;
         if (!(v > 0)) return;
@@ -737,9 +772,16 @@ function drawBars(
         // T25-006: unselected segments at `dimmed`; a selected one gets a 2 px inner focus stroke.
         const hit = matched?.has(s.key) === true;
         if (matched !== null) i.ctx.globalAlpha = hit ? 1 : i.colours.dimmed;
-        i.ctx.fillStyle = i.colours.series[seriesColourIndex(shown[k] ?? s)] ?? '';
-        i.ctx.fillRect(span[0], top, span[1], h);
-        if (hit) drawFocusRing(i.ctx, i.colours, span[0], top, span[1], h);
+        const colour = i.colours.series[seriesColourIndex(shown[k] ?? s)] ?? '';
+        const rect = { x: bx, y: top, w: bw, h };
+        if (shaped) {
+          const ramp = { end: y(total), base: y(0) };
+          fillBar(i.ctx, rect, 'top', colour, k === topK ? BARS_RADIUS : 0, plain, false, ramp);
+        } else {
+          i.ctx.fillStyle = plain ? colour : withAlpha(colour, NARROW_ALPHA);
+          i.ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+        }
+        if (hit) drawFocusRing(i.ctx, i.colours, bx, top, bw, h);
         acc += v;
       });
     }

@@ -15,6 +15,7 @@ import { Canvas2DEngine } from './Canvas2DEngine';
 import { BOTTOM, categoryExtent, EVENT_BAND } from './layout';
 import { seriesColourIndex, themeColours } from './palette';
 import { distinctLabels } from './text';
+import { barFills } from '../../test/barFills';
 
 const W = { fromMs: 0, toMs: 60_000 };
 const colours = themeColours('dark');
@@ -78,15 +79,11 @@ function show(h: Harness, s: BarchartSpec, d: FrameData, w = 600, hgt = 240): Fr
 const palette = new Set<string>(seriesPalette.dark);
 const stateColours = new Set<string>(Object.values(colours.state));
 
+const barColours = new Set<string>([...palette, ...stateColours]);
+
 /** The bar fills, in draw order: series or state colours, thinner than the plot. */
 function bars(h: Harness, plotH: number) {
-  return h
-    .layer()
-    .calls('fillRect')
-    .filter(
-      (o) =>
-        (palette.has(o.fillStyle) || stateColours.has(o.fillStyle)) && Number(o.args[3]) < plotH,
-    );
+  return barFills(h.layer(), barColours).filter((o) => o.args[3] < plotH);
 }
 
 /** The x of value v on the summary's horizontal value axis. */
@@ -103,7 +100,7 @@ const texts = (h: Harness, align?: string) =>
     .filter((o) => align === undefined || o.textAlign === align);
 
 describe('unit:category-colour', () => {
-  it('series colours without thresholds, no pattern, gradient or shadow', () => {
+  it('series colours without thresholds, no pattern or shadow; gradients only on the bars', () => {
     const h = harness(Canvas2DEngine);
     const rows = versions();
     const s = show(h, spec(), cats(rows), 600, 300 + 8 + BOTTOM);
@@ -111,7 +108,13 @@ describe('unit:category-colour', () => {
     expect(fills.map((o) => o.fillStyle)).toEqual(
       rows.map((r) => seriesPalette.dark[seriesColourIndex(r)]),
     );
-    expect(h.layer().ops.every((o) => o.fillStyle !== 'gradient-or-pattern')).toBe(true);
+    // The only gradients are the bars' own (`barFill.ts`), from their colour at full alpha.
+    const shaded = h.layer().ops.filter((o) => o.fillStyle === 'gradient-or-pattern');
+    expect(shaded.length).toBe(fills.length);
+    expect(
+      shaded.every((o) => o.op === 'fill' && barColours.has(o.stops?.[0]?.[1].slice(0, 7) ?? '')),
+    ).toBe(true);
+    expect(h.layer().calls('createPattern')).toEqual([]);
     expect(h.layer().ops.every((o) => o.strokeStyle !== 'gradient-or-pattern')).toBe(true);
     expect((h.layer() as unknown as Record<string, unknown>)['shadowBlur']).toBeUndefined();
   });
@@ -172,7 +175,7 @@ describe('unit:barchart-layout', () => {
     const top = fills[0];
     const label = texts(h, 'left')[0];
     if (top === undefined || label === undefined) throw new Error('no bar');
-    const end = Number(top.args[0]) + Number(top.args[2]);
+    const end = top.args[0] + top.args[2];
     expect(Number(label.args[1])).toBeGreaterThanOrEqual(end);
     expect(Number(label.args[1]) + 3 * 7).toBeLessThanOrEqual(600);
 
@@ -189,7 +192,7 @@ describe('unit:barchart-layout', () => {
     const top = bars(h, s.plot.height)[0];
     const label = texts(h, 'left')[0];
     if (top === undefined || label === undefined) throw new Error('no bar');
-    expect(Number(top.args[0]) + Number(top.args[2])).toBeCloseTo(s.plot.x + s.plot.width, 6);
+    expect(top.args[0] + top.args[2]).toBeCloseTo(s.plot.x + s.plot.width, 6);
     expect(label.args[0]).toBe('120');
     expect(Number(label.args[1])).toBeGreaterThanOrEqual(s.plot.x + s.plot.width);
     expect(Number(label.args[1]) + 3 * 7).toBeLessThanOrEqual(600);
@@ -201,8 +204,8 @@ describe('unit:barchart-layout', () => {
     const s = show(h, spec(), cats(rows));
     const [pos, neg] = bars(h, s.plot.height);
     if (pos === undefined || neg === undefined) throw new Error('no bars');
-    expect(Number(neg.args[0])).toBeCloseTo(vx(s, -20), 6);
-    expect(Number(neg.args[0]) + Number(neg.args[2])).toBeCloseTo(vx(s, 0), 6);
+    expect(neg.args[0]).toBeCloseTo(vx(s, -20), 6);
+    expect(neg.args[0] + neg.args[2]).toBeCloseTo(vx(s, 0), 6);
     const negLabel = texts(h, 'right').find((o) => o.args[0] === '-20');
     if (negLabel === undefined) throw new Error('no -20 label');
     expect(Number(negLabel.args[1])).toBeLessThanOrEqual(vx(s, -20));

@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type APIRequestContext, type Locator, type Page } from '@playwright/test';
 import { brushSnapUnit } from '../src/engine/canvas2d/columns.ts';
-import { AXIS_FONT, STAT_FONT } from '../src/engine/canvas2d/layout.ts';
+import { AXIS_FONT, BAR_FONT, STAT_FONT } from '../src/engine/canvas2d/layout.ts';
 import { scanLabelInName } from '../src/test/labelInName.ts';
 
 /** 2026-11-19 13:03 London (GMT), the fixed "now" of the suite. */
@@ -147,7 +147,7 @@ export async function galleryReady(page: Page): Promise<void> {
   );
   await page.waitForFunction(
     (fonts) => fonts.every((f) => document.fonts.check(f)),
-    [AXIS_FONT, STAT_FONT],
+    [AXIS_FONT, BAR_FONT, STAT_FONT],
   );
   await page.evaluate(
     () =>

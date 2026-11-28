@@ -45,6 +45,8 @@ import type {
 import { FrameController } from '../controller/controller';
 import type { BarHooks, Point, Stage, StageModel } from '../controller/stage';
 import { BarInput } from './barInput';
+import { BarMotion } from './barMotion';
+import { BAR_FONT } from './layout';
 import { drawBarOverlay, type BarPick } from './barchart';
 import type { Ctx2D } from './ctx';
 import {
@@ -94,6 +96,22 @@ export interface Canvas2DOptions {
   wheelLatch?: WheelLatch;
   /** The geomap scene module (plan #234 Part 2 §3.1); default `loadGeoModule`. */
   loadGeo?: () => Promise<GeoModule>;
+  /**
+   * Whether a media query matches (reduced motion, forced colours); default `matchMedia`, and
+   * false without it, so the bars land at once and fill as usual there.
+   */
+  media?: (query: string) => boolean;
+}
+
+/** The page's media queries; false without `matchMedia`. */
+function pageMedia(query: string): boolean {
+  return typeof globalThis.matchMedia === 'function' && globalThis.matchMedia(query).matches;
+}
+
+/** Motion runs only where the page can say it is wanted (`matchMedia`) and it is not reduced. */
+function motionReduced(media: (q: string) => boolean, own: boolean): boolean {
+  if (!own && typeof globalThis.matchMedia !== 'function') return true;
+  return media('(prefers-reduced-motion: reduce)');
 }
 
 /** The geomap scene's dynamic entry (ADR-0027): imported on a frame's first `geomap` spec. */
@@ -131,6 +149,9 @@ interface Resolved {
   clearTimer: (id: number) => void;
   wheelLatch: WheelLatch;
   loadGeo: () => Promise<GeoModule>;
+  media: (query: string) => boolean;
+  /** `media` was given (tests): motion follows it alone. */
+  ownMedia: boolean;
 }
 
 /** The page's wheel latch: one passive window listener, created with the first frame. */
@@ -179,6 +200,8 @@ export class Canvas2DEngine implements ChartEngine {
         }),
       wheelLatch: o.wheelLatch ?? defaultLatch(),
       loadGeo: o.loadGeo ?? loadGeoModule,
+      media: o.media ?? pageMedia,
+      ownMedia: o.media !== undefined,
     };
     return new Canvas2DFrame(canvas, init, r);
   }
@@ -214,6 +237,12 @@ class Canvas2DFrame implements ChartFrame {
   private readonly bar = new BarInput(this.emit.bind(this), () => {
     this.schedule();
   });
+  /** The bar chart's grow-in and hover emphasis. */
+  private readonly barMotion = new BarMotion(() => motionReduced(this.r.media, this.r.ownMedia));
+  /** The drawn categories' keys and values: a change grows the bars in again. */
+  private barData = '';
+  /** The last frame drew the bar chart in motion. */
+  private barWasAnimating = false;
   /** The camera (#93): the shared controller, this frame its stage. */
   private readonly ctl: FrameController;
   /** A geomap's scene (ADR-0027), once its module resolved for the current generation. */
@@ -247,6 +276,7 @@ class Canvas2DFrame implements ChartFrame {
       down: (e, p) => this.bar.down(e, p, this.barPick()),
       move: (e, p) => {
         this.bar.move(this.barPick(), e.pointerId, p);
+        this.syncBarHover();
       },
       up: (e, p) => {
         this.bar.up(this.barPick(), e.pointerId, p);
@@ -256,18 +286,23 @@ class Canvas2DFrame implements ChartFrame {
       },
       clearMark: () => {
         this.bar.clearMark();
+        this.syncBarHover();
       },
       leave: () => {
         this.bar.hoverEnd(this.barPick());
+        this.syncBarHover();
       },
       key: (e) => {
         this.bar.key(e, this.barPick());
+        this.syncBarHover();
       },
       focus: () => {
         this.bar.focusIn(this.barPick());
+        this.syncBarHover();
       },
       blur: () => {
         this.bar.blur();
+        this.syncBarHover();
       },
       dispose: () => {
         this.bar.dispose();
@@ -309,7 +344,7 @@ class Canvas2DFrame implements ChartFrame {
     // the visible canvas from the stored inputs (#296). Nothing else redraws a frame whose inputs
     // did not change, such as a stat that only scrolled out of view and back.
     for (const c of [canvas, this.layer]) c.addEventListener('contextrestored', this.onRestored);
-    for (const f of [AXIS_FONT, STAT_FONT]) {
+    for (const f of [AXIS_FONT, BAR_FONT, STAT_FONT]) {
       const loaded = (): void => {
         forgetValueBands(this.layerCtx);
         this.invalidate();
@@ -346,6 +381,13 @@ class Canvas2DFrame implements ChartFrame {
       return;
     }
     this.bar.newData();
+    if (this.spec?.kind === 'barchart' && data.kind === 'categories') {
+      const sig = JSON.stringify(data.categories.map((r) => [r.key, r.value]));
+      if (sig !== this.barData) {
+        this.barData = sig;
+        this.barMotion.restart(this.r.now());
+      }
+    }
     this.changed();
   }
 
@@ -658,6 +700,10 @@ class Canvas2DFrame implements ChartFrame {
       this.geoFrame();
       return;
     }
+    // A bar chart in motion redraws its layer each frame, and once more where the motion lands.
+    const barAnim = this.spec?.kind === 'barchart' && this.barMotion.animating(this.r.now());
+    if (barAnim || this.barWasAnimating) this.layerDirty = true;
+    this.barWasAnimating = barAnim;
     if (this.layerDirty) {
       this.layerDirty = false;
       const start = this.r.now();
@@ -698,6 +744,14 @@ class Canvas2DFrame implements ChartFrame {
     this.drawVisible(hover);
     // Never at a zero size or disposed.
     this.presented();
+    if (this.barWasAnimating) this.schedule();
+  }
+
+  /** The bar chart's hovered (marked) bar changed: its emphasis eases in the next frames. */
+  private syncBarHover(): void {
+    const pick = this.barPick();
+    const keys = pick === null ? [] : pick.bands.map((b) => b.key);
+    if (this.barMotion.setHover(this.bar.markedKey(), keys, this.r.now())) this.invalidate();
   }
 
   private setModel(m: LayerModel | null): void {
@@ -744,6 +798,14 @@ class Canvas2DFrame implements ChartFrame {
       selection: this.selection,
       dpr: this.dpr,
       scratch: this.dim,
+      plain: this.r.media('(forced-colors: active)'),
+      barMotion:
+        this.spec.kind === 'barchart'
+          ? {
+              grow: this.barMotion.grow(this.r.now()),
+              alpha: (key) => this.barMotion.alphaOf(key, this.r.now()),
+            }
+          : null,
     });
   }
 

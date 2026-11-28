@@ -6,6 +6,7 @@ import { colour, seriesPalette } from '../../styles/tokens';
 import { StateEncoding } from '../../theme/stateEncoding';
 import { Canvas2DEngine } from './Canvas2DEngine';
 import { seriesColourIndex, themeColours } from './palette';
+import { barFills } from '../../test/barFills';
 
 const TS = [0, 1_000, 2_000];
 const W = { fromMs: 0, toMs: 2_000 };
@@ -36,10 +37,7 @@ function fills(spec: VisSpec, series: SeriesFrame[]): string[] {
   h.frame.setTimeWindow({ fromMs: 0, toMs: 3_000 });
   h.frame.resize(400, 200, 1);
   h.flush();
-  return h
-    .layer()
-    .calls('fillRect')
-    .map((o) => o.fillStyle);
+  return barFills(h.layer(), new Set<string>(seriesPalette.dark)).map((o) => o.fillStyle);
 }
 
 const bars = (order: readonly string[]): VisSpec => ({

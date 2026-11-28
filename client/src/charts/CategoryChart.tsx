@@ -1,7 +1,7 @@
 /**
  * A bar chart in a measured cell (plan #173 Part 2 §4.1, §4.4, Part 3a §3.5, §3.6; ADR-0028,
  * ADR-0029). The cell's size (whole CSS px; the caller's `sizeMemo` first, so a re-mounted chart
- * fits at once) goes through `fitBarchart` with an offscreen measure in the axis font. The fit
+ * fits at once) goes through `fitBarchart` with an offscreen measure in the bar font. The fit
  * mounts a `ChartFrame`, or shows the focusable `tooSmall` notice in place of the plot. Under the
  * cell, one line holds the coverage meter and, when names or value labels are hidden or the baseline
  * run failed, the note saying so; the line never changes the cell's height. A resize that keeps the
@@ -17,7 +17,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 
 import type { BarchartSpec, CategoryRow, PickEvent, TimeWindow } from '../engine/api';
 import type { BarContext } from '../vis/barAction';
 import { barLayout } from '../engine/canvas2d/barLayout';
-import { AXIS_FONT } from '../engine/canvas2d/layout';
+import { BAR_FONT } from '../engine/canvas2d/layout';
 import type { Measure } from '../engine/canvas2d/text';
 import { formatHourMinute, formatValue } from '../i18n/format';
 import { t } from '../i18n/t';
@@ -37,13 +37,13 @@ import { PanelTable } from './PanelTable';
 /** The offscreen context of `axisMeasure`; null without 2D canvas support. */
 let measureCtx: CanvasRenderingContext2D | null | undefined;
 
-/** Text widths in `AXIS_FONT`; without a 2D context, the monospace advance of the token font. */
+/** Text widths in `BAR_FONT`; without a 2D context, an estimate from the mono advance of the token size. */
 function axisMeasure(): Measure {
   measureCtx ??= document.createElement('canvas').getContext('2d');
   const ctx = measureCtx;
-  if (ctx === null) return (s) => Array.from(s).length * font.size.xs * font.advance.mono;
+  if (ctx === null) return (s) => Array.from(s).length * font.size.sm * font.advance.mono;
   return (s) => {
-    ctx.font = AXIS_FONT;
+    ctx.font = BAR_FONT;
     return ctx.measureText(s).width;
   };
 }
