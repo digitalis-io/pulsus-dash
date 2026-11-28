@@ -300,10 +300,10 @@ describe('time changes and refresh', () => {
     await ready('Requests');
     show('Requests');
     await calls(t, 1);
-    windowKey(']');
+    windowKey('[');
     await calls(t, 2);
     expect(h.held[0]?.signal?.aborted).toBe(true);
-    expect(h.held[1]?.req.fromMs).toBe(T13);
+    expect(h.held[1]?.req.fromMs).toBe(T12 - 3_600_000);
     await h.held[1]?.resolve(R_B);
     await waitFor(() => {
       expect(seriesValues(t, 'Requests')).toEqual([[10, 20, 30]]);
@@ -502,7 +502,7 @@ describe('time changes and refresh', () => {
     await calls(t, 2);
     await settled(t, 'Mem A');
     await settled(t, 'Mem B');
-    windowKey(']');
+    windowKey('[');
     await calls(t, 4);
     await settled(t, 'Mem A');
     await settled(t, 'Mem B');
@@ -511,7 +511,7 @@ describe('time changes and refresh', () => {
     });
     const frames = t.engine.frames.length;
     const h = holdRange(t);
-    if (how === 'keys') windowKey('[');
+    if (how === 'keys') windowKey(']');
     else {
       await act(async () => {
         await t.router.navigate(-1);
@@ -539,10 +539,10 @@ describe('time changes and refresh', () => {
     await calls(t, 2);
     await settled(t, 'Mem B');
     hide('Mem B');
-    windowKey(']');
+    windowKey('[');
     await calls(t, 3);
     await settled(t, 'Mem A');
-    windowKey('[');
+    windowKey(']');
     await calls(t, 4);
     await flush();
     show('Mem B');
@@ -573,7 +573,7 @@ describe('time changes and refresh', () => {
     show('Requests');
     await flush();
     expect(t.range).toHaveBeenCalledTimes(2);
-    windowKey(']');
+    windowKey('[');
     await calls(t, 3);
     await flush();
     hide('Requests');

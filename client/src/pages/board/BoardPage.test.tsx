@@ -645,7 +645,7 @@ describe('navigation and time', () => {
     });
     expect(screen.queryByRole('dialog', { name: 'Discard unsaved changes?' })).toBeNull();
     const before = router.state.location.search;
-    await user.keyboard(']');
+    await user.keyboard('[[');
     await waitFor(() => {
       expect(router.state.location.search).not.toBe(before);
     });
