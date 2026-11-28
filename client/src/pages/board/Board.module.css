@@ -788,6 +788,15 @@
   min-height: 0;
 }
 
+/* "Value at hh:mm" while the crosshair hovers: the chips show the hovered values. */
+.legendAt {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-tight);
+  white-space: nowrap;
+}
+
 .legendList {
   flex: 1 1 auto;
   display: flex;

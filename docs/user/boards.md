@@ -305,6 +305,9 @@ are more).
   **compact**: the swatch, name and last value of each series, which isolate as the table rows do,
   and **Legend table**, which opens the full table (sort, isolation and highlights) in a popover.
   Escape closes it.
+- **Follows the cursor.** While you hover the chart, the **Last** column (and the compact legend's
+  values) shows each series' value at the crosshair, under a "Value at hh:mm" header; it returns to
+  Last when you move off the chart.
 - **Hidden.** Set **Legend** to **Hidden** in the panel editor to show the chart alone.
 
 ### Thresholds

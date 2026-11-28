@@ -10,6 +10,7 @@ import { ToggleButton } from 'react-aria-components';
 import { CategoryChart } from '../../charts/CategoryChart';
 import { ChartFrame } from '../../charts/ChartFrame';
 import { SeriesTable } from '../../charts/SeriesTable';
+import { useHoveredValues } from '../../charts/readout';
 import type { PickEvent } from '../../engine/api';
 import {
   TABLE_ROWS,
@@ -109,6 +110,8 @@ export function ResultCard({ chartRef, ...p }: ResultCardProps): JSX.Element {
   // rows are its bucket series, in the count unit.
   const units = panelUnits(undefined, p.vis ?? 'line', shown?.planned.rateApplied === true);
   const tableUnit = p.vis === 'heatmap' ? units.count : units.value;
+  // The table's Last column follows the crosshair (a heatmap's hover rows are buckets, not series).
+  const [hovered, onHover] = useHoveredValues();
   // The Inspector's origin (T25 §5): Explore's query is `q`.
   const q = p.q;
   const chartUnit = p.plan?.spec?.unit ?? null;
@@ -199,6 +202,7 @@ export function ResultCard({ chartRef, ...p }: ResultCardProps): JSX.Element {
           <ChartFrame
             spec={p.plan.spec}
             data={p.plan.data}
+            onHover={onHover}
             {...(onInspect === undefined ? {} : { onInspect })}
             {...(onEmptyClick === undefined ? {} : { onEmptyClick })}
           />
@@ -220,6 +224,7 @@ export function ResultCard({ chartRef, ...p }: ResultCardProps): JSX.Element {
           columns={TABLE_COLUMNS}
           maxRows={TABLE_ROWS}
           selectPanelId={null}
+          hovered={p.vis === 'heatmap' ? null : hovered}
         />
       )}
     </Card>

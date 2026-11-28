@@ -35,6 +35,30 @@ function props(o: Partial<SeriesTableProps> = {}): SeriesTableProps {
 }
 
 describe('SeriesTable', () => {
+  it('shows the hovered values under a Value at header while hovering', () => {
+    const k = (i: number): string => ROWS[i]?.key ?? '';
+    const hovered = {
+      label: 'Value at 10:40',
+      values: new Map([
+        [k(0), 7],
+        [k(2), 9],
+      ]),
+    };
+    const { rerender } = render(<SeriesTable {...props({ hovered })} />);
+    const table = screen.getByRole('table', { name: caption });
+    expect(within(table).getByRole('button', { name: 'Value at 10:40' })).toBeInTheDocument();
+    const lastCol = (): string[] =>
+      within(table)
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => r.querySelectorAll('td')[1]?.textContent ?? '');
+    expect(lastCol()).toEqual(['7', '—', '9']);
+    rerender(<SeriesTable {...props({ hovered: null })} />);
+    expect(within(table).getByRole('button', { name: 'Last' })).toBeInTheDocument();
+    expect(lastCol()).toEqual(['0', '1', '2']);
+    cleanup();
+  });
+
   it('sorting, isolation and dimming', () => {
     const p = props({
       sort: { column: 'max', direction: 'descending' },

@@ -123,6 +123,57 @@
   display: none;
 }
 
+/* The hover readout card: a manual popover in the top layer, placed outside the panel (never over
+   the plot) by `readout.ts`. It follows the cursor by translate only and fades in; no motion under
+   reduced motion. */
+.readout {
+  box-shadow: var(--elevation-2);
+}
+
+/* In the top layer: viewport coordinates (the UA's centred popover box undone). */
+.readout:popover-open {
+  position: fixed;
+  inset: auto;
+  top: 0;
+  left: 0;
+  margin: 0;
+  overflow: visible;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .readout[data-follow] {
+    transition: translate 60ms var(--motion-easing-out);
+  }
+
+  .readout:popover-open {
+    animation: readoutIn var(--motion-quick) var(--motion-easing-out);
+  }
+}
+
+@keyframes readoutIn {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The hovered time under the crosshair, on the time axis. */
+.timePill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: 0 0 0 var(--border-hairline) var(--hairline);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-tight);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .time,
 .range {
   color: var(--text-muted);

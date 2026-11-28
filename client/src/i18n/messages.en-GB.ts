@@ -743,6 +743,7 @@ export const messages = {
   'chart.crosshair.idle': 'Use the arrow keys to read values',
   'chart.crosshair.value': '{time}: {name} {value}, {index} of {total}',
   'chart.tooltip.range': 'Rows {from}–{to} of {total}',
+  'chart.legend.valueAt': 'Value at {time}',
   'chart.unsupported': 'This browser cannot draw charts.',
   'chart.wheelHint': 'Hold {key} to zoom',
   'chart.engineRecovered': 'Recovered from an error: this chart uses the basic renderer.',

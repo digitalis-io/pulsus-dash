@@ -14,6 +14,7 @@ import { useInspector, useSelection } from '../inspector/host';
 import { cx } from '../kit/cx';
 import { Icon } from '../kit/Icon';
 import { StateEncoding } from '../theme/stateEncoding';
+import type { HoveredValues } from './readout';
 import styles from './SeriesTable.module.css';
 
 export type ValueColumn = 'mean' | 'last' | 'max';
@@ -45,6 +46,8 @@ export interface SeriesTableProps {
    * Inspector host; null on Explore; absent = no toggles.
    */
   readonly selectPanelId?: string | null;
+  /** While the crosshair hovers: the Last column shows these values under their label. */
+  readonly hovered?: HoveredValues | null;
 }
 
 /** A value cell: highlighted with its state's colour, glyph and hidden name when it has one. */
@@ -97,6 +100,9 @@ export function SeriesTable(p: SeriesTableProps): JSX.Element {
   const drawn = p.rows.slice(0, p.maxRows);
   const isolating = p.isolatedKey !== null && drawn.some((r) => r.key === p.isolatedKey);
   const num = (v: number | null): string => (v === null ? '—' : formatValue(v, p.unit));
+  const hovered = p.hovered ?? null;
+  const cell = (r: SeriesRow, c: ValueColumn): number | null =>
+    c === 'last' && hovered !== null ? (hovered.values.get(r.key) ?? null) : r[c];
   return (
     <>
       {/* A scrolling region must be reachable by keyboard (WCAG 2.1.1). */}
@@ -129,7 +135,11 @@ export function SeriesTable(p: SeriesTableProps): JSX.Element {
                         p.onSort(c.id);
                       }}
                     >
-                      {t(`explore.table.${c.id}`)}
+                      {c.id === 'last' && hovered !== null ? (
+                        <span data-hovered-label="">{hovered.label}</span>
+                      ) : (
+                        t(`explore.table.${c.id}`)
+                      )}
                       <Icon
                         name="chevron-down"
                         className={cx(
@@ -193,7 +203,11 @@ export function SeriesTable(p: SeriesTableProps): JSX.Element {
                     )}
                   </td>
                   {p.columns.map((c) => (
-                    <ValueCell key={c} text={num(r[c])} state={p.cellState?.(r[c]) ?? null} />
+                    <ValueCell
+                      key={c}
+                      text={num(cell(r, c))}
+                      state={p.cellState?.(cell(r, c)) ?? null}
+                    />
                   ))}
                 </tr>
               );

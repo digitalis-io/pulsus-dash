@@ -442,8 +442,34 @@ against it. Change the TS rule, rewrite the fixture, and the port must follow. T
 the crosshair, dots and box band as `drawOverlay` does
 ([the engine](engine.md#hover-select-and-the-overlay-part-c2b)); the tooltip stays DOM for both.
 
-The tooltip is DOM, beside the crosshair (flipped left at the frame's right edge), positioned with
-CSSOM (`style.translate`, allowed by the CSP, T18-004). It shows the time and the rows sorted by value
+The tooltip is a DOM readout card that never covers the plot. It is a manual popover
+(`popover="manual"`) in the top layer, so no panel, grid or dialog clips it, and it stays a DOM
+descendant of its frame. `placeReadout` (`src/charts/readout.ts`, `unit` tests in
+`readout.test.ts`) places it, in order:
+
+1. just right of the panel (the board panel `[data-panel]` around the frame, else the frame),
+   vertically centred on the cursor;
+2. just left of the panel, when the right has no room;
+3. above the plot (over the panel's header band), centred on the cursor, when neither side has room
+   (a full-width panel or a narrow screen);
+4. below the plot, when there is no room above either.
+
+Every position is clamped to the viewport with an 8 px gap. `useReadout` applies it with CSSOM
+(`style.translate`, allowed by the CSP, T18-004) and sets `data-side` to the side chosen. The card
+follows the cursor with a 60 ms `translate` transition and fades in over `--motion-quick` (100 ms);
+under reduced motion it neither moves nor fades. Without popover support it falls back to an
+absolute card in the frame. The same placement serves the bar chart's `MarkTooltip`, level with the
+marked bar. The geomap's tooltip keeps its place beside the mark.
+
+While the crosshair hovers a time chart, the hovered time also shows as a pill on the time axis
+under the crosshair (`[data-hover-time]`, kept within the plot's width). `ChartFrame`'s `onHover`
+reports each hover and its end; `useHoveredValues` turns it into the legend's hovered values (the
+board legend table, the compact legend and the Explore series table): the **Last** column shows the
+value at the crosshair under a "Value at hh:mm" header (`[data-hovered-label]`), a series with no
+sample there shows `—`, and the column reverts to Last when the hover ends. A heatmap's Explore table
+keeps Last (its hover rows are buckets, not series).
+
+The card shows the time and the rows sorted by value
 (descending, then name), 20 at a time with "Rows a–b of n". With the pointer, the 20-row window
 follows the pointer's height over the plot: the top of the plot shows rows 1–20, the bottom the last
 20, so every series can be reached. With the keyboard, the window is centred on the selected row.
@@ -824,8 +850,8 @@ Its `aria-activedescendant` names the option of a keyboard `mark` (absent for a 
 and an option is `aria-selected` while its key is in the page selection. `k more not shown` (the
 rows the cap left out) is a hidden sibling `<listId>-more` that the listbox names with
 `aria-describedby`. The canvas keeps `aria-describedby` = the listbox. While focus is inside a bar
-frame, the frame draws a 2 px `focus` outline (T08-016). `ChartFrame` shows `MarkTooltip` beside
-the marked bar (full name, value, `■ Failing` for a state, then the caller's `markLines`, or
+frame, the frame draws a 2 px `focus` outline (T08-016). `ChartFrame` shows `MarkTooltip` outside
+the panel, level with the marked bar (full name, value, `■ Failing` for a state, then the caller's `markLines`, or
 `baseline <v>` with the ghost when there are none), passes `pick` to `onPick` with the listbox as
 the element to return focus to, labels the canvas `<title>: <n> bars` (then the thresholds), and
 shows no `Showing X of N series` notice: `CategoryChart`'s meter states the coverage. Under

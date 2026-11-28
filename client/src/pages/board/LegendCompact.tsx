@@ -38,8 +38,14 @@ function LastValue({ table, v }: { table: SeriesTableProps; v: number | null }) 
 
 export function LegendCompact({ table }: { readonly table: SeriesTableProps }): JSX.Element {
   const rows = table.rows.slice(0, table.maxRows);
+  const hovered = table.hovered ?? null;
   return (
     <div className={cx(styles['legendCompact'])} data-panel-legend="compact">
+      {hovered !== null && (
+        <span className={cx(styles['legendAt'])} data-hovered-label="">
+          {hovered.label}
+        </span>
+      )}
       <ul className={cx(styles['legendList'])} aria-label={table.caption}>
         {rows.map((r) => {
           const content = (
@@ -52,7 +58,10 @@ export function LegendCompact({ table }: { readonly table: SeriesTableProps }): 
                 />
               )}
               <span className={cx(styles['legendName'])}>{r.name}</span>
-              <LastValue table={table} v={r.last} />
+              <LastValue
+                table={table}
+                v={hovered === null ? r.last : (hovered.values.get(r.key) ?? null)}
+              />
             </>
           );
           return (

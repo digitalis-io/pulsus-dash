@@ -55,6 +55,7 @@ import { CategoryChart } from '../../charts/CategoryChart';
 import { ChartFrame, type ChartFrameProps, type FrameSize } from '../../charts/ChartFrame';
 import type { SeriesTableProps } from '../../charts/SeriesTable';
 import { SeriesTable } from '../../charts/SeriesTable';
+import { useHoveredValues } from '../../charts/readout';
 import { statValue } from '../../data/frames';
 import type { PickEvent, ThresholdState, Unit } from '../../engine/api';
 import { nextSort, sortRows, toggleIsolation, type SortState } from '../../explore/seriesRows';
@@ -263,6 +264,7 @@ const PanelChart = memo(function PanelChart({
 }) {
   const [isolatedKey, setIsolatedKey] = useState<string | null>(null);
   const [sort, setSort] = useState<SortState | null>(null);
+  const [hovered, onHover] = useHoveredValues();
   const [stackRef, layout, measured] = useLegendLayout();
   // The board's markers (plan #64 Part C §3.8): one reference for every panel.
   const { markers } = useContext(BoardEventsContext);
@@ -309,6 +311,7 @@ const PanelChart = memo(function PanelChart({
       pending={<p className={cx(styles['message'])}>{t('panel.loading')}</p>}
       sizeMemo={memo}
       events={markers}
+      onHover={onHover}
       {...(onInspect === undefined ? {} : { onInspect })}
       {...(inspect?.onEmptyClick === undefined ? {} : { onEmptyClick: inspect.onEmptyClick })}
     />
@@ -337,6 +340,7 @@ const PanelChart = memo(function PanelChart({
     rows: sorted,
     total: rows.length,
     isolatedKey: isolation,
+    hovered,
   };
   return (
     <div ref={stackRef} className={cx(styles['frameStack'])} data-legend={view.legend}>

@@ -5,7 +5,7 @@
  * baseline) or, when the caller gives them, its `lines` (`CategoryChart.markLines`: the baseline or
  * what the baseline run lacks, the filter hint, the reduced window and the anomaly note), each a
  * `data-line`. Hidden from assistive technology: the listbox and the table view read the same
- * rows. `ChartFrame` places it beside the mark.
+ * rows. `ChartFrame` places it outside the panel, level with the mark (`readout.ts`).
  */
 import type { JSX, Ref } from 'react';
 import type { CategoryRow, MarkEvent, Unit } from '../engine/api';
@@ -34,8 +34,9 @@ export function MarkTooltip({
   return (
     <div
       ref={ref}
-      className={cx(styles['tooltip'])}
+      className={cx(styles['tooltip'], styles['readout'])}
       data-mark-tooltip=""
+      popover="manual"
       aria-hidden="true"
       hidden={!shown}
     >

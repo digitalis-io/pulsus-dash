@@ -61,6 +61,7 @@ import type {
 } from '../engine/api';
 import { ChartUnsupportedError } from '../engine/canvas2d/Canvas2DEngine';
 import { ChartEngineContext } from '../engine/index';
+import { formatTime } from '../i18n/format';
 import { t } from '../i18n/t';
 import { useSelection } from '../inspector/host';
 import type { InspectorTarget } from '../inspector/types';
@@ -88,6 +89,7 @@ import {
 } from './chartText';
 import { geoTooltip, hoverItemOf, statTarget, targetOf } from './inspectTarget';
 import { useAreaAllowed } from './useAreaAllowed';
+import { useReadout } from './readout';
 
 /** The geomap tooltip's offset from the pointer, CSS px. */
 const GEO_TIP_GAP = 12;
@@ -140,6 +142,8 @@ export interface ChartFrameProps {
   readonly onSummary?: (s: FrameSummary) => void;
   /** `geo`: the host div is the map's plot surface and key target (T24 §5.14); default `chart`. */
   readonly surface?: 'chart' | 'geo';
+  /** Each crosshair hover and its end (null): the legend shows the hovered values. */
+  readonly onHover?: (h: HoverEvent | null) => void;
 }
 
 interface HoverState {
@@ -269,6 +273,7 @@ export function ChartFrame({
   markLines,
   onFrame,
   onSummary,
+  onHover,
   surface = 'chart',
 }: ChartFrameProps) {
   const engine = useContext(ChartEngineContext);
@@ -311,6 +316,7 @@ export function ChartFrame({
   const sliderRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
   const resetRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<EngineFrame | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -331,6 +337,7 @@ export function ChartFrame({
     onPick,
     onFrame,
     onSummary,
+    onHover,
   });
   useLayoutEffect(() => {
     latest.current = {
@@ -349,6 +356,7 @@ export function ChartFrame({
       onPick,
       onFrame,
       onSummary,
+      onHover,
     };
   });
   // The page selection (T25-006): every frame draws it, the source included.
@@ -438,6 +446,7 @@ export function ChartFrame({
       }),
       frame.on('hover', (h) => {
         setHoverState({ hover: h, selected: 0 });
+        latest.current.onHover?.(h);
       }),
       frame.on('mark', (m) => {
         setMark(m);
@@ -536,6 +545,7 @@ export function ChartFrame({
 
     return () => {
       latest.current.onFrame?.(null);
+      latest.current.onHover?.(null);
       for (const off of offs) off();
       ro.disconnect();
       mql?.removeEventListener('change', onDpr);
@@ -587,14 +597,23 @@ export function ChartFrame({
     else canvasRef.current?.removeAttribute('aria-describedby');
   }, [spec, summary, tz, engine, isStat, isBar, isGeo, barListId]);
 
-  // Tooltip beside the crosshair, flipped left at the host's right edge (CSSOM, T18-004).
+  // The readout card outside the panel, never over the plot (CSSOM, T18-004).
+  useReadout(tooltipRef, hostRef, isGeo ? null : hover, summary?.plot ?? null, [
+    hover,
+    summary,
+    selected,
+    isGeo,
+  ]);
+
+  // The hovered time's pill on the time axis under the crosshair, kept inside the plot's width.
   useLayoutEffect(() => {
-    const tip = tooltipRef.current;
-    const host = hostRef.current;
-    if (tip === null || host === null || hover === null) return;
-    const left = tooltipLeft(hover.xCss, tip.offsetWidth, host.clientWidth);
-    tip.style.translate = `${px(left)} ${px(summary?.plot.y ?? 0)}`;
-  }, [hover, summary, selected]);
+    const pill = pillRef.current;
+    if (pill === null || hover === null || summary === null) return;
+    const p = summary.plot;
+    const half = pill.offsetWidth / 2;
+    const x = Math.min(Math.max(hover.xCss, p.x + half), p.x + Math.max(half, p.width - half));
+    pill.style.translate = `${px(Math.round(x - half))} ${px(p.y + p.height + space['0-5'])}`;
+  }, [hover, summary]);
 
   // The geomap's tooltip beside the hovered mark, flipped at the edges (CSSOM, T18-004).
   useLayoutEffect(() => {
@@ -610,14 +629,8 @@ export function ChartFrame({
     tip.style.translate = `${px(left)} ${px(top)}`;
   }, [hover, isGeo]);
 
-  // The bar chart's tooltip beside the marked bar, centred on its band (CSSOM, T18-004).
-  useLayoutEffect(() => {
-    const tip = markRef.current;
-    const host = hostRef.current;
-    if (tip === null || host === null || mark === null) return;
-    const left = tooltipLeft(mark.xCss, tip.offsetWidth, host.clientWidth);
-    tip.style.translate = `${px(left)} ${px(Math.max(0, mark.yCss - tip.offsetHeight / 2))}`;
-  }, [mark]);
+  // The bar chart's card outside the panel, level with the marked bar (CSSOM, T18-004).
+  useReadout(markRef, hostRef, mark, summary?.plot ?? null, [mark, summary]);
 
   // The crosshair slider covers the plot; pointer input passes through to the canvas.
   useLayoutEffect(() => {
@@ -746,6 +759,11 @@ export function ChartFrame({
             ? {}
             : { lines: markLines(markRow) })}
         />
+      )}
+      {!noCrosshair && hover !== null && hover.tMs !== null && summary !== null && (
+        <div ref={pillRef} className={cx(styles['timePill'])} data-hover-time="" aria-hidden="true">
+          {formatTime(hover.tMs, tz)}
+        </div>
       )}
       {!noCrosshair && (
         <ChartTooltip

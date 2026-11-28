@@ -1,6 +1,8 @@
 /**
  * The chart tooltip (DOM, not canvas; plan #58 §3.5): the time and a 20-row window of the sorted
  * rows. Hidden from assistive technology: the crosshair slider's value text reads the same data.
+ * A manual popover in the top layer, placed outside the panel so it never covers the plot
+ * (`readout.ts`).
  */
 import type { Ref } from 'react';
 import type { HoverEvent, PlotRect, Unit } from '../engine/api';
@@ -33,8 +35,9 @@ export function ChartTooltip({ hover, selected, plot, unit, timeZone, ref }: Cha
   return (
     <div
       ref={ref}
-      className={cx(styles['tooltip'])}
+      className={cx(styles['tooltip'], styles['readout'])}
       data-chart-tooltip=""
+      popover="manual"
       aria-hidden="true"
       hidden={hover === null}
     >
