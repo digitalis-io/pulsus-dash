@@ -163,6 +163,15 @@ async function openEditor(page: Page, o: { delayMs?: number } = {}): Promise<voi
   // preview's chart; WebKit then sends a pointer move after a layout change, and the chart draws
   // its crosshair into the canvas the fingerprints read. Park it in the corner, off the dialog.
   await page.mouse.move(0, 0);
+  // The dialog opens with a zoom (Dialog.module.css): measure it only once that has finished.
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
 }
 
 async function reopen(page: Page): Promise<void> {
