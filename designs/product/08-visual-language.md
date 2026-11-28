@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.8-rc · 2026-11-27 |
+| **Version** | 1.9-rc · 2026-11-28 |
 | **Requirement area** | `VL` |
 | **Source draft** | plans/08-visual-language.md (not tracked) |
 | **Depends on** | [01a](01a-audiences-and-perspectives.md), [03](03-interaction-model.md), [05](05-visualisation-catalogue.md), [09](09-performance-contract.md), [T02](../technical/T02-vis-engine.md), [T08](../technical/T08-dom-component-kit.md) |
@@ -59,6 +59,8 @@ character: one light, fog, hairline grid, no decoration ([05](05-visualisation-c
 | `degraded` | `#E8923A` (amber) | `failing` | `#E0457B` (red-magenta) |
 | `unknown` | `#6B7280` + hatch (hatched grey) | `surface-float` | `#15171CF0` (geomap overlay) |
 | `failing-glow` | `#E0457B26` (a failing board panel's glow; state use only) | | |
+| `ok-text` / `watch-text` | `#2FB59A` / `#D9C84A` (state text) | `degraded-text` / `failing-text` | `#E8923A` / `#EA4F83` (state text) |
+| `unknown-text` | `#828998` (state text) | | |
 | `chart-grid` | `#FFFFFF0F` (a line chart's value guides) | `chart-axis` | `#FFFFFF24` (the plot's bottom baseline) |
 | `series-1`…`series-8` | `#7AA2D6` `#C9A36B` `#8FBF8F` `#B48FC9` `#6FB8B8` `#C98F8F` `#A8A8D9` `#BFB07A` | | |
 
@@ -206,9 +208,14 @@ rooms, verified by an accessibility audit.
 Field boundaries (text fields, select triggers, unchecked boxes: `border-field`) MUST be at least
 3:1 from the field fill and every surface beneath, from M-UI1 (#282).
 
+A state colour rendered as text (a glyph, name or value) MUST use its state's text variant
+(`<state>-text`), at least 4.5:1 on `surface-1` and `surface-2` in both themes; marks and fills keep
+the state colour, at least 3:1 there (#284).
+
 *Acceptance:* Automated contrast checks find no text below 4.5:1 (3:1 for large text) and no UI
 component boundary below 3:1 in either theme; `unit:ui-token-contrast` finds every field boundary
-at least 3:1; the M-UI6 AA audit passes.
+at least 3:1 and every state text variant at least 4.5:1 on `surface-1` and `surface-2`; the M-UI6
+AA audit passes.
 
 ## 5. Typography and numbers
 
@@ -573,14 +580,19 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
     floating surfaces with opaque fallbacks (VL-017), the radius scale and control insets (VL-019),
     the platform UI face on Apple systems (VL-010, [ADR-0035](../adr/0035-platform-ui-face.md)),
     canvas text staying Inter (VL-011), popover and dialog motion (VL-014, VL-016), and field
-    boundaries at 3:1 (VL-009). State-colour text below 4.5:1 on the surfaces predates the refresh
-    and is tracked in #284.
+    boundaries at 3:1 (VL-009). State-colour text below 4.5:1 on the surfaces predated the refresh;
+    resolution 13 closes it.
 12. **Second direction (1.7-rc, owner, 2026-11-27, #282 Part 2).** The owner asked for small radii
     and dense spacing, with boldness from depth: radii 3/4/6/8/10 px with no capsules (VL-019), a
     212 px sidebar, 12/20/20 px content padding, 12 px panel gaps and a 22 px bold title (VL-017),
     the card elevation and, for a failing board panel only, the state elevation's ring and glow
     (VL-004). Tags and chips are tinted with their token colour at a token opacity; their labels stay
     `text`, because state-coloured text on a tint falls below 4.5:1 (VL-009).
+13. **State text (1.9-rc, #284).** Light `watch` and `unknown`, dark `unknown` and `failing`, and
+    light `ok` and `degraded` on `surface-2` fell below 4.5:1 as text, and the surfaces cannot move
+    far enough. Each state gains a text variant (`<state>-text`), tuned in lightness only at the
+    state's hue, used wherever a state colour renders as text; marks and fills keep the state
+    colours (VL-009).
 
 ## 13. Change log
 
@@ -596,3 +608,4 @@ alike; the light theme renders the 3D world with its own `ground`, `fog` and `en
 | 1.6-rc | 2026-11-27 | #282 Part 1, resolution 11: §3.1 to the refreshed chrome tokens; VL-001 acceptance `#0E1014` / `#15171C` / `#1D2026`; VL-004 allows the three elevation tokens in DOM chrome; VL-009 field boundaries ≥ 3:1; VL-010 platform UI face on Apple systems; VL-011 canvas text Inter everywhere; §6 and VL-014 popover, tooltip, dialog and control motion; VL-016 popovers and dialogs; VL-017 `material-bar` header, opaque `sidebar`; §7 and VL-019 radius scale and 2 px control insets |
 | 1.7-rc | 2026-11-27 | #282 Part 2a, resolution 12: §3.1 adds `failing-glow`; VL-004 four hue-free elevation tokens (1, card, 2, 3) and `elevation.state` for a failing board panel only; VL-017 212 px sidebar, 12/20/20 px content padding, 12 px panel gaps, 22 px bold title, "boards stay dense", acceptance to match; VL-019 radii 3/4/6/8/10 px, no capsules, 12 px panel gaps; §5 sizes add 22; §7 table |
 | 1.8-rc | 2026-11-27 | #282 Part 2b ([ADR-0036](../adr/0036-line-spec-area.md)): §3.1 `chart-grid` and `chart-axis`; VL-004 note: a line chart's area fill is shading in the series hue, not glow; §7 threshold dash 4/5 |
+| 1.9-rc | 2026-11-28 | #284, resolution 13: §3.1 adds the state text tokens; VL-009 state text at 4.5:1 on `surface-1` and `surface-2` through `<state>-text` |
