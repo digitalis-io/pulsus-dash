@@ -32,6 +32,7 @@ const (
 	maxTimeoutMs     = 120_000
 	defaultTimeoutMs = 30_000
 	maxWidthPx       = 10_000
+	maxRangeMs       = 9_007_199_254_740_991
 	streamBuffer     = 32 << 10
 	// maxLogTimeMs is the latest time the log routes accept, before and after grid alignment:
 	// ⌊(2⁶³−1)/10⁶⌋ ms (2262-04-11T23:47:16.854Z), so every ns value fits int64 (plan #65
@@ -76,6 +77,8 @@ type rangeRequest struct {
 	TimeoutMs *int64   `json:"timeout_ms"`
 	Vars      vars.Map `json:"vars"`
 	Rate      *bool    `json:"rate"`
+	StepMs    *int64   `json:"step_ms"`
+	RangeMs   *int64   `json:"range_ms"`
 }
 
 type instantRequest struct {
@@ -216,7 +219,20 @@ func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 		writeReqError(w, e)
 		return
 	}
-	grid, err := pulsusdb.PromGrid(from, to, int(width))
+	rangeMs := to - from
+	if req.RangeMs != nil {
+		rangeMs = *req.RangeMs
+	}
+	if e := firstError(rangeIf(rangeMs < 1 || rangeMs > maxRangeMs, "/range_ms", "range_ms must be between 1 and 9007199254740991"),
+		rangeIf(req.StepMs != nil && (*req.StepMs < pulsusdb.PromLadder[0] || *req.StepMs > maxStepMs), "/step_ms", "step_ms must be between 15000 and 86400000")); e != nil {
+		writeReqError(w, e)
+		return
+	}
+	grid, err := rangeGrid(from, to, int(width), req.StepMs)
+	if errors.Is(err, pulsusdb.ErrStepNotOnLadder) {
+		writeReqError(w, fieldError("/step_ms", "field.range", err.Error()))
+		return
+	}
 	if err != nil {
 		writeReqError(w, fieldError("/from", "range.too_long", err.Error()))
 		return
@@ -224,8 +240,8 @@ func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 	rate := req.Rate == nil || *req.Rate
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
-	pr, e := q.planFor(ctx, tenant, promplan.Inputs{Query: *req.Query, Vars: req.Vars, Kind: promplan.KindRange, Rate: rate, StepMs: grid.Step,
-		RangeMs: to - from})
+	pr, e := q.planFor(ctx, w, tenant, promplan.Inputs{Query: *req.Query, Vars: req.Vars, Kind: promplan.KindRange, Rate: rate, StepMs: grid.Step,
+		RangeMs: rangeMs})
 	if e != nil || pr == nil {
 		if e != nil {
 			writeReqError(w, e)
@@ -250,6 +266,23 @@ func (q *dataRoutes) serveRange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q.stream(w, r, pr.rc, h, rs, grid, first, "promql_stream_aborted")
+}
+
+// rangeGrid is the range route's grid: at the client's ladder step when it sent one (the range
+// store, #304 §A.1), else from the chart width (ADR-0021 §1). Either way the server plans.
+func rangeGrid(from, to int64, width int, stepMs *int64) (pulsusdb.Grid, error) {
+	if stepMs != nil {
+		return pulsusdb.PromGridStep(from, to, *stepMs)
+	}
+	return pulsusdb.PromGrid(from, to, width)
+}
+
+// setScopeHeaders writes the scope epoch and sequence the request runs under (#304 §A.2,
+// ADR-0038): the browser's range store orders and drops its cached data by them.
+func setScopeHeaders(w http.ResponseWriter, rc *core.RequestCtx) {
+	b := rc.Tenant.Binding
+	w.Header().Set("X-Pulsus-Scope-Epoch", core.ScopeEpoch(rc.Principal.ID, b, rc.Scope))
+	w.Header().Set("X-Pulsus-Scope-Seq", strconv.FormatInt(b.ScopeSeq, 10))
 }
 
 func rangeIf(bad bool, pointer, msg string) *reqError {
@@ -386,7 +419,7 @@ func (q *dataRoutes) serveInstant(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), timeout)
 	defer cancel()
 	// The instant body has no window, so a range macro is refused (#291).
-	pr, e := q.planFor(ctx, tenant, promplan.Inputs{Query: *req.Query, Vars: req.Vars, Kind: promplan.KindInstant, Rate: true, StepMs: stepMs})
+	pr, e := q.planFor(ctx, nil, tenant, promplan.Inputs{Query: *req.Query, Vars: req.Vars, Kind: promplan.KindInstant, Rate: true, StepMs: stepMs})
 	if e != nil || pr == nil {
 		if e != nil {
 			writeReqError(w, e)

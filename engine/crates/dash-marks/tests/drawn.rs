@@ -30,6 +30,8 @@ fn drawn_only_for_complete_frames() {
         band: Band::Measure,
         events: std::sync::Arc::from([]),
         selection: Default::default(),
+        fit: None,
+        fade: None,
     };
     let mut r = Renderer::new(
         &ctx,

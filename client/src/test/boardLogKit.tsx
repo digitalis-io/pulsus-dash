@@ -110,7 +110,8 @@ export function openLogBoard(panels: readonly PanelSpec[], o: LogBoardOpts = {})
   const instant = vi.spyOn(api, 'queryInstant');
   const engine = fakeEngine();
   const url = o.url ?? `/t/demo/board/b-1?${o.search ?? ABS}${o.extra ?? ''}`;
-  const r = renderApp(url, { api, wrapper: engineWrapper(engine) });
+  // The single-request path (the range store off): these tests pin today's request shapes (#304).
+  const r = renderApp(url, { api, wrapper: engineWrapper(engine), rangeStore: 'off' });
   /** The stream pages (every call but a probe). */
   const pages = () => logs.filter((c) => c.req.limit !== 1);
   const probes = () => logs.filter((c) => c.req.limit === 1);

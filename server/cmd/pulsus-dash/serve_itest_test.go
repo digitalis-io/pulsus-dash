@@ -145,7 +145,7 @@ func TestServeRefusesOlderSchema(t *testing.T) {
 			db := storetest.NewDB(t, c)
 			cfg, env := dbConfig(t, db, "")
 			s := startServe(t, cfg, env)
-			want := "pulsus-dash: database schema version 0 is older than this binary requires (5); run pulsus-dash migrate\n"
+			want := "pulsus-dash: database schema version 0 is older than this binary requires (6); run pulsus-dash migrate\n"
 			if code := s.exit(t); code != 1 || !strings.HasSuffix(s.stderr.String(), want) {
 				t.Errorf("exit %d stderr %q, want 1 ending %q", code, s.stderr.String(), want)
 			}

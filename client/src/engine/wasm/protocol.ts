@@ -56,7 +56,20 @@ export type MainToRender =
       readonly frameId: string | null;
     }
   | { readonly t: 'spec'; readonly id: number; readonly json: string }
-  | { readonly t: 'data'; readonly id: number; readonly series: readonly SeriesMessage[] | null }
+  | {
+      readonly t: 'data';
+      readonly id: number;
+      readonly series: readonly SeriesMessage[] | null;
+      /** ADR-0039: fade in over the data drawn before (only sent when true). */
+      readonly crossfade?: true;
+    }
+  /** #304 §A.3: the line's auto-fit window, posted before its data when it changes; null = all. */
+  | {
+      readonly t: 'fit';
+      readonly id: number;
+      readonly fromMs: number | null;
+      readonly toMs: number | null;
+    }
   | { readonly t: 'theme'; readonly id: number; readonly theme: 0 | 1 }
   /** Plan #68 C2c1: every `EventMarker.atMs` of a `setEvents`, in call order (NaN kept). */
   | { readonly t: 'events'; readonly id: number; readonly atMs: Float64Array }
@@ -87,6 +100,8 @@ export type MainToRender =
       readonly id: number;
       readonly chunk: number;
       readonly epoch: number;
+      /** ADR-0039: fade in over the data drawn before (only sent when true). */
+      readonly crossfade?: true;
     }
   /** The registered series array was collected; another epoch's release is ignored. */
   | { readonly t: 'chunk-release'; readonly chunk: number; readonly epoch: number }
@@ -142,6 +157,8 @@ export type RenderToMain =
       readonly head: DecodedHeadWire;
       readonly ts: Float64Array;
       readonly vs: Float64Array[];
+      /** Per series: 1 where the validity bitmap marks a null slot; null when none (#304 §A.3). */
+      readonly absent?: (Uint8Array | null)[];
     }
   | {
       readonly t: 'decode-failed';

@@ -8,6 +8,7 @@ import type { Api } from '../api/Api';
 import { StubApi } from '../api/StubApi';
 import { App } from '../app/App';
 import { createAppRouter, type RouterDeps } from '../app/router';
+import { createRangeStore } from '../data/rangeStore';
 import { createClock, type Clock } from '../state/clock';
 
 /** 2026-11-19 13:03 London (GMT), the fixed "now" of the tests. */
@@ -21,6 +22,11 @@ export interface RenderAppOptions {
   clock?: Clock;
   /** Wraps the app, e.g. to provide a fake chart engine. */
   wrapper?: ComponentType<{ children: ReactNode }>;
+  /**
+   * `off`: the range store is switched off, so every panel takes today's single request: the
+   * board suites written for it (request shapes, epochs, refresh) test that path. Default `on`.
+   */
+  rangeStore?: 'on' | 'off';
 }
 
 export function renderApp(url: string, o: RenderAppOptions = {}) {
@@ -30,7 +36,13 @@ export function renderApp(url: string, o: RenderAppOptions = {}) {
   const queryClient =
     o.queryClient ??
     new TestQueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
-  const deps: RouterDeps = { api, queryClient, clock, timeZone: o.timeZone ?? 'Europe/London' };
+  const deps: RouterDeps = {
+    api,
+    queryClient,
+    clock,
+    timeZone: o.timeZone ?? 'Europe/London',
+    ...(o.rangeStore === 'off' ? { rangeStore: createRangeStore({ api, enabled: false }) } : {}),
+  };
   const router: DataRouter = createAppRouter(deps, { kind: 'memory', initialEntries: [url] });
   const user = userEvent.setup();
   const view = render(

@@ -32,6 +32,8 @@ fn list(line: GalleryLine) -> DrawList {
         band: Band::Measure,
         events: std::sync::Arc::from([]),
         selection: Default::default(),
+        fit: None,
+        fade: None,
     };
     build(&v).0
 }

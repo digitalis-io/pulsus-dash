@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.21-rc · 2026-11-27 |
+| **Version** | 1.22-rc · 2026-11-27 |
 | **Milestone** | M-UI0 (L0 runtime, M1/M3/M4/M8, decimation) → M-UI1 (axis system, overlays, band, gallery) → M-UI3 (Time Ribbon in Space scenes, §0) → M-UI5 (panel parity breadth) |
 | **Related ADRs** | [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0001](../adr/0001-rust-wasm-everywhere.md), [ADR-0002](../adr/0002-no-js-ui-framework.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0019](../adr/0019-chart-frame-drawn-event-and-frame-id.md), [ADR-0020](../adr/0020-chart-camera-commit-and-value-range.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0031](../adr/0031-gpu-engine-default-renderer.md), [ADR-0032](../adr/0032-selection-dims-as-one-layer.md), [ADR-0036](../adr/0036-line-spec-area.md) |
 | **Source draft** | plans/tech/T02-vis-engine.md (not tracked) |
@@ -273,6 +273,10 @@ be drawn on data. With `prefers-reduced-motion`, transitions and crossfades MUST
 particles MUST be replaced by static dashes whose thickness encodes traffic, and the alert pulse MUST
 become a static double ring.
 
+*v1 (#304, [ADR-0039](../adr/0039-data-crossfade-on-the-seam.md)):* the data crossfade is the series
+`FrameData`'s `transition: 'crossfade'`, faded over 150 ms in both engines; `ChartFrame` strips it
+under reduced motion.
+
 Theme and density are token sets (dark default; light from M-UI5; wall high-contrast from M-UI6;
 Comfortable and Compact density, Wall ×1.6 from M-UI6), switched by the `Prefs` message. The
 palette validator (`xtask palette-check`) checks every palette in every theme for CVD
@@ -285,6 +289,12 @@ distinguishability (deuteranopia, protanopia, tritanopia), the series palette fo
 maps each to exactly one meaning and to one single-weight line icon set in the M9 atlas.
 
 ### 4.3 Axis system
+
+**v1 note (#304, [ADR-0038](../adr/0038-page-range-store-and-scope-lease.md)).** A line frame may hold
+more than its window (the held span of the range store); its series `FrameData` then carries `fit`,
+and the line's auto value domain and its summary's min, max and last use only the samples with
+`fit.fromMs ≤ t ≤ fit.toMs`. During a gesture `fit` is unchanged, so the auto axis is steady
+(T02-011); a commit brings a new one.
 
 This serves the patterns in [05 §1.1](../product/05-visualisation-catalogue.md#11-axes-as-a-design-tool)
 (Table 5-2), with a first-class axis model of ids, alignment and binding. It is the engine side
@@ -880,3 +890,4 @@ basemap (bundled GeoJSON outlines via M7) before full vector tiles.
 | 1.19-rc | 2026-11-27 | #282 Part 2a: §4.8 Stat row: the interim client's stat tile has its value top left, a reserved subline and a full-width sparkline with an `opacity.area` fill (ADR-0022's 104 px kept); Satisfies row PRF-020: `bench:log-scroll` measures the 24 px rows |
 | 1.20-rc | 2026-11-27 | Input mapping: a 2D time chart zooms only with `Ctrl`/`⌘` held; a plain wheel scrolls the page ([03](../product/03-interaction-model.md) §4.1 note, 2026-11-27) |
 | 1.21-rc | 2026-11-27 | #282 Part 2b ([ADR-0036](../adr/0036-line-spec-area.md)): §4.4 the line area (M2 under M1): the gap and piecewise edge rules, the area pass over the line instances before any stroke, palette slots 8 `chart-grid` and 9 `chart-axis`, the baseline, 4/5 threshold dashes |
+| 1.22-rc | 2026-11-27 | #304 (numbered after #282 Part 2a's 1.19-rc, the input mapping's 1.20-rc and #282 Part 2b's 1.21-rc) ([ADR-0038](../adr/0038-page-range-store-and-scope-lease.md), [ADR-0039](../adr/0039-data-crossfade-on-the-seam.md)): §4.3 v1 note (the line's auto-fit over `fit`); T02-007 v1 (the data crossfade as `transition: 'crossfade'` in both engines, reduced motion cuts) |

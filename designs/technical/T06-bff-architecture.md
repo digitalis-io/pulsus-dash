@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.14-rc · 2026-11-27 |
+| **Version** | 1.15-rc · 2026-11-27 |
 | **Milestone** | M-UI1 (gateway, planner host, PulsusDB client, L1 cache, self-telemetry) → M-UI3 (split roles, Redis L2, workers, leases) → M-UI4 (evaluator, notifier, ai roles, HA) → M-UI6 (OIDC auth, multi-tenant quotas UI, audit export) |
 | **Related ADRs** | [ADR-0015](../adr/0015-go-bff.md) (supersedes ADR-0001 for the server), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0008](../adr/0008-dash-alert-evaluator.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md), [ADR-0013](../adr/0013-metrics-data-scopes.md), [ADR-0018](../adr/0018-query-language-modules.md), [ADR-0021](../adr/0021-query-planning-is-server-side.md) |
 | **Source draft** | plans/tech/T06-bff-architecture.md (not tracked) |
@@ -809,7 +809,7 @@ token's data scope applies.
 | `POST /api/dash/v1/rum` | Binary | Browser RUM | T03 (record format) |
 | `GET /healthz` (liveness), `/readyz`, `/startupz`; `/metrics` on the separate admin port only | — | Ops | [T19](T19-deployment.md) |
 | `GET /api/dash/v1/version` | JSON | The server's version and commit | `api/openapi.yaml` (`Version`) |
-| `GET /api/dash/v1/bootstrap` | JSON | The client's first call: principal (the fixed local principal until M-UI6, D12), organisation, tenant slugs with their data-source check state (never a datasource URL, database, scope or credentials reference, T06-024), the server version and `can_sign_out` | `api/openapi.yaml` (`Bootstrap`) |
+| `GET /api/dash/v1/bootstrap` | JSON | The client's first call: principal (the fixed local principal until M-UI6, D12), organisation, tenant slugs with their data-source check state and, from #304, each tenant's `scope_epoch` and `scope_seq` (the epoch is a hash: never a datasource URL, database, scope or credentials reference, T06-024; [ADR-0038](../adr/0038-page-range-store-and-scope-lease.md)), the server version and `can_sign_out` | `api/openapi.yaml` (`Bootstrap`) |
 | `POST /api/dash/v1/csp-report` | `application/reports+json` or `application/csp-report` | CSP violation reports ([T18](T18-security.md) T18-003): rate-limited, 64 KiB, read deadline, logged as allowlisted values only | `api/openapi.yaml` (hand-written handler) |
 | `POST /api/dash/v1/query/promql/range`, `…/instant` (`?tenant=`) | JSON request → JSON frames, the range body streamed series by series; the range route answers a DSF body (T04 §5) when `Accept` lists `application/vnd.pulsus.dash-stream;v=1` (#68 Part D1), with `Vary: Accept` | Direct PromQL queries on the BFF's grid (M-UI1, #62): `PromRangeRequest` → `PromRangeResponse` (frames and completeness), `PromInstantRequest` → `PromInstantResponse`; `x-permission: query.read` | `api/openapi.yaml`; frames: [T04](T04-wire-format-and-data-plane.md) §0 |
 | `GET /api/dash/v1/prom/{labels,label/{name}/values,series,metadata}` (`?tenant=`) | JSON | Editor completion metadata for M-UI1 (#62): label names and values, series and metric metadata with completeness. `/suggest` stays T09's ranked, cached design | `api/openapi.yaml` |
@@ -1009,3 +1009,4 @@ Feature flags in runtime settings: `redis_l2`, `explain_sampling`, `h2c`, `r1_ar
 | 1.12-rc | 2026-11-25 | #68 Part B (owner direction: PulsusDB is JSON-only, the BFF converts): T06-011 "Until R1, the converter MUST stream" → "The converter MUST stream"; §4.3 the JSON→Arrow conversion is permanent (`internal/arrowwire`) and pass-through applies only with R1; the goal on conversion cost drops "until R1" |
 | 1.13-rc | 2026-11-27 | #68 Part D1: T06-011 dated amendment, the PromQL range route serialises Arrow (DSF) when the request asks for it and JSON otherwise, failures after the header in band, `Vary: Accept`, one error mapping for the envelope and `error/1`; §5.1 routes table: the range route's formats |
 | 1.14-rc | 2026-11-27 | #289: T06-029 covers the variable values route (`postVariableValues`: the selector planned by T07-031, `planned.match`) and the structured `vars` of the query routes |
+| 1.15-rc | 2026-11-27 | #304 ([ADR-0038](../adr/0038-page-range-store-and-scope-lease.md)): §5.1 the bootstrap's tenants carry `scope_epoch` and `scope_seq`; the PromQL range route takes `step_ms` and `range_ms` and sends the scope headers (T04 §5.2 v1 note); `tenant_bindings.scope_seq` from one global sequence, never lowered |

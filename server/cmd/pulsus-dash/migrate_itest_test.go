@@ -13,7 +13,7 @@ import (
 	"github.com/digitalis-io/pulsus-dash/server/internal/store/storetest"
 )
 
-const aheadText = "pulsus-dash: database schema version 7 is ahead of this binary (latest 5); refusing to migrate outside the N+1 window\n"
+const aheadText = "pulsus-dash: database schema version 8 is ahead of this binary (latest 6); refusing to migrate outside the N+1 window\n"
 
 func itestCtx(t *testing.T) context.Context {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -64,7 +64,7 @@ func TestMigrateFromEmpty(t *testing.T) {
 			if r.code != 0 {
 				t.Fatalf("exit %d stderr %q", r.code, r.stderr)
 			}
-			wantLines(t, "migrate", r.stdout, "applied 00001_tenancy.sql", "applied 00002_boards.sql", "applied 00003_annotations.sql", "applied 00004_board_tags.sql", "applied 00005_annotation_entity.sql", "schema at version 5",
+			wantLines(t, "migrate", r.stdout, "applied 00001_tenancy.sql", "applied 00002_boards.sql", "applied 00003_annotations.sql", "applied 00004_board_tags.sql", "applied 00005_annotation_entity.sql", "applied 00006_scope_seq.sql", "schema at version 6",
 				`seeded organisation "default" with tenant binding "default"`)
 			if n := storetest.QueryInt(t, db.SuperURL, "SELECT count(*) FROM orgs WHERE slug = 'default'"); n != 1 {
 				t.Errorf("%d default orgs, want 1", n)
@@ -91,7 +91,7 @@ func TestMigrateIdempotent(t *testing.T) {
 			if r.code != 0 {
 				t.Fatalf("second: exit %d stderr %q", r.code, r.stderr)
 			}
-			wantLines(t, "second migrate", r.stdout, "schema at version 5; nothing to apply", "organisation already seeded")
+			wantLines(t, "second migrate", r.stdout, "schema at version 6; nothing to apply", "organisation already seeded")
 			if n := storetest.QueryInt(t, db.SuperURL, "SELECT count(*) FROM orgs"); n != 1 {
 				t.Errorf("%d orgs, want 1", n)
 			}
@@ -124,16 +124,16 @@ func TestMigrateRefusesAhead(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {
 			db := storetest.NewDB(t, c)
-			if _, err := store.Migrate(itestCtx(t), db.OwnerURL, store.MigrateOptions{FS: storetest.AheadFS(t, 7), Seed: staticSeed}); err != nil {
-				t.Fatalf("migrate to v7: %v", err)
+			if _, err := store.Migrate(itestCtx(t), db.OwnerURL, store.MigrateOptions{FS: storetest.AheadFS(t, 8), Seed: staticSeed}); err != nil {
+				t.Fatalf("migrate to v8: %v", err)
 			}
 			cfg, env := dbConfig(t, db, seedYAML)
 			r := migrateCLI(t, cfg, env)
 			if r.code != 1 || r.stderr != aheadText {
 				t.Errorf("exit %d stderr %q, want 1 %q", r.code, r.stderr, aheadText)
 			}
-			if v := versionOf(t, db); v != 7 {
-				t.Errorf("version %d, want 7", v)
+			if v := versionOf(t, db); v != 8 {
+				t.Errorf("version %d, want 8", v)
 			}
 		})
 	}
@@ -143,15 +143,15 @@ func TestNPlusOneAccepted(t *testing.T) {
 	for _, c := range storetest.Clusters(t) {
 		t.Run(c.Name, func(t *testing.T) {
 			db := storetest.NewDB(t, c)
-			if _, err := store.Migrate(itestCtx(t), db.OwnerURL, store.MigrateOptions{FS: storetest.AheadFS(t, 6), Seed: staticSeed}); err != nil {
-				t.Fatalf("migrate to v6: %v", err)
+			if _, err := store.Migrate(itestCtx(t), db.OwnerURL, store.MigrateOptions{FS: storetest.AheadFS(t, 7), Seed: staticSeed}); err != nil {
+				t.Fatalf("migrate to v7: %v", err)
 			}
 			cfg, env := dbConfig(t, db, seedYAML)
 			r := migrateCLI(t, cfg, env)
 			if r.code != 0 {
 				t.Fatalf("exit %d stderr %q", r.code, r.stderr)
 			}
-			wantLines(t, "migrate", r.stdout, "schema at version 6 (one ahead of this binary); nothing to apply")
+			wantLines(t, "migrate", r.stdout, "schema at version 7 (one ahead of this binary); nothing to apply")
 			s := startServe(t, cfg, env)
 			s.waitReady(t)
 			s.stop(t)
@@ -173,8 +173,8 @@ func TestConcurrentMigrate(t *testing.T) {
 					t.Errorf("exit %d stderr %q", r.code, r.stderr)
 				}
 			}
-			if v := versionOf(t, db); v != 5 {
-				t.Errorf("version %d, want 5", v)
+			if v := versionOf(t, db); v != 6 {
+				t.Errorf("version %d, want 6", v)
 			}
 			for _, table := range []string{"orgs", "install_state"} {
 				if n := storetest.QueryInt(t, db.SuperURL, "SELECT count(*) FROM "+table); n != 1 {
@@ -194,7 +194,7 @@ func TestMigrateSchemaAdvancedWhileWaiting(t *testing.T) {
 			bDone := make(chan error, 1)
 			go func() {
 				_, err := store.Migrate(itestCtx(t), db.OwnerURL, store.MigrateOptions{
-					FS: storetest.AheadFS(t, 7), Seed: staticSeed,
+					FS: storetest.AheadFS(t, 8), Seed: staticSeed,
 					AfterLock: func() { close(locked); <-release },
 				})
 				bDone <- err
@@ -231,8 +231,8 @@ func TestMigrateSchemaAdvancedWhileWaiting(t *testing.T) {
 			if strings.Contains(out.String(), "applied") || strings.Contains(out.String(), "seeded") {
 				t.Errorf("A applied or seeded: %q", out.String())
 			}
-			if v := versionOf(t, db); v != 7 {
-				t.Errorf("version %d, want 7", v)
+			if v := versionOf(t, db); v != 8 {
+				t.Errorf("version %d, want 8", v)
 			}
 			if n := storetest.QueryInt(t, db.SuperURL, "SELECT count(*) FROM orgs"); n != 1 {
 				t.Errorf("%d orgs, want 1", n)
@@ -296,7 +296,7 @@ func TestSeedValuesIgnoredWhenSeeded(t *testing.T) {
 				if r.code != 0 {
 					t.Errorf("plain: exit %d stderr %q", r.code, r.stderr)
 				}
-				wantLines(t, "plain", r.stdout, "schema at version 5; nothing to apply", "organisation already seeded")
+				wantLines(t, "plain", r.stdout, "schema at version 6; nothing to apply", "organisation already seeded")
 				r = migrateCLI(t, cfg, env, "--dry-run")
 				if r.code != 0 || !strings.Contains(r.stdout, "dry run: nothing changed\n") || strings.Contains(r.stdout, "would seed") {
 					t.Errorf("dry run: exit %d stdout %q stderr %q", r.code, r.stdout, r.stderr)

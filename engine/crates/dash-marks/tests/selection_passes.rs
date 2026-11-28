@@ -104,6 +104,8 @@ fn viewport(
         band: Band::Measure,
         events: Arc::from([]),
         selection: Arc::new(sel),
+        fit: None,
+        fade: None,
     }
 }
 

@@ -332,6 +332,22 @@ position); `attrs` is the canonical map (see
 `kind`, `binding_id` and `attrs` only. A binary at schema 4 does not know the column: its inserts
 write null/null, which passes the constraint, and it lists entity rows without their entity.
 
+## Schema (migration 6)
+
+`server/migrations/00006_scope_seq.sql` (#304, [ADR-0038](../../designs/adr/0038-page-range-store-and-scope-lease.md))
+adds the binding's scope sequence, which orders the scope epochs the BFF sends:
+
+| Object | Meaning |
+|---|---|
+| `tenant_binding_scope_seq` | one global `bigint` sequence, starting at 2; `pulsus_app` has `USAGE` |
+| `tenant_bindings.scope_seq` | `bigint NOT NULL DEFAULT 1`: existing rows keep 1 (a constant default rewrites no row, T11-013) |
+| `pulsus_scope_seq()` and trigger `tenant_bindings_scope_seq` | `BEFORE INSERT OR UPDATE`: an insert takes the next value (a deleted and recreated binding never reuses a lower one); an update that changes `datasource_url`, `database`, `scope_org_id`, `credentials_ref` or `kind` takes the next value; an update that lowers `scope_seq` fails with SQLSTATE `23514` (`scope_seq_lowered`) |
+
+A slug change, or `credentials_ref` set to the same reference (a credential rotated behind it),
+changes nothing. Any later access-determining change (roles, data scopes) MUST take the next value
+in the same transaction. `itest:scope-seq` (`internal/store/scope_seq_itest_test.go`) holds these
+rules. A binary at schema 5 does not read the column; its inserts get a value from the trigger.
+
 ## Row-level security
 
 Every tenant table has the same template (T11-003):

@@ -2,7 +2,7 @@
  * Chart frame data (plan #58 §3.2): series, heatmap and scalar frames, and their validation. The
  * component validates; the engine assumes valid data.
  */
-import type { ThresholdState, VisSpec } from '../engine/api';
+import type { ThresholdState, TimeWindow, VisSpec } from '../engine/api';
 import type { CATEGORY_PATTERNS } from '../engine/patterns';
 import type { GeoFrame } from '../vis/geo/frame';
 import type { Basemap } from '../vis/geo/types';
@@ -119,7 +119,17 @@ export interface ScalarFrame {
 }
 
 export type FrameData =
-  | { readonly kind: 'series'; readonly series: readonly SeriesFrame[] }
+  | {
+      readonly kind: 'series';
+      readonly series: readonly SeriesFrame[];
+      /**
+       * Line: the auto value domain and the summary's min, max and last use only samples with
+       * fromMs ≤ t ≤ toMs (#304 §A.3); absent = every sample. Other kinds ignore it.
+       */
+      readonly fit?: TimeWindow;
+      /** Line: fade from the series drawn before over 150 ms (ADR-0039); ignored with nothing drawn. */
+      readonly transition?: 'crossfade';
+    }
   | { readonly kind: 'heatmap'; readonly heatmap: HeatmapFrame }
   | { readonly kind: 'scalar'; readonly scalar: ScalarFrame }
   /** A bar chart's drawn rows, in draw order, and the panel's coverage (ADR-0028, T22 §5.1). */
@@ -242,7 +252,19 @@ function gridIssue(series: readonly SeriesFrame[]): FrameDataIssue | null {
 export function validateFrameData(spec: VisSpec, data: FrameData): FrameDataIssue | null {
   switch (spec.kind) {
     case 'line':
-      return data.kind === 'series' ? seriesIssue(data.series) : { code: 'kind' };
+      if (data.kind !== 'series') return { code: 'kind' };
+      // #304 §A.3: a fit window is finite with fromMs ≤ toMs.
+      if (
+        data.fit !== undefined &&
+        !(
+          Number.isFinite(data.fit.fromMs) &&
+          Number.isFinite(data.fit.toMs) &&
+          data.fit.fromMs <= data.fit.toMs
+        )
+      ) {
+        return { code: 'finite' };
+      }
+      return seriesIssue(data.series);
     case 'bars':
       if (data.kind !== 'series') return { code: 'kind' };
       return seriesIssue(data.series) ?? gridIssue(data.series);

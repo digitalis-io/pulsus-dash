@@ -1,0 +1,11 @@
+{
+  "name": "overscan-slow",
+  "provenance": {"synthetic": "the wave held long enough to be superseded or capped (#304 §A.4)"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query_prefix": "overscan_slow"},
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-overscan-slow"},
+    "delay_ms": 1500,
+    "generate": {"series": 1, "fn": "wave"}
+  }
+}

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient } from '@tanstack/react-query';
 import { StrictMode, useState, type ReactNode } from 'react';
 import { createMemoryRouter, RouterProvider, type DataRouter } from 'react-router';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StubApi } from '../api/StubApi';
 import { Providers } from '../app/providers';
 import type { RouterDeps } from '../app/router';
@@ -52,7 +52,12 @@ function renderFrame(
   engine: FakeEngine,
   spec: VisSpec,
   data: FrameData,
-  o: { strict?: boolean; fill?: boolean; events?: readonly EventMarker[] } = {},
+  o: {
+    strict?: boolean;
+    fill?: boolean;
+    events?: readonly EventMarker[];
+    stale?: readonly { fromMs: number; toMs: number }[];
+  } = {},
 ): { router: DataRouter; unmount: () => void } {
   const deps: RouterDeps = {
     api: new StubApi(),
@@ -71,6 +76,7 @@ function renderFrame(
               data={data}
               {...(o.fill === undefined ? {} : { fill: o.fill })}
               {...(o.events === undefined ? {} : { events: o.events })}
+              {...(o.stale === undefined ? {} : { stale: o.stale })}
             />
           </ChartEngineContext.Provider>
         ),
@@ -996,6 +1002,56 @@ describe('component camera commit (#93)', () => {
     expect(document.querySelector('canvas')?.getAttribute('aria-label')).toMatch(
       /Min 24 ms, max 336 ms, last 200 ms\. Y axis fixed at 1 ms to 2 ms\.$/,
     );
+  });
+});
+
+describe('stale spans and reduced motion (#304 §4.3, Part B §4.5)', () => {
+  it('stale overlay', async () => {
+    const engine = fakeEngine();
+    renderFrame(engine, LINE, DATA, { stale: [{ fromMs: TO - 600_000, toMs: TO + 3_600_000 }] });
+    await waitFor(() => {
+      expect(engine.frames).toHaveLength(1);
+    });
+    expect(document.querySelectorAll('[data-stale-span]')).toHaveLength(0);
+    act(() => {
+      lastFrame(engine).emit('a11y', {
+        ...summary('line', 1, 1, 2, 3),
+        plot: { x: 100, y: 8, width: 600, height: 200 },
+      });
+    });
+    const spans = document.querySelectorAll<HTMLElement>('[data-stale-span]');
+    expect(spans).toHaveLength(1);
+    expect(spans[0]?.style.left).toBe('600px');
+    expect(spans[0]?.style.width).toBe('100px');
+    expect(spans[0]?.style.top).toBe('8px');
+    expect(spans[0]?.style.height).toBe('200px');
+  });
+
+  it('reduced motion', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      (q: string) =>
+        ({
+          matches: q.includes('prefers-reduced-motion: reduce'),
+          media: q,
+          onchange: null,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+          dispatchEvent: () => false,
+        }) as unknown as MediaQueryList,
+    );
+    try {
+      const engine = fakeEngine();
+      renderFrame(engine, LINE, { ...DATA, transition: 'crossfade' });
+      await waitFor(() => {
+        expect(engine.frames).toHaveLength(1);
+      });
+      const d = lastFrame(engine).last('setData')?.[0] as FrameData | undefined;
+      expect(d?.kind).toBe('series');
+      expect(d !== undefined && 'transition' in d ? d.transition : undefined).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

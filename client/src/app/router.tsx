@@ -23,6 +23,7 @@ import { normalisedExploreSearch } from '../state/exploreParams';
 import { normalisedLogsSearch } from '../state/logsParams';
 import { RouteErrorPage } from './RouteErrorPage';
 import { routeModules } from './routeModules';
+import type { RangeStore } from '../data/rangeStore';
 
 /** A board page: its first open sets the time (plan #64 §4.6). */
 const BOARD_PATH = /^\/t\/[^/]+\/board\/[^/]+$/;
@@ -32,6 +33,8 @@ export interface RouterDeps {
   queryClient: QueryClient;
   clock: Clock;
   timeZone: string;
+  /** The page's range store (#304); absent: the providers make one on `api`. */
+  rangeStore?: RangeStore;
 }
 
 export type RouterHistory = { kind: 'browser' } | { kind: 'memory'; initialEntries: string[] };

@@ -952,3 +952,51 @@ describe('axis labels in the panel unit', () => {
     expect(axis).toEqual(['0 B/s', '1 MiB/s', '2 MiB/s', '3 MiB/s']);
   });
 });
+
+describe('line fit and crossfade (#304 §A.8, ADR-0039)', () => {
+  const W = { fromMs: 0, toMs: 3_600_000 };
+  const spiky = (): FrameData => {
+    const ts = Float64Array.from({ length: 181 }, (_, i) => -3_600_000 + i * 60_000);
+    const vs = Float64Array.from(ts, (t) => (t === 6_000_000 ? 100 : t === 1_800_000 ? 10 : 5));
+    return { kind: 'series', series: [{ key: K(1), labels: {}, timestamps: ts, values: vs }] };
+  };
+
+  it('line fit', () => {
+    const h = harness(Canvas2DEngine);
+    show(h, LINE_NONE, { ...spiky(), fit: W } as FrameData, W);
+    const s = h.a11y.at(-1);
+    expect(s?.max).toBe(10);
+    expect(s?.min).toBe(5);
+    expect(s?.valueAxis?.max ?? Infinity).toBeLessThan(100);
+    // Without fit, every sample counts (today).
+    const g = harness(Canvas2DEngine);
+    show(g, LINE_NONE, spiky(), W);
+    expect(g.a11y.at(-1)?.max).toBe(100);
+  });
+
+  it('crossfade 2d', () => {
+    const h = harness(Canvas2DEngine, { clockNow: true });
+    const line = (v: number): FrameData =>
+      seriesData(seriesFrame(K(1), [0, 1_800_000, 3_600_000], [v, v, v]));
+    show(h, LINE_NONE, line(1), W);
+    h.visible().clearOps();
+    h.frame.setData({ ...line(2), transition: 'crossfade' } as FrameData);
+    h.flush();
+    const faded = (): number[] =>
+      h
+        .visible()
+        .calls('drawImage')
+        .map((o) => o.globalAlpha)
+        .filter((a) => a < 1);
+    expect(h.queued()).toBeGreaterThan(0);
+    h.visible().clearOps();
+    h.advance(75);
+    h.flush();
+    expect(faded().at(-1)).toBeCloseTo(0.5, 1);
+    h.visible().clearOps();
+    h.advance(75);
+    h.flush();
+    expect(faded()).toEqual([]);
+    expect(h.queued()).toBe(0);
+  });
+});

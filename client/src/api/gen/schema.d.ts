@@ -513,6 +513,10 @@ export interface components {
             vars?: components["schemas"]["QueryVars"];
             /** @default true */
             rate: boolean;
+            /** Format: int64 */
+            step_ms?: number;
+            /** Format: int64 */
+            range_ms?: number;
         };
         PromInstantRequest: {
             query: string;
@@ -763,6 +767,9 @@ export interface components {
             slug: string;
             name: string;
             datasource: components["schemas"]["DatasourceStatus"];
+            scope_epoch: string;
+            /** Format: int64 */
+            scope_seq: number;
         };
         Bootstrap: {
             principal: components["schemas"]["Principal"];
@@ -1113,7 +1120,12 @@ export interface components {
         LogTo: number;
     };
     requestBodies: never;
-    headers: never;
+    headers: {
+        /** @description The scope epoch the BFF used for the request (ADR-0038) */
+        ScopeEpoch: string;
+        /** @description Its sequence; higher is newer (ADR-0038) */
+        ScopeSeq: number;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -1980,6 +1992,8 @@ export interface operations {
             /** @description Frames and completeness (JSON), or the same as a DSF body (labels/1 and metric_matrix.grid/1 parts with coverage/1, failures in band as error/1) */
             200: {
                 headers: {
+                    "X-Pulsus-Scope-Epoch": components["headers"]["ScopeEpoch"];
+                    "X-Pulsus-Scope-Seq": components["headers"]["ScopeSeq"];
                     [name: string]: unknown;
                 };
                 content: {
@@ -1987,9 +2001,11 @@ export interface operations {
                     "application/vnd.pulsus.dash-stream;v=1": string;
                 };
             };
-            /** @description Error (400 */
+            /** @description Error (400, 403, 404, 413, 422, 429, 502, 503, 504); the scope headers on every error after tenant resolution */
             default: {
                 headers: {
+                    "X-Pulsus-Scope-Epoch": components["headers"]["ScopeEpoch"];
+                    "X-Pulsus-Scope-Seq": components["headers"]["ScopeSeq"];
                     [name: string]: unknown;
                 };
                 content: {

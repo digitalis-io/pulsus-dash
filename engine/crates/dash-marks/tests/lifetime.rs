@@ -50,6 +50,8 @@ fn ranges_and_values_have_their_own_lifetimes() {
             band: Band::Measure,
             events: std::sync::Arc::from([]),
             selection: Default::default(),
+            fit: None,
+            fade: None,
         };
         let mut r = Renderer::new(
             &ctx,
@@ -215,6 +217,8 @@ fn cpu_batches_hold_one_batch() {
         band: Band::Measure,
         events: std::sync::Arc::from([]),
         selection: Default::default(),
+        fit: None,
+        fade: None,
     };
     let max = 1000u64;
     let mut r = Renderer::new(

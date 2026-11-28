@@ -30,6 +30,8 @@ fn t2_has_no_compute_resources() {
         band: Band::Measure,
         events: std::sync::Arc::from([]),
         selection: Default::default(),
+        fit: None,
+        fade: None,
     };
     let l = build(&v).0;
     for tier in [Tier::T2, Tier::T1] {

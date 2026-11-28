@@ -36,17 +36,20 @@ func TestBootstrapRoute(t *testing.T) {
 		Bindings: []core.TenantBinding{
 			{Slug: "demo", DatasourceURL: "http://ds-one.invalid:3100", Database: "db1", ScopeOrgID: "scope1", CredentialsRef: "env:PDB_CREDS", Kind: "pulsusdb"}, //nolint:gosec // a reference string, not a credential
 
-			{Slug: "zeta", DatasourceURL: "http://ds-two.invalid:3100", Kind: "pulsusdb"},
+			{Slug: "zeta", DatasourceURL: "http://ds-two.invalid:3100", Kind: "pulsusdb", ScopeSeq: 3},
 		},
 	}
 	h, _ := bootstrapHandler(view, nil)
 	rec := do(h, http.MethodGet, "/api/dash/v1/bootstrap")
+	// The scope epoch and sequence of each binding for the session principal (#304 §A.2).
+	e0 := core.ScopeEpoch(core.LocalPrincipal.ID, view.Bindings[0], core.FullTenantScope())
+	e1 := core.ScopeEpoch(core.LocalPrincipal.ID, view.Bindings[1], core.FullTenantScope())
 	wantJSON(t, rec, http.StatusOK, `{
 		"principal": {"id": "local", "name": "Local user", "email": "", "role": "admin"},
 		"org": {"slug": "default", "name": "Default organisation"},
 		"tenants": [
-			{"slug": "demo", "name": "demo", "datasource": {"state": "not_checked"}},
-			{"slug": "zeta", "name": "zeta", "datasource": {"state": "not_checked"}}
+			{"slug": "demo", "name": "demo", "datasource": {"state": "not_checked"}, "scope_epoch": "`+e0+`", "scope_seq": 0},
+			{"slug": "zeta", "name": "zeta", "datasource": {"state": "not_checked"}, "scope_epoch": "`+e1+`", "scope_seq": 3}
 		],
 		"default_tenant": "demo",
 		"server": {"version": "0.1.0-dev", "commit": "abc"},

@@ -21,7 +21,8 @@ beforeEach(() => {
 });
 
 function open(url: string, o: RenderAppOptions = {}) {
-  return renderApp(url, { wrapper: EngineWrapper, ...o });
+  // The single-request path (the range store off): these tests pin today's request shapes (#304).
+  return renderApp(url, { wrapper: EngineWrapper, rangeStore: 'off', ...o });
 }
 
 function p(id: string, title: string, [x, y, w, h]: readonly number[]): DataPanelSpec {

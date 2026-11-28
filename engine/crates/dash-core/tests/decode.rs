@@ -215,10 +215,17 @@ fn reference(body: &[u8]) -> Value {
         .collect();
     let mut series = Vec::new();
     let mut vs = Vec::new();
+    let mut absent = Vec::new();
     for c in &chunks {
         for (s, m) in c.series.iter().enumerate() {
             series.push(json!({"key": format!("{:016x}", m.key_hash), "labels": labels_json(m)}));
             let base = c.offsets[s] as usize;
+            let ix: Vec<usize> = (0..len).filter(|k| !valid(c, base + k)).collect();
+            absent.push(if ix.is_empty() {
+                Value::Null
+            } else {
+                json!(ix)
+            });
             vs.push(Value::Array(
                 (0..len)
                     .map(|k| {
@@ -241,6 +248,7 @@ fn reference(body: &[u8]) -> Value {
         },
         "ts": ts,
         "vs": vs,
+        "absent": absent,
     })
 }
 
@@ -252,6 +260,9 @@ fn message(d: &Done) -> Value {
             "head": m.head,
             "ts": m.ts.iter().copied().map(hex).collect::<Vec<_>>(),
             "vs": m.vs.iter().map(|v| v.iter().copied().map(hex).collect::<Vec<_>>()).collect::<Vec<_>>(),
+            "absent": m.absent.iter().map(|a| a.as_ref().map_or(Value::Null, |a| {
+                json!(a.iter().enumerate().filter(|(_, x)| **x == 1).map(|(i, _)| i).collect::<Vec<_>>())
+            })).collect::<Vec<_>>(),
         }),
         Done::Failed(f) if f.kind == Failure::Error => json!({
             "t": "decode-failed",

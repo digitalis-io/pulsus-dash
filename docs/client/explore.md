@@ -53,6 +53,13 @@ was sent from the result's `planned`.
 | the rate chip | `rate` (`true` unless `rate=off`) | — |
 | the width and step | `widthPx` (the server derives the step) | `stepMs` (the grid step of the window at the chart's width) |
 
+**Through the range store (#304).** A range run that is chunkable (no `@ start()` / `@ end()`)
+reads from the page's [range store](range-store.md) like a board line panel (owner `explore:…`):
+its visible run interactive, one window either side prefetched, so a one-window pan of the chart
+issues no request; the chart draws the visible slice. A bypassed run, and any other range run,
+goes through the page's range scheduler as one request. Store data is shown only under the
+tenant's scope epoch and a valid lease.
+
 `runKind(q, lang, degraded)` picks the route from the Lezer shape: instant for a scalar or string
 value type, else range; without a language, a degraded run (an import failed, below) is always a
 range query. It never changes the text sent. The server rewrites a bare counter to

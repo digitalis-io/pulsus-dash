@@ -24,8 +24,10 @@ type plannedReq struct {
 // planFor runs steps 3–8 of the route order (plan #112 §4.4, ADR-0021 §7, T06-029): Prepare,
 // the Classify refusal and the byte guard on the substituted text (both before any I/O), the
 // step and the processing cap at that step (still before any I/O), tenant resolution, the metric types when the plan depends on them, Plan, and the guard
-// on the planned text. ctx carries the route deadline. (nil, nil): the browser went away.
-func (q *dataRoutes) planFor(ctx context.Context, tenant string, in promplan.Inputs) (*plannedReq, *reqError) {
+// on the planned text. ctx carries the route deadline. (nil, nil): the browser went away. A
+// non-nil scoped gets the scope headers once the tenant is resolved (#304 §A.2), so every later
+// response of the route, its errors included, carries them.
+func (q *dataRoutes) planFor(ctx context.Context, scoped http.ResponseWriter, tenant string, in promplan.Inputs) (*plannedReq, *reqError) {
 	prepared, pe := promplan.Prepare(in)
 	if pe != nil {
 		return nil, planError(pe)
@@ -54,6 +56,9 @@ func (q *dataRoutes) planFor(ctx context.Context, tenant string, in promplan.Inp
 		return nil, q.failure(ctx, &pulsusdb.Error{Kind: pulsusdb.KindConfig})
 	}
 	rc := dataRequestCtxFrom(ctx, tc)
+	if scoped != nil {
+		setScopeHeaders(scoped, rc)
+	}
 	types, warn := promplan.MetricTypes{}, false
 	if prepared.NeedsTypes() {
 		t, err := q.d.Types.Types(ctx, rc)

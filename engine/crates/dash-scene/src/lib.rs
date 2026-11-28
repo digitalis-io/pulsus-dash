@@ -54,7 +54,25 @@ pub struct Viewport {
     pub events: Arc<[f64]>,
     /// The page selection (plan #68 C2c2 §3.2): a layer input; the default is none.
     pub selection: Arc<SelectionIn>,
+    /// The line's auto-fit window (#304 §A.3): the auto value domain and the summary's min, max
+    /// and last use only samples with `lo ≤ t ≤ hi`; None = every sample.
+    pub fit: Option<Range64>,
+    /// A data crossfade in progress (ADR-0039); None = none.
+    pub fade: Option<Fade>,
 }
+
+/// A line crossfade (ADR-0039): the series drawn before, faded out over [`FADE_MS`] while the new
+/// ones fade in. `now_ms` is the caller's clock at this build.
+#[derive(Clone, Debug)]
+pub struct Fade {
+    pub prev: Arc<Chunk>,
+    pub prev_fit: Option<Range64>,
+    pub started_ms: f64,
+    pub now_ms: f64,
+}
+
+/// The crossfade's length, ms (T02-007).
+pub const FADE_MS: f64 = 150.0;
 
 /// All viewports of a page (T02-020).
 #[derive(Clone, Debug, Default)]

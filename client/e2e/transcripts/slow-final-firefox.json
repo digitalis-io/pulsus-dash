@@ -1,10 +1,10 @@
 {
   "name": "slow-final-firefox",
-  "provenance": {"synthetic": "e2e:board-cancel's final window (firefox, day 2 + 2 h): a series the superseded windows never answer"},
-  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query": "slow_metric", "form": {"start": "1771812000"}},
+  "provenance": {"synthetic": "e2e:board-cancel's final window (firefox, day 2 + 2 d) (#304: a day apart): a series the superseded windows never answer"},
+  "match": {"method": "POST", "paths": ["/api/v1/query_range"], "query_prefix": "slow_metric", "form": {"start": "1771977600"}},
   "response": {
     "status": 200,
     "headers": {"Content-Type": "application/json", "X-Pulsus-Query-Id": "fake-slow-final-firefox-1"},
-    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"slow_metric","window":"final"},"values":[[1771812000,"7"],[1771813800,"42"]]}]}}
+    "body": {"status":"success","data":{"resultType":"matrix","result":[{"metric":{"__name__":"slow_metric","window":"final"},"values":[[1771977600,"7"],[1771979400,"42"]]}]}}
   }
 }

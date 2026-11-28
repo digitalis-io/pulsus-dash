@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-27 |
+| **Version** | 1.12-rc · 2026-11-27 |
 | **Milestone** | M-UI0 (metric matrix, framing, cancel, R1 harness (A1 decode)) → M-UI1 (heatmap, IndexedDB, priorities, events) → M-UI2 (all signals) → M-UI3 (pyramids, compare, change feed) |
 | **Related ADRs** | [ADR-0005](../adr/0005-arrow-wire-format.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (supersede ADR-0001), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T04-wire-format-and-data-plane.md (not tracked) |
@@ -422,6 +422,9 @@ PulsusDB change feed (R8, M-UI3). Columns: `seq UInt64`, `ts`, `end` nullable,
 
 ### 4.4 Streaming and chunking
 
+**v1 note (#304).** The progressive ranks and the ±1 window prefetch run in the client's memory
+tier (§6.1, "The memory tier"); the BFF answers each bucket run as one range request.
+
 Within one part, the BFF emits frames in this order:
 
 ```
@@ -530,6 +533,10 @@ be decoded with validation on (offsets and buffer lengths checked) before a chun
 violation MUST fail only that part, with an `internal` error and a RUM event.
 
 ### 5.2 HTTP endpoints (data plane)
+
+**v1 note (#304).** `POST …/query/promql/range` takes `step_ms` (a PromQL ladder entry; off the
+ladder 400 `/step_ms`) and `range_ms` (the range macros' window), and every response after tenant
+resolution carries `X-Pulsus-Scope-Epoch` and `X-Pulsus-Scope-Seq` ([ADR-0038](../adr/0038-page-range-store-and-scope-lease.md)).
 
 | Method & path | Body | Response |
 |---|---|---|
@@ -650,6 +657,12 @@ and MUST NOT be dropped. The client MUST show complete coverage as "100 %" and M
 every viewport.
 
 ### 5.4 Request ids, priorities and cancellation
+
+**v1 note (#304).** The classes are client-side: one scheduler of every board range request of a
+page, interactive > refine > prefetch > background, at most 6 in flight and 4 non-interactive, one
+slot reserved for waiting non-interactive work, preemption of the newest non-interactive job only
+when two or more run; a superseded job is aborted (HTTP/2 RST). The fetch `priority` follows the
+class (`high`, `auto`, `low`).
 
 - **`request_id`** = `<session 8 hex>-<seq 6 hex>`, unique per tab and allocated by data-0. Parts are
   numbered within a request. The BFF logs `request_id ↔ X-Pulsus-Query-Id`, so a slow viewport
@@ -822,6 +835,27 @@ query text, and a changed `scope_epoch` MUST drop that tenant's entries before a
 #### T04-018 — Volatile data is always revalidated
 **MUST** — A chunk ending later than `now − 5 min` MUST be shown hatched as stale and MUST be
 revalidated; only settled chunks MAY be skipped via `cache.have`.
+
+**The memory tier (v1, #304, [ADR-0038](../adr/0038-page-range-store-and-scope-lease.md)).** Until
+the IndexedDB tier exists, board PromQL range data is held in a page-wide in-memory store:
+
+- **Buckets** are `step × 256` grid points of one identity (tenant, scope epoch, text, variables,
+  rate chip, the range macros' window, step); a run of ≤ 42 buckets is one request with `step_ms`.
+- **Keys** (T04-017 for the memory tier): every identity starts with `[tenant, scope_epoch]`; a newer
+  epoch (ordered by `scope_seq`, a retired epoch never restored), a `scope_denied` and a tenant
+  switch drop the tenant's data as soon as the client learns of them; every cached read is bounded
+  by a 5 min lease from the last confirmation of the epoch.
+- **Freshness** (T04-018 and PRF-026's hatching apply): a bucket ending before its anchor − 5 min is
+  settled; a volatile bucket is fresh only for its own anchor; Refresh now (a new epoch) makes every
+  held span stale. Stale spans are drawn hatched until revalidated.
+- **Writes** are ordered per bucket by start generation, refresh epoch and anchor; an aborted
+  request's response is never stored.
+- **Memory**: 128 MiB of segments (pinned included), 64 MiB of stitched spans, 2²¹ cells per held
+  span; a visible run past them bypasses to the single request.
+- **Ranks** (v1, client-side): a cold line view is fetched coarse first at width / 4 (skipped when
+  equal to the fine step), the fine pass 120 ms later; fills from other steps of the same query are
+  rank 0, the view's own step rank 1; the 150 ms crossfade is
+  [ADR-0039](../adr/0039-data-crossfade-on-the-seam.md)'s.
 
 ### 6.2 Other locations
 
@@ -1004,3 +1038,4 @@ support in the BFF for one release.
 | 1.9-rc | 2026-11-25 | #68 Part B2: T04-002 adds the engine reader rule (exactly the columns and metadata keys of its schema version; a minor that adds a column or key ships with the reader that knows it) |
 | 1.10-rc | 2026-11-27 | #68 Part D1: §5.2 the PromQL range route is the first to serve DSF (on request, by `Accept`); failures after the header in band; `data_age_ms` derived by the client from `data_end` (no schema change) |
 | 1.11-rc | 2026-11-27 | #68 Part D2 ([ADR-0034](../adr/0034-grid-part-joined-into-one-chunk.md)): T04-015 amended (a grid part's batch chunks joined into one chunk, one more exact-size copy on the pool; a single batch reused); §5.7 the join row; §5.2 the first client of DSF (the MT engine; limits, ids, busy and a lost engine retried once as JSON; invalid bodies `internal`) |
+| 1.12-rc | 2026-11-27 | #304 ([ADR-0038](../adr/0038-page-range-store-and-scope-lease.md), [ADR-0039](../adr/0039-data-crossfade-on-the-seam.md)): §6.1 the memory tier (buckets `step × 256`, keys `[tenant, scope_epoch]` with `scope_seq` order and a 5 min lease, freshness and hatching, write order, budgets and bypass, client-side ranks); §4.4, §5.2, §5.4 v1 notes (`step_ms`, `range_ms`, scope headers; the client scheduler, cap 6 with one reserved slot) |

@@ -589,3 +589,48 @@ describe('WasmFrame chunk refs (plan #68 D2 §4.2)', () => {
     expect(released).toHaveLength(1);
   });
 });
+
+describe('WasmFrame fit and crossfade (#304 §A.3, ADR-0039)', () => {
+  const s = (k: string) => ({
+    key: k,
+    labels: { job: 'api' },
+    timestamps: new Float64Array([1, 2]),
+    values: new Float64Array([3, 4]),
+  });
+  afterEach(() => {
+    setReleaser(null);
+  });
+
+  it('frame posts fit', () => {
+    const A = [s('00000000000000aa')];
+    register(A, { chunk: 9, epoch: 1 });
+    const p = port();
+    const canvas = { width: 0, height: 0 } as unknown as OffscreenCanvas;
+    const f = new WasmFrame(p, 1, canvas, { timeZone: 'UTC', keyTarget: null }, vi.fn(), 1);
+    f.setData({ kind: 'series', series: A, fit: { fromMs: 1, toMs: 2 } });
+    // The same fit again posts nothing; dropping it posts nulls.
+    f.setData({ kind: 'series', series: A, fit: { fromMs: 1, toMs: 2 } });
+    f.setData({ kind: 'series', series: A });
+    expect(p.sent.slice(1).map((m) => m.msg)).toEqual([
+      { t: 'fit', id: 1, fromMs: 1, toMs: 2 },
+      { t: 'data-chunk', id: 1, chunk: 9, epoch: 1 },
+      { t: 'data-chunk', id: 1, chunk: 9, epoch: 1 },
+      { t: 'fit', id: 1, fromMs: null, toMs: null },
+      { t: 'data-chunk', id: 1, chunk: 9, epoch: 1 },
+    ]);
+  });
+
+  it('frame posts crossfade', () => {
+    const p = port();
+    const canvas = { width: 0, height: 0 } as unknown as OffscreenCanvas;
+    const f = new WasmFrame(p, 1, canvas, { timeZone: 'UTC', keyTarget: null }, vi.fn(), 0);
+    f.setData({
+      kind: 'series',
+      series: [s('00000000000000cc')],
+      transition: 'crossfade',
+    });
+    const m: MainToRender | undefined = p.sent.at(-1)?.msg;
+    expect(m?.t).toBe('data');
+    expect(m !== undefined && 'crossfade' in m ? m.crossfade : undefined).toBe(true);
+  });
+});

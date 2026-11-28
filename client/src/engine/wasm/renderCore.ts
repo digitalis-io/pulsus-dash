@@ -74,6 +74,10 @@ export interface RenderBindings {
   frame_dispose(id: number): void;
   frame_set_spec(id: number, json: string): void;
   frame_set_events(id: number, atMs: Float64Array): void;
+  /** #304 §A.3: the line's fit window; both null = every sample. */
+  readonly frame_set_fit?: (id: number, fromMs?: number | null, toMs?: number | null) => void;
+  /** ADR-0039: the next data fades in (true) or cuts (false). */
+  readonly frame_crossfade?: (id: number, on: boolean) => void;
   frame_set_selection(
     id: number,
     keys: string[],
@@ -161,6 +165,7 @@ export function runRender(b: RenderBindings): void {
         head?: string;
         ts?: Float64Array;
         vs?: Float64Array[];
+        absent?: (Uint8Array | null)[];
         kind?: DecodeFailKind;
         message?: string;
         row?: string | null;
@@ -180,8 +185,13 @@ export function runRender(b: RenderBindings): void {
             head,
             ts: d.ts,
             vs: d.vs,
+            ...(d.absent === undefined ? {} : { absent: d.absent }),
           },
-          [d.ts.buffer, ...d.vs.map((v) => v.buffer)],
+          [
+            d.ts.buffer,
+            ...d.vs.map((v) => v.buffer),
+            ...(d.absent ?? []).flatMap((a) => (a === null ? [] : [a.buffer])),
+          ],
         );
       } else if (d.t === 'decode-failed') {
         const parse = (j: string | null | undefined): unknown =>
@@ -242,6 +252,7 @@ export function runRender(b: RenderBindings): void {
         b.engine_decode_abort?.(m.req);
         break;
       case 'data-chunk':
+        b.frame_crossfade?.(m.id, m.crossfade === true);
         if (b.frame_set_chunk_ref?.(m.id, m.chunk, m.epoch) !== true) {
           scope.postMessage({ t: 'chunk-missing', id: m.id, chunk: m.chunk });
           return;
@@ -307,7 +318,11 @@ export function runRender(b: RenderBindings): void {
           logOnce('spec', m.id, e);
         }
         break;
+      case 'fit':
+        b.frame_set_fit?.(m.id, m.fromMs, m.toMs);
+        break;
       case 'data':
+        b.frame_crossfade?.(m.id, m.crossfade === true);
         if (m.series === null) {
           b.frame_data_clear(m.id);
           break;

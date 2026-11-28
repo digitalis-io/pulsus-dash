@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.87-rc · 2026-11-27 |
+| **Version** | 1.88-rc · 2026-11-27 |
 | **Milestone** | M-UI0 (pyramid skeleton, goldens, R1 harness, lab (a)(b), perf gates blocking) → M-UI1 (gallery corpus, replay, lab (c), RUM) → M-UI4 (incident corpus, bug-report replay) |
 | **Related ADRs** | [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0015](../adr/0015-go-bff.md) (both supersede ADR-0001), [ADR-0003](../adr/0003-wgpu-rendering.md), [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0006](../adr/0006-pulsusdb-and-postgres.md), [ADR-0012](../adr/0012-derived-state-in-postgres.md) |
 | **Source draft** | plans/tech/T05-testing-and-performance.md (not tracked) |
@@ -1067,7 +1067,12 @@ the merge train), nightly (release blocker).
 | `e2e:explore-refresh` | The header Refresh now reruns the Explore query (IA-020) |
 | `e2e:editor-ime` | Chromium, CDP composition in the editor: no completion popup during the composition, one after it commits (T09-005) |
 | `e2e:board-promql-panels` | Create a board with counter, histogram and gauge PromQL panels against the fake: rate line, heatmap and line; an override to Stat survives save and reload |
-| `e2e:board-visible-only` | A 30-panel board with 6 on screen issues exactly 6 range queries on open; scrolling issues queries for newly visible panels only, and none on scrolling back |
+| `e2e:board-visible-only` | A 30-panel board with 6 on screen issues exactly 6 range queries on open; scrolling issues queries for newly visible panels only, and none on scrolling back. *#304:* the 6 are the requests that cover the window on open; flank and ladder requests (outside the window) do not count |
+| `e2e:board-overscan` | #304 (ADR-0038), on the http BFF and the PulsusDB fake's generated waves (chromium): O1 after the visible run and both flanks, `]`, `[`, `[` issue no request meeting the revealed window and the first summary after each commit has the new window and the wave's max; O2 10 window changes 1 day apart in about 1 s → 9 cancelled, the last painted; O3 12 line panels never put more than 6 requests in flight; O4 a spike in a flank leaves the visible window's max and the auto axis; O5 a relative refresh hatches only the tail and refetches from anchor − 5 min − 256 steps; O6 Refresh now hatches every held span until the refetch lands |
+| `e2e:board-zoom` | #304 Part B (ADR-0039), chromium: Z1 a 3× zoom-out about the centre after the ladder issues no request at the level's step for the new window and paints rank 1; Z3 a zoom-in paints rank 0 then rank 1 |
+| `bench:range-stitch` | #304 §A.5, report-only (`BENCH=1`): three segments of 5, 4 and 5 buckets (3 584 points) stitched, 100 and 585 series; targets p95 ≤ 4 ms and ≤ 25 ms; a breach opens the follow-up "stitch in the render worker" |
+| `unit:range-store` | #304: bucket math, `promGridAt` / `PromGridStep` parity (`promql-step-at.json`), assembly and presence, completeness merge, freshness and stale spans, write order, scope epoch, `scope_seq` order and the lease, `scope_denied`, bypass and the memory bounds; the scheduler's caps, preemption and fairness; the panel run's pan, cancellation, sharing, shared cap, lease gate and ranks; the fill, ladder and coarse first (Part B) |
+| `itest:scope-seq` | #304: `tenant_bindings.scope_seq` from one global sequence: access-determining updates raise it, a slug change and an equal `credentials_ref` do not, a lowering update is refused, a deleted and recreated binding gets a higher value |
 | `e2e:board-cancel` | Two window changes while board panels load: every superseded request cancelled, one completed request per panel for the last window |
 | `e2e:board-open-in-explore` | A panel's Open in Explore carries its query and the board's time; `$__interval` and `$__rate_interval` keep the panel's values at a 5 m step |
 | `e2e:board-refresh` | Under an absolute window, Refresh now reruns every visible panel |
@@ -1161,8 +1166,8 @@ the merge train), nightly (release blocker).
 | `replay:context-propagation` | Every [02 §5](../product/02-information-architecture.md#5-context-propagation-rules) row end to end; pivots keep entity, time, translated filters and baseline |
 | `replay:undo` | Brush, filter add, narrow; `⌘Z` ×3 restores; `⌘⇧Z` re-applies |
 | `replay:space-transitions` | Atlas → Lens → `Esc` with no document navigation; each ≤ 250 ms; returning scene shows data in the first frame with no query |
-| `replay:progressive` | Cached data hatched in the first frame; first query step ≈ width/4; coarse painted before refine; pan by one window issues no query; no spinner, shimmer only after 300 ms; rollup → raw switch on zoom |
-| `replay:cancel-storm` | 10 window changes in 1 s → 9 cancelled requests, only the last painted |
+| `replay:progressive` | Cached data hatched in the first frame; first query step ≈ width/4; coarse painted before refine; pan by one window issues no query; no spinner, shimmer only after 300 ms; rollup → raw switch on zoom. *v1 note (#304):* "pan by one window issues no query" runs as `e2e:board-overscan` O1; "first query step ≈ width/4" and "coarse painted before refine" as the unit `coarse then fine after 120 ms` and `e2e:board-zoom` Z3; "cached data hatched" stays with IndexedDB (PRF-026); the replay harness itself is unchanged and not yet built |
+| `replay:cancel-storm` | 10 window changes in 1 s → 9 cancelled requests, only the last painted. *v1 note (#304):* runs as `e2e:board-overscan` O2 until the replay harness exists |
 | `replay:truncation` | `truncated=true` → partial badge and "truncated" with narrow; `422` → error with narrow that re-issues a narrower query; complete → "100 %"; data age shown |
 | `replay:reduced-motion` | With reduced motion: next frame shows the final pose; static dashes; static double ring |
 | `replay:motion-audit` | Frame capture: transitions ≤ 250 ms ease-out, crossfade 150 ms ± 1 frame, ring 1 Hz, no other animation |
@@ -1530,3 +1535,4 @@ Meta-testing:
 | 1.85-rc | 2026-11-27 | #282 Part 2b ([ADR-0036](../adr/0036-line-spec-area.md)): §7.1 `unit:area-pieces`, `unit:area-item`, `gpu:area`, `unit:canvas-area`, `unit:area-allowed`; `unit:ui-token-contrast` adds the stacked area tints; `golden:engine-line` adds `line-area` and `line-area-manual` |
 | 1.86-rc | 2026-11-27 | #303: §7.1 `unit:promql-step` states the #303 step (nearest `NICE` entry from the 15 s floor, T07-003 v1) and its acceptance cases with the rate window `max(step + 15 s, 60 s)`; adds `unit:log-step` (the log routes' #62 grid) |
 | 1.87-rc | 2026-11-27 | #289 (board variables; numbered after #303's 1.86-rc): §7.1 adds `unit:board-spec` (v9), `unit:var-render`, `unit:regex-probe-guard` (with `FuzzMultiRegexRoundTrip`), `unit:vars-decode`, `unit:variable-query`, `unit:board-params-multi`, `unit:resolve-variables`, `unit:variable-lists`, `unit:variable-too-many`, `unit:board-variables-run`, `unit:variable-picker`, `e2e:board-variables` and `itest:variable-values`; `unit:plan-parity`, `itest:plan-authority` and `itest:logql-planned` add the structured-value cases; `itest:board-spec-old-binary` names the variables version |
+| 1.88-rc | 2026-11-27 | #304 (numbered after #289's 1.87-rc): §7.1 adds `e2e:board-overscan`, `e2e:board-zoom`, `bench:range-stitch` (report-only), `unit:range-store` and `itest:scope-seq`; `e2e:board-visible-only` counts the requests that cover the window; `replay:progressive` and `replay:cancel-storm` v1 notes |

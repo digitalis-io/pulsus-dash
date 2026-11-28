@@ -228,3 +228,13 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* A held span not fresh for the view (#304 §4.3, PRF-026): a subtle 45° hatch over the plot, in
+   the state encoding's unknown colour (`stale` of theme/stateEncoding.module.css). */
+.stale {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  opacity: 0.12;
+}

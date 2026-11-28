@@ -6,10 +6,12 @@
 //! C2c2: the selection tags the Line item with its emphasis and puts its band first in that item.
 
 use dash_axes::{PlotRect, VisKind, event_band, value_axis};
-use dash_marks::desc::{Area, DrawList, MarkItem};
+use dash_marks::desc::{Area, DrawList, Emphasis, MarkItem};
 use dash_scales::Range64;
 use dash_scales::encode::{axis_map, choose_encoding, is_far};
 use dash_tokens::{ColourRole, colour, series_palette};
+use std::sync::Arc;
+
 use dash_wire::Chunk;
 
 use crate::camera::{Camera, YRange, js_round};
@@ -17,17 +19,44 @@ use crate::layer::{event_shapes, threshold_shapes, with_thresholds};
 use crate::selection::{emphasis, matched, selection_band};
 use crate::spec::VisSpec;
 use crate::summary::{FrameSummary, ValueAxisSummary};
-use crate::{Size64, Viewport};
+use crate::{FADE_MS, Size64, Viewport};
 
 /// The most lanes an instance can carry (16 bits).
 const MAX_LANES: u32 = 65_535;
 
+/// The first sample index of series `s` with `t ≥ x` (`t > x` when `after`).
+fn lower_bound(chunk: &Chunk, s: usize, n: usize, x: f64, after: bool) -> usize {
+    let (mut lo, mut hi) = (0, n);
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        let t = chunk.t_ms(s, mid);
+        if if after { t <= x } else { t < x } {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
 /// TS `lineStats`: min and max over every finite shown value; last = the highest last finite value.
-fn line_stats(chunk: &Chunk, shown: usize) -> (Option<f64>, Option<f64>, Option<f64>) {
+/// With `fit` (#304 §A.8), only the samples with `lo ≤ t ≤ hi`, by binary search on the times.
+fn line_stats(
+    chunk: &Chunk,
+    shown: usize,
+    fit: Option<Range64>,
+) -> (Option<f64>, Option<f64>, Option<f64>) {
     let (mut min, mut max, mut last) = (f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
     for s in 0..shown {
         let mut last_of = f64::NAN;
-        for v in chunk.series_values(s).iter().filter(|v| v.is_finite()) {
+        let all = chunk.series_values(s);
+        let (a, b) = fit.map_or((0, all.len()), |f| {
+            (
+                lower_bound(chunk, s, all.len(), f.lo, false),
+                lower_bound(chunk, s, all.len(), f.hi, true),
+            )
+        });
+        for v in all[a..b.max(a)].iter().filter(|v| v.is_finite()) {
             min = min.min(*v);
             max = max.max(*v);
             last_of = *v;
@@ -137,7 +166,7 @@ pub fn build_frame(v: &Viewport) -> Built {
         .series
         .len()
         .min(spec.max_series.min(MAX_LANES) as usize);
-    let (min, max, last) = line_stats(chunk, shown);
+    let (min, max, last) = line_stats(chunk, shown, v.fit);
     let manual = match cam.y {
         YRange::Manual(r) => Some(r),
         YRange::Auto => None,
@@ -187,33 +216,54 @@ pub fn build_frame(v: &Viewport) -> Built {
         baseline: (js_round(plot.y + plot.height) - 1.0) as f32,
     });
     let dpr = f64::from(v.dpr);
-    if let Some(enc) = choose_encoding(
-        chunk.finite.map(Range64::from),
-        axis.domain,
-        plot.height * dpr,
-    ) {
-        let m = axis_map(&enc, axis.domain, plot.height);
-        let colour_slots = chunk.series[..shown]
-            .iter()
-            .map(|s| dash_colour::series_colour_index(s.key_hash, &s.labels))
-            .collect();
-        let lanes = None;
-        let area = area_of(spec, shown, &v.selection, &lanes);
-        list.items.push(MarkItem::Line {
-            chunk: chunk.clone(),
-            series: 0..shown as u32,
-            window: (window.lo, window.hi),
-            n: plot.width.floor().max(0.0) as u32,
-            plot: rect(&plot),
-            encoding: enc,
-            axis: (m.ku as f32, m.ou as f32),
-            colour_slots,
-            lanes,
-            emphasis: matched(chunk, shown, &v.selection).map(|m| emphasis(m, v.theme)),
-            width_css: dash_tokens::size::CHART_LINE,
-            far: is_far(&enc, chunk.finite),
-            area,
-        });
+    let line_of = |c: &Arc<Chunk>, emphasis: Option<Emphasis>, area: Option<Area>| {
+        let n_shown = c.series.len().min(spec.max_series.min(MAX_LANES) as usize);
+        choose_encoding(c.finite.map(Range64::from), axis.domain, plot.height * dpr).map(|enc| {
+            let m = axis_map(&enc, axis.domain, plot.height);
+            MarkItem::Line {
+                chunk: c.clone(),
+                series: 0..n_shown as u32,
+                window: (window.lo, window.hi),
+                n: plot.width.floor().max(0.0) as u32,
+                plot: rect(&plot),
+                encoding: enc,
+                axis: (m.ku as f32, m.ou as f32),
+                colour_slots: c.series[..n_shown]
+                    .iter()
+                    .map(|s| dash_colour::series_colour_index(s.key_hash, &s.labels))
+                    .collect(),
+                lanes: None,
+                emphasis,
+                width_css: dash_tokens::size::CHART_LINE,
+                far: is_far(&enc, c.finite),
+                area,
+            }
+        })
+    };
+    // A data crossfade (ADR-0039): the previous line under the new one, each composited at its
+    // share of the 150 ms (the dim layer's compositing, every series unmatched); the axes, the
+    // summary and the hover are the new data's from the first frame.
+    let fade_t = v.fade.as_ref().and_then(|f| {
+        let t = ((f.now_ms - f.started_ms) / FADE_MS).clamp(0.0, 1.0);
+        (t < 1.0).then_some((f, t as f32))
+    });
+    let faded = |c: &Arc<Chunk>, alpha: f32| {
+        let n_shown = c.series.len().min(spec.max_series.min(MAX_LANES) as usize);
+        let mut e = emphasis(vec![false; n_shown], v.theme);
+        e.dimmed = alpha;
+        Some(e)
+    };
+    if let Some((f, t)) = fade_t {
+        // No shaded area during a fade: the two areas would add up.
+        list.items
+            .extend(line_of(&f.prev, faded(&f.prev, 1.0 - t), None));
+        list.items.extend(line_of(chunk, faded(chunk, t), None));
+    } else {
+        list.items.extend(line_of(
+            chunk,
+            matched(chunk, shown, &v.selection).map(|m| emphasis(m, v.theme)),
+            area_of(spec, shown, &v.selection, &None),
+        ));
     }
     // The layer marks (plan #68 C2c1 §4.2, C2c2 §4.2): the selection band, thresholds, then events
     // (Canvas 2D's order), over the series and under the hover overlay; inside the plot by

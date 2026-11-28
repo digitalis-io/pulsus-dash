@@ -8,6 +8,7 @@
  */
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useOptionalRangeStore } from '../app/providers';
 import { useTimeContext } from '../state/useTimeContext';
 import { BoardRunContext, type BoardRun } from './boardRunContext';
 import { createWidthStore } from './panelWidths';
@@ -70,6 +71,14 @@ export function BoardRunProvider({
     seen.current = w;
     invalidatePanelEpoch(queryClient, tenant);
   }, [timeReady, window.fromMs, window.toMs, queryClient, tenant]);
+
+  // A tenant switch drops the previous tenant's range data (#304 §4.5).
+  const store = useOptionalRangeStore();
+  const prevTenant = useRef(tenant);
+  useEffect(() => {
+    if (prevTenant.current !== tenant) store?.dropTenant(prevTenant.current);
+    prevTenant.current = tenant;
+  }, [store, tenant]);
 
   const shown = useMemo(
     () =>

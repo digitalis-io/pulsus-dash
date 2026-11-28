@@ -533,6 +533,22 @@ default relative times are pinned to absolute times (the link shows the same win
 appears in a field to copy by hand. A hand-made link longer than 4 096 bytes is not copied: "This
 link is too long to share. Remove filters or shorten values."
 
+## Zoom and pan
+
+Panning and zooming a line panel paints at once and sharpens:
+
+- **Pan** (the `[` and `]` keys, or dragging the time axis) by up to one window shows the new
+  range at full resolution in its first frame: the board keeps one window either side of every
+  line panel loaded.
+- **Zoom out** (`-`, or the time range picker) about the centre shows data at once: the board
+  keeps 3× and 9× the window loaded in the background, at a coarser step.
+- **Zoom in** (`=`) shows the data already loaded at once, then sharpens it in a short fade (a cut
+  when the system asks for reduced motion).
+- After a refresh, data being checked again is shown under a light hatch until the new data lands.
+
+Data a panel loaded is reused for 5 minutes at most without the server confirming your access; if
+your access changes, the board drops what it holds and loads again.
+
 ## Starred and Recent
 
 The sidebar's **Starred** and **Recent** groups list boards for you:

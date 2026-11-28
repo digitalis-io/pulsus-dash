@@ -1,6 +1,15 @@
-import { describe, expect, it } from 'vitest';
+import { act, render, waitFor } from '@testing-library/react';
+import { QueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import { StubApi } from '../api/StubApi';
+import { Providers } from '../app/providers';
+import { createScheduler } from '../data/rangeScheduler';
+import { createRangeStore } from '../data/rangeStore';
 import { promql } from '../editor/lang/promql/promql';
-import { exploreRunKey, refusalOf, runKind, runnable } from './useExploreRun';
+import { createClock } from '../state/clock';
+import { fn, scriptedRange } from '../test/rangeApi';
+import { exploreRunKey, refusalOf, runKind, runnable, useExploreRun } from './useExploreRun';
 
 const W = { fromMs: 0, toMs: 3_600_000 };
 /** `docOf(n)` is `n` UTF-8 bytes (Part B). */
@@ -48,5 +57,63 @@ describe('useExploreRun key', () => {
     // Degraded (#147): the step is still needed, the language is not.
     expect(runnable({ lang: null, degraded: true, stepMs: 5000, rate: true })).toBe(true);
     expect(runnable({ lang: null, degraded: true, stepMs: null, rate: true })).toBe(false);
+  });
+});
+
+describe('explore through store (#304 Part B §2)', () => {
+  it('explore through store: a one-window pan issues no request', async () => {
+    const B = 3_840_000;
+    const H = 3_600_000;
+    const T0 = 460_000 * B;
+    const stub = new StubApi();
+    const api = scriptedRange();
+    api.auto = () => ({ series: [fn({ a: '1' }, () => 1)], scope: { epoch: 'stub', seq: 1 } });
+    vi.spyOn(stub, 'queryRange').mockImplementation((t, r, s) => api.queryRange(t, r, s));
+    const clock = { t: T0 + 30 * 86_400_000 };
+    const store = createRangeStore({ api: stub, scheduler: createScheduler(), now: () => clock.t });
+    store.observeScope('demo', { epoch: 'stub', seq: 1 }, clock.t);
+    let pan: (w: { fromMs: number; toMs: number }) => void = () => undefined;
+    let shown: unknown = null;
+    function Run() {
+      const [w, setW] = useState({ fromMs: T0, toMs: T0 + H });
+      pan = setW;
+      const run = useExploreRun({
+        tenant: 'demo',
+        q: 'up',
+        inputs: { lang: null, degraded: true, stepMs: 15_000, rate: true },
+        widthPx: 1200,
+        window: w,
+        anchorMs: clock.t,
+        epoch: 0,
+      });
+      shown = run.shown;
+      return null;
+    }
+    render(
+      <Providers
+        deps={{
+          api: stub,
+          queryClient: new QueryClient(),
+          clock: createClock(() => clock.t),
+          timeZone: 'UTC',
+        }}
+        rangeStore={store}
+      >
+        <Run />
+      </Providers>,
+    );
+    await waitFor(() => {
+      expect(api.calls.filter((c) => c.req.stepMs === 15_000)).toHaveLength(3);
+    });
+    const before = api.calls.length;
+    act(() => {
+      pan({ fromMs: T0 + H, toMs: T0 + 2 * H });
+    });
+    await waitFor(() => {
+      expect(shown).not.toBeNull();
+    });
+    for (const c of api.calls.slice(before)) {
+      expect(c.req.fromMs > T0 + 2 * H || c.req.toMs < T0 + H).toBe(true);
+    }
   });
 });

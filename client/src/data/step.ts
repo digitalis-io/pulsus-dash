@@ -52,6 +52,17 @@ export function promGrid(fromMs: number, toMs: number, widthPx: number): Grid | 
 }
 
 /**
+ * The PromQL grid at a ladder step the client chose (#304 §A.1), Go's `PromGridStep`, checked
+ * against `wire/fixtures/json/promql-step-at.json`: aligned as `promGrid` aligns; `null` when the
+ * step is not a ladder entry or the grid would have more than 11 000 steps.
+ */
+export function promGridAt(fromMs: number, toMs: number, stepMs: number): Grid | null {
+  if (!PROM_LADDER_MS.includes(stepMs)) return null;
+  const g = align(fromMs, toMs, stepMs);
+  return (g.endMs - g.startMs) / g.stepMs > MAX_STEPS ? null : g;
+}
+
+/**
  * The log routes' grid (#62, unchanged by #303): the step is the first ladder entry with
  * `entry × widthPx ≥ toMs − fromMs` (else 1 d); the start is floored and the end raised to it.
  * `null` when the range needs more than 11 000 steps.

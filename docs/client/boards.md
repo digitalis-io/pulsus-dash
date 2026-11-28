@@ -117,12 +117,28 @@ when the window changes, and sets the target. `timeReady` latches while renderin
 target's); until then every panel and the preview use the idle key, whatever the language, board
 and query caches hold. The board query itself and the picker's metadata are not gated.
 
+## The range store (#304)
+
+A PromQL range panel whose saved vis is `line` and that is eligible (no `@ start()` / `@ end()`,
+not degraded) reads its data from the page's [range store](range-store.md): buckets of 256 grid points shared
+across panels, pans and refreshes, requested with `step_ms`; a line panel also holds one window
+either side, so a pan of up to one window paints in its first frame with no request. Its outcome
+carries the visible slice (`result`, for the legend and every non-line consumer) and, for a line,
+the held span (`held`) drawn with `fit` = the visible grid. Stale held spans are hatched. The panel
+host carries `data-store` (`held`, `bypass`, `off`) and `data-rank`. Every other board range
+request (bypassed and ineligible panels, baselines, LogQL frames and their volume) runs through the
+same scheduler (at most 6 in flight). The key is unchanged; for store-backed runs the window epoch
+below no longer forces a refetch: freshness is per bucket (a return to an earlier window is painted
+from held data), Refresh now refetches every held bucket.
+
 ## Visible-only queries (T07-012 v1)
 
 `BoardRunProvider` owns one `IntersectionObserver` for the board (`createVisibilityTracker`: root
 the viewport, `rootMargin` `0px`, threshold 0; no prefetch). Each `PanelFrame` observes its root
 element (`useInViewport`); a panel queries while it intersects the viewport or is at full screen,
-and the editor's preview always. Without `IntersectionObserver` every panel is visible. A collapsed
+and the editor's preview always. Without `IntersectionObserver` every panel is visible. A visible
+line panel's flank and ladder requests (outside its window, #304) run behind its visible run at
+prefetch and background priority. A collapsed
 section renders no grid, so its panels mount nothing and query nothing. A panel scrolled out keeps
 its request in flight (it fills the cache) and starts no new one.
 

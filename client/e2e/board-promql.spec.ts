@@ -7,7 +7,7 @@
 import { expect, test, type APIRequestContext, type Page, type TestInfo } from '@playwright/test';
 import { HTTP_BFF, NEEDS_BFF, PREVIEW } from './bff.ts';
 import { createBoard, deleteBoard } from './boardApi.ts';
-import { fakeRequests, runShift, sec, type FakeRequest } from './fake.ts';
+import { covering, runShift, type FakeRequest } from './fake.ts';
 import { searchOf, timeTrigger } from './helpers.ts';
 
 const HOUR = 3_600_000;
@@ -54,8 +54,13 @@ function onScreen(page: Page): Promise<string[]> {
   );
 }
 
-function queries(request: APIRequestContext, from: number): Promise<FakeRequest[]> {
-  return fakeRequests(request, { path: '/api/v1/query_range', start: sec(from) });
+/** The requests that cover the 1 h window from `from` (bucket-aligned runs of the range store, #304). */
+function queries(
+  request: APIRequestContext,
+  from: number,
+  to: number = from + HOUR,
+): Promise<FakeRequest[]> {
+  return covering(request, from, to);
 }
 
 const settle = (page: Page) => page.waitForTimeout(1_000);
@@ -150,8 +155,9 @@ test.describe('e2e:board-promql (fake)', () => {
       return {
         id: `p-${String(i)}`,
         title: `Panel ${String(i)}`,
-        // An empty answer fits any window, so each browser counts in its own (W0 is shared).
-        text: 'empty_metric',
+        // An empty answer fits any window, so each browser counts in its own (W0 is shared). Each
+        // panel its own text: panels of one query share their requests (the range store, #304).
+        text: `empty_metric{p="${String(i)}"}`,
         grid: [4 * ((i - 1) % 3), 8 * Math.floor((i - 1) / 3), 4, 8] as [
           number,
           number,
@@ -196,13 +202,16 @@ test.describe('e2e:board-promql (fake)', () => {
     // and B never answer. The windows are fixed for it, so each run reads only the records it made
     // (after t0): a repeat or a retry is independent, two copies running at once are not (repeat
     // this test with --workers=1).
+    // A day apart (#304): adjacent windows share the range store's buckets, so a step would keep
+    // what the next window still needs; whole days share none.
     const A = day(info, 2);
-    const B = A + HOUR;
-    const C = B + HOUR;
+    const B = A + DAY;
+    const C = B + DAY;
     const panels = [0, 4, 8].map((x, i) => ({
       id: `p-${String(i + 1)}`,
       title: `Slow ${String(i + 1)}`,
-      text: 'slow_metric',
+      // Each panel its own text: panels of one query share their requests (#304).
+      text: `slow_metric{p="${String(i + 1)}"}`,
       grid: [x, 0, 4, 8] as [number, number, number, number],
     }));
     let uid: string | null = null;
@@ -210,7 +219,7 @@ test.describe('e2e:board-promql (fake)', () => {
       const t0 = Date.now();
       const slow = async (start: number) =>
         (await queries(request, start)).filter(
-          (r) => r.query === 'slow_metric' && r.receivedAtMs >= t0,
+          (r) => r.query.startsWith('slow_metric') && r.receivedAtMs >= t0,
         );
       uid = await createBoard(request, `E3 ${info.project.name} ${crypto.randomUUID()}`, panels);
       await page.goto(boardUrl(uid, A));
@@ -220,26 +229,23 @@ test.describe('e2e:board-promql (fake)', () => {
         })
         .toBe(3);
       // Both steps happen in the page, 100 ms apart (under the 200 ms of E3), so neither waits on
-      // the runner or on reading the fake back. A's queries are held (2 s) and in flight.
-      const steps = await page.evaluate(async (gapMs) => {
-        const step = (): boolean => {
-          const e = new KeyboardEvent('keydown', {
-            key: ']',
-            code: 'BracketRight',
-            bubbles: true,
-            cancelable: true,
-          });
-          document.body.dispatchEvent(e);
-          return e.defaultPrevented;
-        };
-        const t0 = performance.now();
-        const first = step();
-        await new Promise((r) => setTimeout(r, gapMs));
-        const second = step();
-        return { handled: [first, second], ms: performance.now() - t0 };
-      }, 100);
-      expect(steps.handled).toEqual([true, true]);
-      expect(steps.ms).toBeLessThan(200);
+      // the runner or on reading the fake back. A's queries are held (2 s) and in flight. The
+      // windows are a day apart, so each step is a URL change (the keys step by one window, #304).
+      const steps = await page.evaluate(
+        async ([b, c, gapMs]) => {
+          const go = (u: string): void => {
+            history.pushState(null, '', u);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          };
+          const t0 = performance.now();
+          go(b);
+          await new Promise((r) => setTimeout(r, gapMs));
+          go(c);
+          return performance.now() - t0;
+        },
+        [boardUrl(uid, B), boardUrl(uid, C), 100] as const,
+      );
+      expect(steps).toBeLessThan(200);
       // The outcomes, read back with time to spare: every superseded query (A's three, and any of
       // B's that left before the second step) was cancelled, and only C's three completed.
       const states = async (start: number) => (await slow(start)).map((r) => r.state);
@@ -303,7 +309,7 @@ test.describe('e2e:board-promql (fake)', () => {
       await page.goto(boardUrl(uid, from24, from24 + DAY));
       await expect(page.getByRole('link', { name: 'Open in Explore: Mix' })).toBeVisible();
       const mixSent = async (): Promise<string> =>
-        (await queries(request, from24)).find((x) =>
+        (await queries(request, from24, from24 + DAY)).find((x) =>
           x.query.startsWith('avg_over_time(node_memory_free_bytes['),
         )?.query ?? '';
       // The server substituted the macros at the panel's step.
@@ -323,17 +329,14 @@ test.describe('e2e:board-promql (fake)', () => {
     const R = day(info, 4) + runShift(info);
     let uid: string | null = null;
     const done = async () =>
-      (
-        await fakeRequests(request, {
-          query: 'empty_metric',
-          start: sec(R),
-          state: 'completed',
-        })
+      (await covering(request, R, R + HOUR, { state: 'completed' })).filter((r) =>
+        r.query.startsWith('empty_metric'),
       ).length;
     try {
       uid = await createBoard(request, `E5 ${info.project.name} ${crypto.randomUUID()}`, [
-        { id: 'p-1', title: 'Empty 1', text: 'empty_metric', grid: [0, 0, 6, 8] },
-        { id: 'p-2', title: 'Empty 2', text: 'empty_metric', grid: [6, 0, 6, 8] },
+        // Two texts: panels of one query share their requests (#304).
+        { id: 'p-1', title: 'Empty 1', text: 'empty_metric{p="1"}', grid: [0, 0, 6, 8] },
+        { id: 'p-2', title: 'Empty 2', text: 'empty_metric{p="2"}', grid: [6, 0, 6, 8] },
       ]);
       await page.goto(boardUrl(uid, R));
       await expect.poll(done).toBe(2);

@@ -1598,7 +1598,9 @@ type PromMetadataResponse struct {
 type PromRangeRequest struct {
 	From      int64  `json:"from"`
 	Query     string `json:"query"`
+	RangeMs   *int64 `json:"range_ms,omitempty"`
 	Rate      *bool  `json:"rate,omitempty"`
+	StepMs    *int64 `json:"step_ms,omitempty"`
 	TimeoutMs *int   `json:"timeout_ms,omitempty"`
 	To        int64  `json:"to"`
 
@@ -1702,6 +1704,8 @@ type SeriesLabels struct {
 type TenantInfo struct {
 	Datasource DatasourceStatus `json:"datasource"`
 	Name       string           `json:"name"`
+	ScopeEpoch string           `json:"scope_epoch"`
+	ScopeSeq   int64            `json:"scope_seq"`
 	Slug       string           `json:"slug"`
 }
 

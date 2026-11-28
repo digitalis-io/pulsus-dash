@@ -16,6 +16,7 @@ import {
 } from '../api/types';
 import { Providers } from '../app/providers';
 import type { RangeResult } from '../data/decode';
+import { createRangeStore } from '../data/rangeStore';
 import { ChartEngineContext } from '../engine/index';
 import { PanelBody } from '../pages/board/PanelFrame';
 import { createClock } from '../state/clock';
@@ -221,6 +222,8 @@ function mountRun(panel: DataPanelSpec, ghost: boolean) {
         queryClient: new QueryClient(),
         clock: createClock(() => T),
         timeZone: 'Europe/London',
+        // The single-request path: the baseline run's tests pin today's request shapes (#304).
+        rangeStore: createRangeStore({ api, enabled: false }),
       }}
     >
       <RouterProvider router={router} />

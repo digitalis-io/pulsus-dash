@@ -82,6 +82,8 @@ fn viewport_of(r: &Value, f: &Value) -> Viewport {
         band: Band::Measure,
         events: Arc::from(fixture::nums(&r["events"])),
         selection: Default::default(),
+        fit: None,
+        fade: None,
     }
 }
 
@@ -255,6 +257,8 @@ fn build_layer_items() {
             band: Band::Measure,
             events: Arc::from(events),
             selection: Default::default(),
+            fit: None,
+            fade: None,
         }
     };
     let plain = build_frame(&viewport(spec.clone(), Vec::new()));

@@ -1,14 +1,15 @@
 /**
  * Application-wide providers and the hooks that read them: the API, the clock, the time zone, the
- * query cache, the board preferences (Starred and Recent, plan #61 Part C §3.8) and React Aria's
- * locale.
+ * query cache, the board preferences (Starred and Recent, plan #61 Part C §3.8), the page's range
+ * store slot (#304: the store is made in the route chunks) and React Aria's locale.
  */
-import { QueryClientProvider, useSuspenseQuery } from '@tanstack/react-query';
+import { QueryClientProvider, useSuspenseQuery, type QueryClient } from '@tanstack/react-query';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { I18nProvider } from 'react-aria-components';
 import type { Api } from '../api/Api';
 import { StubApi } from '../api/StubApi';
 import type { Session } from '../api/types';
+import type { RangeStore } from '../data/rangeStore';
 import { createBoardPrefs, type BoardPrefs } from '../boards/prefs';
 import { TimeZoneContext } from '../state/timeZone';
 import { ClockContext } from '../state/useTimeContext';
@@ -64,7 +65,77 @@ export function useBoardPrefs(): BoardPrefs {
   return prefs;
 }
 
-export function Providers({ deps, children }: { deps: RouterDeps; children: ReactNode }) {
+/**
+ * The page's range store slot (#304): the store itself lives in the board and Explore route chunks
+ * (`data/useRangeStore.ts`), so none of its code is in the initial bundle. `ensure` creates it on
+ * first use, through the caller's factory and wiring; the providers' unmount undoes the wiring.
+ */
+export interface RangeStoreSlot {
+  readonly api: Api;
+  readonly queryClient: QueryClient;
+  /** The store, once created (or the one a test injected). */
+  current(): RangeStore | null;
+  ensure(
+    create: (api: Api) => RangeStore,
+    wire: (store: RangeStore, qc: QueryClient) => () => void,
+  ): RangeStore;
+  dispose(): void;
+}
+
+function createRangeStoreSlot(
+  api: Api,
+  qc: QueryClient,
+  injected: RangeStore | null,
+): RangeStoreSlot {
+  let store = injected;
+  let unwire: (() => void) | null = null;
+  return {
+    api,
+    queryClient: qc,
+    current: () => store,
+    ensure(create, wire) {
+      store ??= create(api);
+      unwire ??= wire(store, qc);
+      return store;
+    },
+    dispose() {
+      unwire?.();
+      unwire = null;
+    },
+  };
+}
+
+const RangeStoreContext = createContext<RangeStoreSlot | null>(null);
+
+/** The page's range store slot; null outside `Providers`. */
+export function useRangeStoreSlot(): RangeStoreSlot | null {
+  return useContext(RangeStoreContext);
+}
+
+/** The range store if it exists (a provider that only drops a tenant's data); null otherwise. */
+export function useOptionalRangeStore(): RangeStore | null {
+  return useContext(RangeStoreContext)?.current() ?? null;
+}
+
+export function Providers({
+  deps,
+  children,
+  rangeStore,
+}: {
+  deps: RouterDeps;
+  children: ReactNode;
+  /** The page's range store (#304); tests inject one, the app makes its own. */
+  rangeStore?: RangeStore;
+}) {
+  const [slot] = useState(() =>
+    createRangeStoreSlot(deps.api, deps.queryClient, rangeStore ?? deps.rangeStore ?? null),
+  );
+  useEffect(
+    () => () => {
+      slot.dispose();
+    },
+    [slot],
+  );
   const [focus] = useState(createShellFocusRequest);
   const [prefs] = useState(() => createBoardPrefs(deps.api, deps.queryClient));
   // One effect, so a StrictMode replay (setup, cleanup, setup) reconnects what it disposed.
@@ -82,7 +153,9 @@ export function Providers({ deps, children }: { deps: RouterDeps; children: Reac
           <ClockContext.Provider value={deps.clock}>
             <TimeZoneContext.Provider value={deps.timeZone}>
               <ShellFocusContext.Provider value={focus}>
-                <BoardPrefsContext.Provider value={prefs}>{children}</BoardPrefsContext.Provider>
+                <BoardPrefsContext.Provider value={prefs}>
+                  <RangeStoreContext.Provider value={slot}>{children}</RangeStoreContext.Provider>
+                </BoardPrefsContext.Provider>
               </ShellFocusContext.Provider>
             </TimeZoneContext.Provider>
           </ClockContext.Provider>
