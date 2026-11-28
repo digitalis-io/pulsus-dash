@@ -20,14 +20,14 @@ limits and the chart gallery.
 `src/engine/api.ts` holds the types the application uses; nothing else in the engine is imported by
 application code.
 
-| Type | Meaning |
-|---|---|
-| `VisSpec` | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`), `stat` (an optional `graphMode`: `'sparkline'` or `'none'`, absent = `sparkline`; T22 §5.1) or `barchart` (`BarchartSpec`, below); each has a `title` and a `unit`. Line and bars take an optional `valueRange` (`{ min, max }`, `min < max`, finite): the user's value-axis pin; absent means auto (#93). Line and bars also take an optional `thresholds` (`ThresholdLine[]`: `{ value, state, label }`, `state` `watch`, `degraded` or `failing`; at most 8 drawn, in order; [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)). Data, never code |
-| `BarchartSpec` | `barchart` (ADR-0028): `title`, `unit`, `orientation` (`horizontal` or `vertical`), `valueLabels`, `names?: 'hidden'` (set by the panel's fit), `valueRange?`, `thresholds?`, `ghost` (a dashed bar at each finite baseline) and `anomaly` (nothing drawn until Epic #9) |
-| `FrameData` | `series` (`SeriesFrame[]`), `heatmap` (`HeatmapFrame`), `scalar` (`ScalarFrame`) or `categories` (`CategoryRow[]`, at most 200, in draw order, and the panel's `Coverage`; ADR-0028), from `src/data/frames.ts` |
-| `ChartEngine.createFrame(canvas, { timeZone, keyTarget })` | One frame per canvas. `keyTarget` is the element whose key presses move the crosshair (the slider); for barchart the mirror listbox ([ADR-0029](../../designs/adr/0029-bar-chart-keys-and-brush.md)); `null` for stat |
-| `ChartFrame` | `setSpec`, `setData`, `setTimeWindow`, `setTheme`, `setEvents(events)` (ADR-0023: replaces the frame's `EventMarker[]`, `{ id, atMs, endMs, kind, title }` with `kind` `deploy`, `config`, `flag` or `annotation`; `[]` = none), `setSelection(sel)` (ADR-0025: the page selection `{ keys, fromMs, toMs }` drawn in the next frame; `null` = none; an equal value redraws nothing), `resize(cssW, cssH, dpr)`, `on(event, cb)` → unsubscribe, `dispose()` |
-| Events | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat, `thresholdLabels`: the threshold label boxes `{ box, text, clipped }` in stack order, `[]` for heatmap and stat, ADR-0022, and `eventLabels`: the event label boxes `{ box, x, ids, text, clipped }` in x order, `[]` for stat, ADR-0023), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (ADR-0025: `{ source, item }` for a click on the plot, `item` the `HoverItem` under it — `point` `{ key, tMs, value }` or `bucket` `{ index, tMs, toMs, count }` — or `null` for an empty click), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below), and for the bar chart `mark` (`MarkEvent` `{ source, key, index, xCss, yCss, rows }` or `null`) and `pick` (`{ keys, gesture, source }`: `gesture` `click` or `brush`, `source` `pointer` or `keyboard` (ADR-0029); `keys` `[]` is an empty click). A bar chart's summary also carries `coverage` (copied from the data), `namesHidden` and `valuesHidden` |
+| Type                                                       | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VisSpec`                                                  | `line`, `bars` (`stacking: 'normal'`, `categoryLabel`, `categoryOrder`), `heatmap` (`unit`, `countUnit`), `stat` (an optional `graphMode`: `'sparkline'` or `'none'`, absent = `sparkline`; T22 §5.1) or `barchart` (`BarchartSpec`, below); each has a `title` and a `unit`. Line and bars take an optional `valueRange` (`{ min, max }`, `min < max`, finite): the user's value-axis pin; absent means auto (#93). Line and bars also take an optional `thresholds` (`ThresholdLine[]`: `{ value, state, label }`, `state` `watch`, `degraded` or `failing`; at most 8 drawn, in order; [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)). Data, never code                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `BarchartSpec`                                             | `barchart` (ADR-0028): `title`, `unit`, `orientation` (`horizontal` or `vertical`), `valueLabels`, `names?: 'hidden'` (set by the panel's fit), `valueRange?`, `thresholds?`, `ghost` (a dashed bar at each finite baseline) and `anomaly` (nothing drawn until Epic #9)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `FrameData`                                                | `series` (`SeriesFrame[]`), `heatmap` (`HeatmapFrame`), `scalar` (`ScalarFrame`) or `categories` (`CategoryRow[]`, at most 200, in draw order, and the panel's `Coverage`; ADR-0028), from `src/data/frames.ts`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `ChartEngine.createFrame(canvas, { timeZone, keyTarget })` | One frame per canvas. `keyTarget` is the element whose key presses move the crosshair (the slider); for barchart the mirror listbox ([ADR-0029](../../designs/adr/0029-bar-chart-keys-and-brush.md)); `null` for stat                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `ChartFrame`                                               | `setSpec`, `setData`, `setTimeWindow`, `setTheme`, `setEvents(events)` (ADR-0023: replaces the frame's `EventMarker[]`, `{ id, atMs, endMs, kind, title }` with `kind` `deploy`, `config`, `flag` or `annotation`; `[]` = none), `setSelection(sel)` (ADR-0025: the page selection `{ keys, fromMs, toMs }` drawn in the next frame; `null` = none; an equal value redraws nothing), `resize(cssW, cssH, dpr)`, `on(event, cb)` → unsubscribe, `dispose()`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Events                                                     | `a11y` (`FrameSummary`: kind, series shown and total, window, min, max, last, plot rectangle, `valueAxis`: `{ min, max, manual }` for line and bars, `null` for heatmap and stat, `thresholdLabels`: the threshold label boxes `{ box, text, clipped }` in stack order, `[]` for heatmap and stat, ADR-0022, and `eventLabels`: the event label boxes `{ box, x, ids, text, clipped }` in x order, `[]` for stat, ADR-0023), `hover` (`HoverEvent` or `null`), `brush` (`{ fromMs, toMs, gesture: 'drag' \| 'zoomOut' }`), `select` (ADR-0025: `{ source, item }` for a click on the plot, `item` the `HoverItem` under it — `point` `{ key, tMs, value }` or `bucket` `{ index, tMs, toMs, count }` — or `null` for an empty click), `drawn` (#90), `commit` (`CommitEvent`, #93: `{ window, value, gesture }`; below), and for the bar chart `mark` (`MarkEvent` `{ source, key, index, xCss, yCss, rows }` or `null`) and `pick` (`{ keys, gesture, source }`: `gesture` `click` or `brush`, `source` `pointer` or `keyboard` (ADR-0029); `keys` `[]` is an empty click). A bar chart's summary also carries `coverage` (copied from the data), `namesHidden` and `valuesHidden` |
 
 `src/engine/index.ts` exports `defaultChartEngine()` (one `Canvas2DEngine` per page) and
 `ChartEngineContext` (React context, default `defaultChartEngine()`). Tests provide a fake engine
@@ -35,12 +35,12 @@ through the context (`src/test/fakeEngine.ts`).
 
 ### Who owns what
 
-| Concern | Owner |
-|---|---|
-| Context window and URL | The application. `ChartFrame` turns a `brush` event into a `setRange` (box zoom; absolute times, pushed) or `zoom out` (double-click) action of `useTimeContext().dispatch`, and a `commit` with a `window` into the same `setRange` push. The engine only proposes windows |
-| Value-axis pin | The `ChartFrame` instance (`useState`), keyed by the spec's kind and unit. It is passed back to the engine as `valueRange` in the spec. It is not in the URL or the Context, and is lost on unmount, reload, or a kind or unit change |
-| Validation, notices, tooltip, summary label, crosshair slider, Reset Y axis button | `ChartFrame` (`src/charts/`) |
-| Scales, ticks, marks, picking, the camera (view, gesture, changed axes, band hold), layer cache | The engine frame; discarded on `dispose()` |
+| Concern                                                                                         | Owner                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Context window and URL                                                                          | The application. `ChartFrame` turns a `brush` event into a `setRange` (box zoom; absolute times, pushed) or `zoom out` (double-click) action of `useTimeContext().dispatch`, and a `commit` with a `window` into the same `setRange` push. The engine only proposes windows |
+| Value-axis pin                                                                                  | The `ChartFrame` instance (`useState`), keyed by the spec's kind and unit. It is passed back to the engine as `valueRange` in the spec. It is not in the URL or the Context, and is lost on unmount, reload, or a kind or unit change                                       |
+| Validation, notices, tooltip, summary label, crosshair slider, Reset Y axis button              | `ChartFrame` (`src/charts/`)                                                                                                                                                                                                                                                |
+| Scales, ticks, marks, picking, the camera (view, gesture, changed axes, band hold), layer cache | The engine frame; discarded on `dispose()`                                                                                                                                                                                                                                  |
 
 ### Frame lifecycle
 
@@ -93,17 +93,17 @@ of the first series). `validateFrameData(spec, data)` returns the first problem,
 component then sends `emptyFrameData(spec)` to the engine and shows "This chart cannot show its
 data: <reason>".
 
-| Code | Reason shown |
-|---|---|
-| `kind` | the data does not match the chart type |
-| `key` | series key `<key>` is not a 16-digit hex hash |
-| `length` | series `<key>` has `<n>` timestamps and `<m>` values |
-| `order` | series `<key>` timestamps are not increasing (heatmap columns report the key `heatmap`) |
-| `cells` | expected `<T>` × `<B>` heatmap cells, got `<n>` |
+| Code     | Reason shown                                                                            |
+| -------- | --------------------------------------------------------------------------------------- |
+| `kind`   | the data does not match the chart type                                                  |
+| `key`    | series key `<key>` is not a 16-digit hex hash                                           |
+| `length` | series `<key>` has `<n>` timestamps and `<m>` values                                    |
+| `order`  | series `<key>` timestamps are not increasing (heatmap columns report the key `heatmap`) |
+| `cells`  | expected `<T>` × `<B>` heatmap cells, got `<n>`                                         |
 | `bounds` | heatmap bucket bounds are not increasing (or a bound other than the last is not finite) |
-| `finite` | heatmap needs at least one finite bucket bound (e.g. `[+Inf]`) |
-| `grid` | category `<key>` does not share the bar time buckets |
-| `cap` | `<n>` bars is more than the 200 a bar chart draws |
+| `finite` | heatmap needs at least one finite bucket bound (e.g. `[+Inf]`)                          |
+| `grid`   | category `<key>` does not share the bar time buckets                                    |
+| `cap`    | `<n>` bars is more than the 200 a bar chart draws                                       |
 
 A `barchart` needs `categories`: `kind` unless it gets them, then `cap` over 200 rows, then `key`
 for the first key that is not 16 hex digits or repeats. Its empty data is no rows with
@@ -120,17 +120,17 @@ zeros dropped. `digits` 4 to 17 gives `toPrecision(digits)` at every magnitude, 
 dropped (`1234` at 4 → `1.234k`, `123.456` at 5 → `123.46`, `6.999999999999999` at 17 →
 `6.9999999999999991`); the histogram's edge labels use it (T21-013).
 
-| Unit | Examples |
-|---|---|
-| `none` | `0`, `0.0123`, `1.2k`, `-1.2k`, `1P` (SI prefixes k, M, G, T, P from 1 000; none below 1) |
-| `plain` (#290) | `2026`, `1234567`, `0.0123`: three significant digits or the rounded integer, no prefix |
-| `suffix` | `1.2k rps`, `12.5 /s`, `1.2k req/s` |
-| `time` (`base` ns, us, ms or s) | `150 ns`, `120 ms`, `2.84 s`, `1 min`, `7.77 d`; the largest of ns, µs, ms, s, min, h, d whose value is at least 1; `0` → `0 s` |
-| `bytes` (`prefix` absent or `iec`) | `512 B`, `1023 B`, `1 KiB`, `1.5 GiB` (IEC: B, KiB, MiB, GiB, TiB, PiB, ×1 024) |
-| `bytes`, `prefix: 'si'` (#290) | `1.5 MB`, `999.5` → `1 kB` (SI: B, kB, MB, GB, TB, PB, ×1 000) |
-| `bits`, `prefix` `si` or `iec` (#290) | `1.25 Gb` (b, kb, Mb, Gb, Tb, Pb); `1 Mib` (b, Kib, Mib, Gib, Tib, Pib) |
-| `perSecond: true` on bytes or bits (#290) | `/s` on every scale: `1.5 KiB/s`, `1.5 kB/s`, `1.25 Gb/s`, `0.5 B/s`, `0 B/s`, `-1.5 MiB/s` |
-| `percent` / `percentunit` | `38 %` from 38 / from 0.38 |
+| Unit                                      | Examples                                                                                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `none`                                    | `0`, `0.0123`, `1.2k`, `-1.2k`, `1P` (SI prefixes k, M, G, T, P from 1 000; none below 1)                                       |
+| `plain` (#290)                            | `2026`, `1234567`, `0.0123`: three significant digits or the rounded integer, no prefix                                         |
+| `suffix`                                  | `1.2k rps`, `12.5 /s`, `1.2k req/s`                                                                                             |
+| `time` (`base` ns, us, ms or s)           | `150 ns`, `120 ms`, `2.84 s`, `1 min`, `7.77 d`; the largest of ns, µs, ms, s, min, h, d whose value is at least 1; `0` → `0 s` |
+| `bytes` (`prefix` absent or `iec`)        | `512 B`, `1023 B`, `1 KiB`, `1.5 GiB` (IEC: B, KiB, MiB, GiB, TiB, PiB, ×1 024)                                                 |
+| `bytes`, `prefix: 'si'` (#290)            | `1.5 MB`, `999.5` → `1 kB` (SI: B, kB, MB, GB, TB, PB, ×1 000)                                                                  |
+| `bits`, `prefix` `si` or `iec` (#290)     | `1.25 Gb` (b, kb, Mb, Gb, Tb, Pb); `1 Mib` (b, Kib, Mib, Gib, Tib, Pib)                                                         |
+| `perSecond: true` on bytes or bits (#290) | `/s` on every scale: `1.5 KiB/s`, `1.5 kB/s`, `1.25 Gb/s`, `0.5 B/s`, `0 B/s`, `-1.5 MiB/s`                                     |
+| `percent` / `percentunit`                 | `38 %` from 38 / from 0.38                                                                                                      |
 
 Below 1, bytes and bits are `${sig(v)} B` or `b` with the per-second tail (`0.5 B/s`).
 `tickBase(unit)` is the base of the value ticks: 1 024 for IEC bytes (the default) and IEC bits, so
@@ -162,15 +162,15 @@ matches byte for byte on `engine/fixtures/format.json`, and `dash-axes` on `layo
 four significant characters (three significant digits), an SI prefix (p, n, µ, m, k, M, G, T, P, E)
 and the unit's tail. It never truncates.
 
-| Unit | Converted value | Tail | Examples |
-|---|---|---|---|
-| `none` | v | (none) | `0.000015` → `15µ`; `-1234` → `-1.23k`; `999600` → `1M` |
-| `suffix` | v | ` <suffix>` | `-0.00002` rps → `-20µ rps` |
-| `percent` / `percentunit` | v / v · 100 | ` %` | `1234567` → `1.23M %` |
-| `plain` | v | (none) | `1536` → `1.54k` |
-| `bytes` | v | ` B`, ` B/s` | `1536` → `1.54k B` (SI, exact in value); per second `1.54k B/s` |
-| `bits` | v | ` b`, ` b/s` | `1500` → `1.5k b` |
-| `time` | v in seconds | ` s` | ms `-3590000` → `-3.59k s` |
+| Unit                      | Converted value | Tail         | Examples                                                        |
+| ------------------------- | --------------- | ------------ | --------------------------------------------------------------- |
+| `none`                    | v               | (none)       | `0.000015` → `15µ`; `-1234` → `-1.23k`; `999600` → `1M`         |
+| `suffix`                  | v               | ` <suffix>`  | `-0.00002` rps → `-20µ rps`                                     |
+| `percent` / `percentunit` | v / v · 100     | ` %`         | `1234567` → `1.23M %`                                           |
+| `plain`                   | v               | (none)       | `1536` → `1.54k`                                                |
+| `bytes`                   | v               | ` B`, ` B/s` | `1536` → `1.54k B` (SI, exact in value); per second `1.54k B/s` |
+| `bits`                    | v               | ` b`, ` b/s` | `1500` → `1.5k b`                                               |
+| `time`                    | v in seconds    | ` s`         | ms `-3590000` → `-3.59k s`                                      |
 
 Zero is `0` plus the tail; `NaN` and infinities are as `formatValue`. Outside
 `1e-12 ≤ |converted| < 1e21` there is no prefix: the plain three-digit form is used (`1e-13`,
@@ -292,7 +292,7 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
   `(prefers-reduced-transparency: reduce)` (`charts/useAreaAllowed.ts`). Bars, heatmaps and stats
   are not shaded this way. The gallery's `line-area` and `line-area-manual` pages show it.
 - **Stacked bars.** Categories (`labels[categoryLabel]`) stack in `categoryOrder`, then the unlisted
-  ones by name; the first 500 are drawn. Bucket *i* spans from its start to the next bucket's start
+  ones by name; the first 500 are drawn. Bucket _i_ spans from its start to the next bucket's start
   (the last one by the previous step); bars are 1 px narrower than their span. When there are more
   buckets than CSS px, buckets are merged per pixel column and their values summed; a bucket whose
   interval (its start to the next start; the last one by the previous step) overlaps the window is
@@ -307,7 +307,7 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
   (the threshold text) sits under it, and the head is `STAT_HEAD` = 72 px. With series data whose
   first series has at least one finite value in the window, and a frame at least 104 px tall
   (`SPARK_MIN_H`), a **sparkline** runs under the head: the rect `{ x: 0, y: 72, width: w,
-  height: h − 72 }`, the window across it; the finite values' max is at `y + 1.5` and their min at
+height: h − 72 }`, the window across it; the finite values' max is at `y + 1.5` and their min at
   `y + 0.75 × height` (the middle of that band when they are equal), in the series colour, 1.5 px
   with round joins. It is a trend glyph: it joins the finite points inside the window across
   absent and non-finite ones (a sparse series on the step grid is mostly absent points), and a
@@ -324,16 +324,16 @@ Heatmap cells use `ramp[min(8, floor(9 · count / max))]`; zero counts are not f
 
 On line and bars, after the series and before the value-label chips (`engine/canvas2d/thresholdMark.ts`):
 
-| Step | Rule |
-|---|---|
-| Domain | The auto value domain is `withThresholds(min, max, thresholds)`: the data's (line) or the post-merge stacked totals' (bars, with 0) min and max, widened to every finite threshold; the axis still includes 0. A pinned `valueRange` is used unchanged. `FrameSummary` min, max and last stay data-only |
-| Line | For the first 8 thresholds with a finite value inside the plot: dashed (`size.chart-dash` 4 px, `size.chart-dash-gap` 5 px, #282 Part 2b), 1 px (`border.hairline`), in `colours.state[state]`, at `Math.round(y) + 0.5` across the plot. A threshold outside a pinned axis draws no line |
-| Label text | `${glyph} ${label}` for every finite threshold, drawn or not, in `AXIS_FONT` and the state colour, on a `colours.chip` box `LABEL_HEIGHT` tall with `space.1` padding, from `plot.x + space.2` |
-| Place | Above its line (`y − 4 − H`), or below it when that would leave the plot; at the plot's top or bottom edge for a line off a pinned axis |
-| Width | At most `maxW = max(0, min(plot.width − 16, round(plot.width / 2)))`: a longer text keeps its longest code-point prefix that fits with `…` (or the glyph alone), and is `clipped` |
-| Stack | Labels sorted by their place (ties in spec order) are pushed down so none overlaps (gap 4 px); if the last passes the plot's bottom, the boxes are shifted up whole, keeping their height and gap |
-| Overflow | If the first box then leaves the plot's top, `n = floor((plot.height + 4) / (H + 4))` boxes fit: the first `n − 1` stay and the rest become one `+N` chip (axis text colour, `clipped`, `text` = their full texts joined by `; `) |
-| Leader | A label moved from its place, or whose line is off-axis, gets a 1 px vertical leader in its state colour at `plot.x + 4`, from the box's middle to its line (or the plot edge) |
+| Step       | Rule                                                                                                                                                                                                                                                                                                    |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Domain     | The auto value domain is `withThresholds(min, max, thresholds)`: the data's (line) or the post-merge stacked totals' (bars, with 0) min and max, widened to every finite threshold; the axis still includes 0. A pinned `valueRange` is used unchanged. `FrameSummary` min, max and last stay data-only |
+| Line       | For the first 8 thresholds with a finite value inside the plot: dashed (`size.chart-dash` 4 px, `size.chart-dash-gap` 5 px, #282 Part 2b), 1 px (`border.hairline`), in `colours.state[state]`, at `Math.round(y) + 0.5` across the plot. A threshold outside a pinned axis draws no line               |
+| Label text | `${glyph} ${label}` for every finite threshold, drawn or not, in `AXIS_FONT` and the state colour, on a `colours.chip` box `LABEL_HEIGHT` tall with `space.1` padding, from `plot.x + space.2`                                                                                                          |
+| Place      | Above its line (`y − 4 − H`), or below it when that would leave the plot; at the plot's top or bottom edge for a line off a pinned axis                                                                                                                                                                 |
+| Width      | At most `maxW = max(0, min(plot.width − 16, round(plot.width / 2)))`: a longer text keeps its longest code-point prefix that fits with `…` (or the glyph alone), and is `clipped`                                                                                                                       |
+| Stack      | Labels sorted by their place (ties in spec order) are pushed down so none overlaps (gap 4 px); if the last passes the plot's bottom, the boxes are shifted up whole, keeping their height and gap                                                                                                       |
+| Overflow   | If the first box then leaves the plot's top, `n = floor((plot.height + 4) / (H + 4))` boxes fit: the first `n − 1` stay and the rest become one `+N` chip (axis text colour, `clipped`, `text` = their full texts joined by `; `)                                                                       |
+| Leader     | A label moved from its place, or whose line is off-axis, gets a 1 px vertical leader in its state colour at `plot.x + 4`, from the box's middle to its line (or the plot edge)                                                                                                                          |
 
 The layer redraws on every camera preview, so the lines and labels move with the value axis.
 
@@ -343,17 +343,17 @@ On line, bars and heatmap (`engine/canvas2d/eventMark.ts`, [ADR-0023](../../desi
 #64 Part C). Stat ignores events. A frame without events draws exactly as before. An empty
 heatmap (no timestamps or no bounds) draws no axes or cells but still draws and reports its events.
 
-| Step | Rule |
-|---|---|
-| Band | Once the last `setEvents` held at least one event, in view or not, the plot starts at `space.2 + EVENT_BAND` (`EVENT_BAND` = `LABEL_HEIGHT + space.1` = 18 px) and is shorter by it (`layoutPlot(…, eventBand)`), so a pan never moves the plot. `setEvents([])` gives today's layout |
-| In view | Events with a finite `atMs` inside the drawn window (the preview's during a gesture), sorted by `(atMs, id)`, at `x = Math.round(xOf(atMs)) + 0.5` of the frame's time transform |
-| Line | Solid, 1 px (`border.hairline`), in `colours.event` (`text-muted`), from the plot's top to its bottom, one per event in view. Order: axes, series (paths, bars, cells), thresholds, **event lines**, value-label chips, **event labels**, overlay. Clipped to the plot when the value axis is pinned |
-| Text | `${glyph} ${title}` with ◆ deploy, ⚙ config, ⚑ flag (`theme/glyphs.ts`, T02-008); a note is its title alone. `AXIS_FONT`, `colours.axisText`, `textBaseline: 'top'`, at `y = space.2`, through `fillText` only (T02-019) |
-| Groups | In order, an event joins the current group while it is less than `size.target-min` (24 px) right of the group's first line, else it starts a group |
-| Bounds | The band is `[L, R] = [plot.x, plot.x + plot.width]`. Group i's anchor is `a_i = max(L, firstX_i − 4)`, its limit `a_{i+1} − 4` (the last's is `R`), and `lo_i` is the previous box's right `+ 4` (the first's is `L`). No box leaves `[L, R]` or comes within 4 px of another |
-| Forms | A single event's forms are the full label, `fitText` (the longest prefix of at least 2 code points with `…`, `engine/canvas2d/text.ts`) and the short form (the glyph, or the first code point with `…`). A group of two or more is a chip: `+N`, or `99+` past 99 |
-| Place | (a) Left-aligned at `a_i` with room `limit − a_i`: the full label, then `fitText`. (b) Else right-aligned at the limit with room `limit − lo_i`: every form. (c) Else the group merges into the previous placed group as a chip, which is placed again from (a); repeated as needed. (d) With no previous group, every group becomes one chip with limit `R`; if neither (a) nor (b) fits it, there is one box `{ x: L, width: R − L }` without text holding every id |
-| Summary | One `EventLabelBox` per placed group: `box` (`y = space.2`, `LABEL_HEIGHT` tall, the drawn width), `x` (its first member's line), `ids` in `(atMs, id)` order, `text` (every member's full label joined by `; `) and `clipped` (anything but a whole single label). Every event in view is in exactly one box. The boxes are part of the summary, so a change emits `a11y` again |
+| Step    | Rule                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Band    | Once the last `setEvents` held at least one event, in view or not, the plot starts at `space.2 + EVENT_BAND` (`EVENT_BAND` = `LABEL_HEIGHT + space.1` = 18 px) and is shorter by it (`layoutPlot(…, eventBand)`), so a pan never moves the plot. `setEvents([])` gives today's layout                                                                                                                                                                                 |
+| In view | Events with a finite `atMs` inside the drawn window (the preview's during a gesture), sorted by `(atMs, id)`, at `x = Math.round(xOf(atMs)) + 0.5` of the frame's time transform                                                                                                                                                                                                                                                                                      |
+| Line    | Solid, 1 px (`border.hairline`), in `colours.event` (`text-muted`), from the plot's top to its bottom, one per event in view. Order: axes, series (paths, bars, cells), thresholds, **event lines**, value-label chips, **event labels**, overlay. Clipped to the plot when the value axis is pinned                                                                                                                                                                  |
+| Text    | `${glyph} ${title}` with ◆ deploy, ⚙ config, ⚑ flag (`theme/glyphs.ts`, T02-008); a note is its title alone. `AXIS_FONT`, `colours.axisText`, `textBaseline: 'top'`, at `y = space.2`, through `fillText` only (T02-019)                                                                                                                                                                                                                                              |
+| Groups  | In order, an event joins the current group while it is less than `size.target-min` (24 px) right of the group's first line, else it starts a group                                                                                                                                                                                                                                                                                                                    |
+| Bounds  | The band is `[L, R] = [plot.x, plot.x + plot.width]`. Group i's anchor is `a_i = max(L, firstX_i − 4)`, its limit `a_{i+1} − 4` (the last's is `R`), and `lo_i` is the previous box's right `+ 4` (the first's is `L`). No box leaves `[L, R]` or comes within 4 px of another                                                                                                                                                                                        |
+| Forms   | A single event's forms are the full label, `fitText` (the longest prefix of at least 2 code points with `…`, `engine/canvas2d/text.ts`) and the short form (the glyph, or the first code point with `…`). A group of two or more is a chip: `+N`, or `99+` past 99                                                                                                                                                                                                    |
+| Place   | (a) Left-aligned at `a_i` with room `limit − a_i`: the full label, then `fitText`. (b) Else right-aligned at the limit with room `limit − lo_i`: every form. (c) Else the group merges into the previous placed group as a chip, which is placed again from (a); repeated as needed. (d) With no previous group, every group becomes one chip with limit `R`; if neither (a) nor (b) fits it, there is one box `{ x: L, width: R − L }` without text holding every id |
+| Summary | One `EventLabelBox` per placed group: `box` (`y = space.2`, `LABEL_HEIGHT` tall, the drawn width), `x` (its first member's line), `ids` in `(atMs, id)` order, `text` (every member's full label joined by `; `) and `clipped` (anything but a whole single label). Every event in view is in exactly one box. The boxes are part of the summary, so a change emits `a11y` again                                                                                      |
 
 `setEvents` with the same array does nothing. A change that gains or loses every event moves the
 plot, so it clears the hover as any layout input does; other changes redraw the layer only. The
@@ -381,18 +381,17 @@ and every event stroke (its x, colour and clip), and the summary's label boxes. 
 (`layer_parity`, `layout_event_band`) and the browser tests (`e2e:engine-layer`,
 `canvas2d parity`) read it; `unit:engine-fixtures` keeps it fresh.
 
-
 ## Interaction (INT-033, IA-020 subset)
 
-| Input | Effect |
-|---|---|
-| Pointer over the plot | Line: the crosshair snaps to the nearest sample of the first series; every series whose nearest sample is within half its own step is listed. Bars and heatmap: the bucket under the pointer. Heatmap pointer: the bucket row under the pointer (`≤ 0.5 s`, or `> 10 s` for the `+Inf` band) |
-| Zoom and pan | The 2D camera, below |
-| Focus the crosshair slider, then `→` / `Home` or `←` / `End` | The crosshair starts at the first or last sample (bucket). Then `←` `→` move by one, `PageUp` / `PageDown` by ten, `Home` / `End` to the ends; `Escape` or leaving the slider hides it. Ctrl, Meta and Alt combinations are left to the browser |
-| `↑` / `↓` on the slider | Selects the previous or next row of the tooltip; the slider's value text reads it |
-| A click on the plot (left, no modifier, < 4 px of travel, no camera move) | The engine emits `select` with the mark under it; `ChartFrame` calls `onInspect(target, 'pointer', slider)`, or `onEmptyClick()` when nothing is under it ([the Inspector](inspector.md)) |
-| `Enter` or `Space` on the slider (keyboard crosshair) | `onInspect` with the slider's selected row, source `keyboard` |
-| A stat tile with `onInspect` | A transparent "Inspect <title>" button over the tile inspects its value |
+| Input                                                                     | Effect                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pointer over the plot                                                     | Line: the crosshair snaps to the nearest sample of the first series; every series whose nearest sample is within half its own step is listed. Bars and heatmap: the bucket under the pointer. Heatmap pointer: the bucket row under the pointer (`≤ 0.5 s`, or `> 10 s` for the `+Inf` band) |
+| Zoom and pan                                                              | The 2D camera, below                                                                                                                                                                                                                                                                         |
+| Focus the crosshair slider, then `→` / `Home` or `←` / `End`              | The crosshair starts at the first or last sample (bucket). Then `←` `→` move by one, `PageUp` / `PageDown` by ten, `Home` / `End` to the ends; `Escape` or leaving the slider hides it. Ctrl, Meta and Alt combinations are left to the browser                                              |
+| `↑` / `↓` on the slider                                                   | Selects the previous or next row of the tooltip; the slider's value text reads it                                                                                                                                                                                                            |
+| A click on the plot (left, no modifier, < 4 px of travel, no camera move) | The engine emits `select` with the mark under it; `ChartFrame` calls `onInspect(target, 'pointer', slider)`, or `onEmptyClick()` when nothing is under it ([the Inspector](inspector.md))                                                                                                    |
+| `Enter` or `Space` on the slider (keyboard crosshair)                     | `onInspect` with the slider's selected row, source `keyboard`                                                                                                                                                                                                                                |
+| A stat tile with `onInspect`                                              | A transparent "Inspect <title>" button over the tile inspects its value                                                                                                                                                                                                                      |
 
 `ChartFrame` takes two optional props from `useChartInspect` ([the Inspector](inspector.md)):
 `onInspect(target, source, returnFocus)` and `onEmptyClick()`; without them a click selects
@@ -406,7 +405,7 @@ interval on line and heatmap.
 
 **The line rule, in both engines (#68 Part C2c2,
 [ADR-0032](../../designs/adr/0032-selection-dims-as-one-layer.md)).** The unselected line series
-are dimmed *together*: drawn at full alpha into one layer that is composited once at
+are dimmed _together_: drawn at full alpha into one layer that is composited once at
 `opacity.dimmed`, so a series' own overlaps and the crossings of two dimmed series are dimmed once,
 not twice. Then, per selected series in shown order, its `focus` underlay 4 px wider and its line
 (ADR-0025 decision 4). Canvas 2D keeps one scratch canvas per frame (from `createCanvas`, after
@@ -477,24 +476,24 @@ which drops a running gesture when the stage is withdrawn and restores the commi
 
 ### Inputs (line, bars, heatmap; stat has none)
 
-| Input (where) | Action | Commit |
-|---|---|---|
-| Plain wheel, no `Ctrl`/`⌘` (plot) | Not consumed: the page or board scrolls; the frame emits `wheelHint` and shows "Hold Ctrl to zoom" ("Hold ⌘ to zoom" on Apple platforms) | — |
-| `Ctrl`/`⌘`+wheel (plot) | Zoom time about the pointer | `{ window, gesture: 'wheel' }` after 300 ms idle |
-| Pinch: `Ctrl`+wheel with a fractional `deltaY` (plot) | Zoom time about the pointer (pinch rate) | As wheel |
-| Safari `gesturestart` / `gesturechange` / `gestureend` (plot) | Zoom time about the pointer by `lastScale / scale`; `Ctrl` wheels between start and end are ignored | As wheel |
-| `Ctrl`/`⌘`+`Shift`+wheel (plot) | Zoom values about the pointer (line, bars); heatmap: consumed, no change | `{ value, gesture: 'wheel' }` |
-| `Ctrl`/`⌘`+horizontal swipe, `|deltaX| > |deltaY|` (plot) | Pan time | `{ window, gesture: 'wheel' }` |
-| Wheel anywhere else | Not consumed: the page scrolls | — |
-| Left or middle drag of 4 px or more (plot, x-axis band) | Pan time; the content follows the pointer | `{ window, gesture: 'pan' }` (plot) or `'axis'` (band) on release |
-| Left drag of 4 px or more (y-axis band; line, bars) | Pan values, from the auto domain when unpinned | `{ value, gesture: 'axis' }` on release |
-| Right drag, or `Alt`+left drag, of 4 px or more (plot) | Box zoom: on release the dragged span, both ends snapped to the brush unit (the smallest of 1 s … 1 d that is at least 4 px of time), at least 1 s | `brush { gesture: 'drag' }` |
-| A press that moves less than 4 px | Nothing (a click) | — |
-| Double-click (plot) | Zoom out: twice the window, around its centre | `brush { gesture: 'zoomOut' }` |
-| Double-click (y-axis band; line, bars) | Value axis back to auto, when pinned | `{ value: 'auto', gesture: 'fit' }` |
-| Reset Y axis button | Value axis back to auto; focus moves to the crosshair slider | None (`ChartFrame` state) |
-| `Escape` on the slider, `pointercancel`, `lostpointercapture` during a press | Cancel: the view and value range are restored, no commit, no box | — |
-| Left press with `Ctrl` and not `⌘` (macOS secondary click), touch pointers | Ignored | — |
+| Input (where)                                                                | Action                                                                                                                                             | Commit                                                            |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Plain wheel, no `Ctrl`/`⌘` (plot)                                            | Not consumed: the page or board scrolls; the frame emits `wheelHint` and shows "Hold Ctrl to zoom" ("Hold ⌘ to zoom" on Apple platforms)           | —                                                                 |
+| `Ctrl`/`⌘`+wheel (plot)                                                      | Zoom time about the pointer                                                                                                                        | `{ window, gesture: 'wheel' }` after 300 ms idle                  |
+| Pinch: `Ctrl`+wheel with a fractional `deltaY` (plot)                        | Zoom time about the pointer (pinch rate)                                                                                                           | As wheel                                                          |
+| Safari `gesturestart` / `gesturechange` / `gestureend` (plot)                | Zoom time about the pointer by `lastScale / scale`; `Ctrl` wheels between start and end are ignored                                                | As wheel                                                          |
+| `Ctrl`/`⌘`+`Shift`+wheel (plot)                                              | Zoom values about the pointer (line, bars); heatmap: consumed, no change                                                                           | `{ value, gesture: 'wheel' }`                                     |
+| `Ctrl`/`⌘`+horizontal swipe, `                                               | deltaX                                                                                                                                             | >                                                                 | deltaY | ` (plot) | Pan time | `{ window, gesture: 'wheel' }` |
+| Wheel anywhere else                                                          | Not consumed: the page scrolls                                                                                                                     | —                                                                 |
+| Left or middle drag of 4 px or more (plot, x-axis band)                      | Pan time; the content follows the pointer                                                                                                          | `{ window, gesture: 'pan' }` (plot) or `'axis'` (band) on release |
+| Left drag of 4 px or more (y-axis band; line, bars)                          | Pan values, from the auto domain when unpinned                                                                                                     | `{ value, gesture: 'axis' }` on release                           |
+| Right drag, or `Alt`+left drag, of 4 px or more (plot)                       | Box zoom: on release the dragged span, both ends snapped to the brush unit (the smallest of 1 s … 1 d that is at least 4 px of time), at least 1 s | `brush { gesture: 'drag' }`                                       |
+| A press that moves less than 4 px                                            | Nothing (a click)                                                                                                                                  | —                                                                 |
+| Double-click (plot)                                                          | Zoom out: twice the window, around its centre                                                                                                      | `brush { gesture: 'zoomOut' }`                                    |
+| Double-click (y-axis band; line, bars)                                       | Value axis back to auto, when pinned                                                                                                               | `{ value: 'auto', gesture: 'fit' }`                               |
+| Reset Y axis button                                                          | Value axis back to auto; focus moves to the crosshair slider                                                                                       | None (`ChartFrame` state)                                         |
+| `Escape` on the slider, `pointercancel`, `lostpointercapture` during a press | Cancel: the view and value range are restored, no commit, no box                                                                                   | —                                                                 |
+| Left press with `Ctrl` and not `⌘` (macOS secondary click), touch pointers   | Ignored                                                                                                                                            | —                                                                 |
 
 A time chart zooms only with `Ctrl`/`⌘` held (owner decision 2026-11-27, `timeWheelIntent` in
 `controller/input.ts`), so a plain wheel scrolls the page; the geomap keeps its own wheel
@@ -503,13 +502,13 @@ zoom time. Every consumed wheel and handled press
 calls `preventDefault()` (no page scroll, browser zoom, text selection or middle-button
 autoscroll); a wheel during a press is consumed and ignored.
 
-| Constant (`input.ts`) | Value |
-|---|---|
-| `WHEEL_IDLE_MS` | 300 ms: a wheel gesture commits after this long without a consumed wheel |
-| `WHEEL_ZOOM_PER_PX`, `PINCH_ZOOM_PER_PX` | factor = exp(px · k), k = 0.002 (a 100 px notch zooms × 1.221) or 0.01 for a pinch |
-| `WHEEL_LINE_PX`, `WHEEL_MAX_PX` | `deltaMode` 1 is 16 px a line, `deltaMode` 2 is one plot height; \|px\| is clamped to 400 per event |
-| `DRAG_MIN_PX` | 4 px (`size.chart-brush-min`) |
-| `PAGE_WHEEL_LATCH_MS` | 300 ms (the scroll latch) |
+| Constant (`input.ts`)                    | Value                                                                                               |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `WHEEL_IDLE_MS`                          | 300 ms: a wheel gesture commits after this long without a consumed wheel                            |
+| `WHEEL_ZOOM_PER_PX`, `PINCH_ZOOM_PER_PX` | factor = exp(px · k), k = 0.002 (a 100 px notch zooms × 1.221) or 0.01 for a pinch                  |
+| `WHEEL_LINE_PX`, `WHEEL_MAX_PX`          | `deltaMode` 1 is 16 px a line, `deltaMode` 2 is one plot height; \|px\| is clamped to 400 per event |
+| `DRAG_MIN_PX`                            | 4 px (`size.chart-brush-min`)                                                                       |
+| `PAGE_WHEEL_LATCH_MS`                    | 300 ms (the scroll latch)                                                                           |
 
 The zoom hint (`charts/WheelHint.tsx`) is centred over the chart for `WHEEL_HINT_MS` (1.2 s), at
 most once per `WHEEL_HINT_GAP_MS` (3 s) on the page; it fades with `--motion-standard` (no fade
@@ -543,10 +542,10 @@ click on an axis band or elsewhere) is not touched. The application has no conte
 
 ### The gesture and its commit
 
-| State | Meaning |
-|---|---|
-| idle | The view is the base window (the last `setTimeWindow`, or the last committed view) |
-| wheel | Entered by a consumed wheel, swipe or pinch; every further one re-arms the 300 ms timer; a handled press commits it at once |
+| State | Meaning                                                                                                                                 |
+| ----- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| idle  | The view is the base window (the last `setTimeWindow`, or the last committed view)                                                      |
+| wheel | Entered by a consumed wheel, swipe or pinch; every further one re-arms the 300 ms timer; a handled press commits it at once             |
 | press | Entered by a handled press; it moves the view once it has moved 4 px (box: horizontally); ends on release (commit or box), or on cancel |
 
 The preview is f64 and is not rounded, except that time pans of a view narrower than the minimum
@@ -576,10 +575,10 @@ the frame holds the band from the first camera move: the plot does not move unde
 during the gesture, at its commit, or when the refetched data arrives (T02-021). Wider labels are
 compacted or chipped (see Axes).
 
-| Event | Band |
-|---|---|
-| A preview step | Held at the width of the frame on screen |
-| Gesture end, commit, `setData`, `setSpec` with the same kind and unit and a set `valueRange`, the echoed `setTimeWindow` equal to the base window, any `setTimeWindow` during a gesture | Kept |
+| Event                                                                                                                                                                                                                                                                                                                                                                                     | Band                                                                      |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| A preview step                                                                                                                                                                                                                                                                                                                                                                            | Held at the width of the frame on screen                                  |
+| Gesture end, commit, `setData`, `setSpec` with the same kind and unit and a set `valueRange`, the echoed `setTimeWindow` equal to the base window, any `setTimeWindow` during a gesture                                                                                                                                                                                                   | Kept                                                                      |
 | A press that moved, then cancelled (`Escape`, `pointercancel`, `lostpointercapture`); `resize` to another size; `setSpec` with another kind or unit; `setSpec` whose `valueRange` goes from set to absent (Reset Y axis, the fit commit); an idle `setTimeWindow` to another window (picker, keys, Back, auto-refresh, another panel's commit); the pointer leaving the canvas while idle | Released: the next draw measures the labels again, and full labels return |
 
 ### The value-axis pin in `ChartFrame`
@@ -630,13 +629,13 @@ The transforms of the histogram panel over raw values live in `src/vis/transform
 the app calls them yet: the panel, its Canvas 2D drawing, tooltip, meter popover, table and the
 `bin` Inspector target come with #208 Part 2. They are pure and run in a per-panel worker.
 
-| Module | What it does |
-|---|---|
-| `histogram.ts` | `histogram(input, source, o, q)`: the whole pipeline; hit regions, brush, selection reads, CDF/ECDF, meter, popover lines, summary facts |
-| `bins.ts` | `binEdges`, `scaleOf`, `binIndex`, `displayCollapsed` (T21-013), re-exported by `histogram.ts` |
-| `slice.ts` | `Slicer`, `checkStep`, `yieldToMain`: 8 ms steps (`STEP_MS`) for scans on the main thread |
-| `histogram.worker.ts` | the worker: `onHistogramMessage`, `resultTransfer` |
-| `histogramClient.ts` | the main thread: `runHistogram`, `disposeHistogram` |
+| Module                | What it does                                                                                                                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `histogram.ts`        | `histogram(input, source, o, q)`: the whole pipeline; hit regions, brush, selection reads, CDF/ECDF, meter, popover lines, summary facts |
+| `bins.ts`             | `binEdges`, `scaleOf`, `binIndex`, `displayCollapsed` (T21-013), re-exported by `histogram.ts`                                           |
+| `slice.ts`            | `Slicer`, `checkStep`, `yieldToMain`: 8 ms steps (`STEP_MS`) for scans on the main thread                                                |
+| `histogram.worker.ts` | the worker: `onHistogramMessage`, `resultTransfer`                                                                                       |
+| `histogramClient.ts`  | the main thread: `runHistogram`, `disposeHistogram`                                                                                      |
 
 The frame types (`HistogramFrame`, `SourceGroup`, `HistogramGroup`, `HistogramCoverage`, `Labels`)
 and `histogramFrameValid` are in `src/data/frames.ts`; `LINE_DASHES`, `OTHER_DASH` and the four
@@ -684,15 +683,14 @@ span and width normalised by S = 10^`scaleOf(min, max)`. S and every nice width 
 `Number('1e' + e)`, which is the same in every JS engine (`10 ** 290` is not); only log-axis edges
 10^x and the terminal log rule use `10 ** x`.
 
-| Mode | Rule |
-|---|---|
-| `count` c | c ≤ 200 evenly spaced edges |
+| Mode      | Rule                                                                                                                                                                                          |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `count` c | c ≤ 200 evenly spaced edges                                                                                                                                                                   |
 | `width` w | aligned to multiples of w; a width that is 0, subnormal or gives k > 200 widens to nice(span/200), then the next nice value (1, 2, 2.5, 5 × 10ᵉ) while k > 200; `widenedTo` is the width used |
-| `auto` | Freedman–Diaconis h = 2·IQR·n^(−1/3) (Sturges when IQR = 0), clamped to 5…200 bins, a nice width, then as `width` |
-| min = max | one bin of width nice(\|v\|·0.1) (1 at 0) around v |
+| `auto`    | Freedman–Diaconis h = 2·IQR·n^(−1/3) (Sturges when IQR = 0), clamped to 5…200 bins, a nice width, then as `width`                                                                             |
+| min = max | one bin of width nice(\|v\|·0.1) (1 at 0) around v                                                                                                                                            |
 
-Anything else invalid (|q| > 2⁵², or still k > 200 after the widening steps) falls back to `count`
-20. The guard then checks every edge is finite, increasing, positive on log and that adjacent
+Anything else invalid (|q| > 2⁵², or still k > 200 after the widening steps) falls back to `count` 20. The guard then checks every edge is finite, increasing, positive on log and that adjacent
 edges differ at `formatValue(e, unit, 17)`; if not, k is reduced to the largest that passes, down to
 one bin [min, max] (`adjusted` = k; `collapsed` when its two edges still read the same). Finally, on
 log, a bin whose log10 edges are equal becomes one decade centred on log10 min (`adjusted` 1).
@@ -768,10 +766,25 @@ and draws, in the layer pass:
   domain is [min(0, drawn values, thresholds), max(0, …)], nice-rounded; a `valueRange` is used as
   it is (`valueAxis.manual` true).
 - **Bars:** the category extent divided by the row count is the band; a bar is
-  max(1, round(0.7 · band)) thick, centred, from x(0) to x(v), both clamped to the domain. Its
-  colour is the state colour when the row has a state, else `series-{1 + seriesColourIndex(row)}`
-  (T22-004). No gradient, pattern or shadow (T22-001). A non-finite value has no bar and the value
-  label `no data`.
+  max(1, min(28, round(0.65 · band))) thick (about a 35 % gap), centred, from x(0) to x(v), both
+  clamped to the domain, over a 1 px `chart-axis` baseline at 0. Its colour is the state colour
+  when the row has a state, else `series-{1 + seriesColourIndex(row)}` (T22-004), drawn by
+  `barFill.ts`: an alpha ramp from full at the value end to 70 % at the base, a 1 px lighter
+  highlight on the value edge and a 3 px (`radius.tag`) radius on the value-end corners only; no
+  pattern or shadow (T22-001). Under forced colours (`(forced-colors: active)`) the fill is plain.
+  A non-finite value has no bar and the value label `no data`.
+- **Text:** names and value labels are `BAR_FONT` (the UI sans, 12 px); names `text-muted`,
+  shortened with a middle ellipsis, values `text` just past the bar end. The value-axis ticks keep
+  the mono axis font.
+- **Motion (`barMotion.ts`):** on the first paint and whenever the drawn keys or values change, the
+  bars grow from the baseline over `motion.zoom-open` (400 ms) on `easing-spring`, the value labels
+  riding the bar end and fading in. Hovering (or keyboard-focusing) a bar eases the others to 55 %
+  over `motion.hover` (120 ms) on `easing-out`; a selection's `dimmed` takes precedence. The frame
+  redraws its layer only while a motion runs. Under `(prefers-reduced-motion: reduce)`, and where
+  `matchMedia` is missing, both land at once.
+- **Time bars (`bars`):** a bucket at least 4 px wide leaves about 20 % of it as a gap (not at a
+  plot edge that cuts it), shades each stacked column as one ramp (full at the stack top, 70 % at 0) and rounds the stack's top by 2 px; a narrower bucket is one flat fill at 85 % alpha. Under
+  forced colours the fills are plain.
 - **Names:** right-aligned in the name band (rotated −90° below the plot when vertical), the state
   glyph before the name in its state colour. Hidden names leave only the glyphs, in an 18 px
   column.
@@ -794,10 +807,10 @@ keys of its key target, the mirror listbox:
 - **Pointer:** `mark` when the band under the pointer changes (the band spans the name band and
   the plot across the category axis) and `null` once on leaving. A left press without a modifier
   released within 4 px (`DRAG_MIN_PX`) emits `pick` `{ keys: [key] or [], gesture: 'click',
-  source: 'pointer' }`. One that travels further brushes the bands from the press to the pointer,
+source: 'pointer' }`. One that travels further brushes the bands from the press to the pointer,
   each clamped to the drawn rows: the overlay fills them with `selection` across the plot while
   dragging, and the release emits `pick` `{ keys (draw order), gesture: 'brush', source:
-  'pointer' }`. `pointercancel` and `lostpointercapture` end the press with no `pick`.
+'pointer' }`. `pointercancel` and `lostpointercapture` end the press with no `pick`.
 - **Keys** (f is the focus index, a the brush anchor, n the drawn rows): `focus` sets
   f = min(f ?? 0, n − 1) and emits a keyboard `mark`; the arrows move f by one (Right and Down
   forward), Home and End to the ends, each clamped and dropping a; with Shift, a is set to f first
@@ -864,32 +877,32 @@ eighteen charts: thirteen frames from seeded synthetic data for the current wind
 `src/dev/gallery.ts`, seed `GALLERY_SEED` = 20261120 plus the entry index; keys from a development
 FNV-1a stand-in for `key_hash`, `src/dev/keyHash.ts`):
 
-| Id | Chart |
-|---|---|
-| `line-1` | Request rate, 1 series × 1 440 points (`rps`) |
-| `line-50` | Request latency, 50 series × 1 440 points (ms) |
-| `line-gaps` | Queue depth with gaps, 3 series (a NaN run, periodic NaNs, a lone point) |
-| `line-600` | Pod memory, 600 series × 60 points (bytes; 500 shown) |
-| `heatmap` | Request latency distribution, 60 columns × 12 buckets (5 ms … 10 s, `+Inf`) |
-| `bars` | Log volume by level, 5 levels × 60 buckets |
-| `stat` | p99 latency, 2.84 s |
-| `line-thresholds` | Request latency with an SLO threshold, 3 series (s), watch at 250 ms and failing at 300 ms (#64 Part B) |
-| `stat-sparkline` | p99 latency with a sparkline, 1 series × 120 points (ms) |
-| `line-extreme` | Values near the largest finite number, 1 series × 1 440 points mapped onto [−MAX, MAX] (#97) |
-| `line-events` | Request rate with deploy and change markers, 1 series × 1 440 points (`rps`): a deploy at 30 % of the window, and a config and a feature flag change 30 s apart at 70 %, gathered into a `+2` chip (#64 Part C) |
+| Id                | Chart                                                                                                                                                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `line-1`          | Request rate, 1 series × 1 440 points (`rps`)                                                                                                                                                                       |
+| `line-50`         | Request latency, 50 series × 1 440 points (ms)                                                                                                                                                                      |
+| `line-gaps`       | Queue depth with gaps, 3 series (a NaN run, periodic NaNs, a lone point)                                                                                                                                            |
+| `line-600`        | Pod memory, 600 series × 60 points (bytes; 500 shown)                                                                                                                                                               |
+| `heatmap`         | Request latency distribution, 60 columns × 12 buckets (5 ms … 10 s, `+Inf`)                                                                                                                                         |
+| `bars`            | Log volume by level, 5 levels × 60 buckets                                                                                                                                                                          |
+| `stat`            | p99 latency, 2.84 s                                                                                                                                                                                                 |
+| `line-thresholds` | Request latency with an SLO threshold, 3 series (s), watch at 250 ms and failing at 300 ms (#64 Part B)                                                                                                             |
+| `stat-sparkline`  | p99 latency with a sparkline, 1 series × 120 points (ms)                                                                                                                                                            |
+| `line-extreme`    | Values near the largest finite number, 1 series × 1 440 points mapped onto [−MAX, MAX] (#97)                                                                                                                        |
+| `line-events`     | Request rate with deploy and change markers, 1 series × 1 440 points (`rps`): a deploy at 30 % of the window, and a config and a feature flag change 30 s apart at 70 %, gathered into a `+2` chip (#64 Part C)     |
 | `line-bytes-rate` | Network receive rate, 1 series × 1 440 points in bytes per second (synthetic base 2.5 MiB/s, amplitude 0.8 MiB/s, both scaled by the series' seeded factor), on IEC ticks: `0 B/s`, `512 KiB/s`, `1 MiB/s` … (#290) |
-| `stat-uptime` | Uptime, 671 000 s → `7.77 d` (#290) |
+| `stat-uptime`     | Uptime, 671 000 s → `7.77 d` (#290)                                                                                                                                                                                 |
 
 and five bar charts (#173 Part 2, `src/dev/galleryBars.ts`), each a `barchartModel` in
 `CategoryChart`, horizontal, its canvas `--size-chart` high with the meter line below:
 
-| Id | Chart |
-|---|---|
-| `barchart` | `byVersion` (40, 7, 120, 3, 15): series colours, names and values |
+| Id                    | Chart                                                                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `barchart`            | `byVersion` (40, 7, 120, 3, 15): series colours, names and values                                                                                 |
 | `barchart-thresholds` | `byVersion` and a `2.28` row of −20, watch at 30 and failing at 100: state colours and glyphs, two dashed lines, the `120` and `-20` labels whole |
-| `barchart-dupes` | {2.31, eu} 50, {2.31, us} 70, {2.30, eu} 20 by `version`: `2.31 · region="us"`, `2.31 · region="eu"`, `2.30` |
-| `barchart-subset` | {2.31} 40 and {2.31, region="∅"} 60 by `version`: `2.31 · region="∅"` and `2.31 · region absent` |
-| `barchart-cap` | `many` (250 rows, only the 10 failing): the cap of ⌊206 / 14⌋ = 14 keeps the max, the min and the failing row |
+| `barchart-dupes`      | {2.31, eu} 50, {2.31, us} 70, {2.30, eu} 20 by `version`: `2.31 · region="us"`, `2.31 · region="eu"`, `2.30`                                      |
+| `barchart-subset`     | {2.31} 40 and {2.31, region="∅"} 60 by `version`: `2.31 · region="∅"` and `2.31 · region absent`                                                  |
+| `barchart-cap`        | `many` (250 rows, only the 10 failing): the cap of ⌊206 / 14⌋ = 14 keeps the max, the min and the failing row                                     |
 
 `?…&bench=categories` shows only `barchart-cap`, 600 px wide with a 2 800 px category extent, so
 it draws 200 bars (`bench:frame-interim-categories`).

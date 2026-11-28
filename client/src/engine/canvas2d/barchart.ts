@@ -4,10 +4,13 @@
  * labels outside the bars, the threshold lines with their glyphs, the baseline ghost and the
  * selection; and its overlay (ADR-0029): the keyboard focus mark and the brush band. Colours come
  * from `ThemeColours` only: the state colour of a row with a state, else
- * its own series colour (T22-004); no gradient, pattern or shadow (T22-001). The layer returns the
+ * its own series colour (T22-004), as the shared bar fill (`barFill.ts`: a gentle gradient toward the
+ * value end, a 1 px highlight on it and a 3 px value-end radius; flat under forced colours), no
+ * pattern or shadow (T22-001). Names and values are in `BAR_FONT`; the bars grow from the baseline
+ * and dim around the hovered bar by `LayerInput.barMotion`. The layer returns the
  * bands that `mark` and `pick` hit; the frame copies the data's coverage into the summary.
  */
-import { size, space } from '../../styles/tokens';
+import { radius, size, space } from '../../styles/tokens';
 import { formatCompact, formatValue, tickBase } from '../../i18n/format';
 import { StateEncoding } from '../../theme/stateEncoding';
 import type {
@@ -24,7 +27,8 @@ import type { BarOverlay } from './barInput';
 import { barLayout, valueText, type BarLayout } from './barLayout';
 import type { Ctx2D } from './ctx';
 import type { LayerInput, LayerModel } from './draw';
-import { AXIS_FONT, BAR_VALUE_BAND, EVENT_BAND, LABEL_HEIGHT } from './layout';
+import { fillBar, type ValueEnd } from './barFill';
+import { AXIS_FONT, BAR_FONT, BAR_VALUE_BAND, EVENT_BAND, LABEL_HEIGHT } from './layout';
 import { seriesColourIndex, type ThemeColours } from './palette';
 import { drawFocusRing, matchedKeys } from './selection';
 import { frameSummary } from './summary';
@@ -57,6 +61,11 @@ export interface BarPick {
   readonly plot: PlotRect;
   readonly bands: readonly BarHit[];
 }
+
+/** The bar's share of its category step (about a 35 % gap between bars). */
+const BAR_SHARE = 0.65;
+/** The thickest bar (CSS px): many-row-few-bar charts stay compact. */
+const BAR_MAX = 28;
 
 /** The smallest gap between horizontal value-axis tick labels (CSS px). */
 const H_TICK_GAP = 72;
@@ -266,7 +275,7 @@ function drawValueLabel(
 ): void {
   const { ctx, colours } = i;
   const negative = r.value < 0;
-  ctx.fillStyle = colours.axisText;
+  ctx.fillStyle = colours.text;
   const text = valueText(r, spec);
   if (spec.orientation === 'horizontal') {
     ctx.textBaseline = 'middle';
@@ -286,7 +295,7 @@ export function drawBarchart(
   coverage: Coverage,
 ): LayerModel {
   const { ctx, colours } = i;
-  ctx.font = AXIS_FONT;
+  ctx.font = BAR_FONT;
   const lay = barLayout(spec, rows, i.cssW, i.cssH, (s) => ctx.measureText(s).width);
   const { plot } = lay;
   const horizontal = spec.orientation === 'horizontal';
@@ -326,8 +335,14 @@ export function drawBarchart(
   const extent = horizontal ? plot.height : plot.width;
   const start = horizontal ? plot.y : plot.x;
   const step = n > 0 ? extent / n : 0;
-  const thick = Math.max(1, Math.round(0.7 * step));
+  const thick = Math.max(1, Math.min(BAR_MAX, Math.round(BAR_SHARE * step)));
   const zero = pos(clamp(0));
+  const grow = i.barMotion?.grow ?? 1;
+  const plain = i.plain === true;
+  // The baseline across the category axis at 0 (`chart-axis`), under the bars.
+  ctx.fillStyle = colours.axis;
+  if (horizontal) ctx.fillRect(Math.round(zero), plot.y, 1, plot.height);
+  else ctx.fillRect(plot.x, Math.round(zero) - 1, plot.width, 1);
   const matched = matchedKeys(
     i.selection,
     rows.map((r) => r.key),
@@ -349,17 +364,29 @@ export function drawBarchart(
       row: { key: r.key, name: r.name, colourIndex, value: r.value },
     });
     // T25-006: with a relevant selection the others are dimmed; with none, alpha is untouched.
+    // Off a selection, the bars other than the hovered one ease to `HOVER_DIM`.
     const hit = matched?.has(r.key) === true;
-    if (matched !== null) ctx.globalAlpha = hit ? 1 : colours.dimmed;
+    const alpha = matched !== null ? (hit ? 1 : colours.dimmed) : (i.barMotion?.alpha(r.key) ?? 1);
+    ctx.globalAlpha = alpha;
+    const drawnEnd = zero + (end - zero) * grow;
     const rect = horizontal
-      ? { x: Math.min(zero, end), y: c0, w: Math.abs(end - zero), h: thick }
-      : { x: c0, y: Math.min(zero, end), w: thick, h: Math.abs(zero - end) };
+      ? { x: Math.min(zero, drawnEnd), y: c0, w: Math.abs(drawnEnd - zero), h: thick }
+      : { x: c0, y: Math.min(zero, drawnEnd), w: thick, h: Math.abs(zero - drawnEnd) };
     if (finite) {
-      ctx.fillStyle =
+      const colour =
         r.state === null ? (colours.series[colourIndex ?? 0] ?? '') : colours.state[r.state];
-      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      const valueEnd: ValueEnd = horizontal
+        ? r.value < 0
+          ? 'left'
+          : 'right'
+        : r.value < 0
+          ? 'bottom'
+          : 'top';
+      fillBar(ctx, rect, valueEnd, colour, radius.tag, plain);
       if (hit) drawFocusRing(ctx, colours, rect.x, rect.y, rect.w, rect.h);
     }
+    // T25-006: a selection dims the names and labels too; the hover dims only the bars.
+    ctx.globalAlpha = matched !== null ? alpha : 1;
     if (spec.ghost && r.baseline !== null && Number.isFinite(r.baseline)) {
       const b = pos(clamp(r.baseline));
       ctx.save();
@@ -370,11 +397,15 @@ export function drawBarchart(
       else ctx.strokeRect(c0, Math.min(zero, b), thick, Math.abs(zero - b));
       ctx.restore();
     }
-    ctx.font = AXIS_FONT;
+    ctx.font = BAR_FONT;
     drawName(i, spec, lay, plot, r, lay.names?.[k] ?? null, centre);
-    if (spec.valueLabels) drawValueLabel(i, spec, r, end, centre);
+    if (spec.valueLabels) {
+      // The label rides the growing bar end and fades in with it.
+      ctx.globalAlpha = alpha * grow;
+      drawValueLabel(i, spec, r, finite ? drawnEnd : end, centre);
+    }
+    ctx.globalAlpha = 1;
   });
-  if (matched !== null) ctx.globalAlpha = 1;
   const thresholdLabels = drawBarThresholds(i, spec, plot, domain, pos);
   return model({ ...base, thresholdLabels });
 }

@@ -7,10 +7,15 @@ import type { BarchartSpec, PlotRect, VisKind } from '../api';
  * the e2e helpers read them without loading `StateEncoding`'s CSS module.
  */
 export const AXIS_FONT = `${String(font.size.xs)}px ${font.family.mono}`;
+/** The bar chart's category names and value labels: the UI sans at `font.size.sm`. */
+export const BAR_FONT = `${String(font.size.sm)}px ${font.family.ui}`;
 export const STAT_FONT = `${String(font.weight.semibold)} ${String(font.size.display)}px ${font.family.ui}`;
 
 /** The height of one axis label line. */
 export const LABEL_HEIGHT = Math.ceil(font.size.xs * font.lineHeight.tight);
+
+/** The height of one bar chart name or value label line (`BAR_FONT`). */
+export const BAR_LABEL_HEIGHT = Math.ceil(font.size.sm * font.lineHeight.tight);
 
 /** The event label band above the plot (ADR-0023): one label line and the gap under it. */
 export const EVENT_BAND = LABEL_HEIGHT + space['1'];

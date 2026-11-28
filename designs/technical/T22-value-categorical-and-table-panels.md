@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Review |
-| **Version** | 1.11-rc · 2026-11-27 |
+| **Version** | 1.12-rc · 2026-11-28 |
 | **Milestone** | M-UI1 (stat delta), M-UI2 (bar chart), M-UI5 (pie, stat grid) |
 | **Related ADRs** | [ADR-0007](../adr/0007-in-house-vis-engine.md), [ADR-0014](../adr/0014-typescript-react-web-client.md), [ADR-0022](../adr/0022-chart-thresholds-and-stat-sparkline.md), [ADR-0023](../adr/0023-chart-event-markers.md), [ADR-0025](../adr/0025-chart-frame-selection.md), [ADR-0028](../adr/0028-chart-seam-bar-chart.md) (the I1 seam, #173 Part 2), [ADR-0029](../adr/0029-bar-chart-keys-and-brush.md) (the bar chart's keys and brush, #173 Part 3a) |
 | **Source draft** | plans/151/plan.md (not tracked) |
@@ -100,7 +100,7 @@ Quoted n/a lines are tooltip text.
 ### 4.4 Design rules
 
 #### T22-001 — True 3D or honest 2D
-**MUST** — (VIZ-086.) A 3D form MUST be a real scene: depth geometry, a perspective camera with orbit, pan and dolly, depth-tested occlusion, and VL-023 light. A 2D kind MUST NOT fake depth: no bevels, extruded textures, drop shadows, isometric skins, tilts or luminance shading. Gradients are allowed only as value-axis colour ramps
+**MUST** — (VIZ-086.) A 3D form MUST be a real scene: depth geometry, a perspective camera with orbit, pan and dolly, depth-tested occlusion, and VL-023 light. A 2D kind MUST NOT fake depth: no bevels, extruded textures, drop shadows, isometric skins, tilts or luminance shading. Gradients are allowed only as value-axis colour ramps. A bar's fill MAY also ramp its own colour's alpha along the value axis (full at the value end, at least 70 % at the base) with a 1 px lighter edge at the value end and a value-end corner radius of at most 3 px: these encode no depth and keep the colour's meaning; forced colours draw plain fills
 
 #### T22-002 — No depth options on 2D kinds
 **MUST** — A 3D form MUST be its own kind. barchart, pie and stat options MUST NOT include `perspective`, `projection`, `depth`, `tilt`, `shadow` or `3d`; each is `board.json.unknownKey`
@@ -478,3 +478,4 @@ None.
 | 1.9-rc | 2026-11-27 | #173 Part 3b (I1, the board and Explore surfaces): §3 VIZ-065 row 11 staging; T22-006 the meter's Narrow on a board; T22-007 the I1 interim (the filter is written, nothing re-runs until #193) and the full-screen click; T22-012 the I1 baseline run (PromQL barchart, one run controller linked to the query signal, a failed baseline never fails the panel; ghost and anomaly as session toggles; none on Explore); §4.5 by surface (board `auto` keeps the default set, the draft preview included; Explore passes `EXPLORE_VIS`); §10.3 the `e2e:categorical-coverage` bar rows (Narrow), `e2e:bars-filter` (interim), `e2e:selection-keys` (the legend's Select toggle), `e2e:categorical-table-view` (`bars_many` with one NaN series) |
 | 1.10-rc | 2026-11-27 | #216 Part 2a ([T24](T24-geo-schematic-and-widget-panels.md) I2, the Board list view): §5 `TableView` (`columns`, rows of `key`, `drawn`, `cells`), `PanelRows` rows gain `key` (the mark's key), `panelCsv` takes a `TableView`; T22-013 a caller's caption and close label, and null rows (the state text, Export disabled) |
 | 1.11-rc | 2026-11-27 | #290 (panel units): T22-015 one stored unit per panel, resolved by `panelUnits` on the drawn kind (isolation and the caches keyed by the resolved unit); T22-016 the catalogue and the format rules in `format.ts`, mirrored by `dash-units` on shared fixtures; T22-017 a rate rewrite makes data and count units per second, never time or percent; §6.2 the units version (`vis.unit`); §3 VL-012 and VIZ-057 (units subset) |
+| 1.12-rc | 2026-11-28 | Bar fill polish: T22-001 allows a bar's own-colour alpha ramp along the value axis, a 1 px lighter value edge and a value-end radius of at most 3 px; forced colours draw plain fills |

@@ -62,6 +62,11 @@ export class BarInput {
     private readonly redraw: () => void,
   ) {}
 
+  /** The marked bar's key (pointer hover or keyboard focus); null when none is marked. */
+  markedKey(): string | null {
+    return this.markKey;
+  }
+
   overlay(): BarOverlay {
     const b = this.press?.brush ?? null;
     return {

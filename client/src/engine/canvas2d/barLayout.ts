@@ -13,10 +13,10 @@ import { formatValue } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { StateEncoding } from '../../theme/stateEncoding';
 import type { BarchartSpec, CategoryRow, PlotRect } from '../api';
-import { BAR_VALUE_BAND, categoryExtent, EVENT_BAND, GLYPH_COL, LABEL_HEIGHT } from './layout';
+import { BAR_LABEL_HEIGHT, BAR_VALUE_BAND, categoryExtent, EVENT_BAND, GLYPH_COL } from './layout';
 import { distinctLabels, type Measure } from './text';
 
-/** The narrowest room a shortened name gets: `MMMM` in the axis font (T22-004). */
+/** The narrowest room a shortened name gets: `MMMM` in the bar font (T22-004). */
 export function minNamePx(measure: Measure): number {
   return measure('MMMM');
 }
@@ -65,7 +65,7 @@ function valueRooms(
     }
   }
   if (spec.orientation === 'vertical') {
-    return [anyNeg ? LABEL_HEIGHT : 0, anyPos ? LABEL_HEIGHT : 0];
+    return [anyNeg ? BAR_LABEL_HEIGHT : 0, anyPos ? BAR_LABEL_HEIGHT : 0];
   }
   return [anyNeg ? Math.ceil(neg) + space['1'] : 0, anyPos ? Math.ceil(pos) + space['1'] : 0];
 }

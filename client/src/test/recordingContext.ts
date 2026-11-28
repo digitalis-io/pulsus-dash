@@ -16,6 +16,10 @@ export interface RecordedOp {
   readonly globalAlpha: number;
   /** The transform `[a, b, c, d, e, f]` in effect (after a `setTransform`, its own). */
   readonly transform: readonly number[];
+  /** On `fill`: the current path's bounding box `[x, y, w, h]` (untransformed); else null. */
+  readonly path: readonly [number, number, number, number] | null;
+  /** On `fill` with a gradient: its `[offset, colour]` stops; else null. */
+  readonly stops: readonly (readonly [number, string])[] | null;
 }
 
 export interface RecordingContext extends Ctx2D {
@@ -42,12 +46,31 @@ export function recordingContext(): RecordingContext {
     transform: [1, 0, 0, 1, 0, 0] as number[],
   };
   const stack: (typeof state)[] = [];
+  /** The current path's bounds: [minX, minY, maxX, maxY]; null when empty. */
+  let bounds: [number, number, number, number] | null = null;
+  const grow = (x0: number, y0: number, x1: number, y1: number): void => {
+    bounds =
+      bounds === null
+        ? [x0, y0, x1, y1]
+        : [
+            Math.min(bounds[0], x0),
+            Math.min(bounds[1], y0),
+            Math.max(bounds[2], x1),
+            Math.max(bounds[3], y1),
+          ];
+  };
+  const stopsOf = new WeakMap<object, [number, string][]>();
   const text = (v: string | CanvasGradient | CanvasPattern): string =>
     typeof v === 'string' ? v : 'gradient-or-pattern';
   const rec =
     (op: string) =>
     (...args: unknown[]): void => {
+      const fill = op === 'fill';
+      const b = bounds;
+      const fs = state.fillStyle;
       ops.push({
+        path: fill && b !== null ? [b[0], b[1], b[2] - b[0], b[3] - b[1]] : null,
+        stops: fill && typeof fs === 'object' ? (stopsOf.get(fs) ?? null) : null,
         op,
         args,
         fillStyle: text(state.fillStyle),
@@ -121,16 +144,32 @@ export function recordingContext(): RecordingContext {
     fillRect: rec('fillRect'),
     strokeRect: rec('strokeRect'),
     clearRect: rec('clearRect'),
-    beginPath: rec('beginPath'),
-    moveTo: rec('moveTo'),
-    lineTo: rec('lineTo'),
+    beginPath: (() => {
+      bounds = null;
+      rec('beginPath')();
+    }) as Ctx2D['beginPath'],
+    moveTo: ((x: number, y: number) => {
+      grow(x, y, x, y);
+      rec('moveTo')(x, y);
+    }) as Ctx2D['moveTo'],
+    lineTo: ((x: number, y: number) => {
+      grow(x, y, x, y);
+      rec('lineTo')(x, y);
+    }) as Ctx2D['lineTo'],
     closePath: rec('closePath'),
-    arc: rec('arc'),
+    arc: ((...a: (number | boolean | undefined)[]) => {
+      const [x = 0, y = 0, r = 0] = a as number[];
+      grow(x - r, y - r, x + r, y + r);
+      rec('arc')(...a);
+    }) as Ctx2D['arc'],
     fill: rec('fill'),
     stroke: rec('stroke'),
     fillText: rec('fillText'),
     drawImage: rec('drawImage'),
-    rect: rec('rect'),
+    rect: ((x: number, y: number, w: number, h: number) => {
+      grow(Math.min(x, x + w), Math.min(y, y + h), Math.max(x, x + w), Math.max(y, y + h));
+      rec('rect')(x, y, w, h);
+    }) as Ctx2D['rect'],
     clip: rec('clip'),
     setLineDash: rec('setLineDash'),
     /**
@@ -139,11 +178,15 @@ export function recordingContext(): RecordingContext {
      */
     createLinearGradient(x0: number, y0: number, x1: number, y1: number): CanvasGradient {
       rec('createLinearGradient')(x0, y0, x1, y1);
-      return {
+      const stops: [number, string][] = [];
+      const g = {
         addColorStop(offset: number, c: string) {
+          stops.push([offset, c]);
           rec('addColorStop')(offset, c);
         },
       };
+      stopsOf.set(g, stops);
+      return g;
     },
     /** A pattern object that remembers its tile; a fill with it records `gradient-or-pattern`. */
     createPattern(image: CanvasImageSource, repetition: string | null): CanvasPattern {
