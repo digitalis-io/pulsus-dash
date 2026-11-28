@@ -15,9 +15,9 @@ every version, the actor of every audit event, and the owner of the starred and 
 The tables are described in [the database page](database.md#schema-migration-2), and the board
 tags cache in [migration 4](database.md#schema-migration-4).
 
-## Board spec v9
+## Board spec v10
 
-A board is a JSON object, called the spec. The server stores it with `schema_version` 9. Version 2
+A board is a JSON object, called the spec. The server stores it with `schema_version` 10. Version 2
 (#64 Part B) adds the optional `vis.thresholds` and `vis.legend` to version 1; version 3 (#173
 Part 1) adds the optional `vis.options` and the kinds `barchart` and `pie`; version 4 (#215) adds
 the optional `tags`; version 5 (#198 Part 1) adds the widgets: `query` becomes optional, and the
@@ -25,7 +25,9 @@ kinds `text` and `clock` come with their options ([widgets](#widgets-text-and-cl
 (#216 Part 1) adds the `boardList` widget and its options ([board list](#board-list-boardlist-v6));
 version 7 (#234 Part 1) adds the `geomap` data kind and its options ([geomap](#geomap-geomap-v7));
 version 8, the units version (#290), adds the optional `vis.unit` ([panel units](#panel-units-v8));
-version 9, the variables version (#289), adds the optional `variables` ([board variables](#board-variables-v9)).
+version 9, the variables version (#289), adds the optional `variables` ([board variables](#board-variables-v9));
+version 10, the legend-name version (#204), adds the optional `vis.legendFormat`
+([legend names](#legend-names-v10)).
 Each version is otherwise the same as the one before (see
 [Versions and the upcaster](#versions-and-the-upcaster)).
 
@@ -69,6 +71,7 @@ Each version is otherwise the same as the one before (see
 | `panels[].vis.thresholds` | object, optional | `direction` `above` or `below`, and `steps`: 1 to 8 objects of `value` (a number: 0, or 1e-9 ≤ \|value\| ≤ 1e15; no two equal), `state` (`watch`, `degraded` or `failing`) and `label` (at most 200 characters; `""` shows the value). Valid on every data kind; drawn on line, bars and stat. Refused on a widget |
 | `panels[].vis.legend` | object, optional | `mode` `table` or `hidden`; absent means `table`. Refused on a widget |
 | `panels[].vis.unit` | object, optional (v8) | the panel's unit, `PanelUnit`: `id` required, `suffix` with `custom` only ([below](#panel-units-v8)). Valid on every data kind; refused on a widget |
+| `panels[].vis.legendFormat` | string, optional (v10) | the series name template, such as `{{instance}} select`: 1 to 256 code points ([below](#legend-names-v10)). Valid on every data kind; refused on a widget |
 | `panels[].vis.options` | object, optional | the kind's options, every key optional (below). `{}` is valid on every kind; `null` is refused |
 
 #### `vis.options` (v3)
@@ -268,6 +271,28 @@ The server stores the id and the suffix and nothing else: what a unit looks like
 A member other than `id` and `suffix`, a missing `id`, or a value that is not a string is a shape
 error (`board.json.unknownKey`, `board.json.required`, `board.json.type`) as anywhere else.
 
+#### Legend names (v10)
+
+`vis.legendFormat` is a text template that names each series the panel shows (T22-018): every
+`{{label}}` is replaced by that series' value of `label`, and by nothing when the series has no
+such label. The server stores the text as it is and checks only its length; the rendering is the
+client's ([legend names](../client/boards.md#legend-names-204)).
+
+```json
+{ "kind": "line", "legendFormat": "{{instance}} select" }
+```
+
+The rules, after the unit and before the options:
+
+| Condition | Pointer | `message_key` |
+|---|---|---|
+| a `legendFormat` on a widget | `…/vis/legendFormat` | `board.json.unknownKey` |
+| not a string | `…/vis/legendFormat` | `board.json.type` |
+| 0 or more than 256 code points (Go `utf8.RuneCountInString`; a character outside the BMP counts once) | `…/vis/legendFormat` | `board.legendFormat.invalid` |
+
+Any text is allowed within the bound (a NUL is `board.string.nul`, as in every string): braces
+that are not a `{{label}}` placeholder are shown as written.
+
 #### Board variables (v9)
 
 `variables` is an array of at most 32 `BoardVariable` objects (#289, IA-006): saved definitions
@@ -378,6 +403,7 @@ Only a spec with a clean shape goes on to the rules:
 | a step label over 200 characters | `…/steps/<k>/label` | `board.thresholds.label.tooLong` |
 | `legend.mode` not `table` or `hidden` | `…/vis/legend/mode` | `board.legend.mode.invalid` |
 | a `unit` against the [unit rules](#panel-units-v8) (v8) | `…/vis/unit`, `…/vis/unit/id`, `…/vis/unit/suffix` | `board.json.unknownKey`, `board.unit.id.invalid`, `board.unit.suffix.invalid` |
+| a `legendFormat` against the [legend name rules](#legend-names-v10) (v10) | `…/vis/legendFormat` | `board.json.unknownKey`, `board.legendFormat.invalid` |
 | an option value outside its values (an enum, a `categoryBy` that is neither `""` nor a label name, a `min` or `max` over 1e15 in size, `orientation` `auto` off stat, `textMode` `value` with `layout` `grid`) | `…/vis/options/<key>` | `board.options.<key>.invalid` |
 | both bounds set and `min` ≥ `max` (only when `min` itself is valid) | `…/vis/options/max` | `board.options.max.invalid` |
 | `mode` not `markdown` or `code` (a board list: not one of its four modes) | `…/vis/options/mode` | `board.options.mode.invalid` |
@@ -414,7 +440,9 @@ clock panels beside one data panel, `v6-board-list.json` with a board list in ea
 one data panel, `v7-geomap.json` with a geomap per option set: `{}`, every key at a non-default
 value, `null` `groupBy` and `view`, a geohash, an IATA and a region lookup, and `v8-units.json` with
 every unit id on a line panel (`custom` with `rps`) and a unit on stat, barchart, heatmap, geomap and
-logs panels), the option table `option-keys.json`, the unit ids `unit-ids.json`, and `invalid.json` with
+logs panels, `v9-variables.json` with a query, a custom and a constant variable, and
+`v10-legend-format.json` with a template on line, bars, stat, barchart, heatmap and a section's
+line, spaced, repeated and literal braces among them), the option table `option-keys.json`, the unit ids `unit-ids.json`, and `invalid.json` with
 one case per problem and its exact `fields`. The server's tests and the client's tests both run
 them; a case with `client_fields` (a zone that does not exist, `w-zone-unknown`) expects those on
 the client, which does not check existence.
@@ -437,23 +465,25 @@ A save of a spec whose canonical form differs from the head writes version `n + 
 head (T11-006). A save of an identical spec is a no-op: no version, no audit event, the same ETag,
 and `changed: false` in the response. Versions are never updated or deleted.
 
-Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 9 is the current
-version; a version 1 to 8 spec is a subset of it and reads unchanged (the identity upcast: versions
-1 to 9 decode unchanged). Every write stores version 9. The spec itself needs no SQL migration
+Every stored spec is read through the upcaster (T11 §4.0, T11-016). Version 10 is the current
+version; a version 1 to 9 spec is a subset of it and reads unchanged (the identity upcast: versions
+1 to 10 decode unchanged). Every write stores version 10. The spec itself needs no SQL migration
 (`schema_version` is an existing column); migration 4 adds only the tags cache the list reads. A
 spec stored by a newer server (a rolling upgrade) answers 503 `board saved by a newer server
 version`, and is never overwritten by the older server.
 
-| Server | Reads a v1 to v8 row | Reads a v9 row | Writes |
+| Server | Reads a v1 to v9 row | Reads a v10 row | Writes |
 |---|---|---|---|
-| this release | unchanged | parsed | `schema_version` 9 |
-| the previous release (v8), during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 8 |
+| this release | unchanged | parsed | `schema_version` 10 |
+| the previous release (v9), during a rolling upgrade | yes | 503 `unavailable` (too new); nothing is written | 9 |
 
 During a rolling upgrade (T11-015), the previous release still lists a board this release saved at
-v9 (`GET /boards`), but its `GET` and `PUT` of that board answer 503 and write nothing. A spec with
-`variables` sent to the previous release (`POST`, or `PUT` over a board it can read) is 400, the
-first field `board.json.unknownKey` at `/variables`: it knows no such key, so nothing is written.
-The web client shows that refusal as "This server does not support board variables yet". The v8 →
+v10 (`GET /boards`), but its `GET` and `PUT` of that board answer 503 and write nothing. A spec
+with a `vis.legendFormat` sent to the previous release (`POST`, or `PUT` over a board it can read)
+is 400, the first field `board.json.unknownKey` at `/panels/<i>/vis/legendFormat`: it knows no
+such key, so nothing is written. The web client shows that refusal as "This server does not
+support legend names yet". The v9 → v8 upgrade behaved the same way for `variables`, with
+`board.json.unknownKey` at `/variables` ("This server does not support board variables yet"). The v8 →
 v7 upgrade behaved the same way for a unit, with `board.json.unknownKey` at `/panels/<i>/vis/unit`
 ("This server does not support panel units yet",
 [panel units](../client/boards.md#panel-units-290)). The v7 → v6

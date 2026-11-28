@@ -307,6 +307,30 @@ are more).
   Escape closes it.
 - **Hidden.** Set **Legend** to **Hidden** in the panel editor to show the chart alone.
 
+#### Legend names
+
+By default a series is named by all its labels, such as `up{instance="n1:9000", job="clickhouse"}`.
+Set **Legend name** in the panel editor to name it by a template instead: each `{{label}}` is
+replaced by that series' value of the label.
+
+| Legend name | Series `{instance="n1:9000", job="clickhouse"}` reads |
+|---|---|
+| `{{instance}}` | `n1:9000` |
+| `{{instance}} select` | `n1:9000 select` |
+| `{{ job }} / {{instance}}` | `clickhouse / n1:9000` |
+| `{{pod}} select` (no such label) | ` select` |
+| `{instance}` or `{{}}` | written as it is |
+
+- The name is used everywhere the panel names a series: the legend table and compact legend, the
+  tooltip, the crosshair's spoken text, the Inspector, and a bar chart's or map's names, bar list,
+  table view and CSV.
+- Only the name changes. Two series that read the same name are still two rows that sort, isolate
+  and select apart; a bar chart adds the label that tells them apart (`n1 select · job="a"`).
+- Under the field, the editor lists the labels of the preview's result ("Labels: instance, job").
+- At most 256 characters. Clear the field to name series by their labels again.
+- A server that does not know legend names yet refuses the save with "This server does not
+  support legend names yet".
+
 ### Thresholds
 
 A panel can have up to 8 **thresholds**: absolute values that mark a state, set in the panel editor.
@@ -618,6 +642,7 @@ query and the current time range. Under it are the fields:
 | **Unit** | **Auto** or a unit of the catalogue, and **Suffix** for **Custom** (see [Choosing a unit](#choosing-a-unit)); not on a Logs panel |
 | **Thresholds** | **Add threshold** (up to 8; "Up to 8 thresholds" when full), then per threshold **Value**, **State** and **Label**, and **Remove threshold n**; **Worse when** sets the direction (see [Thresholds](#thresholds)) |
 | **Legend** | **Table** (the default) or **Hidden** (see [Legends](#legends)) |
+| **Legend name** | a template such as `{{instance}} select` that names each series (see [Legend names](#legend-names)); not on a Heatmap or Logs panel |
 
 For PromQL the **Query** field is the editor of Explore › Metrics, with highlighting, completion
 and the **Metric** picker above it ([Explore: metrics](explore-metrics.md)). What you type goes into

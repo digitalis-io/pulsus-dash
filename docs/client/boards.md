@@ -169,12 +169,13 @@ afresh.
 `panelView(run, panel.vis, title)` takes the panel's whole `vis`. A frame view also carries the
 result (`result`, for the legend and isolation), its resolved `units` ([below](#panel-units-290)),
 the panel's `thresholds`
-(`panel.vis.thresholds ?? null`) and `legend` (`panel.vis.legend?.mode ?? 'table'`). On line and
+(`panel.vis.thresholds ?? null`), `legend` (`panel.vis.legend?.mode ?? 'table'`) and
+`legendFormat` (`panel.vis.legendFormat ?? null`, [below](#legend-names-204)). On line and
 bars its spec has `thresholds = thresholdLines(thresholds, spec.unit)` (the seam lines of
 [ADR-0022](../../designs/adr/0022-chart-thresholds-and-stat-sparkline.md)); heatmap and stat specs
 never carry them. `panelFrame(view, key)` is the frame with series `key` isolated (the cached
-`framePlan` isolation, thresholds carried over), and `legendRows(result)` the legend rows
-(`seriesRows`, cached per result).
+`framePlan` isolation, thresholds carried over), and `legendRows(result, legendFormat)` the legend
+rows (`seriesRows`, cached per result and template).
 
 ### Bar chart panels (#173 Part 3b)
 
@@ -617,6 +618,49 @@ second: the query is rated" instead, since a heatmap's bounds are never rated. A
 `board.json.unknownKey` at the panel's `…/vis/unit`. The board page shows it as "This server does
 not support panel units yet" (`unitsUnsupported`, `saveFieldMessage`), and so does the panel
 editor's Unit field. A v7 binary cannot read a v8 head at all (`ErrSchemaTooNew`, 503).
+
+### Legend names (#204)
+
+Board spec v10, the legend-name version ([the boards API](../server/boards-api.md#legend-names-v10)),
+stores an optional series name template per data panel in `vis.legendFormat`, such as
+`{{instance}} select`. `checkBoardSpec` checks it as the server does (1 to 256 code points,
+refused on a widget: the `legend-format-` rows of `invalid.json`, `v10-legend-format.json`).
+
+`src/vis/legendFormat.ts` holds the rule (T22-018):
+
+| Function | What it does |
+|---|---|
+| `renderLegendFormat(format, labels)` | each `{{label}}` (a label name, spaces allowed inside the braces) replaced by the label's value, `''` when the series has no such label; a value is inserted as it is (never read as a template, no `$&` patterns); a repeated placeholder is replaced each time; any other brace text (`{x}`, `{{}}`, `{{ 1x }}`, a lone `}}`) stays literal |
+| `displayName(labels, format)` | the rendered template, or `seriesName(labels)` (the full label set) when `format` is null |
+| `seriesNames(data, format)` | series key → shown name of a series frame, cached per frame and template; null without a template |
+| `namedHover(hover, names)` | the hover event with its rows renamed by key |
+| `resultLabelNames(result)` | the result's label names, once each, in code unit order (the editor's hint) |
+| `isLegendFormat(s)` | 1 to 256 code points |
+
+Where it applies: `seriesRows(result, format)` names the legend table's and the compact legend's
+rows; `ChartFrame` takes `legendFormat` and renames both engines' hover rows by series key, so the
+tooltip and the crosshair slider's `aria-valuetext` read the shown name, and passes the names to
+`targetOf` and `statTarget`, so the Inspector's point and value targets do too. A bar chart's
+`categoryRows` and a map's `geoRowSet` take the template as the marks' base name (before the
+category label, then T22-004's disambiguation), so the bar list, the mark tooltip, the table view
+and its CSV cells follow. A heatmap names buckets, not series, and a log panel names none.
+
+Only the shown name changes. Row keys, isolation, the Context selection and every sort tie-break
+stay on the series key, so two series that render one name are two legend rows (sorted by name,
+then key), two hover rows and two selectable series; a bar chart's equal names are told apart as
+usual (`n1 select · job="a"`).
+
+**The editor.** `LegendFormatField` (`pages/board/LegendFormatField.tsx`) is the last field of the
+visualisation section for every kind but Heatmap and Logs. It is a text field "Legend name" with
+the placeholder `{{instance}}`; typing writes `vis.legendFormat`, and clearing it removes the key.
+Its hint, linked to the field, lists the label names of the preview's result ("Labels: instance,
+job", at most 20 names, then `…`), or reads "Use {{label}}" before a result. An invalid template
+reads "Use 1 to 256 characters."
+
+**An older server.** A server before the legend-name version refuses `vis.legendFormat` with
+`board.json.unknownKey` at the panel's `…/vis/legendFormat`; the board page and the editor show it
+as "This server does not support legend names yet" (`legendFormatUnsupported`,
+`saveFieldMessage`). A v9 binary cannot read a v10 head at all (`ErrSchemaTooNew`, 503).
 
 ## Thresholds, legends and stat tiles (#64 Part B)
 
