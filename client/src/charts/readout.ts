@@ -137,7 +137,7 @@ export interface HoveredValues {
 export function hoveredValues(h: HoverEvent | null, tz: string): HoveredValues | null {
   if (h === null || h.tMs === null) return null;
   return {
-    label: t('chart.legend.valueAt', { time: formatHourMinute(h.tMs, tz) }),
+    label: t('explore.table.lastAt', { time: formatHourMinute(h.tMs, tz) }),
     values: new Map(h.rows.map((r) => [r.key, r.value])),
   };
 }
