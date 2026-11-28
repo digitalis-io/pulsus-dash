@@ -142,7 +142,8 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .readout[data-follow] {
-    transition: translate 60ms var(--motion-easing-out);
+    /* About 60 ms: a short lag that smooths the pointer without trailing it. */
+    transition: translate calc(var(--motion-quick) * 0.6) var(--motion-easing-out);
   }
 
   .readout:popover-open {
