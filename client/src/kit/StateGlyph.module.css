@@ -1,12 +1,12 @@
-/* A state glyph (#64 Part B B.2): glyph and name in the state's colour (`--state-colour` from the
-   StateEncoding class beside this one). */
+/* A state glyph (#64 Part B B.2): glyph and name in the state's text colour (`--state-text` from
+   the StateEncoding class beside this one, #284). */
 .stateGlyph {
   display: inline-flex;
   gap: var(--space-1);
   align-items: center;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
-  color: var(--state-colour);
+  color: var(--state-text);
 }
 
 /* The tag variant (#282 Part 2a, T08 §4.4): 20 px, 3 px corners, the state colour as a tint at
@@ -32,7 +32,7 @@
 }
 
 .tagGlyph {
-  color: var(--state-colour);
+  color: var(--state-text);
 }
 
 .tagLabel {

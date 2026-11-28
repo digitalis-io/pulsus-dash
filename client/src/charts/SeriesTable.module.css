@@ -200,10 +200,10 @@
   font-size: var(--font-size-sm);
 }
 
-/* A cell beyond a panel threshold (#64 Part B §3.6): its state colour, with the glyph and the
+/* A cell beyond a panel threshold (#64 Part B §3.6): its state text colour (#284), with the glyph and the
    hidden state name beside the value (VIZ-067). */
 .stateCell {
-  color: var(--state-colour);
+  color: var(--state-text);
 }
 
 .srOnly {

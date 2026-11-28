@@ -24,15 +24,25 @@ export const STATE_TOKENS: ReadonlySet<string> = new Set([
   '--degraded',
   '--failing',
   '--unknown',
+  '--ok-text',
+  '--watch-text',
+  '--degraded-text',
+  '--failing-text',
+  '--unknown-text',
 ]);
 
-/** The state names, as used for `colour.<theme>.<state>` member access. */
+/** The state names, as used for `colour.<theme>.<state>` member access (and their text variants). */
 export const STATE_NAMES: ReadonlySet<string> = new Set([
   'ok',
   'watch',
   'degraded',
   'failing',
   'unknown',
+  'ok-text',
+  'watch-text',
+  'degraded-text',
+  'failing-text',
+  'unknown-text',
 ]);
 
 const COLOUR_FUNCTIONS: ReadonlySet<string> = new Set([

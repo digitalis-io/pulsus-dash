@@ -1,7 +1,8 @@
 /**
  * The only TypeScript path to the state colours (T02-004). Each state has a glyph and a label as well
  * as a colour (T02 §4), so state is never shown by colour alone. The DOM takes the class (its
- * `--state-colour`); chart marks take `colour` (threshold lines and labels, #64 Part B, ADR-0022).
+ * `--state-colour` for marks and fills, `--state-text` for text); chart marks take `colour` (threshold
+ * lines, #64 Part B, ADR-0022) and chart text `textColour` (threshold labels and glyphs, #284).
  */
 import type { ThemeName, ThresholdState } from '../engine/api';
 import type { MessageId } from '../i18n/t';
@@ -23,7 +24,8 @@ export interface StateStyle {
 const tokenColour = (s: State): Readonly<Record<ThemeName, string>> =>
   Object.freeze({ dark: colour.dark[s], light: colour.light[s] });
 
-const textColour = (s: State): Readonly<Record<ThemeName, string>> => tokenColour(s);
+const textColour = (s: State): Readonly<Record<ThemeName, string>> =>
+  Object.freeze({ dark: colour.dark[`${s}-text`], light: colour.light[`${s}-text`] });
 
 function cls(name: State): string {
   const c = styles[name];
