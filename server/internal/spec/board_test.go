@@ -735,7 +735,7 @@ func TestVariableQueryReferences(t *testing.T) {
 
 // v10CanonicalSHA256 is the SHA-256 of v10-legend-format.json's canonical form; boards/spec.test.ts
 // holds the same value, so the two canonical forms are byte-equal.
-const v10CanonicalSHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
+const v10CanonicalSHA256 = "6c460f4a528ebd8c55ad9b9753a07f9ecac943f729ff4642a04d3dc268c895d0"
 
 // unit:board-spec-legend-format (#204; T22-001, T11-016): board spec v10, the legend-name version.
 // The fixture holds vis.legendFormat on line, bars, stat, barchart, heatmap and a section's line

@@ -1,5 +1,5 @@
 // Package spec is the board spec (plan #61 §3.4; v2 by plan #64 Part B §3.1, v3 by #173 Part 1, v4 by
-// #215, v5 by #198 Part 1, v6 by #216 Part 1, v7 by #234 Part 1, v8 by #290, v9 by #289): strict,
+// #215, v5 by #198 Part 1, v6 by #216 Part 1, v7 by #234 Part 1, v8 by #290, v9 by #289, v10 by #204): strict,
 // presence-aware decoding, validation with JSON-pointer field errors, the upcaster entry point
 // (T11 §4.0), canonical JSON and the RFC 6902 patch recorded in the audit trail (T11-006).
 package spec
@@ -17,8 +17,9 @@ import (
 // and their options (#198 Part 1, T24-003); 6 adds the board list widget, the kind boardList and its
 // options (#216 Part 1, T24 §5.5); 7 adds the geomap, the kind geomap and its options (#234 Part 1,
 // T24 §5.15); 8, the units version, adds vis.unit (#290, T22 §6.2); 9, the variables version,
-// adds variables (#289, IA-006). Each version is a subset of the next.
-const BoardSchemaVersion int64 = 9 // adds variables, the variables version (#289)
+// adds variables (#289, IA-006); 10, the legend-name version, adds vis.legendFormat (#204, T22-001).
+// Each version is a subset of the next.
+const BoardSchemaVersion int64 = 10 // adds vis.legendFormat, the legend-name version (#204)
 
 // Board is a board spec. Panels are the ungrouped panels drawn above the sections. Tags are 0 to
 // 16 unique AnnotationTags in their order; an empty list is the same as none (no key).
@@ -88,13 +89,14 @@ type Query struct {
 
 // Vis is a panel's visualisation: auto, line, bars, heatmap, stat, logs, barchart, pie or geomap
 // (data panels), or the widgets text, clock and boardList. Unit is a data panel's unit (board spec
-// v8).
+// v8); LegendFormat its series name template (board spec v10).
 type Vis struct {
 	Kind       string      `json:"kind"`
 	Thresholds *Thresholds `json:"thresholds,omitempty"`
 	Legend     *Legend     `json:"legend,omitempty"`
 	Unit       *PanelUnit  `json:"unit,omitempty"`
-	// LegendFormat is a data panel's series name template (board spec v10, #204).
+	// LegendFormat is a data panel's series name template, {{label}} replaced by the series'
+	// label value (board spec v10, the legend-name version, #204).
 	LegendFormat *string  `json:"legendFormat,omitempty"`
 	Options      *Options `json:"options,omitempty"`
 }
@@ -108,11 +110,12 @@ type PanelUnit struct {
 
 // visJSON is Vis with its options kept raw (UnmarshalJSON).
 type visJSON struct {
-	Kind       string          `json:"kind"`
-	Thresholds *Thresholds     `json:"thresholds"`
-	Legend     *Legend         `json:"legend"`
-	Unit       *PanelUnit      `json:"unit"`
-	Options    json.RawMessage `json:"options"`
+	Kind         string          `json:"kind"`
+	Thresholds   *Thresholds     `json:"thresholds"`
+	Legend       *Legend         `json:"legend"`
+	Unit         *PanelUnit      `json:"unit"`
+	LegendFormat *string         `json:"legendFormat"`
+	Options      json.RawMessage `json:"options"`
 }
 
 // UnmarshalJSON decodes a vis whose shape is clean. The shape pass checks options only for a kind
@@ -123,7 +126,7 @@ func (v *Vis) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &r); err != nil {
 		return err
 	}
-	*v = Vis{Kind: r.Kind, Thresholds: r.Thresholds, Legend: r.Legend, Unit: r.Unit}
+	*v = Vis{Kind: r.Kind, Thresholds: r.Thresholds, Legend: r.Legend, Unit: r.Unit, LegendFormat: r.LegendFormat}
 	if len(r.Options) == 0 || !slices.Contains(visKinds, r.Kind) {
 		return nil
 	}
@@ -281,7 +284,7 @@ func DecodeBoard(raw []byte, schemaVersion int64) (Board, error) {
 }
 
 // DecodeBoardUpTo decodes a stored spec of schemaVersion when schemaMax is the newest version the
-// caller reads. Versions 1 to 9 decode unchanged (each is a subset of the next: the identity upcast); a
+// caller reads. Versions 1 to 10 decode unchanged (each is a subset of the next: the identity upcast); a
 // version above schemaMax returns ErrSchemaTooNew and a version below 1 ErrSchemaVersion. With
 // schemaMax 1 it decodes as the previous release did (plan #64 Part B §4.7).
 func DecodeBoardUpTo(raw []byte, schemaVersion, schemaMax int64) (Board, error) {

@@ -43,6 +43,10 @@ const (
 
 	// maxUnitSuffixRunes bounds a custom unit's suffix (board spec v8; the client's MAX_UNIT_SUFFIX).
 	maxUnitSuffixRunes = 16
+
+	// maxLegendFormatRunes bounds a legend name template (board spec v10; the client's
+	// MAX_LEGEND_FORMAT).
+	maxLegendFormatRunes = 256
 )
 
 var (
@@ -324,6 +328,9 @@ func (v *validator) vis(pointer string, vis Vis) {
 	if vis.Unit != nil {
 		v.unit(pointer+"/unit", *vis.Unit, widget)
 	}
+	if f := vis.LegendFormat; f != nil {
+		v.legendFormat(pointer+"/legendFormat", *f, widget)
+	}
 	if vis.Options != nil && slices.Contains(visKinds, vis.Kind) {
 		v.options(pointer+"/options", vis.Kind, *vis.Options)
 		if vis.Kind == "geomap" {
@@ -355,6 +362,22 @@ func (v *validator) unit(pointer string, u PanelUnit, widget bool) {
 			return ""
 		})
 	}
+}
+
+// legendFormat checks a panel's legend name template (board spec v10, #204), after the unit: a
+// widget has none (an unknown key); the template is 1 to 256 runes. Any text is allowed: braces
+// that are no {{label}} placeholder render literally (the client's renderLegendFormat).
+func (v *validator) legendFormat(pointer, f string, widget bool) {
+	if widget {
+		v.add(pointer, keyUnknownKey)
+		return
+	}
+	v.str(pointer, f, func(s string) string {
+		if n := utf8.RuneCountInString(s); n == 0 || n > maxLegendFormatRunes {
+			return "board.legendFormat.invalid"
+		}
+		return ""
+	})
 }
 
 // spaceOrControl reports a Unicode White_Space or Cc code point (the client's
